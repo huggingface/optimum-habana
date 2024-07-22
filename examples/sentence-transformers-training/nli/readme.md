@@ -17,9 +17,9 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 To pre-train on the NLI task:
 
-1. Choose a pre-trained model `<model_name>` (ex: `bert-base-uncased`).
+1. Choose a pre-trained model `<model_name>` (for example: `[bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased)`).
 
-2. Load the training, validation, and test dataset(s). Below is an example of using the AllNLI dataset for training and validation, while the test set uses the STS Benchmark dataset.
+2. Load the training, validation, and test datasets. Below is an example of using the [AllNLI dataset](https://huggingface.co/datasets/sentence-transformers/all-nli) for training and validation, while the test set uses the STS Benchmark dataset.
 
 ```python
 train_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="train").select(range(10000))
@@ -44,18 +44,18 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 4. Execute the script:  
 
    ```bash
-   python <path/to/script.py> <model_name>
+   python examples/sentence-transformers-training/nli/training_nli.py <model_name>
    ```
 
 ## Multi-card Training
 
-   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  Multi-card training (ex: using HPU 2/3). 
+   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
    ```bash
-   HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 <path/to/script.py> <model_name>
+   HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 examples/sentence-transformers-training/nli/training_nli.py <model_name>
    ```
 
-## Data
+## Dataset
 
 We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) into a dataset we call [AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli). These two datasets contain sentence pairs and one of three labels: entailment, neutral, contradiction:
 
@@ -65,7 +65,7 @@ We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNL
 | An older and younger man smiling.                                  | Two men are smiling and laughing at the cats playing on the floor. | neutral       |
 | A man inspects the uniform of a figure in some East Asian country. | The man is sleeping.                                               | contradiction |
 
-We format AllNLI in a few different subsets, compatible with different loss functions. See for example the [triplet subset of AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli/viewer/triplet).
+We format AllNLI in a few different subsets, compatible with different loss functions. See [triplet subset of AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli/viewer/triplet) as example.
 
 ## SoftmaxLoss
 
