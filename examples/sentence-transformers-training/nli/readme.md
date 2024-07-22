@@ -17,7 +17,7 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 To pre-train on the NLI task:
 
-1. Choose a pre-trained model `<model_name>` (for example: `[bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased)`).
+1. Choose a pre-trained model `<model_name>` (for example: [bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased)).
 
 2. Load the training, validation, and test datasets. Below is an example of using the [AllNLI dataset](https://huggingface.co/datasets/sentence-transformers/all-nli) for training and validation, while the test set uses the STS Benchmark dataset.
 
