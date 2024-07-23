@@ -6,8 +6,6 @@ import os
 from datasets import load_dataset
 import shutil
 
-# TODO replace /root/sasarkar/qwen2_7b/ with Qwen/Qwen2-7B
-
 def test_sft_train():
     env_variables = os.environ.copy()
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
