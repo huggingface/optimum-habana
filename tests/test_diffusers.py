@@ -125,6 +125,12 @@ else:
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
 
+import debugpy
+
+debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for client to attach...")
+debugpy.wait_for_client()
+
 
 def custom_bf16_ops(test_case):
     """
@@ -5081,6 +5087,7 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
     model = "stabilityai/stable-diffusion-xl-base-1.0"
     face_adapter = "./checkpoints/ip-adapter.bin"
     def get_dummy_components(self, time_cond_proj_dim=None, timestep_spacing="leading"):
+        from huggingface_hub import hf_hub_download
 
         controlnet_config = "./checkpoints/ControlNetModel/config.json"
         if not os.path.exists(controlnet_config):
@@ -5121,7 +5128,7 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         }
         return components
 
-    def get_dummy_inputs(self, seed=123):
+    def get_dummy_inputs(self, batch_size=1, seed=123):
         generator = torch.Generator().manual_seed(seed)
         control_image = load_image(
             "https://github.com/InstantID/InstantID/blob/main/examples/yann-lecun_resize.jpg?raw=true"
@@ -5143,22 +5150,30 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         image = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(
             control_image, face_kps
         )
+
+        prompt = "A painting of a squirrel eating a burger"
+        
+        images = image if batch_size == 1 else [image] * batch_size
+        face_embs = face_emb if batch_size == 1 else [face_emb] * batch_size
+        generators = generator if batch_size == 1 else [generator] * batch_size
+        prompts = prompt if batch_size == 1 else [prompt] * batch_size
+        negative_prompts = "" if batch_size == 1 else [""] * batch_size
+
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": prompts,
             "num_inference_steps": 3,
-            "negative_prompt": "",
-            "image_embeds": face_emb,
+            "negative_prompt": negative_prompts,
+            "image_embeds": face_embs,
             "controlnet_conditioning_scale": 0.8,
             "ip_adapter_scale": 0.8,
-            "generator": generator,
+            "generator": generators,
             "output_type": "np",
-            "image": image,
+            "image": images,
+            "batch_size": batch_size
         }
         return inputs
 
     def test_stable_diffusion_xl_instantid_default(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
             self.model,
@@ -5186,10 +5201,9 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertLess(max_diff, 1e-2)
 
     def test_stable_diffusion_xl_instantid_bf16(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         components["torch_dtype"] = torch.bfloat16
+        components["controlnet"] = components["controlnet"].to(torch.bfloat16)
         pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
             self.model,
             **components,
@@ -5206,15 +5220,15 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertEqual(image.shape, (536, 536, 3))
         expected_slice = np.array(
             [
-                0.58203125,
-                0.56640625,
-                0.5800781,
-                0.58251953,
-                0.5800781,
-                0.6015625,
-                0.5986328,
-                0.6171875,
-                0.6279297,
+                0.83291686,
+                0.86335003,
+                0.85672545,
+                0.9207019,
+                0.8901906,
+                0.7393271,
+                0.62973773,
+                0.59053695,
+                0.46202925
             ],
             dtype=np.float32
         )
@@ -5225,8 +5239,6 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertLess(max_diff, 1e-2)
   
     def test_stable_diffusion_xl_instantid_no_hpu_graph(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         components["use_hpu_graphs"] = False
         pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
@@ -5249,8 +5261,6 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertLess(max_diff, 1e-2)
 
     def test_stable_diffusion_xl_instantid_euler_ancestral(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(self.model, subfolder="scheduler", timestep_spacing="linspace")
         components["scheduler"] = scheduler
@@ -5277,8 +5287,6 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertLess(max_diff, 1e-2)
 
     def test_stable_diffusion_xl_instantid_euler_discrete(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(self.model, subfolder="scheduler", timestep_spacing="linspace")
         components["scheduler"] = scheduler
@@ -5308,8 +5316,6 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertLess(max_diff, 1e-2)
     
     def test_stable_diffusion_xl_instantid_num_per_promt(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
             self.model,
@@ -5326,8 +5332,6 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), 2)
     
     def test_stable_diffusion_xl_instantid_batch(self):
-        # device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
         components = self.get_dummy_components()
         pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
             self.model,
@@ -5336,8 +5340,8 @@ class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
         pipeline.load_ip_adapter_instantid(self.face_adapter)
         pipeline.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs()
-        inputs["batch_size"] = 2
+        batch_size = 2
+        inputs = self.get_dummy_inputs(batch_size)
         outputs = pipeline(
             **inputs,
         )
