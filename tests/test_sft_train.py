@@ -26,13 +26,7 @@ def test_sft_train():
     print(f"\n\nCommand to test: {' '.join(command)}\n")
     proc = subprocess.run(command, env=env_variables, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
 
-    try:
-        assert proc.returncode == 0
-    except AssertionError as e:
-        if "'--token', 'hf_" in e.args[0]:
-            e.args = (f"The following command failed:\n{' '.join(command)}",)
-        raise
-
+    assert proc.returncode == 0
     alllines = proc.stdout.split('\n')
     train_samples_per_second = float([line for line in alllines if 'train_samples_per_second' in line][-1].split('=')[-1])
     perplexity = float([line for line in alllines if 'perplexity' in line][-1].split('=')[-1])
