@@ -29,31 +29,31 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
 3. Choose one of the following scripts based on the loss model:
    
-   a. **[training_nli.py](training_nli.py)**:
+	a. **[training_nli.py](training_nli.py)**:
+	
+	> This example uses `sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
 
-   > This example uses `sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
+	b. **[training_nli_v2.py](training_nli_v2.py)**:
 
-   b. **[training_nli_v2.py](training_nli_v2.py)**:
+	> The `sentence_transformers.losses.SoftmaxLoss` as used in our original SBERT paper does not yield optimal performance. A better loss is `sentence_transformers.losses.MultipleNegativesRankingLoss`, where we provide pairs or triplets. In this script, we provide a triplet of the format: (anchor, entailment_sentence, contradiction_sentence). The NLI data provides such triplets. The `sentence_transformers.losses.MultipleNegativesRankingLoss` yields much higher performances and is more intuitive than `sentence_transformers.losses.SoftmaxLoss`. We have used this loss to train the paraphrase model in our [Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation](https://arxiv.org/abs/2004.09813) paper.
 
-   > The `sentence_transformers.losses.SoftmaxLoss` as used in our original SBERT paper does not yield optimal performance. A better loss is `sentence_transformers.losses.MultipleNegativesRankingLoss`, where we provide pairs or triplets. In this script, we provide a triplet of the format: (anchor, entailment_sentence, contradiction_sentence). The NLI data provides such triplets. The `sentence_transformers.losses.MultipleNegativesRankingLoss` yields much higher performances and is more intuitive than `sentence_transformers.losses.SoftmaxLoss`. We have used this loss to train the paraphrase model in our [Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation](https://arxiv.org/abs/2004.09813) paper.
+	c) **[training_nli_v3.py](training_nli_v3.py)**
 
-   c) **[training_nli_v3.py](training_nli_v3.py)**
-
-   > Following the [GISTEmbed](https://arxiv.org/abs/2402.16829) paper, we can modify the in-batch negative selection from `sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the `sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than `sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
+	> Following the [GISTEmbed](https://arxiv.org/abs/2402.16829) paper, we can modify the in-batch negative selection from `sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the `sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than `sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
 
 4. Execute the script:  
 
-   ```bash
-   python examples/sentence-transformers-training/nli/training_nli.py <model_name>
-   ```
+	```bash
+		python examples/sentence-transformers-training/nli/training_nli.py <model_name>
+	```
 
 ## Multi-card Training
 
-   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+	For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
-   ```bash
-   HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 examples/sentence-transformers-training/nli/training_nli.py <model_name>
-   ```
+	```bash
+		HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 example/sentence-transformers-training/nli/training_nli.py <model_name>
+	```
 
 ## Dataset
 
