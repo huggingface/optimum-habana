@@ -18,9 +18,9 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 To fine tune on the STS task:
 
-1. Choose a pre-trained model `<model_name>` (ex: `bert-base-uncased`).
+1. Choose a pre-trained model `<model_name>` (for example: [bert-base-uncased](https://huggingface.co/google-bert/bert-base-uncased)).
 
-2. Load the training, validation, and test dataset(s). Here, we use the STS benchmark dataset.
+2. Load the training, validation, and test datasets. Here, we use the STS benchmark dataset.
 
 ```python
 train_dataset = load_dataset("sentence-transformers/stsb", split="train")
@@ -36,7 +36,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
 ## Multi-card Training
 
-   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  Multi-card training (ex: using HPU 2/3). 
+   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
    ```bash
    HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py <model_name>
