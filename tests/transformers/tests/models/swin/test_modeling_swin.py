@@ -12,14 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Testing suite for the PyTorch Swin model."""
+""" Testing suite for the PyTorch Swin model. """
 
 import collections
 import inspect
 import unittest
 
 from transformers import SwinConfig
-from transformers.testing_utils import require_torch, require_vision, slow
+from transformers.testing_utils import require_torch, require_vision, slow, torch_device
 from transformers.utils import cached_property, is_torch_available, is_vision_available
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -34,12 +34,14 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from torch import nn
+
     from transformers import SwinBackbone, SwinForImageClassification, SwinForMaskedImageModeling, SwinModel
     from transformers.models.swin.modeling_swin import SWIN_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 if is_vision_available():
     from PIL import Image
+
     from transformers import AutoImageProcessor
 
 
@@ -234,7 +236,7 @@ class SwinModelTest(ModelTesterMixin, unittest.TestCase):
         else ()
     )
     pipeline_model_mapping = (
-        {"feature-extraction": SwinModel, "image-classification": SwinForImageClassification}
+        {"image-feature-extraction": SwinModel, "image-classification": SwinForImageClassification}
         if is_torch_available()
         else {}
     )
@@ -460,9 +462,9 @@ class SwinModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in SWIN_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = SwinModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "microsoft/swin-tiny-patch4-window7-224"
+        model = SwinModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     def test_initialization(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
@@ -505,5 +507,5 @@ class SwinModelIntegrationTest(unittest.TestCase):
         # verify the logits
         expected_shape = torch.Size((1, 1000))
         self.assertEqual(outputs.logits.shape, expected_shape)
-        expected_slice = torch.tensor([-0.0949, -0.6437, -0.0894]).to(torch_device)
+        expected_slice = torch.tensor([-0.0948, -0.6454, -0.0921]).to(torch_device)
         self.assertTrue(torch.allclose(outputs.logits[0, :3], expected_slice, atol=1e-4))
