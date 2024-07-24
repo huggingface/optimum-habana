@@ -71,7 +71,11 @@ from .deepseek_v2 import (
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
-from .detr import gaudi_DetrConvModel_forward
+from .detr import (
+    gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_loss_labels
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
