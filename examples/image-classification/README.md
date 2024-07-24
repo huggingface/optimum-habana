@@ -45,7 +45,7 @@ python run_image_classification.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
-    --evaluation_strategy epoch \
+    --eval_strategy epoch \
     --save_strategy epoch \
     --load_best_model_at_end True \
     --save_total_limit 3 \
@@ -197,7 +197,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
-    --evaluation_strategy epoch \
+    --eval_strategy epoch \
     --save_strategy epoch \
     --load_best_model_at_end True \
     --save_total_limit 3 \
@@ -237,7 +237,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
-    --evaluation_strategy epoch \
+    --eval_strategy epoch \
     --save_strategy epoch \
     --load_best_model_at_end True \
     --save_total_limit 3 \
