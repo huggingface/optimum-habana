@@ -25,7 +25,13 @@ from transformers import (
     is_torch_available,
     set_seed,
 )
-from transformers.testing_utils import require_bitsandbytes, require_torch, require_torch_sdpa, slow
+from transformers.testing_utils import (
+    is_flaky,
+    require_bitsandbytes,
+    require_torch,
+    require_torch_sdpa,
+    slow,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -33,6 +39,9 @@ from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
 
+
+torch_device = "hpu"
+adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
@@ -43,8 +52,11 @@ if is_torch_available():
         FalconForTokenClassification,
         FalconModel,
     )
-torch_device = "hpu"
-adapt_transformers_to_gaudi()
+    from transformers.models.falcon.modeling_falcon import (
+        FalconDynamicNTKScalingRotaryEmbedding,
+        FalconLinearScalingRotaryEmbedding,
+        FalconRotaryEmbedding,
+    )
 
 
 class FalconModelTester:
@@ -378,7 +390,7 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
             outputs = model(**inputs)
 
             # If "past_key_values" is not returned, pass the test (e.g. RWKV uses a different cache name and format)
-            if "past_key_values" not in outputs or all(ele is None for ele in outputs["past_key_values"]):
+            if "past_key_values" not in outputs:
                 return
 
             num_hidden_layers = (
@@ -408,7 +420,8 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
                 )
 
     @parameterized.expand([("linear",), ("dynamic",)])
-    def test_model_rope_scaling(self, scaling_type):
+    # Copied from tests.models.llama.test_modeling_llama.LlamaModelTest.test_model_rope_scaling_from_config with Llama->Falcon
+    def test_model_rope_scaling_from_config(self, scaling_type):
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
         short_input = ids_tensor([1, 10], config.vocab_size)
         long_input = ids_tensor([1, int(config.max_position_embeddings * 1.5)], config.vocab_size)
@@ -438,6 +451,67 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
         # The output should be different for long inputs
         self.assertFalse(torch.allclose(original_long_output, scaled_long_output, atol=1e-5))
 
+    def test_model_rope_scaling(self):
+        config, _ = self.model_tester.prepare_config_and_inputs_for_common()
+        hidden_size = config.hidden_size
+        num_heads = config.num_attention_heads
+        head_dim = hidden_size // num_heads
+        scaling_factor = 10
+        short_input_length = 10
+        long_input_length = int(config.max_position_embeddings * 1.5)
+
+        # Inputs
+        x = torch.randn(1, dtype=torch.float32, device=torch_device)  # used exlusively to get the dtype and the device
+
+        # Sanity check original RoPE
+        original_rope = FalconRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+        ).to(torch_device)
+        original_cos_short, original_sin_short = original_rope(x, short_input_length)
+        original_cos_long, original_sin_long = original_rope(x, long_input_length)
+        torch.testing.assert_close(original_cos_short, original_cos_long[:short_input_length, :])
+        torch.testing.assert_close(original_sin_short, original_sin_long[:short_input_length, :])
+
+        # Sanity check linear RoPE scaling
+        # New position "x" should match original position with index "x/scaling_factor"
+        linear_scaling_rope = FalconLinearScalingRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+            scaling_factor=scaling_factor,
+        ).to(torch_device)
+        linear_cos_short, linear_sin_short = linear_scaling_rope(x, short_input_length)
+        linear_cos_long, linear_sin_long = linear_scaling_rope(x, long_input_length)
+        torch.testing.assert_close(linear_cos_short, linear_cos_long[:short_input_length, :])
+        torch.testing.assert_close(linear_sin_short, linear_sin_long[:short_input_length, :])
+        for new_position in range(0, long_input_length, scaling_factor):
+            original_position = int(new_position // scaling_factor)
+            torch.testing.assert_close(linear_cos_long[new_position, :], original_cos_long[original_position, :])
+            torch.testing.assert_close(linear_sin_long[new_position, :], original_sin_long[original_position, :])
+
+        # Sanity check Dynamic NTK RoPE scaling
+        # Scaling should only be observed after a long input is fed. We can observe that the frequencies increase
+        # with scaling_factor (or that `inv_freq` decreases)
+        ntk_scaling_rope = FalconDynamicNTKScalingRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+            scaling_factor=scaling_factor,
+        ).to(torch_device)
+        ntk_cos_short, ntk_sin_short = ntk_scaling_rope(x, short_input_length)
+        ntk_cos_long, ntk_sin_long = ntk_scaling_rope(x, long_input_length)
+        torch.testing.assert_close(ntk_cos_short, original_cos_short)
+        torch.testing.assert_close(ntk_sin_short, original_sin_short)
+        with self.assertRaises(AssertionError):
+            torch.testing.assert_close(ntk_cos_long, original_cos_long)
+        with self.assertRaises(AssertionError):
+            torch.testing.assert_close(ntk_sin_long, original_sin_long)
+        self.assertTrue((ntk_scaling_rope.inv_freq <= original_rope.inv_freq).all())
+
+    # TODO: @Fxmarty
+    @is_flaky(max_attempts=3, description="flaky on some models.")
     @require_torch_sdpa
     @slow
     def test_eager_matches_sdpa_generate(self):
@@ -520,11 +594,12 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         inputs = tokenizer("My favorite food is", return_tensors="pt").to(torch_device)
 
         EXPECTED_OUTPUT = (
-            "My favorite food is pizza. I love it so much that I have a pizza party every week. I love it"
+            "My favorite food is pizza. I love it so much that I have a pizza party every year for my birthday."
         )
 
-        output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19, ignore_eos=True)
+        output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19)
         output_str = tokenizer.batch_decode(output_ids)[0]
+
         self.assertEqual(output_str, EXPECTED_OUTPUT)
 
     @slow
@@ -591,3 +666,27 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         self.assertLess(unpadded_inputs.input_ids.shape[-1], padded_inputs.input_ids.shape[-1])  # left-padding exists
         self.assertEqual(unpadded_gen_text[0], expected_output)
         self.assertEqual(padded_gen_text[0], expected_output)
+
+    @slow
+    @require_torch_sdpa
+    def test_falcon_alibi_sdpa_matches_eager(self):
+        input_ids = torch.randint(0, 1000, (5, 20))
+
+        config = FalconConfig(
+            vocab_size=1000,
+            hidden_size=64,
+            num_hidden_layers=3,
+            num_attention_heads=4,
+            new_decoder_architecture=True,
+            alibi=True,
+        )
+
+        falcon = FalconForCausalLM(config)
+        falcon = falcon.eval()
+
+        with torch.no_grad():
+            # output_attentions=True dispatches to eager path
+            falcon_output_eager = falcon(input_ids, output_attentions=True)[0]
+            falcon_output_sdpa = falcon(input_ids)[0]
+
+        self.assertTrue(torch.allclose(falcon_output_eager, falcon_output_sdpa, atol=1e-3))

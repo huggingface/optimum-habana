@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import datetime
 import gc
 import math
@@ -20,7 +21,12 @@ import unittest
 
 import pytest
 from transformers import GPT2Config, is_torch_available
-from transformers.testing_utils import require_torch, slow
+from transformers.testing_utils import (
+    require_flash_attn,
+    require_torch,
+    require_torch_gpu,
+    slow,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -38,7 +44,6 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from transformers import (
-        GPT2_PRETRAINED_MODEL_ARCHIVE_LIST,
         GPT2DoubleHeadsModel,
         GPT2ForQuestionAnswering,
         GPT2ForSequenceClassification,
@@ -104,7 +109,7 @@ class GPT2ModelTester:
         self.pad_token_id = vocab_size - 1
 
     def get_large_model_config(self):
-        return GPT2Config.from_pretrained("gpt2")
+        return GPT2Config.from_pretrained("openai-community/gpt2")
 
     def prepare_config_and_inputs(
         self, gradient_checkpointing=False, scale_attn_by_inverse_layer_idx=False, reorder_and_upcast_attn=False
@@ -571,11 +576,29 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_gpt2_weight_initialization(*config_and_inputs)
 
+    @unittest.skip(
+        reason="This architecure seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecure seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecure seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant_false(self):
+        pass
+
     @slow
     def test_batch_generation(self):
-        model = GPT2LMHeadModel.from_pretrained("gpt2")
+        model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
         model.to(torch_device)
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
 
         tokenizer.padding_side = "left"
 
@@ -600,7 +623,8 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         )
 
         outputs = model.generate(
-            input_ids=input_ids, attention_mask=inputs["attention_mask"].to(torch_device), ignore_eos=True
+            input_ids=input_ids,
+            attention_mask=inputs["attention_mask"].to(torch_device),
         )
 
         outputs_tt = model.generate(
@@ -611,13 +635,11 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         )
 
         inputs_non_padded = tokenizer(sentences[0], return_tensors="pt").input_ids.to(torch_device)
-        output_non_padded = model.generate(input_ids=inputs_non_padded, ignore_eos=True)
+        output_non_padded = model.generate(input_ids=inputs_non_padded)
 
         num_paddings = inputs_non_padded.shape[-1] - inputs["attention_mask"][-1].long().sum().cpu().item()
         inputs_padded = tokenizer(sentences[1], return_tensors="pt").input_ids.to(torch_device)
-        output_padded = model.generate(
-            input_ids=inputs_padded, max_length=model.config.max_length - num_paddings, ignore_eos=True
-        )
+        output_padded = model.generate(input_ids=inputs_padded, max_length=model.config.max_length - num_paddings)
 
         batch_out_sentence = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         batch_out_sentence_tt = tokenizer.batch_decode(outputs_tt, skip_special_tokens=True)
@@ -634,9 +656,9 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @slow
     def test_batch_generation_2heads(self):
-        model = GPT2DoubleHeadsModel.from_pretrained("gpt2")
+        model = GPT2DoubleHeadsModel.from_pretrained("openai-community/gpt2")
         model.to(torch_device)
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
 
         tokenizer.padding_side = "left"
 
@@ -694,9 +716,9 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in GPT2_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = GPT2Model.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "openai-community/gpt2"
+        model = GPT2Model.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
 
 @require_torch
@@ -715,7 +737,7 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
         verify_outputs=True,
     ):
         model = GPT2LMHeadModel.from_pretrained(
-            "gpt2",
+            "openai-community/gpt2",
             reorder_and_upcast_attn=reorder_and_upcast_attn,
             scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx,
         )
@@ -752,8 +774,8 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
 
     @slow
     def test_gpt2_sample(self):
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        model = GPT2LMHeadModel.from_pretrained("gpt2")
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
+        model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -763,15 +785,16 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
         output_str = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         token_type_ids = tokenized.token_type_ids.to(torch_device)
-        output_seq = model.generate(input_ids=input_ids, do_sample=True, num_return_sequences=5, ignore_eos=True)
+        output_seq = model.generate(input_ids=input_ids, do_sample=True, num_return_sequences=5)
         output_seq_tt = model.generate(
             input_ids=input_ids, token_type_ids=token_type_ids, do_sample=True, num_return_sequences=5
         )
         output_seq_strs = tokenizer.batch_decode(output_seq, skip_special_tokens=True)
         output_seq_tt_strs = tokenizer.batch_decode(output_seq_tt, skip_special_tokens=True)
 
-        EXPECTED_OUTPUT_STR = "Today is a nice day and I really want to take you here and show you how easy it's"
-
+        EXPECTED_OUTPUT_STR = (
+            "Today is a nice day and if you don't know anything about the state of play during your holiday"
+        )
         self.assertEqual(output_str, EXPECTED_OUTPUT_STR)
         self.assertTrue(
             all(output_seq_strs[idx] != output_seq_tt_strs[idx] for idx in range(len(output_seq_tt_strs)))
@@ -779,8 +802,8 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
 
     @slow
     def test_gpt2_sample_max_time(self):
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        model = GPT2LMHeadModel.from_pretrained("gpt2")
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
+        model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -825,8 +848,8 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
             "laboratory founded in 2010. DeepMind was acquired by Google in 2014. The company is based"
         )
 
-        gpt2_tokenizer = GPT2Tokenizer.from_pretrained("gpt2-large")
-        gpt2_model = GPT2LMHeadModel.from_pretrained("gpt2-large").to(torch_device)
+        gpt2_tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2-large")
+        gpt2_model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2-large").to(torch_device)
         input_ids = gpt2_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
 
         outputs = gpt2_model.generate(input_ids, penalty_alpha=0.6, top_k=4, max_length=256)
@@ -851,3 +874,40 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
                 "but said in a statement to The Associated Press that"
             ],
         )
+
+    @require_flash_attn
+    @require_torch_gpu
+    @pytest.mark.flash_attn_test
+    @slow
+    def test_flash_attn_2_generate_padding_left(self):
+        """
+        Overwritting the common test as the test is flaky on tiny models
+        """
+        model = GPT2LMHeadModel.from_pretrained("gpt2", torch_dtype=torch.float16).to(0)
+
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+        texts = ["hi", "Hello this is a very long sentence"]
+
+        tokenizer.padding_side = "left"
+        tokenizer.pad_token = tokenizer.eos_token
+
+        inputs = tokenizer(texts, return_tensors="pt", padding=True).to(0)
+
+        output_native = model.generate(**inputs, max_new_tokens=20, do_sample=False)
+        output_native = tokenizer.batch_decode(output_native)
+
+        model = GPT2LMHeadModel.from_pretrained(
+            "gpt2", device_map={"": 0}, attn_implementation="flash_attention_2", torch_dtype=torch.float16
+        )
+
+        output_fa_2 = model.generate(**inputs, max_new_tokens=20, do_sample=False)
+        output_fa_2 = tokenizer.batch_decode(output_fa_2)
+
+        expected_output = [
+            "<|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|>hi, who was born in the city of Kolkata, was a member of the Kolkata",
+            "Hello this is a very long sentence. I'm sorry. I'm sorry. I'm sorry. I'm sorry. I'm sorry",
+        ]
+
+        self.assertListEqual(output_native, output_fa_2)
+        self.assertListEqual(output_native, expected_output)

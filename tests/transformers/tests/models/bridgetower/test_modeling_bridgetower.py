@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 from transformers import (
     BridgeTowerConfig,
     BridgeTowerTextConfig,
@@ -344,17 +343,14 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
     def test_config(self):
         self.config_tester.run_common_tests()
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_model(*config_and_inputs)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_for_image_and_text_retrieval(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_for_image_and_text_retrieval(*config_and_inputs)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_for_masked_language_modeling(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_for_masked_language_modeling(*config_and_inputs)
@@ -371,7 +367,6 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
         super().test_save_load_fast_init_from_base()
 
     # Override as extracting meaningful tensor from output is different for BridgeTower
-    @pytest.mark.skip("Skip for Gaudi")
     def test_save_load(self):
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
@@ -400,7 +395,6 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
                 self.assertLessEqual(max_diff, 1e-5)
 
     # Override this as `hidden states output` is different for BridgeTower
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_hidden_states_output(self):
         def check_hidden_states_output(inputs_dict, config, model_class):
             model = model_class(config)
@@ -452,7 +446,6 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
             check_hidden_states_output(inputs_dict, config, model_class)
 
     # Override as `hidden states output` is different for BridgeTower
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_retain_grad_hidden_states_attentions(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.output_hidden_states = True
