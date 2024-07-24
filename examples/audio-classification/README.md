@@ -142,7 +142,8 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+    --trust_remote_code True
 ```
 
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
