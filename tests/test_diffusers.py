@@ -92,6 +92,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
+    GaudiStableDiffusionXLInstantIDPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -123,6 +124,12 @@ else:
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
+
+import debugpy
+
+debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for client to attach...")
+debugpy.wait_for_client()
 
 
 def custom_bf16_ops(test_case):
@@ -5074,3 +5081,268 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_XL_THROUGHPUT_BASELINE_BF16)
+
+
+class GaudiStableDiffusionXLInstantIDPipelineTester(TestCase):
+    model = "stabilityai/stable-diffusion-xl-base-1.0"
+    face_adapter = "./checkpoints/ip-adapter.bin"
+    def get_dummy_components(self, time_cond_proj_dim=None, timestep_spacing="leading"):
+        from huggingface_hub import hf_hub_download
+
+        controlnet_config = "./checkpoints/ControlNetModel/config.json"
+        if not os.path.exists(controlnet_config):
+            hf_hub_download(
+                repo_id="InstantX/InstantID",
+                filename="ControlNetModel/config.json",
+                local_dir="./checkpoints",
+            )
+        controlnet_model = (
+            "./checkpoints/ControlNetModel/diffusion_pytorch_model.safetensors"
+        )
+        if not os.path.exists(controlnet_model):
+            hf_hub_download(
+                repo_id="InstantX/InstantID",
+                filename="ControlNetModel/diffusion_pytorch_model.safetensors",
+                local_dir="./checkpoints",
+            )
+ 
+        if not os.path.exists(self.face_adapter):
+            hf_hub_download(
+                repo_id="InstantX/InstantID",
+                filename="ip-adapter.bin",
+                local_dir="./checkpoints",
+            )
+
+        torch.manual_seed(123)
+        controlnet = ControlNetModel.from_pretrained("./checkpoints/ControlNetModel")
+        scheduler = GaudiDDIMScheduler.from_pretrained(
+            self.model, subfolder="scheduler", timestep_spacing="linspace"
+        )
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        components = {
+            "controlnet": controlnet,
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": gaudi_config
+        }
+        return components
+
+    def get_dummy_inputs(self, batch_size=1, seed=123):
+        generator = torch.Generator().manual_seed(seed)
+        control_image = load_image(
+            "https://github.com/InstantID/InstantID/blob/main/examples/yann-lecun_resize.jpg?raw=true"
+        )
+        from insightface.app import FaceAnalysis
+        import cv2
+
+        app = FaceAnalysis()
+        app.prepare(ctx_id=0, det_size=(640, 640))
+        face_info = app.get(cv2.cvtColor(np.array(control_image), cv2.COLOR_RGB2BGR))
+        face_info = sorted(
+            face_info,
+            key=lambda x: (x["bbox"][2] - x["bbox"][0]) * (x["bbox"][3] - x["bbox"][1]),
+        )[
+            -1
+        ]  # only use the maximum face
+        face_emb = face_info["embedding"]
+        face_kps = face_info["kps"]
+        image = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(
+            control_image, face_kps
+        )
+
+        prompt = "A painting of a squirrel eating a burger"
+        
+        images = image if batch_size == 1 else [image] * batch_size
+        face_embs = face_emb if batch_size == 1 else [face_emb] * batch_size
+        generators = generator if batch_size == 1 else [generator] * batch_size
+        prompts = prompt if batch_size == 1 else [prompt] * batch_size
+        negative_prompts = "" if batch_size == 1 else [""] * batch_size
+
+        inputs = {
+            "prompt": prompts,
+            "num_inference_steps": 3,
+            "negative_prompt": negative_prompts,
+            "image_embeds": face_embs,
+            "controlnet_conditioning_scale": 0.8,
+            "ip_adapter_scale": 0.8,
+            "generator": generators,
+            "output_type": "np",
+            "image": images,
+            "batch_size": batch_size
+        }
+        return inputs
+
+    def test_stable_diffusion_xl_instantid_default(self):
+        components = self.get_dummy_components()
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        outputs = pipeline(
+            **inputs,
+        )
+        image = outputs.images[0]
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (536, 536, 3))
+        expected_slice = np.array(
+            [0.62613666, 0.62639195, 0.6813312, 0.62878156, 0.6348365, 0.6737102, 0.64623654, 0.6610648, 0.6871717],
+            dtype=np.float32
+        )
+
+        # The threshold should be 1e-2 below but it started failing
+        # from Diffusers v0.24. However, generated images still look similar.
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLess(max_diff, 1e-2)
+
+    def test_stable_diffusion_xl_instantid_bf16(self):
+        components = self.get_dummy_components()
+        components["torch_dtype"] = torch.bfloat16
+        components["controlnet"] = components["controlnet"].to(torch.bfloat16)
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs()
+        outputs = pipeline(
+            **inputs,
+        )
+        image = outputs.images[0]
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (536, 536, 3))
+        expected_slice = np.array(
+            [
+                0.83291686,
+                0.86335003,
+                0.85672545,
+                0.9207019,
+                0.8901906,
+                0.7393271,
+                0.62973773,
+                0.59053695,
+                0.46202925
+            ],
+            dtype=np.float32
+        )
+
+        # The threshold should be 1e-2 below but it started failing
+        # from Diffusers v0.24. However, generated images still look similar.
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLess(max_diff, 1e-2)
+  
+    def test_stable_diffusion_xl_instantid_no_hpu_graph(self):
+        components = self.get_dummy_components()
+        components["use_hpu_graphs"] = False
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs()
+        outputs = pipeline(
+            **inputs,
+        )
+        image = outputs.images[0]
+        image_slice = image[-3:, -3:, -1]
+        self.assertEqual(image.shape, (536, 536, 3))
+        expected_slice = np.array([0.62614685, 0.62640107, 0.6813412, 0.62879175, 0.634845, 0.67371786, 0.6462461, 0.661072, 0.68717855], dtype=np.float32)
+        # The threshold should be 1e-2 below but it started failing
+        # from Diffusers v0.24. However, generated images still look similar.
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLess(max_diff, 1e-2)
+
+    def test_stable_diffusion_xl_instantid_euler_ancestral(self):
+        components = self.get_dummy_components()
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(self.model, subfolder="scheduler", timestep_spacing="linspace")
+        components["scheduler"] = scheduler
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        outputs = pipeline(
+            **inputs,
+        )
+        image = outputs.images[0]
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (536, 536, 3))
+        expected_slice = np.array([0.27593577, 0.28012627, 0.2775612, 0.2833758, 0.28309634, 0.2811231, 0.2720379, 0.28364897, 0.27891], dtype=np.float32)
+
+        # The threshold should be 1e-2 below but it started failing
+        # from Diffusers v0.24. However, generated images still look similar.
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLess(max_diff, 1e-2)
+
+    def test_stable_diffusion_xl_instantid_euler_discrete(self):
+        components = self.get_dummy_components()
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(self.model, subfolder="scheduler", timestep_spacing="linspace")
+        components["scheduler"] = scheduler
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        outputs = pipeline(
+            **inputs,
+        )
+        image = outputs.images[0]
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (536, 536, 3))
+        expected_slice = np.array(
+            [0.1414769, 0.14439383, 0.14370579, 0.16210642, 0.1697346, 0.16756567, 0.16600314, 0.18363094, 0.16898927],
+            dtype=np.float32
+        )
+
+        # The threshold should be 1e-2 below but it started failing
+        # from Diffusers v0.24. However, generated images still look similar.
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLess(max_diff, 1e-2)
+    
+    def test_stable_diffusion_xl_instantid_num_per_promt(self):
+        components = self.get_dummy_components()
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        inputs["num_images_per_prompt"] = 2
+        outputs = pipeline(
+            **inputs,
+        )
+        self.assertEqual(len(outputs.images), 2)
+    
+    def test_stable_diffusion_xl_instantid_batch(self):
+        components = self.get_dummy_components()
+        pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(
+            self.model,
+            **components,
+        )
+        pipeline.load_ip_adapter_instantid(self.face_adapter)
+        pipeline.set_progress_bar_config(disable=None)
+
+        batch_size = 2
+        inputs = self.get_dummy_inputs(batch_size)
+        outputs = pipeline(
+            **inputs,
+        )
+        self.assertEqual(len(outputs.images), 2)
