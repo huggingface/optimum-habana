@@ -37,10 +37,11 @@ from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
 from huggingface_hub import upload_folder
 from packaging import version
-from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
+from torch.utils.data import DataLoader, IterableDataset, RandomSampler
 from transformers import Trainer as TransformerTrainer
 
 from torch import nn
+from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import SentenceEvaluator, SequentialEvaluator
 from sentence_transformers.data_collator import SentenceTransformerDataCollator
 from sentence_transformers.evaluation import SentenceEvaluator, SequentialEvaluator
@@ -2029,7 +2030,7 @@ class SentenceTransformerGaudiTrainer(Trainer):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
         
-        output = super().evaluation_loop(
+        super().evaluation_loop(
             dataloader=dataloader,
             description=description,
             prediction_loss_only=prediction_loss_only,

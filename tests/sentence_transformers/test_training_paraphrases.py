@@ -142,7 +142,7 @@ def test_training_paraphrase():
         main_similarity=SimilarityFunction.COSINE,
         name="sts-test",
     )
-    #test_evaluator(model)
+    test_evaluator(model)
     
     # 8. Save the trained & evaluated model locally
     #final_output_dir = f"{output_dir}/final"

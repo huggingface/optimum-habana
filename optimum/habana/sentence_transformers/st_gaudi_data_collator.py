@@ -27,7 +27,6 @@ def st_gaudi_data_collator_call(self, features: List[Dict[str, Any]]) -> Dict[st
     # Extract the feature columns
     cnt = 0
     power2_len=[0, 0]
-    get_pad_flag = False
     for column in columns:
         tokenized = self.tokenize_fn([row[column] for row in features]) 
         for key, value in tokenized.items():
