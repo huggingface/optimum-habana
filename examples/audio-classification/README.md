@@ -84,7 +84,7 @@ python ../gaudi_spawn.py \
     --max_length_seconds 8 \
     --attention_mask False \
     --warmup_ratio 0.1 \
-    --num_train_epochs 10 \
+    --num_train_epochs 5 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 32 \
     --seed 0 \

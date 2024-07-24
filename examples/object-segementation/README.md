@@ -13,9 +13,11 @@ limitations under the License.
 
 # Object Segmentation Examples
 
-This directory contains an example script that demonstrates how to perform object segmentation on Gaudi with graph mode.
+This directory contains two example scripts that demonstrate how to perform object segmentation on Gaudi with graph mode.
 
 ## Single-HPU inference
+
+### ClipSeg Model
 
 ```bash
 python3 run_example.py \
@@ -30,3 +32,20 @@ python3 run_example.py \
 ```
 Models that have been validated:
   - [clipseg-rd64-refined ](https://huggingface.co/CIDAS/clipseg-rd64-refined)
+
+### Segment Anything Model
+
+```bash
+python3 run_example_sam.py \
+    --model_name_or_path "facebook/sam-vit-huge" \
+    --image_path "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png" \
+    --point_prompt "450,600" \
+    --warmup 3 \
+    --n_iterations 20 \
+    --use_hpu_graphs \
+    --bf16 \
+    --print_result
+```
+Models that have been validated:
+  - [facebook/sam-vit-base](https://huggingface.co/facebook/sam-vit-base)
+  - [facebook/sam-vit-huge](https://huggingface.co/facebook/sam-vit-huge)
