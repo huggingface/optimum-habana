@@ -237,8 +237,8 @@ def _test_text_generation(
         ]
 
     if "command_r" in model_name.lower():
-        path_to_template = os.path.join(path_to_example_dir, "text-generation/sample_command_r_template.json")
-        command += [f"--chat_template {path_to_template}"]
+        path_to_conv = os.path.join(path_to_example_dir, "text-generation/sample_command_r_conversation.json")
+        command += [f"--conversation_input {path_to_conv}"]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")

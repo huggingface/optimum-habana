@@ -314,7 +314,20 @@ def setup_parser(parser):
     )
 
     parser.add_argument(
-        "--chat_template",
+        "--load_quantized_model",
+        action="store_true",
+        help="Whether to load model from hugging face checkpoint.",
+    )
+    parser.add_argument(
+        "--parallel_strategy",
+        type=str,
+        choices=["tp", "none"],  # Add other strategies as needed
+        default="none",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+    )
+
+    parser.add_argument(
+        "--conversation_input",
         default=None,
         type=str,
         help="Optional JSON input file containing chat template for tokenizer.",
@@ -402,16 +415,16 @@ def main():
                 "Peace is the only way",
             ]
 
-        # Apply tokenizer chat template if supported
-        if args.chat_template and hasattr(tokenizer, "chat_template"):
-            with open(args.chat_template, "r") as fh:
+        # Apply input as conversation if tokenizer has a chat template
+        if args.conversation_input and hasattr(tokenizer, "chat_template"):
+            with open(args.conversation_input, "r") as fh:
                 try:
                     messages = json.load(fh)
                 except json.JSONDecodeError as e:
-                    logger.error(f"Error loading {args.chat_template}: {e}")
+                    logger.error(f"Error loading {args.conversation_input}: {e}")
                     sys.exit()
                 try:
-                    input_sentences = [tokenizer.apply_chat_template(messages, tokenize=False)]
+                    input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
                 except Exception as e:
                     logger.error(f"Error applying chat template to tokenizer: {e}")
                     sys.exit()

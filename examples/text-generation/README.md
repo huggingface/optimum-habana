@@ -592,11 +592,11 @@ A Transformers-like pipeline is defined and provided [here](https://github.com/h
 
 ## Conversation generation
 
-For models that support chat like `CohereForAI/c4ai-command-r-v01` you can provide `--chat_template <JSON FILE>` that is applied to the tokenizer.
+For models that support chat like `CohereForAI/c4ai-command-r-v01` you can provide `--conversation_input <JSON FILE>` that is applied to the tokenizer.
 
 ### Examples
 
-Sample chat template `sample_command_r_template.json` for [CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01) is shown below:
+Sample conversation `sample_command_r_conversation.json` for [CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01) is shown below:
 
 ```json
 [{"role": "user", "content": "Hello, how are you?"}]
@@ -611,7 +611,7 @@ python run_generation.py \
     --use_kv_cache \
     --max_new_tokens 100 \
     --do_sample \
-    --chat_template sample_command_r_template.json \
+    --conversation_input sample_command_r_conversation.json \
     --bf16 \
     --batch_size 2
 ```
