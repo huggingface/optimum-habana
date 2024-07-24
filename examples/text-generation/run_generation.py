@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 from itertools import cycle
 from pathlib import Path
@@ -287,6 +288,12 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
+    parser.add_argument(
+        "--conversation_input",
+        default=None,
+        type=str,
+        help="Optional JSON input file containing chat template for tokenizer.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -336,8 +343,6 @@ def main():
                     return save_path
                 else:
                     print("Failed to download book! Exiting...")
-                    import sys
-
                     sys.exit()
 
             def assemble_prompt(prompt_size, book_path):
@@ -368,6 +373,20 @@ def main():
                 "In the far far distance from our galaxy,",
                 "Peace is the only way",
             ]
+
+        # Apply input as conversation if tokenizer has a chat template
+        if args.conversation_input and hasattr(tokenizer, "chat_template"):
+            with open(args.conversation_input, "r") as fh:
+                try:
+                    messages = json.load(fh)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error loading {args.conversation_input}: {e}")
+                    sys.exit()
+                try:
+                    input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
+                except Exception as e:
+                    logger.error(f"Error applying chat template to tokenizer: {e}")
+                    sys.exit()
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes

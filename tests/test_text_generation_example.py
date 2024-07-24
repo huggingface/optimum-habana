@@ -40,6 +40,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("CohereForAI/c4ai-command-r-v01", 1, False, 30.472430202916325),
             ("state-spaces/mamba-130m-hf", 1536, False, 8600),
         ],
         "fp8": [
@@ -188,6 +189,10 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
+
+    if "command_r" in model_name.lower():
+        path_to_conv = os.path.join(path_to_example_dir, "text-generation/sample_command_r_conversation.json")
+        command += [f"--conversation_input {path_to_conv}"]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
