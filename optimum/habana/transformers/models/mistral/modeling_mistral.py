@@ -389,7 +389,12 @@ class GaudiMistralAttention(MistralAttention):
                     )
             else:
                 # first token
-                if not self.training and q_len == key_states.size(-2) and q_len > 8192 and os.getenv("QUANT_CONFIG", ""):
+                if (
+                    not self.training
+                    and q_len == key_states.size(-2)
+                    and q_len > 8192
+                    and os.getenv("QUANT_CONFIG", "")
+                ):
                     htcore.mark_step()
                     attn_output = self.fused_sdpa_long(
                         query_states,
