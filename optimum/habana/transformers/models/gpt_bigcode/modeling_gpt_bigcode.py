@@ -93,6 +93,7 @@ def gaudi_gpt_bigcode_block_forward(
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py

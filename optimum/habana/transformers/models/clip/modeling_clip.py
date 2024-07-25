@@ -7,6 +7,7 @@ from transformers.models.clip.modeling_clip import (
     CLIPAttention,
     CLIPEncoder,
     CLIPEncoderLayer,
+    CLIPMLP,
     CLIPVisionEmbeddings,
     CLIPVisionModel,
     CLIPVisionTransformer,
@@ -76,7 +77,7 @@ class GaudiCLIPAttention(CLIPAttention):
         causal_attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
@@ -161,6 +162,14 @@ class GaudiCLIPAttention(CLIPAttention):
 
 
 class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
+    def __init__(self, config: CLIPConfig):
+        super().__init__()
+        self.embed_dim = config.hidden_size
+        self.self_attn = GaudiCLIPAttention(config)
+        self.layer_norm1 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+        self.mlp = CLIPMLP(config)
+        self.layer_norm2 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+
     def forward(
         self,
         hidden_states: torch.Tensor,

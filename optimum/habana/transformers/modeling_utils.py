@@ -250,10 +250,9 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_generated_length = GaudiGenerationMixin._prepare_generated_length
     transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
-    transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
+    transformers.generation.GenerationMixin._dola_decoding = GaudiGenerationMixin._dola_decoding
     transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
     transformers.generation.GenerationMixin._beam_search = GaudiGenerationMixin._beam_search
-    transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding

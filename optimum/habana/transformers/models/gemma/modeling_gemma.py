@@ -75,10 +75,8 @@ def gaudi_gemma_attention_forward(
     key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
     value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-    past_key_value = getattr(self, "past_key_value", past_key_value)
-
     cos, sin = self.rotary_emb(value_states, position_ids, seq_len=None)
-    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, None)
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
     if past_key_value is not None:
         if token_idx is not None:
@@ -98,7 +96,7 @@ def gaudi_gemma_attention_forward(
     key_states = repeat_kv(key_states, self.num_key_value_groups)
     value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.scaling
 
     if attention_mask is not None:  # no matter the length, we just slice it
         attn_weights = attn_weights + attention_mask
@@ -135,7 +133,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
@@ -147,12 +145,6 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         The only differences are:
         - add new args token_idx
         """
-
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
-
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -193,7 +185,7 @@ def gaudi_gemma_model_forward(
     input_ids: torch.LongTensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
@@ -234,13 +226,13 @@ def gaudi_gemma_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    past_seen_tokens = 0
-    if use_cache:  # kept for BC (cache positions)
-        if not isinstance(past_key_values, StaticCache):
+    return_legacy_cache = False  # noqa: F841
+        if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
+            return_legacy_cache = True  # noqa: F841
             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-        past_seen_tokens = past_key_values.get_seq_length()
 
     if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
         )
@@ -258,6 +250,13 @@ def gaudi_gemma_model_forward(
 
     # normalized
     hidden_states = hidden_states * (self.config.hidden_size**0.5)
+    if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
+        return_legacy_cache = True
+        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        logger.warning_once(
+            "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
+            "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
+        )
 
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
@@ -305,11 +304,9 @@ def gaudi_gemma_model_forward(
     if output_hidden_states:
         all_hidden_states += (hidden_states,)
 
-    next_cache = None
-    if use_cache:
-        next_cache = (
-            next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
-        )
+    next_cache = next_decoder_cache if use_cache else None
+        if return_legacy_cache:
+            next_cache = next_cache.to_legacy_cache()
 
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
@@ -327,7 +324,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -392,7 +389,15 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, cache_position=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        **kwargs,
     ):
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -405,48 +410,16 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
 
         token_idx = kwargs.get("token_idx", None)
 
-        past_length = 0
         if past_key_values is not None:
             if token_idx is None:
-                if isinstance(past_key_values, Cache):
-                    past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
-                    max_cache_length = (
-                        torch.tensor(past_key_values.get_max_length(), device=input_ids.device)
-                        if past_key_values.get_max_length() is not None
-                        else None
-                    )
-                    cache_length = (
-                        past_length if max_cache_length is None else torch.min(max_cache_length, past_length)
-                    )
-                # TODO joao: remove this `else` after `generate` prioritizes `Cache` objects
-                else:
-                    cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
-
-                # Keep only the unprocessed tokens:
-                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
-                # input)
-                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
-                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
-                # input_ids based on the past_length.
-                elif past_length < input_ids.shape[1]:
-                    input_ids = input_ids[:, past_length:]
-                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
-
-                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
-                if (
-                    max_cache_length is not None
-                    and attention_mask is not None
-                    and cache_length + input_ids.shape[1] > max_cache_length
-                ):
-                    attention_mask = attention_mask[:, -max_cache_length:]
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
             else:
                 # past_length += token_idx
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -470,18 +443,12 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}
 
-        input_length = position_ids.shape[-1] if position_ids is not None else input_ids.shape[-1]
-        if cache_position is None:
-            cache_position = torch.arange(past_length, past_length + input_length, device=input_ids.device)
-        else:
-            cache_position = cache_position[-input_length:]
-
         model_inputs.update(
             {
                 "position_ids": position_ids,
                 "cache_position": cache_position,
                 "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
             }

@@ -347,12 +347,7 @@ class GaudiFalconAttention(FalconAttention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        **kwargs,
     ):
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # 3 x [batch_size, seq_length, num_heads, head_dim]
 
@@ -630,11 +625,8 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         **kwargs,
     ):
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         residual = hidden_states
+
         (
             hidden_states,
             present,
@@ -656,7 +648,6 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
-            **kwargs,
         )
 
         self.self_attention.attention_all_reduce(hidden_states)
@@ -672,6 +663,13 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
                     attention_output, residual, self.config.attention_dropout, training=self.training
                 )
                 mlp_layernorm_out = self.post_attention_layernorm(residual)
+
+        if (
+            self.config.new_decoder_architecture
+            and self.config.parallel_attn
+            and self.config.num_ln_in_parallel_attn == 1
+        ):
+            mlp_layernorm_out = attention_layernorm_out
 
         outputs = (present, attn_scores)
 
@@ -708,7 +706,7 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
     ):
-        if self.config.new_decoder_architecture:
+        if self.config.new_decoder_architecture and self.config.num_ln_in_parallel_attn == 2:
             attention_layernorm_out = self.ln_attn(hidden_states)
             mlp_layernorm_out = self.ln_mlp(hidden_states)
         else:
@@ -977,6 +975,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         past_key_values: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
@@ -1018,19 +1017,26 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
 
-        return {
-            "input_ids": input_ids,
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "attention_mask": attention_mask,
-            "token_idx": token_idx,
-            "reuse_cache": reuse_cache,
-            "cache_idx": kwargs.get("cache_idx"),
-            "use_flash_attention": kwargs.get("use_flash_attention"),
-            "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
-            "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
-        }
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "attention_mask": attention_mask,
+                "token_idx": token_idx,
+                "reuse_cache": reuse_cache,
+                "cache_idx": kwargs.get("cache_idx"),
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+            }
+        )
+        return model_inputs
 
     def forward(
         self,
