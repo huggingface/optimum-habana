@@ -72,7 +72,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
         "distributed_tp": [
-            ("/mnt/weka/data/pytorch//llama2/Llama-2-7b-hf/", 1856.8140409694543),
+            ("meta-llama/Llama-2-7b-hf", 1856.8140409694543),
         ],
     }
 else:
@@ -163,8 +163,9 @@ def _test_text_generation(
 
     if torch_compile:
         command += ["--torch_compile"]
-        command += ["--use_flash_attention"]
-        command += ["--flash_attention_recompute"]
+        if distributed_strategy == "tp":
+            command += ["--use_flash_attention"]
+            command += ["--flash_attention_recompute"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
