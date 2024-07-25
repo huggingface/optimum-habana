@@ -405,7 +405,10 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                         latents_batch[None, :].reshape(bsz, frames, channel, width, height).permute(0, 2, 1, 3, 4)
                     )
 
-                    self.ht.core.mark_step()
+                    if self.use_hpu_graphs:
+                        self.ht.core.mark_step()
+                    else:
+                        self.htcore.mark_step()
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -418,7 +421,10 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                     video_tensor = self.decode_latents(latents_batch)
                 outputs.append(video_tensor)
 
-                self.ht.core.mark_step()
+                if self.use_hpu_graphs:
+                    self.ht.core.mark_step()
+                else:
+                    self.htcore.mark_step()
 
             # Remove dummy generations if needed
             if num_dummy_samples > 0:
