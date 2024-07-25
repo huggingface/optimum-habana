@@ -164,7 +164,7 @@ class GaudiGenerationMixin(GenerationMixin):
         dtype: str = bool,
     ) -> torch.Tensor:
         x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor([0]), 1)  # First the position with pad_token_id
+        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
 
     def _prepare_decoder_input_ids_for_generation(
         self,
