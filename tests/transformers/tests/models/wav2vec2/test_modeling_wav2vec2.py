@@ -28,6 +28,7 @@ from datasets import load_dataset
 from transformers import Wav2Vec2Config, is_torch_available
 from transformers.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     is_pt_flax_cross_test,
     is_pyctcdecode_available,
     is_torchaudio_available,
@@ -97,7 +98,7 @@ def _test_wav2vec2_with_lm_invalid_pool(in_queue, out_queue, timeout):
     try:
         _ = in_queue.get(timeout=timeout)
 
-        ds = load_dataset("common_voice", "es", split="test", streaming=True)
+        ds = load_dataset("mozilla-foundation/common_voice_11_0", "es", split="test", streaming=True)
         sample = next(iter(ds))
 
         resampled_audio = torchaudio.functional.resample(
@@ -119,7 +120,7 @@ def _test_wav2vec2_with_lm_invalid_pool(in_queue, out_queue, timeout):
             transcription = processor.batch_decode(logits.cpu().numpy(), pool).text
 
         unittest.TestCase().assertIn("Falling back to sequential decoding.", cl.out)
-        unittest.TestCase().assertEqual(transcription[0], "bien y qué regalo vas a abrir primero")
+        unittest.TestCase().assertEqual(transcription[0], "habitan aguas poco profundas y rocosas")
 
         # force batch_decode to internally create a spawn pool, which should trigger a warning if different than fork
         multiprocessing.set_start_method("spawn", force=True)
@@ -127,7 +128,7 @@ def _test_wav2vec2_with_lm_invalid_pool(in_queue, out_queue, timeout):
             transcription = processor.batch_decode(logits.cpu().numpy()).text
 
         unittest.TestCase().assertIn("Falling back to sequential decoding.", cl.out)
-        unittest.TestCase().assertEqual(transcription[0], "bien y qué regalo vas a abrir primero")
+        unittest.TestCase().assertEqual(transcription[0], "habitan aguas poco profundas y rocosas")
     except Exception:
         error = f"{traceback.format_exc()}"
 
@@ -340,11 +341,6 @@ class Wav2Vec2ModelTester:
 
         input_values = input_values[:3]
         attention_mask = torch.ones(input_values.shape, device=torch_device, dtype=torch.long)
-        # TODO: due to limitation of index op, add mark_step
-        if torch_device == "hpu":
-            import habana_frameworks.torch.core as htcore
-
-            htcore.mark_step()
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
@@ -409,8 +405,8 @@ class Wav2Vec2ModelTester:
             input_values[i, input_lengths[i] :] = 0.0
 
             if max_length_labels[i] < labels.shape[-1]:
-                # it's important that we make sure that target lenghts are at least
-                # one shorter than logit lenghts to prevent -inf
+                # it's important that we make sure that target lengths are at least
+                # one shorter than logit lengths to prevent -inf
                 labels[i, max_length_labels[i] - 1 :] = -100
 
         loss = model(input_values, labels=labels).loss
@@ -828,6 +824,12 @@ class Wav2Vec2ModelTest(ModelTesterMixin, unittest.TestCase):
             # (Even with this call, there are still memory leak by ~0.04MB)
             self.clear_torch_jit_class_registry()
 
+    @unittest.skip(
+        "Need to investigate why config.do_stable_layer_norm is set to False here when it doesn't seem to be supported"
+    )
+    def test_flax_from_pt_safetensors(self):
+        return
+
 
 @require_torch
 class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
@@ -1023,7 +1025,6 @@ class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
             model.config.mask_time_length,
             min_masks=2,
         )
-        mask_time_indices = mask_time_indices.cpu().numpy()
         sampled_negative_indices = _sample_negative_indices(features_shape, 10, mask_time_indices)
 
         mask_time_indices = torch.from_numpy(mask_time_indices).to(torch_device)
@@ -1257,16 +1258,8 @@ class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
             pt_filepath = os.path.join(tempdir, WAV2VEC2_ADAPTER_PT_FILE.format("eng"))
             torch.save(adapter_weights, pt_filepath)
 
-            # model.load_adapter is broken in transformers
-            # since adapter_weights fails to load with weights_only=True
-            with self.assertRaises(OSError):
-                model.load_adapter("eng")
-            with self.assertRaises(OSError):
-                model.load_adapter("eng", use_safetensors=False)
-            # we will load adapter_weights directly while model.load_adapter fails
-            state_dict = torch.load(pt_filepath)
-            state_dict = {k: v.to(adapter_weights[k]) for k, v in state_dict.items()}
-            model.load_state_dict(state_dict, strict=False)
+            model.load_adapter("eng")
+            model.load_adapter("eng", use_safetensors=False)
 
             with self.assertRaises(OSError):
                 model.load_adapter("eng", use_safetensors=True)
@@ -1301,6 +1294,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask_length = 1
 
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
+        mask = torch.from_numpy(mask).to(torch_device)
 
         self.assertListEqual(mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)])
 
@@ -1319,6 +1313,8 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
 
         for _ in range(n_trials):
             mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
+            mask = torch.from_numpy(mask).to(torch_device)
+
             num_masks = torch.sum(mask).item()
 
             if num_masks > 0:
@@ -1339,6 +1335,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask_length = 4
 
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
+        mask = torch.from_numpy(mask).to(torch_device)
 
         # because of overlap mask don't have to add up exactly to `mask_prob * sequence_length`, but have to be smaller or equal
         for batch_sum in mask.sum(axis=-1):
@@ -1356,6 +1353,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask = _compute_mask_indices(
             (batch_size, sequence_length), mask_prob, mask_length, attention_mask=attention_mask
         )
+        mask = torch.from_numpy(mask).to(torch_device)
 
         for batch_sum in mask.sum(axis=-1):
             self.assertTrue(int(batch_sum) <= mask_prob * sequence_length)
@@ -1464,7 +1462,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         super().tearDown()
         # clean-up as much as possible GPU memory occupied by PyTorch
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def _load_datasamples(self, num_samples):
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
@@ -1842,7 +1840,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
     @require_pyctcdecode
     @require_torchaudio
     def test_wav2vec2_with_lm(self):
-        ds = load_dataset("common_voice", "es", split="test", streaming=True)
+        ds = load_dataset("mozilla-foundation/common_voice_11_0", "es", split="test", streaming=True)
         sample = next(iter(ds))
 
         resampled_audio = torchaudio.functional.resample(
@@ -1861,12 +1859,12 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
 
         transcription = processor.batch_decode(logits.cpu().numpy()).text
 
-        self.assertEqual(transcription[0], "bien y qué regalo vas a abrir primero")
+        self.assertEqual(transcription[0], "habitan aguas poco profundas y rocosas")
 
     @require_pyctcdecode
     @require_torchaudio
     def test_wav2vec2_with_lm_pool(self):
-        ds = load_dataset("common_voice", "es", split="test", streaming=True)
+        ds = load_dataset("mozilla-foundation/common_voice_11_0", "es", split="test", streaming=True)
         sample = next(iter(ds))
 
         resampled_audio = torchaudio.functional.resample(
@@ -1887,7 +1885,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         with multiprocessing.get_context("fork").Pool(2) as pool:
             transcription = processor.batch_decode(logits.cpu().numpy(), pool).text
 
-        self.assertEqual(transcription[0], "bien y qué regalo vas a abrir primero")
+        self.assertEqual(transcription[0], "habitan aguas poco profundas y rocosas")
 
         # user-managed pool + num_processes should trigger a warning
         with CaptureLogger(processing_wav2vec2_with_lm.logger) as cl, multiprocessing.get_context("fork").Pool(
@@ -1898,7 +1896,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         self.assertIn("num_process", cl.out)
         self.assertIn("it will be ignored", cl.out)
 
-        self.assertEqual(transcription[0], "bien y qué regalo vas a abrir primero")
+        self.assertEqual(transcription[0], "habitan aguas poco profundas y rocosas")
 
     @require_pyctcdecode
     @require_torchaudio
@@ -1930,7 +1928,6 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(labels[0, :, 0].sum(), 555)
         self.assertEqual(labels[0, :, 1].sum(), 299)
-        # TODO: update the tolerance after the CI moves to torch 1.10
         self.assertTrue(torch.allclose(outputs.logits[:, :4], expected_logits, atol=1e-2))
 
     def test_inference_speaker_verification(self):
@@ -1955,7 +1952,6 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         # id10002 vs id10004
         self.assertAlmostEqual(cosine_sim(embeddings[2], embeddings[3]).numpy(), 0.7594, 3)
 
-        # TODO: update the tolerance after the CI moves to torch 1.10
         self.assertAlmostEqual(outputs.loss.item(), 17.7963, 2)
 
     @require_torchaudio
@@ -1966,7 +1962,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         LANG_MAP = {"it": "ita", "es": "spa", "fr": "fra", "en": "eng"}
 
         def run_model(lang):
-            ds = load_dataset("common_voice", lang, split="test", streaming=True)
+            ds = load_dataset("mozilla-foundation/common_voice_11_0", lang, split="test", streaming=True)
             sample = next(iter(ds))
 
             wav2vec2_lang = LANG_MAP[lang]
@@ -1991,10 +1987,10 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
             return transcription
 
         TRANSCRIPTIONS = {
-            "it": "mi hanno fatto un'offerta che non potevo proprio rifiutare",
-            "es": "bien y qué regalo vas a abrir primero",
-            "fr": "un vrai travail intéressant va enfin être mené sur ce sujet",
-            "en": "twas the time of day and olof spen slept during the summer",
+            "it": "il libro ha suscitato molte polemiche a causa dei suoi contenuti",
+            "es": "habitan aguas poco profundas y rocosas",
+            "fr": "ce dernier est volé tout au long de l'histoire romaine",
+            "en": "joe keton disapproved of films and buster also had reservations about the media",
         }
 
         for lang in LANG_MAP.keys():
