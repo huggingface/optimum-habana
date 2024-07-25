@@ -25,7 +25,6 @@ from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
-import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
@@ -134,36 +133,6 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
-# Copy from GaudiMixtralAttentionLongSequence
-class GaudiMistralAttentionLongSequence(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fsdpa_module = ModuleFusedSDPA(FusedSDPA)
-
-    def forward(self, q, k, v, mask, causal, q_block_size):
-        """
-        Support long sequence at prompt phase
-        """
-        q_len = q.size(-2)
-        q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
-        q_padding = q_tiles * q_block_size - q_len
-        q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
-        if mask is not None:
-            mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
-        attn_output = torch.zeros_like(q)
-
-        for i in range(q_tiles):
-            s, e = i * q_block_size, (i + 1) * q_block_size
-            row_q = q[:, :, s:e, :]
-            row_mask = mask[:, :, s:e, :]
-            attn_output[:, :, s:e, :] = self.fsdpa_module(row_q, k, v, row_mask, 0.0, causal, None)
-
-        if q_padding != 0:
-            attn_output = attn_output[:, :, :-q_padding, :]
-
-        return attn_output
-
-
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -231,11 +200,9 @@ class GaudiMistralAttention(MistralAttention):
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-        self.fused_sdpa_long = GaudiMistralAttentionLongSequence() if FusedSDPA else None
         self.inp_seq_len = -1
         self._init_rope()
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        self.block_size = 8192 if os.getenv("QUANT_CONFIG", "") else 1024
 
     def _init_rope(self):
         """
@@ -389,34 +356,18 @@ class GaudiMistralAttention(MistralAttention):
                     )
             else:
                 # first token
-                if (
-                    not self.training
-                    and q_len == key_states.size(-2)
-                    and q_len > 8192
-                    and os.getenv("QUANT_CONFIG", "")
-                ):
-                    htcore.mark_step()
-                    attn_output = self.fused_sdpa_long(
-                        query_states,
-                        key_states,
-                        value_states,
-                        attention_mask,
-                        False,
-                        self.block_size,
-                    )
-                    htcore.mark_step()
+                if flash_attention_causal_mask:
+                    # causal masking on first token requires inputs to be of the same length
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, None, 0.0, True, None
+                        )
                 else:
-                    if flash_attention_causal_mask:
-                        # causal masking on first token requires inputs to be of the same length
-                        with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                            attn_output = self.fused_scaled_dot_product_attention(
-                                query_states, key_states, value_states, None, 0.0, True, None
-                            )
-                    else:
-                        with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                            attn_output = self.fused_scaled_dot_product_attention(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None
-                            )
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, attention_mask, 0.0, False, None
+                        )
+
         else:
             # repeat k/v heads if n_kv_heads < n_heads
             query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
