@@ -20,8 +20,7 @@ import numpy as np
 import PIL
 import torch
 from diffusers.models import AutoencoderKL, UNet3DConditionModel
-from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import (
-    TextToVideoSDPipeline, tensor2vid)
+from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import TextToVideoSDPipeline, tensor2vid
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.outputs import BaseOutput
@@ -29,6 +28,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ..pipeline_utils import GaudiDiffusionPipeline
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -55,7 +55,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer (`CLIPTokenizer`):
@@ -63,7 +63,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         unet ([`UNet3DConditionModel`]):
             A [`UNet3DConditionModel`] to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded video latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
@@ -212,7 +212,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+                The prompt or prompts to guide video generation. If not defined, you need to pass `prompt_embeds`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -221,18 +221,18 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
                 amounts to 2 seconds of video.
             batch_size (`int`, *optional*, defaults to 1):
-                The number of images in a batch.
+                The number of videos in a batch.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 7.5):
-                A higher guidance scale value encourages the model to generate images closely linked to the text
-                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+                A higher guidance scale value encourages the model to generate videos closely linked to the text
+                `prompt` at the expense of lower video quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
+                The prompt or prompts to guide what to not include in video generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_videos_per_prompt (`int`, defaults to 1):
-                The number of images to generate per prompt.
+                The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -275,7 +275,9 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         if self.use_hpu_graphs:
-            logger.warning("HPU Graphs are not enabled due to a known issue. Deferring to Lazy mode. Performance will be suboptimal.")
+            logger.warning(
+                "HPU Graphs are not enabled due to a known issue. Deferring to Lazy mode. Performance will be suboptimal."
+            )
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 0. Default height and width to unet
             height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -429,7 +431,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
 
                 if output_type == "pil" and isinstance(video_batch, list):
                     videos += video_batch
-                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                elif output_type in ["np", "numpy"] and isinstance(video_batch, np.ndarray):
                     if len(videos) == 0:
                         videos = video_batch
                     else:

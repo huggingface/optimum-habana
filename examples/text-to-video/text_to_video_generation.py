@@ -21,12 +21,12 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 from diffusers.utils.export_utils import export_to_video
 
 from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
+
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
@@ -176,8 +176,6 @@ def main():
         kwargs["torch_dtype"] = torch.bfloat16
     elif args.dtype == "fp32":
         kwargs["torch_dtype"] = torch.float32
-
-    import habana_frameworks.torch.core as htcore
 
     # Generate images
     pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
