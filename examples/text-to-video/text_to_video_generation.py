@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 from diffusers.utils.export_utils import export_to_video
 
 from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
         "--model_name_or_path",
@@ -136,7 +137,12 @@ def main():
     parser.add_argument(
         "--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU. This should lead to faster generations."
     )
-    parser.add_argument("--dtype", default="bf16", choices=["bf16", "fp32", "autocast_bf16"], help="Which runtime dtype to perform generation in.")
+    parser.add_argument(
+        "--dtype",
+        default="bf16",
+        choices=["bf16", "fp32", "autocast_bf16"],
+        help="Which runtime dtype to perform generation in.",
+    )
     args = parser.parse_args()
     # Setup logging
     logging.basicConfig(
@@ -174,7 +180,9 @@ def main():
     import habana_frameworks.torch.core as htcore
 
     # Generate images
-    pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(args.model_name_or_path, **kwargs)
+    pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
+        args.model_name_or_path, **kwargs
+    )
     set_seed(args.seed)
     outputs = pipeline(
         prompt=args.prompts,
@@ -184,7 +192,7 @@ def main():
         guidance_scale=args.guidance_scale,
         negative_prompt=args.negative_prompts,
         eta=args.eta,
-        output_type= "pil" if args.output_type == "mp4" else args.output_type, # Naming inconsistency in base class
+        output_type="pil" if args.output_type == "mp4" else args.output_type,  # Naming inconsistency in base class
         **kwargs_call,
     )
 

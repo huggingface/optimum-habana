@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# TODO: REMOVE ALL TYPE IGNORES
 
 from dataclasses import dataclass
 from math import ceil
@@ -26,7 +25,6 @@ from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth im
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.outputs import BaseOutput
-from diffusers.utils.torch_utils import randn_tensor
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
@@ -80,7 +78,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         scheduler: KarrasDiffusionSchedulers,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
-        gaudi_config: Union[str, GaudiConfig] = None,  # type: ignore
+        gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
@@ -186,9 +184,9 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         return latents_batches, prompt_embeds_batches, num_dummy_samples
 
     @torch.no_grad()
-    def __call__(  # type: ignore
+    def __call__(
         self,
-        prompt: Union[str, List[str]] = None,  # type: ignore
+        prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_frames: int = 16,
@@ -298,7 +296,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
             elif prompt is not None and isinstance(prompt, list):
                 num_prompts = len(prompt)
             else:
-                num_prompts = prompt_embeds.shape[0]  # type: ignore
+                num_prompts = prompt_embeds.shape[0]
             num_videos = num_videos_per_prompt * num_prompts
             num_batches = ceil((num_videos) / batch_size)
             logger.info(
@@ -329,8 +327,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 lora_scale=text_encoder_lora_scale,
                 clip_skip=clip_skip,
             )
-            # if do_classifier_free_guidance:
-            #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
@@ -344,7 +340,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 num_frames,
                 height,
                 width,
-                prompt_embeds.dtype,  # type: ignore
+                prompt_embeds.dtype,
                 device,
                 generator,
                 latents,
@@ -379,12 +375,13 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
-                    noise_pred = self.unet_hpu(
+                    noise_pred = self.unet(
                         latent_model_input,
                         t,
                         text_embeddings_batch,
-                        cross_attention_kwargs,
-                    )
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                     # perform guidance
                     if do_classifier_free_guidance:
@@ -404,8 +401,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                         latents_batch[None, :].reshape(bsz, frames, channel, width, height).permute(0, 2, 1, 3, 4)
                     )
 
-                    if not self.use_hpu_graphs:
-                        self.htcore.mark_step()
+                    self.ht.core.mark_step()
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -418,8 +414,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                     video_tensor = self.decode_latents(latents_batch)
                 outputs.append(video_tensor)
 
-                if not self.use_hpu_graphs:
-                    self.htcore.mark_step()
+                self.ht.core.mark_step()
 
             # Remove dummy generations if needed
             if num_dummy_samples > 0:
@@ -453,48 +448,3 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 return (videos,)
 
             return GaudiTextToVideoSDPipelineOutput(videos=videos)
-
-    # Adapted from optimum.habana.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipeline.unet_hpu
-    @torch.no_grad()
-    def unet_hpu(
-        self,
-        latent_model_input,
-        timestep,
-        encoder_hidden_states,
-        cross_attention_kwargs,
-    ):
-        if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
-        else:
-            return self.unet(
-                latent_model_input,
-                timestep,
-                encoder_hidden_states,
-                cross_attention_kwargs,
-                return_dict=False,
-            )[0]
-
-    # Copied from optimum.habana.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipeline.capture_replay
-    @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
-        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
-        h = self.ht.hpu.graphs.input_hash(inputs)
-        cached = self.cache.get(h)
-
-        if cached is None:
-            with self.ht.hpu.stream(self.hpu_stream):
-                graph = self.ht.hpu.HPUGraph()
-                graph.capture_begin()
-                outputs = self.unet(*inputs)[0]
-                graph.capture_end()
-                graph_inputs = inputs
-                graph_outputs = outputs
-                self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
-            return outputs
-
-        # Replay cached graph with updated inputs
-        self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
-        cached.graph.replay()
-        self.ht.core.hpu.default_stream().synchronize()
-
-        return cached.graph_outputs
