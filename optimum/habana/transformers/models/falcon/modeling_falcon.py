@@ -357,13 +357,12 @@ class GaudiFalconAttention(FalconAttention):
         # 3 x [batch_size, seq_length, num_heads, head_dim]
 
         train_with_flash_attention = self.training and self._use_sdpa and not output_attentions and head_mask is None
-        infer_with_flash_attention = not self.training and use_flash_attention
         (query_layer, key_layer, value_layer) = self._split_heads(
             fused_qkv,
             not use_flash_attention
             and not self.is_fp8
             and not train_with_flash_attention
-            and infer_with_flash_attention,
+            and not (self.config.num_kv_heads == 8),
         )
 
         batch_size, query_length, _, _ = query_layer.shape
