@@ -274,11 +274,11 @@ class GaudiMixtralAttention(MixtralAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
-        **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
@@ -289,10 +289,6 @@ class GaudiMixtralAttention(MixtralAttention):
         - add new args flash_attention_recompute
         - add new args cache_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -471,6 +467,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         output_attentions: Optional[bool] = False,
         output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -485,11 +482,6 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         - add new args flash_attention_recompute
         - add new args cache_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
-
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -502,6 +494,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             flash_attention_recompute=flash_attention_recompute,
@@ -549,6 +542,7 @@ class GaudiMixtralModel(MixtralModel):
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -573,15 +567,10 @@ class GaudiMixtralModel(MixtralModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape
-        elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape
-        else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
+            )
 
         past_key_values_length = 0
         use_new_cache = False  # Ignoring new Cache path for HPU
@@ -604,14 +593,14 @@ class GaudiMixtralModel(MixtralModel):
                 else:
                     past_key_values_length = past_key_values[0][0].shape[2]
 
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
+
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -669,6 +658,7 @@ class GaudiMixtralModel(MixtralModel):
                     output_attentions,
                     output_router_logits,
                     use_cache,
+                    cache_position,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -679,6 +669,7 @@ class GaudiMixtralModel(MixtralModel):
                     output_attentions=output_attentions,
                     output_router_logits=output_router_logits,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     flash_attention_recompute=flash_attention_recompute,
@@ -752,6 +743,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
@@ -779,6 +771,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             flash_attention_recompute=flash_attention_recompute,
@@ -830,7 +823,16 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        output_router_logits=False,
+        position_ids=None,
+        use_cache=True,
+        **kwargs,
     ):
         past_length = 0
         reuse_cache = kwargs.get("reuse_cache")
@@ -841,39 +843,15 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
-                else:
-                    cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
-
-                # Keep only the unprocessed tokens:
-                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
-                # input)
-                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
-                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
-                # input_ids based on the past_length.
-                elif past_length < input_ids.shape[1]:
-                    input_ids = input_ids[:, past_length:]
-                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
-
-                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
-                if (
-                    max_cache_length is not None
-                    and attention_mask is not None
-                    and cache_length + input_ids.shape[1] > max_cache_length
-                ):
-                    attention_mask = attention_mask[:, -max_cache_length:]
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -888,13 +866,14 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
         model_inputs.update(
             {
                 "position_ids": position_ids,
+                "cache_position": cache_position,
                 "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
                 "reuse_cache": reuse_cache,

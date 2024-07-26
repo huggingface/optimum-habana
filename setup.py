@@ -34,7 +34,7 @@ INSTALL_REQUIRES = [
     "torch",
     "accelerate < 0.28.0",
     "diffusers >= 0.26.0, < 0.27.0",
-    "huggingface_hub < 0.23.0",
+    "huggingface_hub",
 ]
 
 TESTS_REQUIRE = [

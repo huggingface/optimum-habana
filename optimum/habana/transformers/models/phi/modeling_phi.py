@@ -152,6 +152,7 @@ class GaudiPhiAttention(PhiAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -312,6 +313,7 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -337,6 +339,7 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -372,6 +375,7 @@ class GaudiPhiModel(PhiModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -391,15 +395,10 @@ class GaudiPhiModel(PhiModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape[:2]
-        elif inputs_embeds is not None:
-            batch_size, seq_length = inputs_embeds.shape[:2]
-        else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
+            )
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -422,23 +421,23 @@ class GaudiPhiModel(PhiModel):
                 else:
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=device
-            )
-            position_ids = position_ids.unsqueeze(0)
-
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        inputs_embeds = self.embed_dropout(inputs_embeds)
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
 
         # 4d mask is passed through the layers
         attention_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_seen_tokens
         )
 
+        inputs_embeds = self.embed_dropout(inputs_embeds)
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -456,9 +455,10 @@ class GaudiPhiModel(PhiModel):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions,
                     use_cache,
+                    None if past_key_values is None else past_key_values[layer_idx],
+                    cache_position,
                     None,
                 )
             else:
@@ -469,6 +469,7 @@ class GaudiPhiModel(PhiModel):
                     past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
@@ -520,6 +521,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
@@ -550,6 +552,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -591,7 +594,16 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
     ):
         """
         Inherits from PhiForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/phi/modeling_phi.py
@@ -608,39 +620,15 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
-                else:
-                    cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
-
-                # Keep only the unprocessed tokens:
-                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
-                # input)
-                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
-                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
-                # input_ids based on the past_length.
-                elif past_length < input_ids.shape[1]:
-                    input_ids = input_ids[:, past_length:]
-                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
-
-                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
-                if (
-                    max_cache_length is not None
-                    and attention_mask is not None
-                    and cache_length + input_ids.shape[1] > max_cache_length
-                ):
-                    attention_mask = attention_mask[:, -max_cache_length:]
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -655,13 +643,14 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
         model_inputs.update(
             {
                 "position_ids": position_ids,
+                "cache_position": cache_position,
                 "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
                 "reuse_cache": kwargs.get("reuse_cache"),
