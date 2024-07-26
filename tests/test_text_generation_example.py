@@ -75,7 +75,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 1345.2369318328463),
         ],
         "contrastive_search": [
-            ("gpt2-xl", 1, False, 25.058159824825506),
+            ("gpt2-xl", 1, False, 51.61471298016438),
         ],
     }
 else:
@@ -335,7 +335,9 @@ def test_text_generation_distributed_tp(model_name: str, baseline: float, token:
 
 
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["contrastive_search"])
-def test_text_generation_contrastive_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+def test_text_generation_contrastive_search(
+    model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
+):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 

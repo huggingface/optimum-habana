@@ -1635,6 +1635,8 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
 
+        batch_indices = torch.arange(batch_size, device=input_ids.device)
+
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1714,6 +1716,8 @@ class GaudiGenerationMixin(GenerationMixin):
                         "used for contrastive search without further modifications."
                     )
 
+                if lazy_mode:
+                    self.htcore_generation.mark_step()
             # contrastive_search main logic start:
             # contrastive search decoding consists of two steps: (1) candidate tokens recall; (2) candidate re-rank by
             # degeneration penalty
@@ -1836,22 +1840,22 @@ class GaudiGenerationMixin(GenerationMixin):
             # model confidence. Keeping `selected_idx` on CPU enables multi-device contrastive search and doesn't
             # introduce (noticeable) slowdowns on single-device runs.
             selected_idx = _ranking_fast(context_hidden, next_hidden, top_k_probs, penalty_alpha, top_k)
-            selected_idx = selected_idx.to("cpu")
 
             # prepare for the next step: (1) next token_id; (2) past_key_values; (3) last_hidden_states for computing
             # the degeneration penalty; (4) logits for selecting next top-k candidates; (5) selected tokens scores
             # (model confidence minus degeneration penalty); (6) decoder hidden_states
+            top_k_indices = torch.arange(len(top_k_ids), device=input_ids.device)
             if token_idx is not None:
-                next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx, token_idx - 1]
+                next_tokens = top_k_ids[top_k_indices, selected_idx, token_idx - 1]
             else:
-                next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx]
+                next_tokens = top_k_ids[top_k_indices, selected_idx]
             next_hidden = torch.stack(torch.split(next_hidden.squeeze(dim=1), top_k))
-            next_hidden = next_hidden[range(batch_size), selected_idx, :]
+            next_hidden = next_hidden[batch_indices, selected_idx, :]
             last_hidden_states = torch.cat([last_hidden_states, next_hidden.unsqueeze(1)], dim=1)
 
             next_decoder_hidden_states = ()
             for layer in full_hidden_states:
-                layer = torch.stack(torch.split(layer, top_k))[range(batch_size), selected_idx, :]
+                layer = torch.stack(torch.split(layer, top_k))[batch_indices, selected_idx, :]
                 next_decoder_hidden_states += (layer,)
 
             # generate past_key_values cache of only the selected token
@@ -1881,7 +1885,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     # item is either the key or the value matrix
                     for item in layer:
                         item = torch.stack(torch.split(item, top_k, dim=0))  # [B, K, num_head, seq_len, esz]
-                        item = item[range(batch_size), selected_idx, ...]  # [B, num_head, seq_len, esz]
+                        item = item[batch_indices, selected_idx, ...]  # [B, num_head, seq_len, esz]
                         items += [item]
                     new_key_values += [items]
 
@@ -1892,7 +1896,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         next_past_key_values.key_cache[layer_idx] = new_key_values[layer_idx][0]
                         next_past_key_values.value_cache[layer_idx] = new_key_values[layer_idx][1]
 
-            logit_for_next_step = torch.stack(torch.split(logits, top_k))[range(batch_size), selected_idx, :]
+            logit_for_next_step = torch.stack(torch.split(logits, top_k))[batch_indices, selected_idx, :]
 
             # Rebuilds the relevant parts of the model output for the selected token, for use in the next iteration
             if self.config.is_encoder_decoder:
@@ -1900,10 +1904,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_step_decoder_attentions = ()
                 if output_attentions:
                     for layer in outputs.cross_attentions:
-                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[batch_indices, selected_idx, ...]
                         next_step_cross_attentions += (layer,)
                     for layer in outputs.decoder_attentions:
-                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[batch_indices, selected_idx, ...]
                         next_step_decoder_attentions += (layer,)
                 outputs = Seq2SeqLMOutput(
                     past_key_values=next_past_key_values,
@@ -1915,7 +1919,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_step_attentions = ()
                 if output_attentions:
                     for layer in outputs.attentions:
-                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[batch_indices, selected_idx, ...]
                         next_step_attentions += (layer,)
                 outputs = CausalLMOutputWithPast(
                     past_key_values=next_past_key_values,
