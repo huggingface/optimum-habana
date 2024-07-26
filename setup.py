@@ -29,10 +29,10 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.40.0, < 4.41.0",
+    "transformers >= 4.43.0, < 4.44.0",
     "optimum",
     "torch",
-    "accelerate < 0.28.0",
+    "accelerate >= 0.33.0 < 0.34.0",
     "diffusers >= 0.26.0, < 0.27.0",
     "huggingface_hub",
 ]

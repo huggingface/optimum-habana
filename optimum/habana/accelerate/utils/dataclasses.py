@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 
@@ -46,7 +47,7 @@ class GaudiDistributedType(str, Enum):
 
 class GaudiDynamoBackend(str, BaseEnum):
     """
-    Represents a dynamo backend (see https://github.com/pytorch/torchdynamo).
+    Represents a dynamo backend (see https://pytorch.org/docs/stable/torch.compiler.html).
 
     Values:
 
@@ -140,6 +141,13 @@ class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
         self.sync_module_states = str_to_bool(os.environ.get(prefix + "SYNC_MODULE_STATES", "True")) == 1
         self.forward_prefetch = str_to_bool(os.environ.get(prefix + "FORWARD_PREFETCH", "False")) == 1
         self.activation_checkpointing = str_to_bool(os.environ.get(prefix + "ACTIVATION_CHECKPOINTING", "False")) == 1
+
+        if str_to_bool(os.environ.get("FSDP_CPU_RAM_EFFICIENT_LOADING", "False")) == 1 and not self.sync_module_states:
+            warnings.warn(
+                "sync_module_states cannot be False since efficient cpu ram loading enabled. "
+                "Setting sync_module_states to True."
+            )
+            self.sync_module_states = True
 
         if self.sync_module_states:
             device = torch.device("hpu")
