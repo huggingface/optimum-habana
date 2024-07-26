@@ -2412,9 +2412,12 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         config = RegressionModelConfig(a=1.5, b=2.5)
         model = RegressionPreTrainedModel(config)
         eval_dataset = SampleIterableDataset()
+        gaudi_config = get_gaudi_config()
         with tempfile.TemporaryDirectory() as tmp_dir:
-            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=accelerator_config)
-            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
             self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 10)
             self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["adjust_scheduler"], False)
             self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_with_dataloader"], False)
@@ -2518,6 +2521,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             config = RegressionModelConfig(a=1.5, b=2.5)
             model = RegressionPreTrainedModel(config)
             eval_dataset = SampleIterableDataset()
+            gaudi_config = get_gaudi_config()
 
             # case - TrainingArguments.gradient_accumulation_steps == 1
             #      - gradient_accumulation_kwargs['num_steps] == 1
@@ -2530,8 +2534,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                         "num_steps": 1,
                     }
                 },
+                use_habana=True,
             )
-            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
             self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 1)
 
             # case - TrainingArguments.gradient_accumulation_steps > 1
@@ -2545,9 +2550,10 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                         "num_steps": 10,
                     }
                 },
+                use_habana=True,
             )
             with self.assertRaises(Exception) as context:
-                trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+                trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
             self.assertTrue("The `AcceleratorConfig`'s `num_steps` is set but" in str(context.exception))
 
     def test_accelerator_config_not_instantiated(self):

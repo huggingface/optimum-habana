@@ -182,7 +182,6 @@ class GaudiGenerationMixin(GenerationMixin):
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
         # we also allow the user to pass it under `input_ids`, if the encoder does not use it as the main input.
-
         if model_kwargs is not None and "decoder_input_ids" in model_kwargs:
             decoder_input_ids = model_kwargs.pop("decoder_input_ids")
         elif "input_ids" in model_kwargs and model_input_name != "input_ids":
@@ -203,17 +202,17 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
                 decoder_start_token_id = decoder_start_token_id.view(-1, 1)
             else:
-                decoder_input_ids_start = (
+                decoder_start_token_id = (
                     torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
                 )
         else:
             # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
-            decoder_input_ids_start = (
+            decoder_start_token_id = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
             )
-            decoder_input_ids_start = torch.nn.functional.pad(
-                decoder_input_ids_start, (0, max_length - 1), value=pad_token_id
+            decoder_start_token_id = torch.nn.functional.pad(
+                decoder_start_token_id, (0, max_length - 1), value=pad_token_id
             )
 
         # 3. Encoder-decoder models expect the `decoder_input_ids` to start with a special token. Let's ensure that.
@@ -515,7 +514,6 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config: GaudiGenerationConfig,
         stopping_criteria: Optional[StoppingCriteriaList],
         tokenizer: Optional["PreTrainedTokenizerBase"] = None,
-        ignore_eos: bool = False,
         **kwargs,
     ) -> StoppingCriteriaList:
         criteria = StoppingCriteriaList()
@@ -537,7 +535,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     "stop strings, you must pass the model's tokenizer to the `tokenizer` argument of `generate`."
                 )
             criteria.append(StopStringCriteria(stop_strings=generation_config.stop_strings, tokenizer=tokenizer))
-        if not ignore_eos and generation_config._eos_token_tensor is not None:
+        if not generation_config.ignore_eos and generation_config._eos_token_tensor is not None:
             criteria.append(EosTokenCriteria(eos_token_id=generation_config._eos_token_tensor))
         criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
         return criteria
@@ -1146,7 +1144,6 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config=generation_config,
             stopping_criteria=stopping_criteria,
             tokenizer=tokenizer,
-            ignore_eos=self.generation_config.ignore_eos,
             **kwargs,
         )
 
@@ -2847,7 +2844,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def _assisted_decoding(
         self,
         input_ids: torch.LongTensor,
-        candidate_generator: GaudiCandidateGenerator,
+        candidate_generator: "GaudiCandidateGenerator",
         logits_processor: LogitsProcessorList,
         logits_warper: LogitsProcessorList,
         stopping_criteria: StoppingCriteriaList,
