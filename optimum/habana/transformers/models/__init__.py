@@ -120,6 +120,15 @@ from .mixtral import (
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
+from .qwen2_moe import(
+    GaudiQwen2MoeMLP,
+    GaudiQwen2MoeAttention,
+    GaudiQwen2MoeDecoderLayer,
+    GaudiQwen2MoeModel,
+    GaudiQwen2MoeForCausalLM,
+    gaudi_qwen2moe_block_sparse_moe_forward,
+    gaudi_qwen2moe_rmsnorm_forward,
+)
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
