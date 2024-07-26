@@ -21,6 +21,7 @@ import argparse
 import json
 import logging
 import os
+os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 import time
 
 import lm_eval.evaluator
@@ -177,9 +178,6 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 
 def main():
     args = setup_lm_eval_parser()
-    if args.trust_remote_code:
-        logger.info("Setting `HF_DATASETS_TRUST_REMOTE_CODE=true`")
-        os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
