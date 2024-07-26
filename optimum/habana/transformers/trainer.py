@@ -15,8 +15,10 @@
 
 import contextlib
 import copy
+import functools
 import importlib.metadata
 import inspect
+import json
 import math
 import os
 import random
@@ -46,7 +48,7 @@ from transformers.integrations.deepspeed import (
     is_deepspeed_available,
     is_deepspeed_zero3_enabled,
 )
-from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
+from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer import _get_fsdp_ckpt_kwargs
 from transformers.trainer_callback import ExportableState, TrainerCallback, TrainerState
@@ -57,7 +59,6 @@ from transformers.trainer_pt_utils import (
     LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
-    get_dataloader_sampler,
     get_model_param_count,
     nested_concat,
     nested_detach,
@@ -80,9 +81,11 @@ from transformers.trainer_utils import (
 )
 from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
 from transformers.utils import (
+    ADAPTER_CONFIG_NAME,
     ADAPTER_SAFE_WEIGHTS_NAME,
     ADAPTER_WEIGHTS_NAME,
     CONFIG_NAME,
+    SAFE_WEIGHTS_INDEX_NAME,
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
@@ -1163,16 +1166,16 @@ class GaudiTrainer(Trainer):
             if _is_peft_model(model):
                 # If train a model using PEFT & LoRA, assume that adapter have been saved properly.
                 # TODO: in the future support only specific min PEFT versions
-                    if (hasattr(model, "active_adapter") or hasattr(model, "active_adapters")) and hasattr(
-                        model, "load_adapter"
-                    ):
-                        # For BC for older PEFT versions
-                        if hasattr(model, "active_adapters"):
-                            active_adapter = model.active_adapters[0]
-                            if len(model.active_adapters) > 1:
-                                logger.warning("Detected multiple active adapters, will only consider the first one")
-                        else:
-                            active_adapter = model.active_adapter
+                if (hasattr(model, "active_adapter") or hasattr(model, "active_adapters")) and hasattr(
+                    model, "load_adapter"
+                ):
+                    # For BC for older PEFT versions
+                    if hasattr(model, "active_adapters"):
+                        active_adapter = model.active_adapters[0]
+                        if len(model.active_adapters) > 1:
+                            logger.warning("Detected multiple active adapters, will only consider the first one")
+                    else:
+                        active_adapter = model.active_adapter
 
                     if os.path.exists(best_adapter_model_path) or os.path.exists(best_safe_adapter_model_path):
                         model.load_adapter(self.state.best_model_checkpoint, active_adapter)

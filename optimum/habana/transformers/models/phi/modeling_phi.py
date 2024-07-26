@@ -395,10 +395,15 @@ class GaudiPhiModel(PhiModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -613,7 +618,6 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
         - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
         """
-        past_length = 0
         reuse_cache = kwargs.get("reuse_cache")
         # Omit tokens covered by past_key_values
         if past_key_values is not None:
@@ -622,7 +626,9 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass

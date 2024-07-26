@@ -39,7 +39,6 @@ from transformers.generation.stopping_criteria import (
     MaxTimeCriteria,
     StoppingCriteriaList,
     StopStringCriteria,
-    validate_stopping_criteria,
 )
 from transformers.generation.utils import (
     NEED_SETUP_CACHE_CLASSES_MAPPING,
@@ -71,6 +70,7 @@ from .configuration_utils import GaudiGenerationConfig
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
     from transformers.streamers import BaseStreamer
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
     from .candidate_generator import GaudiCandidateGenerator
 
@@ -398,7 +398,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if "token_idx_cpu" in model_kwargs:
                 model_kwargs["token_idx_cpu"] += 1
 
-        if model_kwargs.get("use_cache", True) and "cache_position" in model_kwargs and model_kwargs["cache_position"] is not None::
+        if (
+            model_kwargs.get("use_cache", True)
+            and "cache_position" in model_kwargs
+            and model_kwargs["cache_position"] is not None
+        ):
             model_kwargs["cache_position"] = model_kwargs["cache_position"][-1:] + num_new_tokens
         else:
             past_positions = model_kwargs.pop("cache_position")
@@ -596,7 +600,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return generation_config
 
     def _prepare_generation_config(
-        self, generation_config: Optional[GenerationConfig], **kwargs: Dict
+        self, generation_config: Optional[GaudiGenerationConfig], **kwargs: Dict
     ) -> Tuple[GaudiGenerationConfig, Dict]:
         """
         Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/generation/utils.py#L1230
@@ -1457,7 +1461,7 @@ class GaudiGenerationMixin(GenerationMixin):
         dola_layers: Union[str, List[int]],
         logits_processor: LogitsProcessorList,
         stopping_criteria: StoppingCriteriaList,
-        generation_config: GenerationConfig,
+        generation_config: GaudiGenerationConfig,
         synced_gpus: bool,
         streamer: "BaseStreamer",
         logits_warper: Optional[LogitsProcessorList],
@@ -1777,7 +1781,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
                     next_token_logits = outputs.logits[:, token_idx - 1, :]
-                    next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
+                    next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     if model_kwargs.get("num_virtual_tokens", 0) > 0:
                         # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
@@ -1788,17 +1792,17 @@ class GaudiGenerationMixin(GenerationMixin):
                         next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                     else:
                         next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
-                    next_tokens_scores = logits_processor(input_ids, next_token_logits)
+                    next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # Clone is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration
                 # (the clone itself is always small)
                 next_token_logits = outputs.logits[:, -1, :].clone()
                 if token_idx is not None and self.config.is_encoder_decoder:
                     # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
-                    next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
+                    next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     # case3 (default case): token_idx is None
-                    next_tokens_scores = logits_processor(input_ids, next_token_logits)
+                    next_token_scores = logits_processor(input_ids, next_token_logits)
 
             # pre-process distribution
             if do_sample:
@@ -1826,7 +1830,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # token selection
             if do_sample:
-                probs = nn.functional.softmax(next_token_scores, dim=-1)
+                probs = torch.nn.functional.softmax(next_token_scores, dim=-1)
                 next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
             else:
                 next_tokens = torch.argmax(next_token_scores, dim=-1)
@@ -1867,11 +1871,19 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=cur_len,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=cur_len,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
@@ -2277,7 +2289,7 @@ class GaudiGenerationMixin(GenerationMixin):
             n_eos_tokens = eos_token_id.shape[0] if eos_token_id is not None else 0
             n_tokens_to_keep = max(2, 1 + n_eos_tokens) * num_beams
             if do_sample:
-                probs = nn.functional.softmax(next_token_scores, dim=-1)
+                probs = torch.nn.functional.softmax(next_token_scores, dim=-1)
                 next_tokens = torch.multinomial(probs, num_samples=n_tokens_to_keep)
                 next_token_scores = torch.gather(next_token_scores, -1, next_tokens)
                 next_token_scores, _indices = torch.sort(next_token_scores, descending=True, dim=1)
@@ -3121,11 +3133,19 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=None,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=None,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 

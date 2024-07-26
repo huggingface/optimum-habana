@@ -1,14 +1,13 @@
 import math
 import os
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
@@ -1021,7 +1020,7 @@ class GaudiLlamaModel(LlamaModel):
             all_hidden_states += (hidden_states,)
 
         next_cache = next_decoder_cache if use_cache else None
-        if return_legacy_cache:
+        if not use_new_cache:
             next_cache = next_cache.to_legacy_cache()
 
         if not return_dict:
@@ -1165,8 +1164,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         token_idx=None,
         **kwargs,
     ):
-        past_length = 0
-
         reuse_cache = kwargs.get("reuse_cache")
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
@@ -1175,7 +1172,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
         elif (reuse_cache or bucket_internal) and token_idx is not None:
             # KV cache is pre allocated with reuse cache or will be padded with bucket internal

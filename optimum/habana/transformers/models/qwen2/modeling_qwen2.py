@@ -18,7 +18,6 @@
 
 import math
 import os
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -603,12 +602,15 @@ class GaudiQwen2Model(Qwen2Model):
 
         self._attn_implementation = "eager"
 
-        if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
         else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
+            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -855,8 +857,6 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         token_idx=None,
         **kwargs,
     ):
-        past_length = 0
-
         reuse_cache = kwargs.get("reuse_cache")
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
@@ -865,7 +865,9 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
         elif (reuse_cache or bucket_internal) and token_idx is not None:
             # KV cache is pre allocated with reuse cache or will be padded with bucket internal

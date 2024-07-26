@@ -3,11 +3,12 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
+from transformers.models.clip.configuration_clip import CLIPConfig
 from transformers.models.clip.modeling_clip import (
+    CLIPMLP,
     CLIPAttention,
     CLIPEncoder,
     CLIPEncoderLayer,
-    CLIPMLP,
     CLIPVisionEmbeddings,
     CLIPVisionModel,
     CLIPVisionTransformer,

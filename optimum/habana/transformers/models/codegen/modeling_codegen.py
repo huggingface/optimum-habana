@@ -313,7 +313,9 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
     - when KV cache is enabled, slice next_position_ids from position_ids based on the token_idx
     """
 
-    def prepare_inputs_for_generation(self, input_ids, inputs_embeds=None, past_key_values=None, token_idx=None, **kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids, inputs_embeds=None, past_key_values=None, token_idx=None, **kwargs
+    ):
         token_type_ids = kwargs.get("token_type_ids", None)
         # Omit tokens covered by past_key_values
         if past_key_values:

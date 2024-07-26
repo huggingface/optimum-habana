@@ -245,10 +245,15 @@ def gaudi_stablelm_model_forward(
 
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-    if (input_ids is None) ^ (inputs_embeds is not None):
-        raise ValueError(
-            "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-        )
+    # retrieve input_ids and inputs_embeds
+    if input_ids is not None and inputs_embeds is not None:
+        raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+    elif input_ids is not None:
+        batch_size, seq_length = input_ids.shape
+    elif inputs_embeds is not None:
+        batch_size, seq_length, _ = inputs_embeds.shape
+    else:
+        raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
     seq_length_with_past = seq_length
     past_key_values_length = 0
@@ -444,7 +449,9 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
             if token_idx is None:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)

@@ -19,14 +19,12 @@
 # limitations under the License.
 """PyTorch Gemma model."""
 
-import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma.modeling_gemma import (
     GemmaAttention,
@@ -227,9 +225,9 @@ def gaudi_gemma_model_forward(
         inputs_embeds = self.embed_tokens(input_ids)
 
     return_legacy_cache = False  # noqa: F841
-        if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
-            return_legacy_cache = True  # noqa: F841
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+    if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
+        return_legacy_cache = True  # noqa: F841
+        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
 
     if cache_position is None:
         past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -305,8 +303,8 @@ def gaudi_gemma_model_forward(
         all_hidden_states += (hidden_states,)
 
     next_cache = next_decoder_cache if use_cache else None
-        if return_legacy_cache:
-            next_cache = next_cache.to_legacy_cache()
+    if return_legacy_cache:
+        next_cache = next_cache.to_legacy_cache()
 
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
@@ -414,7 +412,9 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
             if token_idx is None:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
                 # past_length += token_idx

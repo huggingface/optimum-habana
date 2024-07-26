@@ -87,7 +87,6 @@ if is_torch_available():
     from torch import nn
     from torch.utils.data import IterableDataset
     from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
-    from transformers.modeling_utils import unwrap_model
 
     from optimum.habana import GaudiTrainer
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -596,7 +595,9 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 
         # Base training. Should have the same results as test_reproducible_training
         model = RegressionModel()
-        args = GaudiTrainingArguments("./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True, report_to="none")
+        args = GaudiTrainingArguments(
+            "./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True, report_to="none"
+        )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         self.check_trained_model(trainer.model)
@@ -619,7 +620,9 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
     def test_model_init(self):
         train_dataset = RegressionDataset()
         gaudi_config = get_gaudi_config()
-        args = GaudiTrainingArguments("./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True, report_to="none")
+        args = GaudiTrainingArguments(
+            "./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True, report_to="none"
+        )
         trainer = GaudiTrainer(
             gaudi_config=gaudi_config, args=args, train_dataset=train_dataset, model_init=lambda: RegressionModel()
         )
@@ -1241,7 +1244,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         second_dataset = RegressionDataset()
         trainer = GaudiTrainer(
             tiny_gpt2,
-            gaudi_config
+            gaudi_config,
             args,
             train_dataset=train_dataset,
             eval_dataset={"first": first_dataset, "second": second_dataset},
@@ -1497,7 +1500,12 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         gaudi_config = get_gaudi_config()
         gaudi_config.use_dynamic_shapes = True
         args = GaudiTrainingArguments(
-            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1, report_to="none"
+            "./regression",
+            use_habana=True,
+            use_lazy_mode=True,
+            per_device_train_batch_size=1,
+            num_train_epochs=1,
+            report_to="none",
         )
         model = RegressionModel()
         trainer = GaudiTrainer(
@@ -1513,7 +1521,12 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         gaudi_config = get_gaudi_config()
         gaudi_config.use_dynamic_shapes = False
         args = GaudiTrainingArguments(
-            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1, report_to="none"
+            "./regression",
+            use_habana=True,
+            use_lazy_mode=True,
+            per_device_train_batch_size=1,
+            num_train_epochs=1,
+            report_to="none",
         )
         model = RegressionModel()
         trainer = GaudiTrainer(
@@ -2489,10 +2502,14 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         GaudiAcceleratorState._reset_state(reset_partial_state=True)
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self.assertRaises(ValueError) as cm:
-                _ = RegressionGaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True})
+                _ = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True}
+                )
                 self.assertIn("Please define this beforehand", str(cm.warnings[0].message))
             _ = GaudiAccelerator()
-            _ = RegressionGaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True})
+            _ = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True}
+            )
         GaudiAcceleratorState._reset_state(reset_partial_state=True)
 
     @require_accelerate_version_min_0_28
@@ -2599,7 +2616,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()
         model = RegressionDictModel()
-        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, report_to="none", eval_use_gather_object=True)
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, report_to="none", eval_use_gather_object=True
+        )
         gaudi_config = get_gaudi_config()
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
