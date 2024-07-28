@@ -28,7 +28,7 @@ import lm_eval.tasks
 import torch
 import torch.nn.functional as F
 from run_generation import setup_parser
-from utils import initialize_model, finalize_quantization
+from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 

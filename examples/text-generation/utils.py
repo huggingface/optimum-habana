@@ -192,6 +192,7 @@ def setup_quantization(model, args):
             model = convert(model, config)
     else:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.prep_model(model)
 
     return model
@@ -204,6 +205,7 @@ def finalize_quantization(model):
         finalize_calibration(model)
     else:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.finish_measurements(model)
 
 
