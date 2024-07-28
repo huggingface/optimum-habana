@@ -9,6 +9,5 @@
         "matmul_av",
         "lm_head"
     ]},
-    "dump_stats_path": "./hqt_output/measure",
-    "dump_stats_xlsx_path": "./hqt_output/measure/fp8stats.xlsx"
+    "dump_stats_path": "./hqt_output/measure"
 }
