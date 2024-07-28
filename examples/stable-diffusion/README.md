@@ -256,7 +256,7 @@ python text_to_image_generation.py \
 
 > Please note: there is a regression with "--guidance_scale 0.0" for the latest release.
 
- 
+
 ### ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
@@ -508,6 +508,7 @@ python text_to_image_generation.py \
 ```
 
 ### Stable Diffusion XL Inpainting
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
@@ -522,6 +523,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion
+```
+
 
 ### Unconditional Image Generation Example
 
@@ -538,5 +541,5 @@ python3 unconditional_image_generation.py \
     --use_hpu_graphs \
     --bf16 \
     --save_outputs \
-    --output_dir "/tmp/" 
+    --output_dir "/tmp/"
 ```
