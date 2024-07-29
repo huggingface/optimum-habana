@@ -162,7 +162,7 @@ python3 run_pipeline.py \
 
 Use the following commands to run Llava-v1.6-mistral-7b FP8 inference with FusedSDPA
 
-Here is an example to measure the tensor quantization statistics on Llava-v1.6-mistral-7b:
+Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
