@@ -44,15 +44,15 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 4. Execute the script:  
 
 	```bash
-		python examples/sentence-transformers-training/nli/training_nli.py bert-base-uncased
+	python examples/sentence-transformers-training/nli/training_nli.py bert-base-uncased
 	```
 
 ## Multi-card Training
 
-	For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+	For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
 	```bash
-		HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 example/sentence-transformers-training/nli/training_nli.py bert-base-uncased
+	HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 example/sentence-transformers-training/nli/training_nli.py bert-base-uncased
 	```
 
 ## Dataset
