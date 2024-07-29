@@ -346,7 +346,12 @@ class ExampleTestMeta(type):
 
             # The ESMFold example has no arguments, so we can execute it right away
             if self.EXAMPLE_NAME == "run_esmfold":
-                p = subprocess.Popen(["python3", example_script])
+                cmd_line = f"""
+                        python3
+                        {example_script}
+                        """.split()
+                print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
+                p = subprocess.Popen(cmd_line)
                 return_code = p.wait()
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
@@ -360,6 +365,7 @@ class ExampleTestMeta(type):
                         --bf16
                         --max_seq_length 1024
                     """.split()
+                    print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
                     p = subprocess.Popen(cmd_line)
                     return_code = p.wait()
                     # Ensure the run finished without any issue
@@ -455,7 +461,7 @@ class ExampleTestMeta(type):
                     num_epochs=baseline.get("num_train_epochs"),
                     extra_command_line_arguments=extra_command_line_arguments,
                 )
-
+                print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
                 p = subprocess.Popen(cmd_line, env=env_variables)
                 return_code = p.wait()
 
