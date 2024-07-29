@@ -4,33 +4,122 @@ import re
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
+from transformers.testing_utils import slow
 import pytest
 
 
 PATH_TO_RESOURCES = Path(__file__).resolve().parent.parent / "tests/resource"
 
-
-MODEL_FILE_OPTIONS_TO_TEST = {
-    "bf16": [
-        ("bigcode/starcoder", ["--do_train", f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl", "--validation_split_percentage 10"]),
-        ("bigcode/starcoder", ["--do_train", f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt", "--validation_split_percentage 10"]),
-        ("bigcode/starcoder", ["--do_train", f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl", "--do_eval", f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl", "--validation_split_percentage 20"]),
-        ("bigcode/starcoder", ["--do_train", f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt", "--do_eval", f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.txt", "--validation_split_percentage 20"]),
-        ("bigcode/starcoder", ["--do_train", "--dataset_name timdettmers/openassistant-guanaco", "--do_eval", f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl", "--validation_split_percentage 20"]),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    MODEL_FILE_OPTIONS_TO_TEST = {
+        "bf16": [
+            (
+                "bigcode/starcoder",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 10",
+                ],
+            ),
+            (
+                "bigcode/starcoder",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--validation_split_percentage 10",
+                ],
+            ),
+            (
+                "bigcode/starcoder",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+            (
+                "bigcode/starcoder",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+            (
+                "bigcode/starcoder",
+                [
+                    "--do_train",
+                    "--dataset_name timdettmers/openassistant-guanaco",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+        ],
+    }
+else:
+    MODEL_FILE_OPTIONS_TO_TEST = {
+        "bf16": [
+            (
+                "meta-llama/Llama-2-7b-hf",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 10",
+                ],
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--validation_split_percentage 10",
+                ],
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                [
+                    "--do_train",
+                    f"--train_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.txt",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                [
+                    "--do_train",
+                    "--dataset_name timdettmers/openassistant-guanaco",
+                    "--do_eval",
+                    f"--validation_file {PATH_TO_RESOURCES}/custom_dataset.jsonl",
+                    "--validation_split_percentage 20",
+                ],
+            ),
+        ],
+    }
 
 
 def _install_requirements():
     PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
-    cmd_line = (
-        f"pip install -r {PATH_TO_EXAMPLE_DIR / 'language-modeling' / 'requirements.txt'}".split()
-    )
+    cmd_line = f"pip install -r {PATH_TO_EXAMPLE_DIR / 'language-modeling' / 'requirements.txt'}".split()
     p = subprocess.Popen(cmd_line)
     return_code = p.wait()
     assert return_code == 0
-
 
 def _test_custom_file_inputs(model_name: str, test_commands: list):
     _install_requirements()
@@ -56,7 +145,7 @@ def _test_custom_file_inputs(model_name: str, test_commands: list):
         "--logging_steps 1",
         "--use_lazy_mode",
         "--dataset_concatenation",
-        "--throughput_warmup_steps 3"
+        "--throughput_warmup_steps 3",
     ]
     command.extend(test_commands)
 
@@ -88,7 +177,7 @@ def _test_custom_file_inputs(model_name: str, test_commands: list):
         if "eval_samples_per_second" in results:
             assert results["eval_samples_per_second"] > 0
 
-
+@slow
 @pytest.mark.parametrize("model_name, test_commands", MODEL_FILE_OPTIONS_TO_TEST["bf16"])
 def test_custom_file_inputs_bf16(model_name: str, test_commands: list):
     _test_custom_file_inputs(model_name, test_commands)

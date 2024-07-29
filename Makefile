@@ -73,7 +73,7 @@ fast_tests_table_transformers:
 	python -m pytest tests/test_table_transformer.py
 
 # Run non-performance regressions
-fast_tests_custom_file_input: test_installs
+slow_tests_custom_file_input: test_installs
 	python -m pip install -r examples/language-modeling/requirements.txt
 	python -m pytest tests/test_custom_file_input.py
 
