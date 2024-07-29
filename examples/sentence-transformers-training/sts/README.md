@@ -30,23 +30,19 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
 3. Execute the script:
 
-	```bash
-	python training_stsbenchmark.py bert-base-uncased
-	```
+```bash
+python training_stsbenchmark.py bert-base-uncased
+```
 
 ## Multi-card Training
 
-	For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
-	```bash
-	HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py bert-base-uncased
-   	```
+```bash
+HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py bert-base-uncased
+```
 
 ## Training data
-
-```eval_rst
-In STS, we have sentence pairs annotated together with a score indicating the similarity. In the original STSbenchmark dataset, the scores range from 0 to 5. We have normalized these scores to range between 0 and 1 in `stsb <https://huggingface.co/datasets/sentence-transformers/stsb>`_, as that is required for :class:`~sentence_transformers.losses.CosineSimilarityLoss`.
-```
 
 Here is a simplified version of our training data:
 
@@ -85,16 +81,10 @@ train_dataset = load_dataset("sentence-transformers/stsb", split="train")
 
 ## Loss Function
 
-```eval_rst
-We use :class:`~sentence_transformers.losses.CosineSimilarityLoss` as our loss function.
-```
-
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_Siamese_Network.png" alt="SBERT Siamese Network Architecture" width="250"/>
 
 For each sentence pair, we pass sentence A and sentence B through the BERT-based model, which yields the embeddings _u_ und _v_. The similarity of these embeddings is computed using cosine similarity and the result is compared to the gold similarity score. Note that the two sentences are fed through the same model rather than two separate models. In particular, the cosine similarity for similar texts is maximized and the cosine similarity for dissimilar texts is minimized. This allows our model to be fine-tuned and to recognize the similarity of sentences.
 
 For more details, see [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/abs/1908.10084).
 
-```
 
-```
