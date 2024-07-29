@@ -183,6 +183,7 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
         )
 
         self.to(self._device)
+        logger.info(self._device)
         torch.manual_seed(1)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
@@ -248,7 +249,6 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
             init_latents = torch.cat([init_latents], dim=0)
 
         shape = init_latents.shape
-        # noise = randn_tensor(shape, generator=generator, device="cpu", dtype=dtype) # HPU Patch
         noise = torch.randn(shape, generator=generator, device="cpu", dtype=dtype)  # HPU Patch
         noise = noise.to(device)  # HPU Patch
 
@@ -534,10 +534,6 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
             image = self.image_processor.preprocess(image)
 
             # 6. Set timesteps
-            # self.scheduler.set_timesteps(num_inference_steps, device="cpu") # HPU Patch
-            # timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-            # timesteps = self.scheduler.timesteps.to(device) # HPU Patch
-            # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
             timesteps = None  # HPU Patch
             timesteps, num_inference_steps = retrieve_timesteps(
                 self.scheduler, num_inference_steps, device, timesteps
@@ -571,7 +567,6 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
                     latent_model_input = torch.cat([latent_model_input, depth_mask], dim=1)
 
                     # predict the noise residual
-                    # import pdb; pdb.set_trace()
                     noise_pred = self.unet_hpu(
                         latent_model_input,
                         t,
