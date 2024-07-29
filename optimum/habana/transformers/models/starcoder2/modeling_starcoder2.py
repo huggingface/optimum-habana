@@ -131,9 +131,7 @@ def gaudi_starcoder2_attention_forward(
         if query_length == 1:
             # next token
             with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                attn_output = FusedSDPA.apply(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None
-                )
+                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
         else:
             # first token
             with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
@@ -148,7 +146,6 @@ def gaudi_starcoder2_attention_forward(
                     )
                     attn_weights = None
     else:
-
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
@@ -210,8 +207,8 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             token_idx=token_idx,
-            use_flash_attention = use_flash_attention,
-            flash_attention_recompute= flash_attention_recompute,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
         hidden_states = residual + hidden_states
 
@@ -340,7 +337,7 @@ def gaudi_starcoder2_model_forward(
                 use_cache,
                 None,
                 use_flash_attention,
-                flash_attention_recompute
+                flash_attention_recompute,
             )
         else:
             layer_outputs = decoder_layer(
@@ -351,8 +348,8 @@ def gaudi_starcoder2_model_forward(
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 token_idx=token_idx,
-                use_flash_attention = use_flash_attention,
-                flash_attention_recompute= flash_attention_recompute
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
             )
 
         hidden_states = layer_outputs[0]
@@ -423,8 +420,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
-            use_flash_attention = use_flash_attention,
-            flash_attention_recompute = flash_attention_recompute,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
 
         hidden_states = outputs[0]
