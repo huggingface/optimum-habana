@@ -10,6 +10,7 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .bert import gaudi_BertModel_forward
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -30,13 +31,21 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
-from .clip import GaudiCLIPVisionEmbeddings
+from .clip import (
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
+    GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
+)
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -91,6 +100,10 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .mamba import (
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+)
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -189,14 +202,12 @@ from .t5 import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
+from .table_transformer import gaudi_table_transformer_conv_encoder_forward
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
-from .vits import (
-    gaudi_unconstrained_rational_quadratic_spline,
-    gaudi_VitsResidualCouplingLayer_forward,
-)
+from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,

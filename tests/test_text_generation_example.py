@@ -38,8 +38,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 488.82855464593257),
+            ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("state-spaces/mamba-130m-hf", 1536, False, 8600),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -92,6 +93,7 @@ else:
             ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
+            ("state-spaces/mamba-130m-hf", 224, False, 794.542),
         ],
         "fp8": [],
         "deepspeed": [

@@ -30,7 +30,7 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AdaLoraConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
+from peft import AdaLoraConfig, AdaptionPromptConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
 from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
@@ -103,7 +103,11 @@ class ModelArguments:
     trust_remote_code: bool = field(
         default=False,
         metadata={
-            "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+            "help": (
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
+            )
         },
     )
     use_cache: bool = field(
@@ -338,7 +342,7 @@ class FinetuneArguments:
         default="lora",
         metadata={
             "help": ("The PEFT type to use."),
-            "choices": ["lora", "ia3", "adalora"],
+            "choices": ["lora", "ia3", "adalora", "llama-adapter"],
         },
     )
     ia3_target_modules: List[str] = field(
@@ -348,6 +352,14 @@ class FinetuneArguments:
     feedforward_modules: List[str] = field(
         default_factory=lambda: None,
         metadata={"help": "Target feedforward modules for the IA3 method."},
+    )
+    adapter_layers: int = field(
+        default=30,
+        metadata={"help": "Number of adapter layers (from the top) in llama-adapter"},
+    )
+    adapter_len: int = field(
+        default=10,
+        metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
     )
 
 
@@ -466,6 +478,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "token": model_args.token,
+        "padding_side": "right",
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -493,6 +506,7 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -502,6 +516,7 @@ def main():
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -509,6 +524,7 @@ def main():
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
     else:
         data_files = {}
@@ -636,11 +652,16 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True):
+        if not data_args.dataset_concatenation:
+            add_eos_token = False
+            padding = "max_length"
+        else:
+            padding = False
         results = tokenizer(
             prompt,
             truncation=True,
             max_length=data_args.max_seq_length,
-            padding=False,
+            padding=padding,
             return_tensors=None,
         )
         for i in range(len(results["input_ids"])):
@@ -779,6 +800,19 @@ def main():
                 feedforward_modules=finetune_args.feedforward_modules,
                 task_type=TaskType.CAUSAL_LM,
             )
+        elif finetune_args.peft_type == "llama-adapter":
+            peft_config = AdaptionPromptConfig(
+                adapter_layers=finetune_args.adapter_layers,
+                adapter_len=finetune_args.adapter_len,
+                task_type=TaskType.CAUSAL_LM,
+            )
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)

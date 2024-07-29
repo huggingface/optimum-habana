@@ -285,7 +285,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--trust_remote_code",
         action="store_true",
-        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+        help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     args = parser.parse_args()
 
@@ -427,12 +427,12 @@ def main():
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
-            for _ in range(args.warmup):
+            for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print("Warming up", flush=True)
+                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -444,10 +444,10 @@ def main():
 
                 min_prompt_len = rounder(mn)
                 max_sentence_len = rounder(mx)
-                for _ in range(args.warmup):
+                for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print("Warming up for shape,", sz - 1, flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0

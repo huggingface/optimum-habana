@@ -1,6 +1,42 @@
 {
     "gaudi": {
-        "tatsu-lab/alpaca": {
+         "databricks/databricks-dolly-15k": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 2,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 2,
+                    "perplexity": 3.9168,
+                    "train_runtime": 132.665,
+                    "train_samples_per_second": 2.295,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio 0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm 0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--validation_split_percentage 20",
+                        "--attn_softmax_bf16",
+                        "--max_steps 100",
+                        "--input_column_name context",
+                        "--output_column_name response"
+                    ]
+                }
+            }
+        },
+       "tatsu-lab/alpaca": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -96,6 +132,40 @@
                 }
             }
         },
+        "mamamiya405/finred": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 2.3665,
+                    "train_runtime": 294.5707,
+                    "train_samples_per_second": 148.093,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16"
+                    ]
+                }
+            }
+	},
         "tatsu-lab/alpaca_fsdpcompile": {
             "num_train_epochs": 1,
             "eval_batch_size": 1,
@@ -135,6 +205,44 @@
                 }
             }
         },
+        "llama-adapter": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 5.575,
+                    "train_runtime": 131.7,
+                    "train_samples_per_second": 294,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--adapter_layers 2",
+                        "--adapter_len 4",
+                        "--peft_type llama-adapter"
+                    ]
+                }
+            }
+        },
         "trl-sft": {
             "num_train_epochs": 1,
             "eval_batch_size": 1,
@@ -157,7 +265,7 @@
                         "--lora_alpha 16",
                         "--lora_dropout 0.05",
                         "--lora_target_modules q_proj v_proj",
-                        "--seq_length 1024",
+                        "--max_seq_length 1024",
                         "--optim paged_adamw_32bit",
                         "--weight_decay 0.05",
                         "--report_to none",
@@ -193,6 +301,60 @@
                         "--beta 0.1",
                         "--gradient_accumulation_steps 4",
                         "--sanity_check"
+                    ]
+                }
+            }
+        },
+        "trl-reward": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 250,
+                    "train_samples_per_second": 1.6,
+                    "extra_arguments": [
+                        "--logging_steps 1",
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
+                        "--max_length 1024",
+                        "--eval_steps 200",
+                        "--lr_scheduler_type cosine",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 4",
+                        "--train_subset 500",
+                        "--eval_subset 100"
+                    ]
+                }
+            }
+        },
+        "trl-ppo": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 8,
+                    "train_runtime": 62,
+                    "train_samples_per_second": 0.50,
+                    "extra_arguments": [
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--reward_model_name HuggingFaceH4/tiny-random-LlamaForSequenceClassification",
+                        "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
+                        "--max_train_samples 1000",
+                        "--use_habana",
+                        "--ppo_epochs 1",
+			"--batched_gen True",
+                        "--mini_batch_size 1",
+                        "--output_max_length 128",
+                        "--input_max_length 128",
+                        "--learning_rate 1.4e-5",
+                        "--early_stopping"
                     ]
                 }
             }
@@ -271,6 +433,43 @@
                         "--warmup_steps 0",
                         "--weight_decay 0.05",
                         "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "tatsu-lab/alpaca_fp8": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 16,
+                    "perplexity": 2.3692,
+                    "train_runtime": 411.9935,
+                    "train_samples_per_second": 232.439,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--logging_steps 40",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--pipelining_fwd_bwd",
+                        "--throughput_warmup_steps 18",
+                        "--use_lazy_mode",
+                        "--max_grad_norm 0.3",
+                        "--fp8"
                     ]
                 }
             }
