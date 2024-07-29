@@ -206,7 +206,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 3 \
+    --throughput_warmup_steps 8 \
     --dataloader_num_workers 1 \
     --bf16
 ```

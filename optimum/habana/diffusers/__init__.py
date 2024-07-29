@@ -1,5 +1,6 @@
 from .pipelines.auto_pipeline import AutoPipelineForInpainting, AutoPipelineForText2Image
 from .pipelines.controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
+from .pipelines.ddpm.pipeline_ddpm import GaudiDDPMPipeline
 from .pipelines.pipeline_utils import GaudiDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_image_variation import (

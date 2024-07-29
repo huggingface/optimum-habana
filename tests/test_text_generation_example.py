@@ -18,7 +18,7 @@ prev_quant_rank = 0
 if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
-        "bf16": [
+        "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, 130.0472971205316),
             ("gpt2-xl", 1, False, 281.8734689674413),
             ("EleutherAI/gpt-j-6b", 1, False, 160.5823842101192),
@@ -36,7 +36,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
             ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
-            ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
+            ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
             ("google/gemma-7b", 1, False, 109.70751574382221),
@@ -60,10 +60,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
-            ("meta-llama/Meta-Llama-3-70B-Instruct", 64),
-            ("facebook/opt-66b", 28.48069266504111),
+            ("bigscience/bloomz", 8, 1, 36.77314954096159),
+            ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
+            ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
+            ("facebook/opt-66b", 2, 1, 28.48069266504111),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -75,7 +75,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
-        "bf16": [
+        "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, 41.7555095197846),
             ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
@@ -97,7 +97,7 @@ else:
         ],
         "fp8": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 31.994268212011505),
+            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
@@ -139,8 +139,11 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if "falcon" in model_name.lower():
+    if "falcon" in model_name.lower() or "starcoder2" in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
+
+    if "starcoder2" in model_name.lower():
+        command += ["--flash_attention_recompute"]
 
     if reuse_cache or torch_compile:
         command += ["--reuse_cache"]
@@ -239,8 +242,8 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16_1x"])
+def test_text_generation_bf16_1x(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
@@ -272,10 +275,9 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])
-def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
-    world_size = 2 if "opt-66b" in model_name else 8
-    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)
+@pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["deepspeed"])
+def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
+    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
