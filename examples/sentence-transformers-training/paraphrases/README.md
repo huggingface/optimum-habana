@@ -55,7 +55,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 python training_paraphrases.py distilroberta-base
 ```
 
-## Paraphrase Data
+## Paraphrase Dataset
 
 The [training_paraphrases.py](training_paraphrases.py) script loads various datasets from the sentence transformers. We construct batches by sampling examples from the respective dataset. So far, examples are not mixed between the datasets, i.e., a batch consists only of examples from a single dataset.
 
