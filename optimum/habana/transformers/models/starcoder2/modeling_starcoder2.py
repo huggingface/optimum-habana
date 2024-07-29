@@ -141,7 +141,7 @@ def gaudi_starcoder2_attention_forward(
                     attn_output = self.gaudi_flash_attn_v1(
                         query_states, key_states, value_states, attention_mask, 0.0, self.block_size
                     )
-                    htcore.mark_step()
+                    ht.mark_step()
                 else:
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
