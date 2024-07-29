@@ -52,7 +52,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 3. Run the training command:
 
 ```bash
-python training_paraphrases.py <model_name>
+python training_paraphrases.py distilroberta-base
 ```
 
 ## Paraphrase Data
