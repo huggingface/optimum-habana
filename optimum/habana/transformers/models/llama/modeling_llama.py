@@ -865,7 +865,7 @@ class GaudiLlamaModel(LlamaModel):
                 layer = config.distributed_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
-        #distributed_strategy is not JSON serializable
+        # distributed_strategy is not JSON serializable
         config.distributed_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
