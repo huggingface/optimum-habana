@@ -43,17 +43,17 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
 4. Execute the script:  
 
-	```bash
-	python examples/sentence-transformers-training/nli/training_nli.py bert-base-uncased
-	```
+```bash
+python examples/sentence-transformers-training/nli/training_nli.py bert-base-uncased
+```
 
 ## Multi-card Training
 
-	For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
 
-	```bash
-	HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 example/sentence-transformers-training/nli/training_nli.py bert-base-uncased
-	```
+```bash
+HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 example/sentence-transformers-training/nli/training_nli.py bert-base-uncased
+```
 
 ## Dataset
 
@@ -68,10 +68,6 @@ We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNL
 We format AllNLI in a few different subsets, compatible with different loss functions. See [triplet subset of AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli/viewer/triplet) as example.
 
 ## SoftmaxLoss
-
-```eval_rst
-`Conneau et al. <https://arxiv.org/abs/1705.02364>`_ described how a softmax classifier on top of a `siamese network <https://en.wikipedia.org/wiki/Siamese_neural_network>`_ can be used to learn meaningful sentence representation. We can achieve this by using :class:`~sentence_transformers.losses.SoftmaxLoss`:
-```
 
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_SoftmaxLoss.png" alt="SBERT SoftmaxLoss" width="250"/>
 

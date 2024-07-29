@@ -57,10 +57,6 @@ python training_paraphrases.py distilroberta-base
 
 ## Paraphrase Data
 
-```eval_rst
-In our paper `Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation <https://arxiv.org/abs/2004.09813>`_, we showed that paraphrase data together with :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` is a powerful combination to learn sentence embeddings models.
-```
-
 The [training_paraphrases.py](training_paraphrases.py) script loads various datasets from the sentence transformers. We construct batches by sampling examples from the respective dataset. So far, examples are not mixed between the datasets, i.e., a batch consists only of examples from a single dataset.
 
 As the dataset sizes are quite different in size, we perform round-robin sampling from sentence transformers to train using the same amount of batches from each dataset.
