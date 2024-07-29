@@ -961,9 +961,9 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2 and starcoder2
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2 and gemma
                 if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2"]:
+                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
@@ -1868,9 +1868,9 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2 and starcoder2
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2 and gemma
             if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2"]:
+                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
                     if self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
                     if self.model.generation_config.use_flash_attention:
