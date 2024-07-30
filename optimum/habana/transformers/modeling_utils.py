@@ -121,6 +121,7 @@ from .models import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
+    gaudi_DetrConvModel_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
@@ -181,6 +182,7 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_table_transformer_conv_encoder_forward,
     gaudi_unconstrained_rational_quadratic_spline,
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
@@ -400,6 +402,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward
 
+    # Optimization for table transformer on Gaudi
+    transformers.models.table_transformer.modeling_table_transformer.TableTransformerConvEncoder.forward = (
+        gaudi_table_transformer_conv_encoder_forward
+    )
+
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
@@ -527,6 +534,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
         gaudi_owlvitclasspredictionhead_forward
     )
+
+    # Optimization for DETR model on Gaudi
+    transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)

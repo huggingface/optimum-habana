@@ -44,9 +44,11 @@ TESTS_REQUIRE = [
     "optuna",
     "sentencepiece",
     "datasets",
+    "timm",
     "safetensors",
     "pytest < 8.0.0",
     "torchsde",
+    "timm",
 ]
 
 QUALITY_REQUIRES = [

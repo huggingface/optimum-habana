@@ -27,6 +27,11 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused sdpa kernel ")
+    FusedSDPA = None
 
 logger = logging.get_logger(__name__)
 
@@ -41,6 +46,8 @@ def gaudi_starcoder2_attention_forward(
     use_cache: bool = False,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
@@ -48,6 +55,8 @@ def gaudi_starcoder2_attention_forward(
     The only differences are:
     - add new args token_idx
     - optimize KV cache
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
     """
     bsz, q_len, _ = hidden_states.size()
     norm_factor = 1.0 / math.sqrt(self.head_dim)
@@ -106,10 +115,32 @@ def gaudi_starcoder2_attention_forward(
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights += causal_mask
 
-    # upcast attention to fp32
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-    attn_output = torch.matmul(attn_weights, value_states)
+    query_length = q_len if past_key_value is None else q_len + past_key_value.key_cache[self.layer_idx].shape[2]
+    # Taken from mpt: https://github.com/huggingface/optimum-habana/blob/main/optimum/habana/transformers/models/mpt/modeling_mpt.py
+    if use_flash_attention and FusedSDPA:
+        import habana_frameworks.torch.hpu as ht
+
+        if query_length == 1:
+            # next token
+            with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
+        else:
+            # first token
+            with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                if query_length > 16384:
+                    attn_output = self.gaudi_flash_attn_v1(
+                        query_states, key_states, value_states, attention_mask, 0.0, self.block_size
+                    )
+                    ht.mark_step()
+                else:
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
+                    attn_weights = None
+    else:
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        attn_output = torch.matmul(attn_weights, value_states)
 
     if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
         raise ValueError(
@@ -144,12 +175,16 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from Starcoder2DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
 
         residual = hidden_states
@@ -166,6 +201,8 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             use_cache=use_cache,
             cache_position=cache_position,
             token_idx=token_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
         hidden_states = residual + hidden_states
 
@@ -199,6 +236,8 @@ def gaudi_starcoder2_model_forward(
     return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from Starcoder2Model.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
@@ -283,6 +322,8 @@ def gaudi_starcoder2_model_forward(
                 use_cache,
                 cache_position,
                 None,
+                use_flash_attention,
+                flash_attention_recompute,
             )
         else:
             layer_outputs = decoder_layer(
@@ -294,6 +335,8 @@ def gaudi_starcoder2_model_forward(
                 use_cache=use_cache,
                 cache_position=cache_position,
                 token_idx=token_idx,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
             )
 
         hidden_states = layer_outputs[0]
@@ -339,6 +382,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from Starcoder2ForCausalLM: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
@@ -364,6 +409,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
 
         hidden_states = outputs[0]

@@ -70,9 +70,9 @@ def gaudi_mpt_attention_forward(
             else:
                 key_states = torch.cat([past_key_value[0], key_states], dim=2)
                 value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        past_key_value = (key_states, value_states)
+        past_key_value = [key_states, value_states]
     else:
-        past_key_value = (key_states, value_states)
+        past_key_value = [key_states, value_states]
 
     attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
 
@@ -292,7 +292,9 @@ class GaudiMptForCausalLM(MptForCausalLM):
         - add new args token_idx
         - add token_idx into model_inputs
         - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
+        - support for internal bucketing
         """
+        bucket_internal = kwargs.get("bucket_internal")
         # only last tokens for input_ids if past is not None
         if past_key_values is not None:
             if token_idx is None:
@@ -308,6 +310,13 @@ class GaudiMptForCausalLM(MptForCausalLM):
                 input_ids = input_ids[:, remove_prefix_length:]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            # Converting back to tuples as it should be, so there's no type mismatch when calling graph
+            past_key_values = tuple([tuple(kv) for kv in past_key_values])
+        elif bucket_internal and token_idx is not None:
+            # KV cache is pre allocated with reuse cache or will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

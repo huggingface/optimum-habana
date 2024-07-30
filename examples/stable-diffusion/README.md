@@ -30,7 +30,7 @@ Here is how to generate images with one prompt:
 python text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
@@ -51,7 +51,7 @@ Here is how to generate images with several prompts:
 python text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 32 \
     --batch_size 8 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
@@ -89,7 +89,7 @@ python ../gaudi_spawn.py \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --prompts "An image of a squirrel in Picasso style" \
-    --num_images_per_prompt 10 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --height 768 \
     --width 768 \
@@ -115,7 +115,7 @@ A [demo](https://huggingface.co/spaces/Intel/ldm3d) is also available. Here is h
 python text_to_image_generation.py \
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
-    --num_images_per_prompt 10 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --height 768 \
     --width 768 \
@@ -157,7 +157,7 @@ Here is how to generate SDXL images with a single prompt:
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
@@ -176,7 +176,7 @@ Here is how to generate SDXL images with several prompts:
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 32 \
     --batch_size 8 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
@@ -196,7 +196,7 @@ python text_to_image_generation.py \
     --prompts_2 "Red tone" "Blue tone" \
     --negative_prompts "Low quality" "Sketch" \
     --negative_prompts_2 "Clouds" "Clouds" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 32 \
     --batch_size 8 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
@@ -215,7 +215,7 @@ python ../gaudi_spawn.py \
     --prompts_2 "Red tone" "Blue tone" \
     --negative_prompts "Low quality" "Sketch" \
     --negative_prompts_2 "Clouds" "Clouds" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 32 \
     --batch_size 8 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
@@ -256,7 +256,7 @@ python text_to_image_generation.py \
 
 > Please note: there is a regression with "--guidance_scale 0.0" for the latest release.
 
- 
+
 ### ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
@@ -270,7 +270,7 @@ python text_to_image_generation.py \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
@@ -287,7 +287,7 @@ python text_to_image_generation.py \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
-    --num_images_per_prompt 10 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
@@ -324,7 +324,7 @@ python text_to_image_generation.py \
     --prompts "Chef in the kitchen" \
     --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
     --control_preprocessing_type "none" \
-    --num_images_per_prompt 20 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
@@ -343,7 +343,7 @@ python text_to_image_generation.py \
     --control_preprocessing_type "none" \
     --prompts "bird" \
     --seed 0 \
-    --num_images_per_prompt 10 \
+    --num_images_per_prompt 28 \
     --batch_size 7 \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
@@ -508,6 +508,7 @@ python text_to_image_generation.py \
 ```
 
 ### Stable Diffusion XL Inpainting
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
@@ -522,4 +523,23 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion
+```
+
+
+### Unconditional Image Generation Example
+
+Here is how to perform unconditional-image-generation on Gaudi/HPU.
+
+Original unconditional image generation pipeline is shared in here: [Unconditional Image Generation](https://huggingface.co/docs/diffusers/using-diffusers/unconditional_image_generation)
+
+```bash
+python3 unconditional_image_generation.py \
+    --model_name_or_path "google/ddpm-ema-celebahq-256" \
+    --batch_size 16 \
+    --use_habana \
+    --use_gaudi_ddim_scheduler \
+    --use_hpu_graphs \
+    --bf16 \
+    --save_outputs \
+    --output_dir "/tmp/"
 ```
