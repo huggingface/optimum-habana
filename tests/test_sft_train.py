@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 @pytest.mark.parametrize("model_name,expected", [("Qwen/Qwen2-7B", (30.12, 4.8347)), ("Qwen/Qwen2-72B", (6.969, 3.6))])
 def test_sft_train(model_name, expected):
     ds_config = """{
@@ -113,12 +112,12 @@ def test_sft_train(model_name, expected):
         fp.write(str.encode(ds_config))
         fp.flush()
         if "72" in model_name:
-            command += ["--deepspeed", "fp.name"]
+            command += ["--deepspeed", fp.name]
         proc = subprocess.run(
             command, env=env_variables, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
         )
 
-    assert proc.returncode == 0
+    assert proc.returncode == 0, f'Got these from process: stderr={proc.stderr}, stdout={proc.stdout}'
     alllines = proc.stdout.split("\n")
     train_samples_per_second = float(
         [line for line in alllines if "train_samples_per_second" in line][-1].split("=")[-1]
