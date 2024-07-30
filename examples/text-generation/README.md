@@ -275,7 +275,7 @@ You will also need to add `--torch_compile` in your command.
 To enable torch.compile with tensor parallel strategy, please set the following environment variables before running the
 command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`. This will enable tensor parallel strategy without deepspeed.
 
-You will also need to add `--torch_compile` and `--distributed_strategy="tp"` in your command.
+You will also need to add `--torch_compile` and `--parallel_strategy="tp"` in your command.
 
 Here is an example:
 ```bash
@@ -293,7 +293,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 --max_input_tokens 2048 \
 --max_new_tokens 2048 \
 --torch_compile \
---distributed_strategy="tp"
+--parallel_strategy="tp"
 ```
 
 ### Running with FP8

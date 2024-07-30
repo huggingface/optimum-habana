@@ -120,7 +120,7 @@ def _test_text_generation(
     fp8: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
-    distributed_strategy: str = None,
+    parallel_strategy: str = None,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -132,7 +132,7 @@ def _test_text_generation(
             "--use_deepspeed",
             f"--world_size {world_size}",
         ]
-    elif distributed_strategy == "tp":
+    elif parallel_strategy == "tp":
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
             f"--world_size {world_size}",
@@ -158,12 +158,12 @@ def _test_text_generation(
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
 
-    if (reuse_cache or torch_compile) and not distributed_strategy == "tp":
+    if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
         command += ["--reuse_cache"]
 
     if torch_compile:
         command += ["--torch_compile"]
-        if distributed_strategy == "tp":
+        if parallel_strategy == "tp":
             command += ["--use_flash_attention"]
             command += ["--flash_attention_recompute"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
@@ -207,9 +207,9 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
-    if distributed_strategy is not None:
+    if parallel_strategy is not None:
         command += [
-            f"--distributed_strategy={distributed_strategy}",
+            f"--parallel_strategy={parallel_strategy}",
         ]
 
     with TemporaryDirectory() as tmp_dir:
@@ -322,7 +322,7 @@ def test_text_generation_distributed_tp(model_name: str, baseline: float, token:
         max_input_tokens=128,
         world_size=world_size,
         torch_compile=True,
-        distributed_strategy="tp",
+        parallel_strategy="tp",
     )
 
 

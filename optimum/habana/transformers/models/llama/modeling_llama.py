@@ -861,12 +861,12 @@ class GaudiLlamaModel(LlamaModel):
         layers = []
         for layer_idx in range(config.num_hidden_layers):
             layer = GaudiLlamaDecoderLayer(config, layer_idx)
-            if config.distributed_strategy is not None:
-                layer = config.distributed_strategy.distribute_layer(layer, layer_idx)
+            if config.parallel_strategy is not None:
+                layer = config.parallel_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
-        # distributed_strategy is not JSON serializable
-        config.distributed_strategy = None
+        # parallel_strategy is not JSON serializable
+        config.parallel_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
@@ -1102,8 +1102,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def __init__(self, config, distributed_strategy: DistributedStrategy = NoOpStrategy):
-        config.distributed_strategy = distributed_strategy
+    def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
+        config.parallel_strategy = parallel_strategy
         super().__init__(config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):

@@ -270,7 +270,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
     logger.info("Creating Model")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     model_kwargs = {}
-    model_kwargs["distributed_strategy"] = TensorParallelStrategy()
+    model_kwargs["parallel_strategy"] = TensorParallelStrategy()
     model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype, **model_kwargs)
 
     initial_device = torch.device("cpu")
@@ -281,7 +281,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
     lazy_sd = serialization.load_state_dict(
         args.model_name_or_path,
         source=source,
-        distributed_strategy=args.distributed_strategy,
+        distributed_strategy=args.parallel_strategy,
         checkpoint_sharding=None,
         initial_device=initial_device,
         rank=args.global_rank,
@@ -294,7 +294,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
             lazy_sd,
             architecture,
             source,
-            args.distributed_strategy,
+            args.parallel_strategy,
             checkpoint_sharding,
             initial_device,
             args.local_rank,
@@ -588,7 +588,7 @@ def initialize_model(args, logger):
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
-        if not args.distributed_strategy == "tp"
+        if not args.parallel_strategy == "tp"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger)
     )
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
