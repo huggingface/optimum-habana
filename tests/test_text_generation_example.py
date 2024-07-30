@@ -71,6 +71,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
+        "distributed_tp": [
+            ("meta-llama/Llama-2-7b-hf", 1345.2369318328463),
+        ],
     }
 else:
     # Gaudi1 CI baselines
@@ -101,6 +104,7 @@ else:
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
+        "distributed_tp": [],
     }
 
 
@@ -116,6 +120,7 @@ def _test_text_generation(
     fp8: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
+    parallel_strategy: str = None,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -125,6 +130,11 @@ def _test_text_generation(
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
             "--use_deepspeed",
+            f"--world_size {world_size}",
+        ]
+    elif parallel_strategy == "tp":
+        command += [
+            f"{path_to_example_dir / 'gaudi_spawn.py'}",
             f"--world_size {world_size}",
         ]
 
@@ -148,11 +158,14 @@ def _test_text_generation(
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
 
-    if reuse_cache or torch_compile:
+    if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
         command += ["--reuse_cache"]
 
     if torch_compile:
         command += ["--torch_compile"]
+        if parallel_strategy == "tp":
+            command += ["--use_flash_attention"]
+            command += ["--flash_attention_recompute"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
@@ -193,6 +206,10 @@ def _test_text_generation(
         command += [
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
+        ]
+    if parallel_strategy is not None:
+        command += [
+            f"--parallel_strategy={parallel_strategy}",
         ]
 
     with TemporaryDirectory() as tmp_dir:
@@ -292,6 +309,21 @@ def test_text_generation_torch_compile(model_name: str, baseline: float, token: 
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
+def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
+    world_size = 8
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        batch_size=64,
+        max_input_tokens=128,
+        world_size=world_size,
+        torch_compile=True,
+        parallel_strategy="tp",
+    )
 
 
 class TextGenPipeline(TestCase):
