@@ -70,10 +70,7 @@ class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
             )
         else:
             assert False, "This path has not been implemented/tested yet"
-            # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L428
-            # batch = {
-            #    "input_ids": _torch_collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
-            # }
+            # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L765
 
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
