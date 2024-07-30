@@ -248,7 +248,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     return model, assistant_model
 
 
-def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
+def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir):
     from typing import Any, MutableMapping
 
     from optimum.habana.distributed import serialization
@@ -279,7 +279,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
     lazy_sd: MutableMapping[str, Any] = {}
     logger.info("Loading Checkpoints")
     lazy_sd = serialization.load_state_dict(
-        args.model_name_or_path,
+        cache_dir,
         source=source,
         distributed_strategy=args.parallel_strategy,
         checkpoint_sharding=None,
@@ -566,7 +566,7 @@ def initialize_model(args, logger):
     setup_env(args)
     setup_device(args)
     set_seed(args.seed)
-    get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
+    cache_dir = get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
@@ -589,7 +589,7 @@ def initialize_model(args, logger):
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
         if not args.parallel_strategy == "tp"
-        else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger)
+        else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
