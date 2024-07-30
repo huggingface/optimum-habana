@@ -22,6 +22,7 @@ from diffusers.schedulers.scheduling_pndm import PNDMScheduler
 from PIL import Image
 
 from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -56,8 +57,8 @@ def main():
 
     parser.add_argument(
         "--scheduler",
-        default="pndm",
-        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        default="ddim",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim", "pndm"],
         type=str,
         help="Name of scheduler",
     )
@@ -208,6 +209,10 @@ def main():
         )
     elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "ddim":
+        scheduler = GaudiDDIMScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
     else:

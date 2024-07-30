@@ -555,7 +555,6 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
             self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                # for i, t in enumerate(timesteps):
                 for i in range(num_inference_steps):
                     # HPU Patch
                     t = timesteps[0]
