@@ -183,7 +183,6 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
         )
 
         self.to(self._device)
-        logger.info(self._device)
         torch.manual_seed(1)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
