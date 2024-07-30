@@ -637,14 +637,12 @@ class GaudiQwen2Model(Qwen2Model):
                 else:
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
-        if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-            cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
-            )
         if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
-        # cache_position = None
+            position_ids = torch.arange(
+                past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
+            )
+            position_ids = position_ids.unsqueeze(0)
+        cache_position = None
 
         # HPU specific mask generation
         attention_mask = _gaudi_prepare_4d_causal_attention_mask(

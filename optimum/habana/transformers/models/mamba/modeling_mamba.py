@@ -38,6 +38,7 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
     use_cache=None,
     cache_params: Optional[MambaCache] = None,
     cache_position: Optional[torch.LongTensor] = None,
+    attention_mask=None,
     **kwargs,
 ):
     token_idx = kwargs.get("token_idx", None)

@@ -944,7 +944,7 @@ class GaudiLlamaModel(LlamaModel):
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
-        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        position_embeddings = None  # self.rotary_emb(hidden_states, position_ids)
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -1020,7 +1020,7 @@ class GaudiLlamaModel(LlamaModel):
             all_hidden_states += (hidden_states,)
 
         next_cache = next_decoder_cache if use_cache else None
-        if not use_new_cache:
+        if not use_new_cache and isinstance(next_cache, Cache):
             next_cache = next_cache.to_legacy_cache()
 
         if not return_dict:

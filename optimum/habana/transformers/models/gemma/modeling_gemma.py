@@ -224,6 +224,7 @@ def gaudi_gemma_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
+    past_seen_tokens = 0
     return_legacy_cache = False  # noqa: F841
     if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
         return_legacy_cache = True  # noqa: F841

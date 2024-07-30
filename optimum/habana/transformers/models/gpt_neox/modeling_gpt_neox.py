@@ -3,7 +3,12 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
+from transformers.models.gpt_neox.modeling_gpt_neox import (
+    GPTNeoXForCausalLM,
+    GPTNeoXModel,
+    apply_rotary_pos_emb,
+    logger,
+)
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
@@ -80,7 +85,18 @@ def gaudi_gpt_neox_attention_forward(
 
     present = (key, value) if use_cache else None
 
-    return query, key, value, present
+    # Compute attention
+    attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+
+    # Reshape outputs
+    attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
+    attn_output = self.dense(attn_output)
+
+    outputs = (attn_output, present)
+    if output_attentions:
+        outputs += (attn_weights,)
+
+    return outputs
 
 
 def gaudi_gpt_neox_layer_forward(
@@ -274,6 +290,16 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
+    def __init__(self, config):
+        super(GPTNeoXForCausalLM, self).__init__(config)
+
+        config._attn_implementation = "eager"
+        self.gpt_neox = GPTNeoXModel(config)
+        self.embed_out = torch.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        # Initialize weights and apply final processing
+        self.post_init()
 
     def forward(
         self,

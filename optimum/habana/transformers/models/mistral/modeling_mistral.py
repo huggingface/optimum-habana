@@ -344,8 +344,8 @@ class GaudiMistralAttention(MistralAttention):
                 kv_seq_len = kv_shape
             else:
                 kv_seq_len += kv_shape
-        cos, sin = self.rotary_emb(value_states, position_ids)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -911,4 +911,4 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
             k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         )
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos, sin)
