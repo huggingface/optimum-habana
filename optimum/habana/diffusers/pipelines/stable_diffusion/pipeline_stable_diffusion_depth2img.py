@@ -581,6 +581,9 @@ class GaudiStableDiffusionDepth2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
+                    if not self.use_hpu_graphs:
+                        self.htcore.mark_step()
+
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
