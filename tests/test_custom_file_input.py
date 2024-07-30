@@ -4,8 +4,9 @@ import re
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from transformers.testing_utils import slow
+
 import pytest
+from transformers.testing_utils import slow
 
 
 PATH_TO_RESOURCES = Path(__file__).resolve().parent.parent / "tests/resource"
@@ -121,6 +122,7 @@ def _install_requirements():
     return_code = p.wait()
     assert return_code == 0
 
+
 def _test_custom_file_inputs(model_name: str, test_commands: list):
     _install_requirements()
     command = ["python3"]
@@ -176,6 +178,7 @@ def _test_custom_file_inputs(model_name: str, test_commands: list):
             assert results["train_samples_per_second"] > 0
         if "eval_samples_per_second" in results:
             assert results["eval_samples_per_second"] > 0
+
 
 @slow
 @pytest.mark.parametrize("model_name, test_commands", MODEL_FILE_OPTIONS_TO_TEST["bf16"])
