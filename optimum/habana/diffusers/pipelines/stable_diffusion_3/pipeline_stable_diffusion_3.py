@@ -13,15 +13,20 @@
 # limitations under the License.
 
 import inspect
+import time
+from dataclasses import dataclass
+from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import SD3Transformer2DModel
 from diffusers.pipelines.stable_diffusion_3 import StableDiffusion3Pipeline
-from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
+    BaseOutput,
     replace_example_docstring,
 )
 from transformers import (
@@ -34,10 +39,18 @@ from transformers import (
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class GaudiStableDiffusion3PipelineOutput(BaseOutput):
+    images: Union[List[PIL.Image.Image], np.ndarray]
+    throughput: float
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -231,6 +244,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         max_sequence_length: int = 256,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        **kwargs,
     ):
         r"""
         Adapted from: https://github.com/huggingface/diffusers/blob/v0.29.2/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py#L634
@@ -418,9 +432,33 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 latents,
             )
 
+            # 5-1. Define call parameters
+            if prompt is not None and isinstance(prompt, str):
+                num_prompts = 1
+            elif prompt is not None and isinstance(prompt, list):
+                num_prompts = len(prompt)
+            else:
+                num_prompts = prompt_embeds.shape[0]
+            num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
+            logger.info(
+                f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
+                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+            )
+            if num_batches < 3:
+                logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
+
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+
+            t0 = time.time()
+            t1 = t0
+
             # 6. Denoising loop
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
+                    # because compilation occurs in the first two iterations
+                    if i == throughput_warmup_steps:
+                        t1 = time.time()
+
                     if self.interrupt:
                         continue
 
@@ -469,8 +507,18 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
-                    htcore.mark_step()
+                    htcore.mark_step(sync=True)
 
+                t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
+                speed_metrics_prefix = "generation"
+                speed_measures = speed_metrics(
+                    split=speed_metrics_prefix,
+                    start_time=t0,
+                    num_samples=num_batches * batch_size,
+                    num_steps=num_batches * batch_size * num_inference_steps,
+                    start_time_after_warmup=t1,
+                )
+                logger.info(f"Speed metrics: {speed_measures}")
             if output_type == "latent":
                 image = latents
 
@@ -486,4 +534,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             if not return_dict:
                 return (image,)
 
-            return StableDiffusion3PipelineOutput(images=image)
+            return GaudiStableDiffusion3PipelineOutput(
+                images=image,
+                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
+            )

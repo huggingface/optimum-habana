@@ -76,7 +76,6 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionConfig,
     CLIPVisionModelWithProjection,
-    T5EncoderModel,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
@@ -1272,8 +1271,8 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         torch.manual_seed(0)
         text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_config)
 
-        #HF issue with T5EncoderModel from tiny-random-t5
-        #text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        # HF issue with T5EncoderModel from tiny-random-t5
+        # text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         text_encoder_3 = None
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -1367,7 +1366,6 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         assert max_diff > 1e-2
 
     def test_stable_diffusion_3_prompt_embeds(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         pipe = self.pipeline_class(
             use_habana=True,
             use_hpu_graphs=True,
