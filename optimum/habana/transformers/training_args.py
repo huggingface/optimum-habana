@@ -524,10 +524,6 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.dataloader_drop_last:
                 self.accelerator_config.even_batches = False
 
-        # Initialize device before we proceed
-        if self.framework == "pt" and is_torch_available():
-            self.device
-
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
             self.torch_compile = True
