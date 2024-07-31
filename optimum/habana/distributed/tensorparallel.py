@@ -22,6 +22,14 @@ import torch.distributed as dist
 from torch import nn
 
 
+# Workaround to overcome the accuracy/output correctnes issue in torch.compile all_reduce for batch sizes greater than 124.
+# This is a temporary fix and needs to be addressed properly in future updates.
+def disable_compiler(fn):
+    if hasattr(torch, "compiler") and hasattr(torch.nn.Module, "compile"):
+        return torch.compiler.disable(fn)
+    return fn
+
+
 def apply_colwise_tp(par_mod: nn.Linear, mod: nn.Linear, world_size, rank):
     # Divide the weight matrix along the last dimension.
     output_size_per_partition = mod.out_features // world_size
@@ -81,6 +89,7 @@ for overload in torch.ops._c10d_functional.all_reduce.overloads():
         del lowering.lowerings[other_fn]
 
 
+@disable_compiler
 def _all_reduce(input_: torch.Tensor) -> torch.Tensor:
     """All-reduce the input tensor across model parallel group."""
     world_size = dist.get_world_size()
