@@ -1,3 +1,20 @@
+# Copyright 2024 The Foundation Model Stack Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified from its original version.
+# The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
+
 from abc import abstractmethod
 from typing import List
 
@@ -89,3 +106,29 @@ class UniformModelParallelStrategy(DistributedStrategy):
             return module.to_empty(device=device)  # type: ignore[arg-type]
         wrapped = DeviceMover(module, device)
         return wrapped
+
+
+class TensorParallelStrategy(DistributedStrategy):
+    def __init__(self, group=None, from_meta=False):
+        super().__init__(from_meta)
+        assert torch.distributed.is_initialized(), "must initialize a process group"
+        self.group = group if group is not None else torch.distributed.GroupMember.WORLD
+
+    def distribute_module(self, module: nn.Module, final_layers: bool = False) -> nn.Module:
+        from optimum.habana.distributed import tp_wrapping
+
+        return tp_wrapping.apply_tp(module, self.group)
+
+    def distribute_layer(self, block: nn.Module, layer: int) -> nn.Module:
+        from optimum.habana.distributed import tp_wrapping
+
+        return tp_wrapping.apply_tp(block, layer, self.group)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["group"] = None  # Remove ProcessGroup from state
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.group = None  # Restore to default state or reinitialize

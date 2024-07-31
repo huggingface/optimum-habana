@@ -1,7 +1,24 @@
+# Copyright 2024 The Foundation Model Stack Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified from its original version.
+# The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
+
 from torch import nn
 from torch.distributed.distributed_c10d import ProcessGroup
 
-from optimum.habana.transformers.models.llama.modeling_llama import (
+from ..transformers.models.llama.modeling_llama import (
     GaudiLlamaAttention,
     GaudiLlamaMLP,
     TPGaudiLlamaAttention,
@@ -9,8 +26,6 @@ from optimum.habana.transformers.models.llama.modeling_llama import (
 )
 
 
-# this probably belongs somewhere else but can't go in fms.distribtued b/c
-# circular dependency.
 def _tp_wrapped(module: nn.Module, layer: int, group: ProcessGroup):
     if hasattr(module, "to_tp"):
         return module.to_tp(group)

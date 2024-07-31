@@ -1,3 +1,20 @@
+# Copyright 2024 The Foundation Model Stack Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified from its original version.
+# The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
+
 import collections
 import os
 from collections import ChainMap
@@ -7,7 +24,7 @@ from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Union
 
 import torch
 
-from optimum.habana.distributed.tp import TPModule
+from .tp import TPModule
 
 
 __adapters: MutableMapping[str, MutableMapping[str, Callable[[Mapping], Mapping]]] = {}
@@ -79,11 +96,6 @@ def get_adapted(architecture: str, source: Optional[str], state_dict: Mapping[st
     adapter = _get_adapter(architecture, source)
     adapted = adapter(state_dict)
     return adapted
-
-
-# `models` imports each model class, causing models and adapters to be registered.
-# down here to avoid circular dependencies.
-# from fms import models
 
 
 def _get_safetensors_item(key, file: Path, device: torch.device) -> torch.Tensor:

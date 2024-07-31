@@ -21,13 +21,12 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
-from optimum.habana import distributed
-from optimum.habana.distributed.strategy import DistributedStrategy, NoOpStrategy
-from optimum.habana.distributed.tensorparallel import (
+from .... import distributed
+from ....distributed.strategy import DistributedStrategy, NoOpStrategy
+from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
-from optimum.habana.distributed.tp import TPModule
-
+from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -726,6 +725,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -745,6 +745,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
             flash_attention_recompute,
             flash_attention_causal_mask,
             flash_attention_fast_softmax,
+            valid_sequence_lengths,
             cache_idx,
             **kwargs,
         )
@@ -928,16 +929,16 @@ class GaudiLlamaModel(LlamaModel):
         super(LlamaModel, self).__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
-
-        self.distributed_strategy = config.distributed_strategy
-        config.distributed_strategy = None
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         layers = []
         for layer_idx in range(config.num_hidden_layers):
             layer = GaudiLlamaDecoderLayer(config, layer_idx)
-            layer = self.distributed_strategy.distribute_layer(layer, layer_idx)
+            if config.parallel_strategy is not None:
+                layer = config.parallel_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
+        # parallel_strategy is not JSON serializable
+        config.parallel_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
@@ -1176,8 +1177,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def __init__(self, config, distributed_strategy: DistributedStrategy = NoOpStrategy):
-        config.distributed_strategy = distributed_strategy
+    def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
+        config.parallel_strategy = parallel_strategy
         super().__init__(config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
