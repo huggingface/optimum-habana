@@ -102,7 +102,7 @@ require_accelerate_version_min_0_30 = partial(require_accelerate, min_version="0
 GRAD_ACCUM_KWARGS_VERSION_AVAILABLE = is_accelerate_available("0.28")
 
 
-PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
+PATH_SAMPLE_TEXT = f"{get_tests_dir()}/resource/sample_text.txt"
 
 
 adapt_transformers_to_gaudi()

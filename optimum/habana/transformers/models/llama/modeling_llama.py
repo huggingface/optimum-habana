@@ -8,7 +8,6 @@ from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaDecoderLayer,
@@ -23,6 +22,7 @@ from transformers.models.llama.modeling_llama import (
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from .configuration_llama import LlamaConfig
 
 
 try:
@@ -364,7 +364,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-        if config.fused_qkv:
+        if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
             self.head_dim = config.hidden_size // self.num_heads
             self.dim1 = self.num_heads * self.head_dim
@@ -463,7 +463,7 @@ class GaudiLlamaAttention(LlamaAttention):
             value_states = torch.cat(value_states, dim=-1)
 
         else:
-            if self.config.fused_qkv:
+            if hasattr(self.config, "fused_qkv") and self.config.fused_qkv:
                 qkv_states = self.qkv_proj(hidden_states)
                 query_states, key_states, value_states = torch.split(
                     qkv_states, [self.dim1, self.dim2, self.dim2], dim=-1

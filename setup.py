@@ -49,6 +49,7 @@ TESTS_REQUIRE = [
     "pytest < 8.0.0",
     "torchsde",
     "timm",
+    "peft",
 ]
 
 QUALITY_REQUIRES = [

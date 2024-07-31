@@ -164,7 +164,7 @@ class GaudiCLIPAttention(CLIPAttention):
 
 class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
     def __init__(self, config: CLIPConfig):
-        super().__init__()
+        super(CLIPEncoderLayer, self).__init__()
         self.embed_dim = config.hidden_size
         self.self_attn = GaudiCLIPAttention(config)
         self.layer_norm1 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
