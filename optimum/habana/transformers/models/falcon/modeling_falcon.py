@@ -155,28 +155,6 @@ class ScaledDotProductAttention(nn.Module):
         attn_output = self.bmm2(attn_weight, value)
         return attn_output
 
-
-def update(prev, cur, dim, idx, inp_seq_len):
-    orig_cur = cur
-    cur = cur.to(dtype=prev.dtype)
-
-    if prev.shape == cur.shape:
-        prev.copy_(cur)
-        return orig_cur
-
-    if cur.shape[-2] > 1 and cur.shape[-2] <= prev.shape[-2]:
-        # Initialize
-        prev[:, :, :inp_seq_len, :].copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        prev.index_copy_(dim, idx - 1, cur)
-        prev_cast = prev.to(orig_cur.dtype)
-        return prev_cast
-    else:
-        return torch.cat((prev, cur), dim=dim)
-
-
 class GaudiFalconAttention(FalconAttention):
     """
     Inherits from FalconAttention: https://github.com/huggingface/transformers/blob/838b87abe231fd70be5132088d0dee72a7bb8d62/src/transformers/models/falcon/modeling_falcon.py#L267

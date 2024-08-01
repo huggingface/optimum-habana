@@ -53,7 +53,7 @@ class KVCache(torch.nn.Module):
             self.cache.fill_(0)
     
     @staticmethod
-    def update(self, prev, cur, dim, idx, inp_seq_len):
+    def update(prev, cur, dim, idx, inp_seq_len):
         orig_cur = cur
         if prev.shape == cur.shape:
             prev.copy_(cur)
