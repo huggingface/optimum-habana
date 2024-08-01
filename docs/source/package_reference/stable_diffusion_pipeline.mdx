@@ -75,3 +75,11 @@ It inherits from the `GaudiDiffusionPipeline` class that is the parent to any ki
 
 [[autodoc]] diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.GaudiStableDiffusionUpscalePipeline
     - __call__
+
+
+# GaudiDDPMPipeline
+
+The `GaudiDDPMPipeline` is to enable unconditional image generations on HPUs. It has similar APIs as the regular `DiffusionPipeline`.
+It shares a common parent class, `GaudiDiffusionPipeline`, with other existing Gaudi pipelines. It now supports both DDPM and DDIM scheduler. 
+It is recommended to use the optimized scheduler, `GaudiDDIMScheduler`, to obtain the best performance and image outputs.
+

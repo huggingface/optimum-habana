@@ -103,7 +103,11 @@ class ModelArguments:
     trust_remote_code: bool = field(
         default=False,
         metadata={
-            "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+            "help": (
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
+            )
         },
     )
     use_cache: bool = field(
@@ -235,6 +239,9 @@ class DataArguments:
     keep_in_memory: bool = field(
         default=False,
         metadata={"help": "Whether to keep in memory the loaded dataset. Defaults to False."},
+    )
+    keep_linebreaks: bool = field(
+        default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
     )
     dataset_seed: int = field(
         default=42,
@@ -502,15 +509,21 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
+            if not data_args.validation_split_percentage:
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -518,6 +531,7 @@ def main():
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
     else:
         data_files = {}
@@ -531,9 +545,11 @@ def main():
             if data_args.train_file is not None
             else data_args.validation_file.split(".")[-1]
         )
-        if extension == "txt":
+        if extension in ("txt", "text"):
             extension = "text"
             dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
+        if extension in ("json", "jsonl"):
+            extension = "json"
         raw_datasets = load_dataset(
             extension,
             data_files=data_files,
@@ -544,6 +560,10 @@ def main():
 
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
+            if not data_args.validation_split_percentage:
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 extension,
                 data_files=data_files,
@@ -560,20 +580,32 @@ def main():
                 token=model_args.token,
                 **dataset_args,
             )
-
+    single_column_dataset = False
+    # For named dataset (timdettmers/openassistant-guanaco) or custom dataset with a single column "text"
     if (
-        data_args.dataset_name == "timdettmers/openassistant-guanaco"
-    ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
+        training_args.do_train
+        and raw_datasets["train"].num_columns == 1
+        or training_args.do_eval
+        and raw_datasets["validation"].num_columns == 1
+    ):
+        single_column_dataset = True
         raw_datasets = raw_datasets.map(
             lambda x: {
                 "input": "",
                 "output": x["text"],
             }
         )
-        # Remove unused columns.
-        raw_datasets = raw_datasets.remove_columns(
-            [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
-        )
+        if training_args.do_train:
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+            )
+
+        if training_args.do_eval:
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["validation"] if col not in ["input", "output"]]
+            )
     else:
         # Preprocessing the datasets.
         for key in raw_datasets:
@@ -673,7 +705,7 @@ def main():
     def preprocess_function(examples):
         keys = list(examples.data.keys())
         if len(keys) != 2:
-            raise ValueError("Unsupported dataset format")
+            raise ValueError(f"Unsupported dataset format, number of keys {keys} !=2")
 
         st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
 
@@ -710,17 +742,18 @@ def main():
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
 
-        if data_args.dataset_name == "timdettmers/openassistant-guanaco":
+        if single_column_dataset:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
         else:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
                 tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
-        tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
+        if training_args.do_train:
+            tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
             tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
@@ -842,7 +875,7 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
 
-        # Evaluation
+    # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()

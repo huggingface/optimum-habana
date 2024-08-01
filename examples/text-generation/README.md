@@ -264,6 +264,37 @@ set the following environment variables before running the command: `PT_ENABLE_I
 
 You will also need to add `--torch_compile` in your command.
 
+### Running with tensor-parallel strategy
+
+> [!NOTE]
+> This strategy includes code from the [foundation-model-stack](https://github.com/foundation-model-stack/foundation-model-stack) repository, which is licensed under the Apache License 2.0. See the `LICENSE` file for more details.
+
+> [!WARNING]
+> torch.compile with tensor parallel strategy is an experimental feature. It has not been validated for all models.
+
+To enable torch.compile with tensor parallel strategy, please set the following environment variables before running the
+command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`. This will enable tensor parallel strategy without deepspeed.
+
+You will also need to add `--torch_compile` and `--parallel_strategy="tp"` in your command.
+
+Here is an example:
+```bash
+PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf  \
+--trim_logits \
+--use_kv_cache \
+--attn_softmax_bf16 \
+--bf16 \
+--bucket_internal  \
+--bucket_size=128  \
+--use_flash_attention \
+--flash_attention_recompute \
+--batch_size 246 \
+--max_input_tokens 2048 \
+--max_new_tokens 2048 \
+--torch_compile \
+--parallel_strategy="tp"
+```
 
 ### Running with FP8
 
