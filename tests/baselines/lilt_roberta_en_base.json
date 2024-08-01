@@ -1,0 +1,37 @@
+{
+    "gaudi2": {
+        "token_classification": {
+            "num_train_epochs": 100,
+            "eval_batch_size": 16,
+            "distribution": {
+                "single_card": {
+                    "train_batch_size": 16,
+                    "learning_rate": 5e-5,
+                    "train_runtime": 66.62,
+                    "train_samples_per_second": 223.65,
+                    "eval_overall_f1": 0.30,
+                    "extra_arguments": [
+                        "--use_hpu_graphs",
+                        "--bf16",
+                        "--non_blocking_data_copy",
+                        "--gradient_checkpointing"
+                    ]
+                },
+                "deepspeed": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 32,
+                    "train_runtime": 400,
+                    "train_samples_per_second": 664.385,
+                    "eval_overall_f1": 0.30,
+                    "extra_arguments": [
+                        "--max_steps 1000",
+                        "--use_hpu_graphs_for_inference",
+                        "--bf16",
+                        "--throughput_warmup_steps 3",
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
+                    ]
+                }
+            }
+        }
+    }
+}

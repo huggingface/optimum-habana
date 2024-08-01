@@ -48,6 +48,7 @@ from .utils import (
     MODELS_TO_TEST_FOR_SEQ2SEQ,
     MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION,
     MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
+    MODELS_TO_TEST_FOR_TOKEN_CLASSIFICATION,
     MODELS_TO_TEST_MAPPING,
 )
 
@@ -191,6 +192,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_MAPPING,
         ["protst"],
     ),
+    "run_token_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        MODELS_TO_TEST_FOR_TOKEN_CLASSIFICATION,
+    ),
 }
 
 
@@ -250,6 +256,9 @@ class ExampleTestMeta(type):
             return True
         elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
             # CodeLlama is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "lilt-roberta-en-base" in model_name and IS_GAUDI2 and deepspeed:
+            # lilt-roberta-en-base is tested only on Gaudi2 and on single-card, and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -499,6 +508,7 @@ class ExampleTesterBase(TestCase):
     DATASET_NAME = None
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
+        "eval_overall_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
@@ -861,6 +871,20 @@ class MultiCardCausalLanguageModelingPTuningExampleTester(
 ):
     TASK_NAME = "p-tuning"
     DATASET_NAME = "ought/raft"
+
+
+class TokenClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_token_classification"
+):
+    TASK_NAME = "token_classification"
+    DATASET_NAME = "nielsr/funsd-layoutlmv3"
+
+
+class DeepSpeedTokenClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_token_classification", deepspeed=True
+):
+    TASK_NAME = "token_classification"
+    DATASET_NAME = "nielsr/funsd-layoutlmv3"
 
 
 class MultiCardCausalLanguageModelingLlamaAdapterExampleTester(

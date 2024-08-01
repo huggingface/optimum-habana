@@ -60,6 +60,7 @@ MODELS_TO_TEST_MAPPING = {
     "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
     "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
+    "lilt": [("SCUT-DLVCLab/lilt-roberta-en-base", "Habana/roberta-base")],
     "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen")],
 }
 
@@ -98,3 +99,5 @@ MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2", "audio-spectrogram-transf
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2", "whisper"]
 
 MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]
+
+MODELS_TO_TEST_FOR_TOKEN_CLASSIFICATION = ["lilt"]
