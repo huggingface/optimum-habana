@@ -373,6 +373,11 @@ def setup_parser(parser):
             "`--kv_cache_on_host` is not supported with FP8 quantization. Set this flag to False."
         )
         args.kv_cache_on_host = False
+    if args.kv_cache_on_host and args.use_hpu_graphs:
+        logger.warning(
+            "`--kv_cache_on_host` is not supported with HPU graphs. Set this flag to False."
+        )
+        args.kv_cache_on_host = False
     return args
 
 

@@ -330,9 +330,6 @@ def gaudi_llama_repeat_kv(
     The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
     The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
-    query_states = query_states.to("hpu")
-    key_states = key_states.to("hpu")
-    value_states = value_states.to("hpu")
     batch, num_key_value_heads, kv_len, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
@@ -731,22 +728,6 @@ class GaudiLlamaAttention(LlamaAttention):
                         "None",
                     )
 
-        else:
-            if q_len == 1 and kv_cache_on_host:
-                # CPU SDPA fot next token
-                query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
-                    query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-                )
-                # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
-                # dispatch to flash attention implementation
-                attn_output = F.scaled_dot_product_attention(query_states,
-                                                            key_states,
-                                                            value_states,
-                                                            attn_mask=attention_mask,
-                                                            dropout_p=0.0,
-                                                            is_causal=False,
-                                                            scale=self.norm_factor)
-                attn_output = attn_output.to("hpu")
             else:
                 query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
                     query_states, key_states, value_states, attention_mask, self.num_key_value_groups
