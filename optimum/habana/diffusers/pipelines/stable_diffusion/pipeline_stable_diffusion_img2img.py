@@ -13,32 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-from dataclasses import dataclass
-from math import ceil
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
-import PIL
+import PIL.Image
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines import StableDiffusionImg2ImgPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker, StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils import deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
-from .pipeline_stable_diffusion import GaudiStableDiffusionPipeline
-from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)
+
 
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -52,28 +47,6 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-
-def preprocess(image):
-    deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
-    deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
-
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-
-        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
 
 def retrieve_timesteps(
     scheduler,
@@ -188,9 +161,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         )
         self.to(self._device)
 
-        torch.manual_seed = 0 # Debug
-
-
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -240,15 +210,14 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        # HPU Debug
-        generator = torch.Generator("cpu") # debug
-        generator.manual_seed(1) # debug
+        # Reuse first generator for noise
+        if isinstance(generator, list):
+            generator = generator[0]
 
         shape = init_latents.shape
         rand_device = "cpu" if device.type == "hpu" else device
-        #noise = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype)
-        noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype) # HPU Patch
-        noise = noise.to(device) # HPU Patch
+        noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype)  # HPU Patch
+        noise = noise.to(device)  # HPU Patch
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -257,7 +226,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         return latents
 
     @torch.no_grad()
-    #@replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -432,12 +400,8 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             # 5. set timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-            timesteps = timesteps.to("hpu") #HPU Patch
+            timesteps = timesteps.to(device)  # HPU Patch
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-
-            #timesteps = None  # HPU Patch
-            #timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)  # HPU Patch
-            #latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)  # HPU Patch
 
             # 6. Prepare latent variables
             latents = self.prepare_latents(
@@ -459,21 +423,21 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             # 7.2 Optionally get Guidance Scale Embedding
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
-                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
+                    batch_size * num_images_per_prompt
+                )
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
 
-        
             # 8. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                #for i, t in enumerate(timesteps):
-                for i in range(num_inference_steps): # HPU Patch
-                    t = timesteps[0] # HPU Patch
-                    timesteps = torch.roll(timesteps, shifts=-1, dims=0) # HPU Patch
-                    
+                for i in range(num_inference_steps):  # HPU Patch
+                    t = timesteps[0]  # HPU Patch
+                    timesteps = torch.roll(timesteps, shifts=-1, dims=0)  # HPU Patch
+
                     if self.interrupt:
                         continue
 
@@ -486,21 +450,10 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                         latent_model_input,
                         t,
                         encoder_hidden_states=prompt_embeds,
-                        #timestep_cond=timestep_cond,
+                        timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,
-                        # added_cond_kwargs=added_cond_kwargs,
-                        # return_dict=False,
+                        added_cond_kwargs=added_cond_kwargs,
                     )
-
-                    # noise_pred = self.unet(
-                    #     latent_model_input,
-                    #     t,
-                    #     encoder_hidden_states=prompt_embeds,
-                    #     timestep_cond=timestep_cond,
-                    #     cross_attention_kwargs=self.cross_attention_kwargs,
-                    #     added_cond_kwargs=added_cond_kwargs,
-                    #     return_dict=False,
-                    # )[0]
 
                     # perform guidance
                     if self.do_classifier_free_guidance:
@@ -508,7 +461,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0] # Problem
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                     # HPU Patch
                     if not self.use_hpu_graphs:
@@ -532,11 +485,11 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                             callback(step_idx, t, latents)
 
             if not output_type == "latent":
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                    0
-                ]
+                image = self.vae.decode(
+                    latents / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                )[0]
                 image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-                
+
             else:
                 image = latents
                 has_nsfw_concept = None
@@ -556,23 +509,56 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
 
             return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
-
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs):
+    def unet_hpu(
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        timestep_cond,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+    ):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
+            return self.capture_replay(
+                latent_model_input,
+                timestep,
+                encoder_hidden_states,
+                timestep_cond,
+                cross_attention_kwargs,
+                added_cond_kwargs,
+            )
         else:
             return self.unet(
                 latent_model_input,
                 timestep,
                 encoder_hidden_states=encoder_hidden_states,
+                timestep_cond=timestep_cond,
                 cross_attention_kwargs=cross_attention_kwargs,
+                added_cond_kwargs=added_cond_kwargs,
                 return_dict=False,
             )[0]
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
-        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
+    def capture_replay(
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        timestep_cond,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+    ):
+        inputs = [
+            latent_model_input,
+            timestep,
+            encoder_hidden_states,
+            timestep_cond,
+            cross_attention_kwargs,
+            added_cond_kwargs,
+            False,
+        ]
+
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
@@ -581,7 +567,15 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
-                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
+                outputs = self.unet(
+                    inputs[0],
+                    inputs[1],
+                    encoder_hidden_states=inputs[2],
+                    timestep_cond=inputs[3],
+                    cross_attention_kwargs=inputs[4],
+                    added_cond_kwargs=inputs[5],
+                    return_dict=inputs[6],
+                )[0]
                 graph.capture_end()
                 graph_inputs = inputs
                 graph_outputs = outputs
