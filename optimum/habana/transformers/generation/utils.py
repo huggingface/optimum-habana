@@ -1095,6 +1095,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 ), "please set bucket_internal along with reuse_cache and bucket_size"
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
+        if generation_config.kv_cache_on_host:
+            assert self.config.model_type in [
+                "llama",
+            ], "kv_cache_on_host only supported by llama at the moment"
 
         if self.config.model_type == "gemma2":
             generation_config.cache_implementation = None
@@ -1276,10 +1280,18 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[1] + generation_config.max_new_tokens + num_virtual_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
+                cache_device = "cpu" if generation_config.kv_cache_on_host else "hpu"
                 if not is_greedy_or_beam_and_bucket:
-                    unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens
+                    if self.config.model_type in ["llama"]:
+                        print("Allocate KV Cache on CPU...")
+                        unwrap_deepspeed_model(self).allocate_kv_cache(
+                        bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens,
+                        device=cache_device
                     )
+                    else:
+                        unwrap_deepspeed_model(self).allocate_kv_cache(
+                            bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens
+                        )
             if generation_config.use_cache:
                 model_kwargs["kv_cache_len"] = calculated_max_length
                 model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
