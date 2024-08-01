@@ -5,14 +5,6 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
 
-
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
-
-
 def gaudi_gpt_neox_attention_forward(
     self,
     hidden_states: torch.FloatTensor,
@@ -413,32 +405,3 @@ def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dty
     emb = torch.cat((freqs, freqs), dim=-1)
     self.cos_cached = emb.cos()
     self.sin_cached = emb.sin()
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
-    if q.device.type == "hpu" and FusedRoPE:
-        if training:
-            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        else:
-            if q.dtype == torch.bfloat16:
-                rope_q = FusedRoPE.apply(
-                    q,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            if k.dtype == torch.bfloat16:
-                rope_k = FusedRoPE.apply(
-                    k,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        return rope_q, rope_k
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

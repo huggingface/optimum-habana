@@ -55,7 +55,6 @@ from ..llama.modeling_llama import (
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-
     has_fused_rope = True
 except ImportError:
     has_fused_rope = False
@@ -295,7 +294,7 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -868,24 +867,3 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             }
         )
         return model_inputs
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when SynapseAI v1.15 is released
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

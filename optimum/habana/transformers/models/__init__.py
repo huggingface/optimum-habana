@@ -127,7 +127,8 @@ from .modeling_all_models import (
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
     Matmul,
-    KVCache
+    KVCache,
+    apply_customized_rope
 )
 from .mpt import (
     GaudiMptForCausalLM,

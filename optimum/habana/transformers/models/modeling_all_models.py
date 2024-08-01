@@ -21,6 +21,13 @@ import torch
 from transformers.modeling_utils import ModuleUtilsMixin, PretrainedConfig
 from transformers.utils.import_utils import is_torch_sdpa_available
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -44,7 +51,8 @@ class KVCache(torch.nn.Module):
                 self.inp_seq_len == inp_seq_len
             ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
             self.cache.fill_(0)
-
+    
+    @staticmethod
     def update(self, prev, cur, dim, idx, inp_seq_len):
         orig_cur = cur
         if prev.shape == cur.shape:
@@ -69,6 +77,33 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
+    if q.device.type == "hpu" and FusedRoPE:
+        if training:
+            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        else:
+            if q.dtype == torch.bfloat16:
+                rope_q = FusedRoPE.apply(
+                    q,
+                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                    position_ids,
+                )
+            else:
+                rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+            if k.dtype == torch.bfloat16:
+                rope_k = FusedRoPE.apply(
+                    k,
+                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                    position_ids,
+                )
+            else:
+                rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        return rope_q, rope_k
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
 def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> torch.Tensor:
     """

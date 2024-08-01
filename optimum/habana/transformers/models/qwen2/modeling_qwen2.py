@@ -41,13 +41,6 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
-
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
-
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
 except ImportError:
@@ -259,7 +252,7 @@ class GaudiQwen2Attention(Qwen2Attention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -882,24 +875,3 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             }
         )
         return model_inputs
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

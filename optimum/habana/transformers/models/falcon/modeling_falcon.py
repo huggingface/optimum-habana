@@ -20,13 +20,6 @@ try:
 except ImportError:
     SDPContext = False
 
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
-
-
 import habana_frameworks.torch.core as htcore
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -69,19 +62,6 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
     else:
         residual.add_(out)
         return residual
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
-
 
 def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
     hidden_states = F.linear(input, self.weight, bias=self.bias)
@@ -343,7 +323,7 @@ class GaudiFalconAttention(FalconAttention):
 
         if alibi is None:
             cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
-            query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids)
+            query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids, self.training)
 
         if use_cache:
             if self.training:

@@ -54,13 +54,6 @@ from ..llama.modeling_llama import (
 )
 from .configuration_mixtral import MixtralConfig
 
-
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
-
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
 except ImportError:
@@ -81,15 +74,6 @@ except ImportError:
     SDPContext = False
 
 logger = logging.get_logger(__name__)
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
 
 def gaudi_mixtral_rmsnorm_forward(self, hidden_states):
@@ -281,7 +265,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if use_cache:
             if reuse_cache:
