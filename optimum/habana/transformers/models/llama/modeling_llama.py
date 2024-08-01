@@ -1229,7 +1229,13 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                index = token_idx - 1
+                # handle case where input_ids does not match inputs_embeds
+                # this happens in decoder-only models when no input_ids are provided to generation
+                if inputs_embeds is not None:
+                    index += input_ids.shape[1]
+                    index -= inputs_embeds.shape[1]
+                input_ids = torch.index_select(input_ids, 1, index)
             else:
                 if isinstance(past_key_values, Cache):
                     past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
