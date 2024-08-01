@@ -138,7 +138,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
             for t, prev_t in zip(self.timesteps, prev_timesteps):
                 alpha_prod_t = self.alphas_cumprod[t]
                 alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
-                alpha_prod_t_prev = alpha_prod_t_prev.to(alpha_prod_t.device)  # HPU Patch - problem occur in Img 2 Img
 
                 self.alpha_prod_t_list.append(alpha_prod_t)
                 self.alpha_prod_t_prev_list.append(alpha_prod_t_prev)
@@ -324,6 +323,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # Make sure alphas_cumprod has same device and dtype as original_samples
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.final_alpha_cumprod = self.final_alpha_cumprod.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
