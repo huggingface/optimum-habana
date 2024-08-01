@@ -320,9 +320,6 @@ def gaudi_llama_repeat_kv(
     The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
     The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
-    query_states = query_states.to("hpu")
-    key_states = key_states.to("hpu")
-    value_states = value_states.to("hpu")
     batch, num_key_value_heads, kv_len, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
@@ -650,49 +647,53 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        bool kv_cache_on_host = (key_states.device() == "cpu" and value_states.device() == "cpu")
-        if use_flash_attention and FusedSDPA and not kv_cache_on_host:
-            import habana_frameworks.torch.hpu as ht
+        kv_cache_on_host = (key_states.device == "cpu" and value_states.device == "cpu")
+        # CPU SDPA fot next token
+        if kv_cache_on_host and q_len == 1 and not self.training:
+            query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
+            # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+            # dispatch to flash attention implementation
+            attn_output = F.scaled_dot_product_attention(query_states,
+                                                        key_states,
+                                                        value_states,
+                                                        attn_mask=attention_mask,
+                                                        dropout_p=0.0,
+                                                        is_causal=False,
+                                                        scale=self.norm_factor)
+            attn_output = attn_output.to("hpu")
 
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+        else:
+            if kv_cache_on_host:
+                key_states = key_states.to("hpu")
+                value_states = value_states.to("hpu")
+            if use_flash_attention and FusedSDPA:
+                import habana_frameworks.torch.hpu as ht
 
-            if q_len == 1:
-                # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None, "None"
-                    )
-            else:
-                # first token
-                if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same length
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
-                        )
-                else:
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+
+                if q_len == 1:
+                    # next token
+                    use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                    with ht.sdp_kernel(enable_recompute=use_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                         )
+                else:
+                    # first token
+                    if flash_attention_causal_mask:
+                        # causal masking on first token requires inputs to be of the same length
+                        with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                            attn_output = self.fused_scaled_dot_product_attention(
+                                query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
+                            )
+                    else:
+                        with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                            attn_output = self.fused_scaled_dot_product_attention(
+                                query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
+                            )
 
-        else:
-            if q_len == 1 and kv_cache_on_host:
-                # CPU SDPA fot next token
-                query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
-                    query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-                )
-                # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
-                # dispatch to flash attention implementation
-                attn_output = F.scaled_dot_product_attention(query_states,
-                                                            key_states,
-                                                            value_states,
-                                                            attn_mask=attention_mask,
-                                                            dropout_p=0.0,
-                                                            is_causal=False,
-                                                            scale=self.norm_factor)
-                attn_output = attn_output.to("hpu")
             else:
                 query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
                     query_states, key_states, value_states, attention_mask, self.num_key_value_groups
