@@ -105,7 +105,7 @@ def test_sft_train(model_name, expected):
             "True",
             "--pipelining_fwd_bwd",
             "True",
-        ]  ## TODO create ds_config.json
+        ]
     else:
         command += ["--max_steps", "100"]
     env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
