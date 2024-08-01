@@ -606,11 +606,11 @@ class GaudiMistralModel(MistralModel):
                 "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
                 "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
             )
+            past_key_values_length = past_key_values.get_seq_length() if past_key_values is not None else 0
 
         if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+                past_key_values_length, past_key_values_length + inputs_embeds.shape[1], device=inputs_embeds.device
             )
 
         if position_ids is None:

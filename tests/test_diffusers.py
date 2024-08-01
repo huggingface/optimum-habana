@@ -967,11 +967,9 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image_slice = image[-3:, -3:, -1]
 
         self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.5552, 0.5569, 0.4725, 0.4348, 0.4994, 0.4632, 0.5142, 0.5012, 0.47])
+        expected_slice = np.array([0.5388, 0.5451, 0.4694, 0.4582, 0.5252, 0.4832, 0.5288, 0.5034, 0.4766])
 
-        # The threshold should be 1e-2 below but it started failing
-        # from Diffusers v0.24. However, generated images still look similar.
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_xl_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -987,7 +985,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image_slice = image[-3:, -3:, -1]
 
         self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.4675, 0.5173, 0.4611, 0.4067, 0.5250, 0.4674, 0.5446, 0.5094, 0.4791])
+        expected_slice = np.array([0.4539, 0.5119, 0.4521, 0.4395, 0.5495, 0.49344, 0.5761, 0.5147, 0.4943])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_xl_turbo_euler_ancestral(self):
@@ -1006,7 +1004,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image_slice = image[-3:, -3:, -1]
 
         self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.4675, 0.5173, 0.4611, 0.4067, 0.5250, 0.4674, 0.5446, 0.5094, 0.4791])
+        expected_slice = np.array([0.4539, 0.5119, 0.4521, 0.4395, 0.5495, 0.49344, 0.5761, 0.5147, 0.4943])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     @parameterized.expand(["pil", "np", "latent"])
@@ -2213,7 +2211,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertEqual(image.shape, (2, 3, 32, 32))
 
-        expected_slice = np.array([0.5910, 0.5797, 0.5521, 0.6628, 0.6212, 0.6422, 0.5681, 0.5232, 0.5343])
+        expected_slice = np.array([0.6285, 0.5813, 0.5434, 0.6494, 0.6302, 0.6262, 0.5426, 0.5404, 0.5203])
 
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
@@ -4506,7 +4504,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
+        expected_slice = np.array([0.8279, 0.5673, 0.6088, 0.6156, 0.6923, 0.7347, 0.6547, 0.6108, 0.5198])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -4608,7 +4606,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.7045, 0.4838, 0.5454, 0.6270, 0.6168, 0.6717, 0.6484, 0.5681, 0.4922])
+        expected_slice = np.array([0.7540, 0.5231, 0.5833, 0.6217, 0.6339, 0.7067, 0.6507, 0.5672, 0.5030])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

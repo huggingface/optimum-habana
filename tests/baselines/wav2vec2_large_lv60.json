@@ -21,7 +21,8 @@
                         "--layerdrop 0.0",
                         "--freeze_feature_encoder",
                         "--dataloader_num_workers 8",
-                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'",
+                        "--trust_remote_code True"
                     ]
                 }
             }
@@ -51,7 +52,8 @@
                         "--dataloader_num_workers 8",
                         "--chars_to_ignore ',?.!-;:\"“%‘”'",
                         "--use_hpu_graphs_for_training",
-                        "--use_hpu_graphs_for_inference"
+                        "--use_hpu_graphs_for_inference",
+                        "--trust_remote_code True"
                     ]
                 }
             }
