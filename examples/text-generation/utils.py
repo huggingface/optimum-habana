@@ -183,7 +183,12 @@ def get_torch_compiled_model(model):
 
 def setup_quantization(model, args):
     if os.getenv("USE_INC", "1") != "0":
-        from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        try:
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
 
         config = FP8Config.from_json_file(args.quant_config)
         if config.measure:
@@ -200,7 +205,12 @@ def setup_quantization(model, args):
 
 def finalize_quantization(model):
     if os.getenv("USE_INC", "1") != "0":
-        from neural_compressor.torch.quantization import finalize_calibration
+        try:
+            from neural_compressor.torch.quantization import finalize_calibration
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
 
         finalize_calibration(model)
     else:
