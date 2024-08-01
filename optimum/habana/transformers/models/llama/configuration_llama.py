@@ -26,6 +26,7 @@ class LlamaConfig(LlamaConfig):
         attention_dropout=0.0,
         mlp_bias=False,
         fused_qkv=False,
+        parallel_strategy=None,
         **kwargs,
     ):
         super().__init__(
@@ -54,3 +55,4 @@ class LlamaConfig(LlamaConfig):
         )
 
         self.fused_qkv = fused_qkv
+        self.parallel_strategy = parallel_strategy

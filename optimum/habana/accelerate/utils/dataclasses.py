@@ -150,7 +150,7 @@ class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
             self.sync_module_states = True
 
         if self.sync_module_states:
-            device = torch.device("hpu")
+            device = torch.device("hpu", torch.hpu.current_device())
             self.param_init_fn = lambda x: x.to_empty(device=device, recurse=False)
 
 

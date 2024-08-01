@@ -693,6 +693,48 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
 ```
 Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`.
 
+#### Custom Files
+
+To run on your own training and validation files, use the following command:
+
+```bash
+python run_lora_clm.py \
+    --model_name_or_path bigcode/starcoder \
+    --train_file path_to_train_file \
+    --validation_file path_to_validation_file \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-lora-clm \
+    --bf16 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --dataset_concatenation \
+    --throughput_warmup_steps 3
+```
+
+The format of the jsonlines files (with extensions .json or .jsonl) is expected to be
+
+```json
+{"text": "<text>"}
+{"text": "<text>"}
+{"text": "<text>"}
+{"text": "<text>"}
+```
+
+The format of the text files (with extensions .text or .txt) is expected to be
+
+```json
+"<text>"
+"<text>"
+"<text>"
+"<text>"
+```
+
+> Note: When using both custom files i.e `--train_file` and `--validation_file`, all files are expected to be of the same type i.e json or text.
+
 ### Prompt/Prefix/P-tuning
 
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
