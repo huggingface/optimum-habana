@@ -26,6 +26,8 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -553,3 +555,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+
+    transformers.AutoConfig.register("deci", DeciLMConfig)
+    transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
