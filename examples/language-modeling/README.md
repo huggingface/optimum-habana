@@ -237,8 +237,8 @@ python ../gaudi_spawn.py \
 ```
 
 
-### Training in torch.compile mode 
-RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,  
+### Training in torch.compile mode
+RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,
 a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`.
 b) Run the above commands with `--model_name_or_path roberta-large`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
 
@@ -754,7 +754,7 @@ python3 ../text-generation/run_generation.py \
 ### Multitask Prompt/Poly seq2seq tuning
 
 To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
-Here is multi-device command example for google/flan-t5-base
+Here is a multi-device command example for [google/flan-t5-base](https://huggingface.co/google/flan-t5-base):
 ```bash
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
     --model_name_or_path google/flan-t5-base \
@@ -776,7 +776,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.p
 ```
 
 To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
-Here is multi-device command example for google/flan-t5-xl
+Here is a multi-device command example for [google/flan-t5-xl](https://huggingface.co/google/flan-t5-xl):
 ```bash
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
     --model_name_or_path google/flan-t5-xl \
