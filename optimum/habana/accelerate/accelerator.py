@@ -412,7 +412,7 @@ class GaudiAccelerator(Accelerator):
                         "param_init_fn": fsdp_plugin.param_init_fn,
                         "ignored_modules": fsdp_plugin.ignored_modules,
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        "device_id": torch.device("hpu"),
+                        "device_id": torch.device("hpu", torch.hpu.current_device()),
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:

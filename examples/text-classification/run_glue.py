@@ -213,9 +213,9 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
-                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
-                "execute code present on the Hub on your local machine."
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
             )
         },
     )
@@ -325,6 +325,7 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
     else:
         # Loading a dataset from your local files.
@@ -458,7 +459,7 @@ def main():
             label_to_id = {i: int(label_name_to_id[label_list[i]]) for i in range(num_labels)}
         else:
             logger.warning(
-                "Your model seems to have been trained with labels, but they don't match the dataset: ",
+                "Your model seems to have been trained with labels, but they don't match the dataset: "
                 f"model labels: {sorted(label_name_to_id.keys())}, dataset labels: {sorted(label_list)}."
                 "\nIgnoring the model labels as a result.",
             )

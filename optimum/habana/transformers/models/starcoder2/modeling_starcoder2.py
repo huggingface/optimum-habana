@@ -359,8 +359,9 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
         attn_output = attn_output.transpose(1, 2).contiguous()
 
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -519,6 +520,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
     def update_sincos_cache(self, seq_len):
         for layer in self.layers:
             layer.update_sincos_cache(seq_len)
+
 
     def forward(
         self,
@@ -710,6 +712,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,

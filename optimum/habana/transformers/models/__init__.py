@@ -45,6 +45,11 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .decilm import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
+)
+from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -83,7 +88,7 @@ from .gptj import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_model_forward,
+    GaudiGPTJModel,
 )
 from .llama import (
     GaudiLlamaAttention,
@@ -201,6 +206,7 @@ from .t5 import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
+from .table_transformer import gaudi_table_transformer_conv_encoder_forward
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
