@@ -70,9 +70,14 @@ def gaudi_mpt_attention_forward(
             else:
                 key_states = torch.cat([past_key_value[0], key_states], dim=2)
                 value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        past_key_value = [key_states, value_states]
+                past_key_value = [key_states, value_states]
     else:
-        past_key_value = [key_states, value_states]
+        past_key_value = [
+            torch.empty(key_states.shape, dtype=key_states.dtype, device=key_states.device),
+            torch.empty(key_states.shape, dtype=key_states.dtype, device=key_states.device),
+        ]
+        past_key_value[0][:] = key_states[:]
+        past_key_value[1][:] = value_states[:]
 
     attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
 

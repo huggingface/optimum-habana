@@ -228,7 +228,8 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
-    def update(self, prev, cur, dim, idx, inp_seq_len):
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
         return update(prev, cur, dim, idx, inp_seq_len)
 
 

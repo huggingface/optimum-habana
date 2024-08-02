@@ -41,6 +41,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
             ("google/gemma-7b", 1, False, 109.70751574382221),
             ("state-spaces/mamba-130m-hf", 1536, False, 8600),
+            ("Deci/DeciLM-7B", 1, False, 120),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -83,7 +84,7 @@ else:
             ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
+            ("EleutherAI/gpt-j-6b", 1, True, 156.2893125740893),
             ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
             ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
             ("bigcode/starcoder", 1, False, 15.945023767901013),
