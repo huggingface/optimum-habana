@@ -83,7 +83,7 @@ else:
             ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
+            ("EleutherAI/gpt-j-6b", 1, True, 156.2893125740893),
             ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
             ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
             ("bigcode/starcoder", 1, False, 15.945023767901013),
