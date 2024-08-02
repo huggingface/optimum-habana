@@ -27,6 +27,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 from ..test_modeling_common import floats_tensor, ids_tensor
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
+import copy
 
 
 if is_torch_available():
@@ -249,7 +250,9 @@ class GenerationTesterMixin:
         encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.repeat_interleave(
             num_interleave, dim=0
         )
-        input_ids = torch.zeros_like(input_ids[:, :1]) + model._get_decoder_start_token_id()
+        generation_config = copy.deepcopy(model.generation_config)
+        model._prepare_special_tokens(generation_config)
+        input_ids = torch.zeros_like(input_ids[:, :1]) + generation_config.decoder_start_token_id
         attention_mask = None
         return encoder_outputs, input_ids, attention_mask
 
@@ -294,7 +297,6 @@ class GenerationTesterMixin:
             **logits_process_kwargs,
             **model_kwargs,
         )
-
         if model.config.is_encoder_decoder:
             encoder_outputs, input_ids, attention_mask = self._get_encoder_outputs(
                 model,
@@ -308,8 +310,16 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
-            output_greedy = model.greedy_search(
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_greedy = model._sample(
                 input_ids,
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 output_attentions=output_attentions,
