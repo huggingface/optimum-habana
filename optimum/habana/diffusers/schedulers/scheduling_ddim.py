@@ -179,7 +179,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
     #     return sample
 
     def _get_variance(self, alpha_prod_t, alpha_prod_t_prev):
-        beta_prod_t = 1 - alpha_prod_t
+        beta_prod_t = 1 - alpha_prod_t + 1e-8  # For numerical stability
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
@@ -323,6 +323,9 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # Make sure alphas_cumprod has same device and dtype as original_samples
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.final_alpha_cumprod = self.final_alpha_cumprod.to(
+            device=original_samples.device, dtype=original_samples.dtype
+        )
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5

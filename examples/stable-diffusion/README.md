@@ -445,6 +445,21 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+### Depth to Image Generation
+
+Here is how to generate a depth2img-guided image generation using HPU graphs with BF16:
+
+```bash
+python depth_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-2-depth" \
+    --prompts "two tigers" \
+    --base_image "img.png" \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs
+    --bf16
+```
+
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
