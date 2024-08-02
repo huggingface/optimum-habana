@@ -94,6 +94,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "starcoder2",
     "persimmon",
     "qwen2",
+    "qwen2_moe",
     "llava",
     "llava_next",
     "stablelm",
@@ -858,7 +859,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "mixtral",
                 "phi",
                 "qwen2",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
+                "qwen2_moe",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2 and qwen2_moe at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1004,17 +1006,21 @@ class GaudiGenerationMixin(GenerationMixin):
             calculated_max_length = input_ids.shape[-1] + num_virtual_tokens
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens + num_virtual_tokens
+            pre_seq_len = 0
+            if hasattr(generation_config, "pre_seq_len") and generation_config.pre_seq_len > 0:
+                pre_seq_len = generation_config.pre_seq_len
+                calculated_max_length = calculated_max_length + pre_seq_len    
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
                 if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens
+                        bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens + pre_seq_len
                     )
             if generation_config.use_cache:
                 model_kwargs["kv_cache_len"] = calculated_max_length
                 model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
 
-            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2","qwen2_moe"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
