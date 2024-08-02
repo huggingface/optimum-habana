@@ -238,6 +238,7 @@ class ExampleTestMeta(type):
             or "reward_modeling" in example_name
             or "ppo" in example_name
             or "prompt_tuning" in example_name
+            or "peft_poly" in example_name
             or example_name == "run_sequence_classification"
         ) and not IS_GAUDI2:
             return False
