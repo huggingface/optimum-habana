@@ -1,6 +1,5 @@
 import copy
 import math
-import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -271,8 +270,33 @@ class ModuleFusedSDPA(torch.nn.Module):
         super().__init__()
         self._hpu_kernel_fsdpa = fusedSDPA
 
-    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode, recompute_mode, valid_sequence_lengths, padding_side="left"):
-        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode, recompute_mode, valid_sequence_lengths, padding_side)
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_casual,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_casual,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
 
 
 class Matmul(torch.nn.Module):
@@ -507,24 +531,52 @@ class GaudiLlamaAttention(LlamaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA:
-            import habana_frameworks.torch.hpu as ht
-
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode, False, None, "None"
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    0.0,
+                    False,
+                    None,
+                    softmax_mode,
+                    False,
+                    None,
+                    "None",
                 )
             else:
                 # first token
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, None, 0.0, True, None, softmax_mode, flash_attention_recompute, valid_sequence_lengths, "left"
+                        query_states,
+                        key_states,
+                        value_states,
+                        None,
+                        0.0,
+                        True,
+                        None,
+                        softmax_mode,
+                        flash_attention_recompute,
+                        valid_sequence_lengths,
+                        "left",
                     )
                 else:
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode,flash_attention_recompute, None, "None"
+                        query_states,
+                        key_states,
+                        value_states,
+                        attention_mask,
+                        0.0,
+                        False,
+                        None,
+                        softmax_mode,
+                        flash_attention_recompute,
+                        None,
+                        "None",
                     )
 
         else:
