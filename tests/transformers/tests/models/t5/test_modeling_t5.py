@@ -1422,6 +1422,9 @@ class T5ModelIntegrationTests(unittest.TestCase):
         self.assertEqual(translation, expected_translation)
 
     @slow
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_search_t5(self):
         article = (
             " New York (CNN)When Liana Barrientos was 23 years old, she got married in Westchester County, New York. A"
