@@ -970,8 +970,7 @@ class GenerationTesterMixin:
                 logits_process_kwargs=logits_process_kwargs,
                 logits_processor=logits_processor,
             )
-
-            self.assertListEqual(output_generate.tolist(), output_beam_search.tolist())
+            self.assertListEqual(output_generate.tolist(), output_beam_search.sequences.tolist())
 
             if model.config.is_encoder_decoder:
                 max_length = 4
@@ -987,7 +986,7 @@ class GenerationTesterMixin:
                 logits_process_kwargs=logits_process_kwargs,
                 logits_processor=logits_processor,
             )
-            self.assertListEqual(output_generate.tolist(), output_beam_search.tolist())
+            self.assertListEqual(output_generate.tolist(), output_beam_search.sequences.tolist())
 
     def test_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
