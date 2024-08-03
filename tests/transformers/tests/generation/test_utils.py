@@ -664,9 +664,17 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
-            output_group_beam_search = model.constrained_beam_search(
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_group_beam_search = model._constrained_beam_search(
                 input_ids.repeat_interleave(constrained_beam_scorer.num_beams, dim=0),
                 constrained_beam_scorer,
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 output_scores=output_scores,
@@ -736,9 +744,15 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
-            output_contrastive = model.contrastive_search(
+            output_contrastive = model._contrastive_search(
                 input_ids,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 stopping_criteria=stopping_criteria,
                 logits_processor=logits_processor,
                 output_attentions=output_attentions,
