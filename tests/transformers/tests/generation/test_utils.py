@@ -786,7 +786,7 @@ class GenerationTesterMixin:
             output_greedy, output_generate = self._greedy_generate(
                 model=model, input_ids=input_ids, attention_mask=attention_mask, max_length=max_length
             )
-            self.assertListEqual(output_greedy.tolist(), output_generate.sequences.tolist())
+            self.assertListEqual(output_greedy.sequences.tolist(), output_generate.tolist())
 
     def test_greedy_generate_dict_outputs(self):
         for model_class in self.all_generative_model_classes:
