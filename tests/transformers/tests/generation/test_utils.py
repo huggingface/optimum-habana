@@ -1472,6 +1472,9 @@ class GenerationTesterMixin:
             for output in (output_beam_search, output_generate):
                 self._check_outputs(output, input_ids, model.config, num_return_sequences=beam_scorer.num_beams)
 
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate(self):
         # check `generate()` and `contrastive_search()` are equal
         for model_class in self.all_generative_model_classes:
@@ -1494,6 +1497,9 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_contrastive.tolist(), output_generate.tolist())
 
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # won't fix: FSMT and Reformer have a different cache variable type (and format).
@@ -1526,6 +1532,9 @@ class GenerationTesterMixin:
             for output in (output_contrastive, output_generate):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
         for model_class in self.all_generative_model_classes:
