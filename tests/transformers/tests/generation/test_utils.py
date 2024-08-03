@@ -313,6 +313,10 @@ class GenerationTesterMixin:
             generation_config = copy.deepcopy(model.generation_config)
             model._prepare_special_tokens(generation_config)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            generation_config.return_dict_in_generate = True
+            generation_config.output_scores = True
+            generation_config.output_attentions = True
+            generation_config.output_hidden_states = True
             output_greedy = model._sample(
                 input_ids,
                 stopping_criteria=stopping_criteria,
@@ -325,7 +329,6 @@ class GenerationTesterMixin:
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 output_scores=output_scores,
-                return_dict_in_generate=return_dict_in_generate,
                 **kwargs,
                 **model_kwargs,
             )
@@ -390,8 +393,13 @@ class GenerationTesterMixin:
             self._update_default_model_kwargs(model_kwargs)
             generation_config = copy.deepcopy(model.generation_config)
             model._prepare_special_tokens(generation_config)
-            output_sample = model.sample(
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_sample = model._sample(
                 input_ids.repeat_interleave(num_return_sequences, dim=0),
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 logits_warper=logits_warper,
