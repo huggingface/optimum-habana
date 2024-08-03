@@ -466,6 +466,10 @@ class GenerationTesterMixin:
             generation_config = copy.deepcopy(model.generation_config)
             model._prepare_special_tokens(generation_config)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            generation_config.return_dict_in_generate = True
+            generation_config.output_scores = True
+            generation_config.output_attentions = True
+            generation_config.output_hidden_states = True
             output_beam_search = model._beam_search(
                 input_ids.repeat_interleave(beam_scorer.num_beams, dim=0),
                 beam_scorer,
