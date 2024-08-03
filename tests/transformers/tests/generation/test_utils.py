@@ -27,7 +27,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 from ..test_modeling_common import floats_tensor, ids_tensor
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
-
+import copy
 
 if is_torch_available():
     import torch
@@ -249,7 +249,9 @@ class GenerationTesterMixin:
         encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.repeat_interleave(
             num_interleave, dim=0
         )
-        input_ids = torch.zeros_like(input_ids[:, :1]) + model._get_decoder_start_token_id()
+        generation_config = copy.deepcopy(model.generation_config)
+        model._prepare_special_tokens(generation_config)
+        input_ids = torch.zeros_like(input_ids[:, :1]) + generation_config.decoder_start_token_id
         attention_mask = None
         return encoder_outputs, input_ids, attention_mask
 
@@ -308,8 +310,16 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
-            output_greedy = model.greedy_search(
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_greedy = model._sample(
                 input_ids,
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 output_attentions=output_attentions,
@@ -378,8 +388,15 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
-            output_sample = model.sample(
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_sample = model._sample(
                 input_ids.repeat_interleave(num_return_sequences, dim=0),
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 logits_warper=logits_warper,
@@ -443,9 +460,17 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
-            output_beam_search = model.beam_search(
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
+            stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            output_beam_search = model._beam_search(
                 input_ids.repeat_interleave(beam_scorer.num_beams, dim=0),
                 beam_scorer,
+                stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 max_length=max_length,
                 logits_processor=logits_processor,
                 output_scores=output_scores,
@@ -714,10 +739,16 @@ class GenerationTesterMixin:
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
             self._update_default_model_kwargs(model_kwargs)
+            generation_config = copy.deepcopy(model.generation_config)
+            model._prepare_special_tokens(generation_config)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
-            output_contrastive = model.contrastive_search(
+            output_contrastive = model._contrastive_search(
                 input_ids,
                 stopping_criteria=stopping_criteria,
+                synced_gpus=False,
+                logits_warper=None,
+                streamer=None,
+                generation_config=generation_config,
                 logits_processor=logits_processor,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
@@ -2585,7 +2616,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
         with torch.no_grad():
             with self.assertWarns(UserWarning):
-                bart_model.sample(
+                bart_model._sample(
                     input_ids,
                     max_length=max_length,
                     pad_token_id=bart_model.config.pad_token_id,
@@ -2705,7 +2736,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # Sample
         with self.assertWarns(UserWarning):
             with torch.no_grad():
-                bart_model.sample(
+                bart_model._sample(
                     input_ids,
                     max_length=max_length,
                     stopping_criteria=stopping_criteria,
