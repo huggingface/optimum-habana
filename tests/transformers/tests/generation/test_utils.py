@@ -679,6 +679,10 @@ class GenerationTesterMixin:
             generation_config = copy.deepcopy(model.generation_config)
             model._prepare_special_tokens(generation_config)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
+            generation_config.return_dict_in_generate = True
+            generation_config.output_scores = True
+            generation_config.output_attentions = True
+            generation_config.output_hidden_states = True
             output_group_beam_search = model._constrained_beam_search(
                 input_ids.repeat_interleave(constrained_beam_scorer.num_beams, dim=0),
                 constrained_beam_scorer,
@@ -1368,7 +1372,7 @@ class GenerationTesterMixin:
                 logits_processor=logits_processor,
                 logits_process_kwargs=logits_process_kwargs,
             )
-            self.assertListEqual(output_generate.tolist(), output_beam_search.tolist())
+            self.assertListEqual(output_generate.tolist(), output_beam_search.sequences.tolist())
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
 
@@ -1397,7 +1401,7 @@ class GenerationTesterMixin:
                 logits_processor=logits_processor,
                 logits_process_kwargs=logits_process_kwargs,
             )
-            self.assertListEqual(output_generate.tolist(), output_beam_search.tolist())
+            self.assertListEqual(output_generate.tolist(), output_beam_search.sequences.tolist())
 
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
