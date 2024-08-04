@@ -35,7 +35,6 @@ INSTALL_REQUIRES = [
     "accelerate < 0.28.0",
     "diffusers >= 0.29.2",
     "huggingface_hub >= 0.23.2",
-    "datasets < 2.20.0",
 ]
 
 TESTS_REQUIRE = [
