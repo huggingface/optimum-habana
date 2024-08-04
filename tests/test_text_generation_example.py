@@ -72,7 +72,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
         "load_checkpoint": [
-            ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
+            ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 76, False, 128, 2048, 1530),
         ],
     }
 else:
@@ -194,6 +194,13 @@ def _test_text_generation(
             "--limit_hpu_graphs",
         ]
     if load_cp:
+        command += [
+            f"--max_input_tokens {max_input_tokens}",
+            "--limit_hpu_graphs",
+        ]
+        if "Llama-2" in model_name:
+            command.insert(-2, "--bucket_size 128")
+            command.insert(-2, "--bucket_internal")
         command += ["--load_cp"]
 
     with TemporaryDirectory() as tmp_dir:
@@ -355,7 +362,6 @@ def test_text_generation_load_cp(
     output_len: int,
     token: str,
 ):
-    print("world_size {}".format(world_size), world_size)
     deepspeed = True if world_size > 1 else False
 
     _test_text_generation(
