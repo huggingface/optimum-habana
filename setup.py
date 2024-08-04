@@ -33,7 +33,7 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate < 0.28.0",
-    "diffusers >= 0.29.2",
+    "diffusers == 0.29.2",
     "huggingface_hub >= 0.23.2",
 ]
 
