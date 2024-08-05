@@ -28,7 +28,7 @@ import lm_eval.tasks
 import torch
 import torch.nn.functional as F
 from run_generation import setup_parser
-from utils import initialize_model
+from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -182,9 +182,8 @@ def main():
         json.dump(results, open(args.output_file, "w"), indent=2)
         print(json.dumps(results, indent=2))
     if args.quant_config:
-        import habana_quantization_toolkit
+        finalize_quantization(model)
 
-        habana_quantization_toolkit.finish_measurements(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 
