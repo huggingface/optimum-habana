@@ -16,11 +16,11 @@ import logging
 from dataclasses import dataclass, field
 from typing import Union
 
-from transformers import TrainingArguments as TransformersTrainingArguments
-from transformers.training_args import ParallelMode
 from sentence_transformers.training_args import BatchSamplers, MultiDatasetBatchSamplers
+from transformers.training_args import ParallelMode
 
 from ..transformers import GaudiTrainingArguments
+
 
 logger = logging.getLogger(__name__)
 

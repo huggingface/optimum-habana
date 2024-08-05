@@ -1,12 +1,11 @@
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List
+import math
+from typing import Any, Dict, List
 
 import torch
-import math
 
 
 def st_gaudi_data_collator_call(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
-    """ data collator for sentence transformer """
+    """data collator for sentence transformer"""
 
     columns = list(features[0].keys())
 
@@ -26,27 +25,27 @@ def st_gaudi_data_collator_call(self, features: List[Dict[str, Any]]) -> Dict[st
 
     # Extract the feature columns
     cnt = 0
-    power2_len=[0, 0]
+    power2_len = [0, 0]
     for column in columns:
-        tokenized = self.tokenize_fn([row[column] for row in features]) 
+        tokenized = self.tokenize_fn([row[column] for row in features])
         for key, value in tokenized.items():
             curr_tokenize_len = value.shape
             if curr_tokenize_len[1] > 4096:
-                power2_len[cnt%2] = math.ceil(curr_tokenize_len[1] / 128) * 128
+                power2_len[cnt % 2] = math.ceil(curr_tokenize_len[1] / 128) * 128
                 additional_pad_len = math.ceil(curr_tokenize_len[1] / 128) * 128 - curr_tokenize_len[1]
             else:
-                power2_len[cnt%2] = 2 ** math.ceil(math.log2(curr_tokenize_len[1]))
+                power2_len[cnt % 2] = 2 ** math.ceil(math.log2(curr_tokenize_len[1]))
                 additional_pad_len = 2 ** math.ceil(math.log2(curr_tokenize_len[1])) - curr_tokenize_len[1]
 
-            if(cnt%2==1) and (power2_len[0]==power2_len[1]):
+            if (cnt % 2 == 1) and (power2_len[0] == power2_len[1]):
                 additional_pad_len = additional_pad_len + 1
 
             batch[f"{column}_{key}"] = torch.cat(
-                    (
-                        value,
-                        torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
-                    ),
-                    -1,
-                )
-        cnt=cnt+1
+                (
+                    value,
+                    torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
+                ),
+                -1,
+            )
+        cnt = cnt + 1
     return batch

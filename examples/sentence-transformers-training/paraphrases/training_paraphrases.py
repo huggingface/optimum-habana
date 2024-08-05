@@ -5,7 +5,6 @@ As a result, it does not produce exactly the same behaviour as the original scri
 
 import logging
 import sys
-import traceback
 from datetime import datetime
 
 from datasets import load_dataset
@@ -13,25 +12,25 @@ from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.similarity_functions import SimilarityFunction
-from sentence_transformers.trainer import SentenceTransformerTrainer
 from sentence_transformers.training_args import (
     BatchSamplers,
     MultiDatasetBatchSamplers,
-    SentenceTransformerTrainingArguments,
 )
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments, SentenceTransformerGaudiTrainer
-from optimum.habana import SentenceTransformerGaudiTrainingArguments
-
+from optimum.habana import (
+    SentenceTransformerGaudiTrainer,
+    SentenceTransformerGaudiTrainingArguments,
+)
 from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_transformers_to_gaudi
-adapt_sentence_transformers_to_gaudi()
 
+
+adapt_sentence_transformers_to_gaudi()
 
 
 # Set the log level to INFO to get more information
 logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
-model_name = sys.argv[1] if len(sys.argv) > 1 else "distilroberta-base"  
+model_name = sys.argv[1] if len(sys.argv) > 1 else "distilroberta-base"
 num_epochs = 1
 batch_size = 128
 max_seq_length = 128
@@ -100,8 +99,8 @@ args = SentenceTransformerGaudiTrainingArguments(
     per_device_train_batch_size=batch_size,
     per_device_eval_batch_size=batch_size,
     warmup_ratio=0.1,
-    #fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-    #bf16=False,  # Set to True if you have a GPU that supports BF16
+    # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
+    # bf16=False,  # Set to True if you have a GPU that supports BF16
     batch_sampler=BatchSamplers.NO_DUPLICATES,  # MultipleNegativesRankingLoss benefits from no duplicate samples in a batch
     # We can use ROUND_ROBIN or PROPORTIONAL - to avoid focusing too much on one dataset, we will
     # use round robin, which samples the same amount of batches from each dataset, until one dataset is empty
@@ -114,13 +113,12 @@ args = SentenceTransformerGaudiTrainingArguments(
     save_total_limit=2,
     logging_steps=100,
     run_name="paraphrases-multi",  # Will be used in W&B if `wandb` is installed
-    use_habana = True,
-    gaudi_config_name = 'Habana/distilbert-base-uncased',
-    use_lazy_mode = True,
-    use_hpu_graphs = True,
-    use_hpu_graphs_for_inference = False,
-    use_hpu_graphs_for_training = True,
-
+    use_habana=True,
+    gaudi_config_name="Habana/distilbert-base-uncased",
+    use_lazy_mode=True,
+    use_hpu_graphs=True,
+    use_hpu_graphs_for_inference=False,
+    use_hpu_graphs_for_training=True,
 )
 
 # 6. Create the trainer & start training
@@ -147,4 +145,3 @@ test_evaluator(model)
 # 8. Save the trained & evaluated model locally
 final_output_dir = f"{output_dir}/final"
 model.save(final_output_dir)
-

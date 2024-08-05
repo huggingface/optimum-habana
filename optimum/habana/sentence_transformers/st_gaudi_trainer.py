@@ -31,28 +31,21 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-
 from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
+from datasets import Dataset, DatasetDict
 from huggingface_hub import upload_folder
 from packaging import version
-from torch.utils.data import DataLoader, IterableDataset, RandomSampler
-from transformers import Trainer as TransformerTrainer
-
-from torch import nn
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.evaluation import SentenceEvaluator, SequentialEvaluator
 from sentence_transformers.data_collator import SentenceTransformerDataCollator
 from sentence_transformers.evaluation import SentenceEvaluator, SequentialEvaluator
 from sentence_transformers.losses.CoSENTLoss import CoSENTLoss
 from sentence_transformers.model_card import ModelCardCallback
-from sentence_transformers.models.Transformer import Transformer
 from sentence_transformers.trainer import SentenceTransformerTrainer as Trainer
-from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
-
-from datasets import Dataset, DatasetDict
-
+from torch import nn
+from torch.utils.data import DataLoader, IterableDataset, RandomSampler
+from transformers import Trainer as TransformerTrainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
@@ -112,6 +105,9 @@ from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import GaudiDistributedType
+from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from ..transformers.integrations.deepspeed import deepspeed_init
+from ..transformers.trainer_utils import convert_into_dtypes, get_dtype
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -119,10 +115,7 @@ from ..utils import (
     speed_metrics,
     to_device_dtype,
 )
-from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from ..transformers.integrations.deepspeed import deepspeed_init
-from ..transformers.trainer_utils import convert_into_dtypes, get_dtype
-from ..transformers.training_args import GaudiTrainingArguments
+from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
 
 
 if is_datasets_available():
@@ -186,6 +179,7 @@ OPTIMIZER_NAME_BIN = "optimizer.bin"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
 
+
 class SentenceTransformerGaudiTrainer(Trainer):
     """
     SentenceTransformerGaudiTrainer is built on top of the SentenceTransformerTrainer (Trainer) to enable
@@ -216,7 +210,6 @@ class SentenceTransformerGaudiTrainer(Trainer):
         ] = None,
         evaluator: Optional[Union[SentenceEvaluator, List[SentenceEvaluator]]] = None,
     ):
-
         if model is None:
             if model_init is not None:
                 self.model_init = model_init
@@ -236,14 +229,15 @@ class SentenceTransformerGaudiTrainer(Trainer):
         ################################
         # Get a dictionary of the default training arguments, so we can determine which arguments have been changed
         # for the model card
-        default_args_dict = SentenceTransformerGaudiTrainingArguments(output_dir="unused",  
-            use_habana = True,
-            gaudi_config_name = 'Habana/distilbert-base-uncased',
-            use_lazy_mode = True,
-            use_hpu_graphs = True,
-            use_hpu_graphs_for_inference = False,
-            use_hpu_graphs_for_training = True,
-            ).to_dict()
+        default_args_dict = SentenceTransformerGaudiTrainingArguments(
+            output_dir="unused",
+            use_habana=True,
+            gaudi_config_name="Habana/distilbert-base-uncased",
+            use_lazy_mode=True,
+            use_hpu_graphs=True,
+            use_hpu_graphs_for_inference=False,
+            use_hpu_graphs_for_training=True,
+        ).to_dict()
 
         # If the model ID is set via the SentenceTransformerTrainingArguments, but not via the SentenceTransformerModelCardData,
         # then we can set it here for the model card regardless
@@ -261,7 +255,8 @@ class SentenceTransformerGaudiTrainer(Trainer):
         if isinstance(eval_dataset, dict) and not isinstance(eval_dataset, Dataset):
             eval_dataset = DatasetDict(eval_dataset)
 
-        TransformerTrainer.__init__(self,
+        TransformerTrainer.__init__(
+            self,
             model=None if self.model_init else model,
             args=args,
             data_collator=data_collator,
@@ -274,7 +269,7 @@ class SentenceTransformerGaudiTrainer(Trainer):
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
-        
+
         # Every Sentence Transformer model can always return a loss, so we set this to True
 
         # to avoid having to specify it in the data collator or model's forward
@@ -284,10 +279,8 @@ class SentenceTransformerGaudiTrainer(Trainer):
         self.args: SentenceTransformerGaudiTrainingArguments
         self.data_collator: SentenceTransformerDataCollator
         # Set the W&B project via environment variables if it's not already set
-        #if any([isinstance(callback, WandbCallback) for callback in self.callback_handler.callbacks]):
+        # if any([isinstance(callback, WandbCallback) for callback in self.callback_handler.callbacks]):
         #    os.environ.setdefault("WANDB_PROJECT", "sentence-transformers")
-        
-
 
         self.use_hpu_amp = False
         self.use_cpu_amp = False
@@ -359,7 +352,6 @@ class SentenceTransformerGaudiTrainer(Trainer):
         warnings.filterwarnings(
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
-        
 
         if loss is None:
             logger.info("No `loss` passed, using `losses.CoSENTLoss` as a default option.")
@@ -386,12 +378,10 @@ class SentenceTransformerGaudiTrainer(Trainer):
             evaluator = SequentialEvaluator(evaluator)
         self.evaluator = evaluator
 
-
         # Add a callback responsible for automatically tracking data required for the automatic model card generation
         model_card_callback = ModelCardCallback(self, default_args_dict)
         self.add_callback(model_card_callback)
         model_card_callback.on_init_end(self.args, self.state, self.control, self.model)
-
 
     def _move_model_to_device(self, model, device):
         model = model.to(device)
@@ -2029,7 +2019,7 @@ class SentenceTransformerGaudiTrainer(Trainer):
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-        
+
         super().evaluation_loop(
             dataloader=dataloader,
             description=description,

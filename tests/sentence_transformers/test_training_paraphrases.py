@@ -4,7 +4,6 @@ As a result, it does not produce exactly the same behaviour as the original scri
 """
 
 import logging
-import traceback
 from datetime import datetime
 
 from datasets import load_dataset
@@ -12,35 +11,38 @@ from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.similarity_functions import SimilarityFunction
-from sentence_transformers.trainer import SentenceTransformerTrainer
 from sentence_transformers.training_args import (
     BatchSamplers,
     MultiDatasetBatchSamplers,
-    SentenceTransformerTrainingArguments,
 )
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments, SentenceTransformerGaudiTrainer
-from optimum.habana import SentenceTransformerGaudiTrainingArguments
-
+from optimum.habana import (
+    SentenceTransformerGaudiTrainer,
+    SentenceTransformerGaudiTrainingArguments,
+)
 from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_transformers_to_gaudi
+
+
 adapt_sentence_transformers_to_gaudi()
 
+
 def test_training_paraphrase():
-
-
     # Set the log level to INFO to get more information
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
-    
-    model_name = "distilroberta-base"  
+
+    model_name = "distilroberta-base"
     num_epochs = 1
     batch_size = 512
     max_seq_length = 128
-    
+
     # Save path of the model
     output_dir = (
-        "output/training_paraphrases_" + model_name.replace("/", "-") + "-" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        "output/training_paraphrases_"
+        + model_name.replace("/", "-")
+        + "-"
+        + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
-    
+
     # 2. Load some training dataset from: https://huggingface.co/datasets?other=sentence-transformers
     # Notably, we are looking for datasets compatible with MultipleNegativesRankingLoss, which accepts
     # triplets of sentences (anchor, positive, negative) and pairs of sentences (anchor, positive).
@@ -57,7 +59,7 @@ def test_training_paraphrase():
     stack_exchange_train_dataset = load_dataset(
         "sentence-transformers/stackexchange-duplicates", "title-title-pair", split="train"
     )
-    
+
     train_dataset_dict = {
         "all-nli": all_nli_train_dataset,
         "sentence-compression": sentence_compression_train_dataset,
@@ -70,17 +72,17 @@ def test_training_paraphrase():
         "stack-exchange": stack_exchange_train_dataset,
     }
     print(train_dataset_dict)
-    
+
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
     model = SentenceTransformer(model_name)
     # If we want, we can limit the maximum sequence length for the model
     model.max_seq_length = max_seq_length
     logging.info(model)
-    
+
     # 3. Define our training loss
     train_loss = MultipleNegativesRankingLoss(model)
-    
+
     # 4. Define an evaluator for use during training. This is useful to keep track of alongside the evaluation loss.
     stsb_eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
     dev_evaluator = EmbeddingSimilarityEvaluator(
@@ -90,7 +92,7 @@ def test_training_paraphrase():
         main_similarity=SimilarityFunction.COSINE,
         name="sts-dev",
     )
-    
+
     # 5. Define the training arguments
     args = SentenceTransformerGaudiTrainingArguments(
         # Required parameter:
@@ -100,8 +102,8 @@ def test_training_paraphrase():
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         warmup_ratio=0.1,
-        #fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-        #bf16=False,  # Set to True if you have a GPU that supports BF16
+        # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
+        # bf16=False,  # Set to True if you have a GPU that supports BF16
         batch_sampler=BatchSamplers.NO_DUPLICATES,  # MultipleNegativesRankingLoss benefits from no duplicate samples in a batch
         # We can use ROUND_ROBIN or PROPORTIONAL - to avoid focusing too much on one dataset, we will
         # use round robin, which samples the same amount of batches from each dataset, until one dataset is empty
@@ -114,15 +116,14 @@ def test_training_paraphrase():
         save_total_limit=2,
         logging_steps=100,
         run_name="paraphrases-multi",  # Will be used in W&B if `wandb` is installed
-        use_habana = True,
-        gaudi_config_name = 'Habana/distilbert-base-uncased',
-        use_lazy_mode = True,
-        use_hpu_graphs = True,
-        use_hpu_graphs_for_inference = False,
-        use_hpu_graphs_for_training = True,
-    
+        use_habana=True,
+        gaudi_config_name="Habana/distilbert-base-uncased",
+        use_lazy_mode=True,
+        use_hpu_graphs=True,
+        use_hpu_graphs_for_inference=False,
+        use_hpu_graphs_for_training=True,
     )
-    
+
     # 6. Create the trainer & start training
     trainer = SentenceTransformerGaudiTrainer(
         model=model,
@@ -132,7 +133,7 @@ def test_training_paraphrase():
         evaluator=dev_evaluator,
     )
     trainer.train()
-    
+
     # 7. Evaluate the model performance on the STS Benchmark test dataset
     test_dataset = load_dataset("sentence-transformers/stsb", split="test")
     test_evaluator = EmbeddingSimilarityEvaluator(
@@ -143,8 +144,7 @@ def test_training_paraphrase():
         name="sts-test",
     )
     test_evaluator(model)
-    
-    # 8. Save the trained & evaluated model locally
-    #final_output_dir = f"{output_dir}/final"
-    #model.save(final_output_dir)
 
+    # 8. Save the trained & evaluated model locally
+    # final_output_dir = f"{output_dir}/final"
+    # model.save(final_output_dir)

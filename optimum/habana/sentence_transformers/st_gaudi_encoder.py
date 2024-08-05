@@ -1,46 +1,19 @@
 import copy
-import importlib
-import json
 import logging
 import math
-import os
-import queue
-import tempfile
-import traceback
-import warnings
-from collections import OrderedDict
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple, Union, overload
+from typing import List, Literal, Optional, Union
 
 import numpy as np
 import torch
-import torch.multiprocessing as mp
-import transformers
-from huggingface_hub import HfApi
 from numpy import ndarray
-from torch import Tensor, device, nn
-from tqdm.autonotebook import trange
-from transformers import is_torch_npu_available
-
-from sentence_transformers.model_card import SentenceTransformerModelCardData, generate_model_card
-from sentence_transformers.similarity_functions import SimilarityFunction
-
-from sentence_transformers import __MODEL_HUB_ORGANIZATION__, __version__
-from sentence_transformers.evaluation import SentenceEvaluator
-from sentence_transformers.fit_mixin import FitMixin
-from sentence_transformers.models import Normalize, Pooling, Transformer
 from sentence_transformers.quantization import quantize_embeddings
 from sentence_transformers.util import (
     batch_to_device,
-    get_device_name,
-    import_from_string,
-    is_sentence_transformer_model,
-    load_dir_path,
-    load_file_path,
-    save_to_hub_args_decorator,
     truncate_embeddings,
 )
+from torch import Tensor
+from tqdm.autonotebook import trange
+
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +87,7 @@ def st_gaudi_encode(
     """
     self.eval()
     if show_progress_bar is None:
-        show_progress_bar = (
-            logger.getEffectiveLevel() == logging.INFO or logger.getEffectiveLevel() == logging.DEBUG
-        )
+        show_progress_bar = logger.getEffectiveLevel() == logging.INFO or logger.getEffectiveLevel() == logging.DEBUG
 
     if convert_to_tensor:
         convert_to_numpy = False
@@ -165,11 +136,10 @@ def st_gaudi_encode(
     length_sorted_idx = np.argsort([-self._text_length(sen) for sen in sentences])
     sentences_sorted = [sentences[idx] for idx in length_sorted_idx]
 
-
     for start_index in trange(0, len(sentences), batch_size, desc="Batches", disable=not show_progress_bar):
         sentences_batch = sentences_sorted[start_index : start_index + batch_size]
         features = self.tokenize(sentences_batch)
-        
+
         if self.device.type == "hpu":
             if "input_ids" in features:
                 curr_tokenize_len = features["input_ids"].shape
@@ -259,4 +229,3 @@ def st_gaudi_encode(
         all_embeddings = all_embeddings[0]
 
     return all_embeddings
-    
