@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 import torch.distributed as dist
-from transformers.cache_utils import DynamicCache, EncoderDecoderCache, QuantizedCacheConfig
+from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache, QuantizedCacheConfig
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.candidate_generator import (
@@ -400,18 +400,15 @@ class GaudiGenerationMixin(GenerationMixin):
             if "token_idx_cpu" in model_kwargs:
                 model_kwargs["token_idx_cpu"] += 1
 
-        if (
-            model_kwargs.get("use_cache", True)
-            and "cache_position" in model_kwargs
-            and model_kwargs["cache_position"] is not None
-        ):
-            model_kwargs["cache_position"] = model_kwargs["cache_position"][-1:] + num_new_tokens
-        else:
-            past_positions = model_kwargs.pop("cache_position")
-            new_positions = torch.arange(
-                past_positions[-1] + 1, past_positions[-1] + num_new_tokens + 1, dtype=past_positions.dtype
-            ).to(past_positions.device)
-            model_kwargs["cache_position"] = torch.cat((past_positions, new_positions))
+        if "cache_position" in model_kwargs and model_kwargs["cache_position"] is not None:
+            if model_kwargs.get("use_cache", True):
+                model_kwargs["cache_position"] = model_kwargs["cache_position"][-1:] + num_new_tokens
+            else:
+                past_positions = model_kwargs.pop("cache_position")
+                new_positions = torch.arange(
+                    past_positions[-1] + 1, past_positions[-1] + num_new_tokens + 1, dtype=past_positions.dtype
+                ).to(past_positions.device)
+                model_kwargs["cache_position"] = torch.cat((past_positions, new_positions))
 
         return model_kwargs
 
@@ -1738,10 +1735,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # degeneration penalty
             if token_idx is not None and self.config.is_encoder_decoder:
                 processed_logit_for_next_step = logits_processor(input_ids[:, :token_idx], logit_for_next_step)
-                processed_logit_for_next_step = logits_warper(input_ids[:, :token_idx], processed_logit_for_next_step)
             else:
                 processed_logit_for_next_step = logits_processor(input_ids, logit_for_next_step)
-                processed_logit_for_next_step = logits_warper(input_ids, processed_logit_for_next_step)
 
             next_probs = torch.nn.functional.softmax(processed_logit_for_next_step, dim=-1)
 
@@ -2003,11 +1998,19 @@ class GaudiGenerationMixin(GenerationMixin):
             # stop when each sentence is finished
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=cur_len,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids,
+                    scores,
+                    token_idx=cur_len,
+                    ignore_eos=ignore_eos,
+                    eos_token_id=generation_config.eos_token_id,
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
