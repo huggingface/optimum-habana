@@ -76,8 +76,6 @@ from .clip_coco_utils import calculate_clip_score, download_files
 
 IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
 
-pytest.skip("skipping untill SW-193553 is fixed", allow_module_level=True)
-
 if IS_GAUDI2:
     THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
@@ -1967,33 +1965,43 @@ class DreamBooth(TestCase):
                 if train_text_encoder:
                     self.assertTrue(os.path.isfile(os.path.join(tmpdir, "text_encoder", "adapter_model.safetensors")))
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_full(self):
         self._test_dreambooth("full")
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_full_with_text_encoder(self):
         self._test_dreambooth("full", train_text_encoder=True)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lora(self):
         self._test_dreambooth("lora")
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lora_with_text_encoder(self):
         self._test_dreambooth("lora", train_text_encoder=True)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lokr(self):
         self._test_dreambooth("lokr")
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lokr_with_text_encoder(self):
         self._test_dreambooth("lokr", train_text_encoder=True)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_loha(self):
         self._test_dreambooth("loha")
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_loha_with_text_encoder(self):
         self._test_dreambooth("loha", train_text_encoder=True)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_oft(self):
         self._test_dreambooth("oft")
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_oft_with_text_encoder(self):
         self._test_dreambooth("oft", train_text_encoder=True)
 
@@ -2057,9 +2065,11 @@ class DreamBoothLoRASDXL(TestCase):
                 starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_unet)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lora_sdxl_with_text_encoder(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=True)
 
+    @pytest.mark.skip(reason="Skip untill SW-195250 is fixed")
     def test_dreambooth_lora_sdxl(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=False)
 
