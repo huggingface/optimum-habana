@@ -169,10 +169,10 @@ def gaudi_MT5Attention_forward(
             # if key and values are already calculated
             # we want only the last query position bias
             if past_key_value is not None:
-             if token_idx is None:
-                position_bias = position_bias[:, :, -hidden_states.size(1) :, :]
-             else:
-                position_bias = position_bias.index_select(-2, token_idx - 1)
+                if token_idx is None:
+                    position_bias = position_bias[:, :, -hidden_states.size(1) :, :]
+                else:
+                    position_bias = position_bias.index_select(-2, token_idx - 1)
 
             if mask is not None:
                 position_bias = position_bias + mask  # (batch_size, n_heads, seq_length, key_length)
