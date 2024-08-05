@@ -642,7 +642,11 @@ def gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation(
     encoder_outputs=None,
     token_idx=None,
     **kwargs,
-):
+    ):
+    """
+    The only differences are:
+    - add new args token_idx
+    """
     # cut decoder_input_ids if past_key_values is used
     if past_key_values is not None:
         if token_idx is not None:
