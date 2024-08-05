@@ -868,11 +868,14 @@ class GaudiGenerationMixin(GenerationMixin):
         is_greedy_or_beam_and_bucket = (
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
-            and (
-                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
-                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
-                or generation_config.get_generation_mode(assistant_model) == GenerationMode.CONTRASTIVE_SEARCH
-            )
+            and generation_config.get_generation_mode(assistant_model)
+            in [
+                GenerationMode.GREEDY_SEARCH,
+                GenerationMode.SAMPLE,
+                GenerationMode.BEAM_SEARCH,
+                GenerationMode.BEAM_SAMPLE,
+                GenerationMode.CONTRASTIVE_SEARCH,
+            ]
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
         model_kwargs["bucket_internal"] = generation_config.bucket_internal
@@ -1103,12 +1106,13 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.static_shapes, "bucket_size > 0 can be set only when static_shapes is set"
         # if generation_config.bucket_size <= 0, padding is handled by the generating fn (like greedy_search)
         if generation_config.static_shapes and generation_config.bucket_size > 0:
-            assert (
-                generation_mode == GenerationMode.GREEDY_SEARCH
-                or generation_mode == GenerationMode.SAMPLE
-                or generation_mode == GenerationMode.BEAM_SEARCH
-                or generation_mode == GenerationMode.CONTRASTIVE_SEARCH
-            ), "generation_config.bucket_size > 0 supported only for greedy mode"
+            assert generation_mode in [
+                GenerationMode.GREEDY_SEARCH,
+                GenerationMode.SAMPLE,
+                GenerationMode.BEAM_SEARCH,
+                GenerationMode.BEAM_SAMPLE,
+                GenerationMode.CONTRASTIVE_SEARCH,
+            ], "generation_config.bucket_size > 0 supported only for greedy mode"
 
         if streamer is not None and (generation_config.num_beams > 1):
             raise ValueError(
