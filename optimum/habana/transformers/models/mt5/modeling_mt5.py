@@ -263,8 +263,8 @@ def gaudi_MT5Block_forward(
     The only differences are:
     - add new args token_idx
     """
-        if past_key_value is not None:
-            if not self.is_decoder:
+    if past_key_value is not None:
+        if not self.is_decoder:
                 logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
 
