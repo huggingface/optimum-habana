@@ -1,3 +1,4 @@
+import copy
 import math
 import os
 import warnings
@@ -5,6 +6,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+from torch.distributed.distributed_c10d import ProcessGroup
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -20,6 +22,12 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
+from .... import distributed
+from ....distributed.strategy import DistributedStrategy, NoOpStrategy
+from ....distributed.tensorparallel import (
+    reduce_from_tensor_model_parallel_region,
+)
+from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -189,6 +197,40 @@ class GaudiLlamaMLP(LlamaMLP):
         return x
 
 
+class TPGaudiLlamaMLP(GaudiLlamaMLP, TPModule):
+    def __init__(
+        self,
+        config,
+        group: Optional[ProcessGroup] = None,
+    ):
+        assert torch.distributed.is_initialized()
+        rank, world_size = distributed.rank_and_world(group)
+        hidden_dim = int(config.hidden_grow_factor * config.hidden_size)
+        assert hidden_dim % world_size == 0, "Hidden dim must be divisible by world size"
+
+        self.config = copy.deepcopy(config)
+        self.config.intermediate_size = int((config.hidden_grow_factor / world_size) * config.hidden_size)
+        GaudiLlamaMLP.__init__(self, self.config)
+        self.setup_tp(rank, world_size)
+
+    def colwise_param_names(self) -> List[str]:
+        return ["up_proj", "gate_proj"]
+
+    def rowwise_param_names(self) -> List[str]:
+        return ["down_proj"]
+
+    @staticmethod
+    def import_module(glu: GaudiLlamaMLP, group: ProcessGroup) -> "TPGaudiLlamaMLP":
+        config = copy.deepcopy(glu.config)
+        config.hidden_grow_factor = glu.config.intermediate_size / glu.config.hidden_size
+        tp_glu = TPGaudiLlamaMLP(config=config, group=group)
+        return tp_glu
+
+    def pre_mlp_forward(self, x):
+        out_par = GaudiLlamaMLP.pre_mlp_forward(self, x)
+        return reduce_from_tensor_model_parallel_region(out_par)
+
+
 def gaudi_llama_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -257,7 +299,8 @@ class KVCache(torch.nn.Module):
             ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
             self.cache.fill_(0)
 
-    def update(self, prev, cur, dim, idx, inp_seq_len):
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
         orig_cur = cur
         if prev.shape == cur.shape:
             prev.copy_(cur)
@@ -290,6 +333,19 @@ class GaudiLlamaAttention(LlamaAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
+        if config.fused_qkv:
+            self.num_heads = config.num_attention_heads
+            self.head_dim = config.hidden_size // self.num_heads
+            self.dim1 = self.num_heads * self.head_dim
+            self.dim2 = config.num_key_value_heads * self.head_dim
+            self.qkv_proj = torch.nn.Linear(
+                self.hidden_size,
+                self.dim1 + 2 * self.dim2,
+                bias=config.attention_bias,
+            )
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -375,10 +431,15 @@ class GaudiLlamaAttention(LlamaAttention):
             value_states = torch.cat(value_states, dim=-1)
 
         else:
-            query_states = self.q_proj(hidden_states)
-            key_states = self.k_proj(hidden_states)
-            value_states = self.v_proj(hidden_states)
-
+            if self.config.fused_qkv:
+                qkv_states = self.qkv_proj(hidden_states)
+                query_states, key_states, value_states = torch.split(
+                    qkv_states, [self.dim1, self.dim2, self.dim2], dim=-1
+                )
+            else:
+                query_states = self.q_proj(hidden_states)
+                key_states = self.k_proj(hidden_states)
+                value_states = self.v_proj(hidden_states)
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
@@ -527,6 +588,105 @@ class GaudiLlamaAttention(LlamaAttention):
         return attn_output
 
 
+class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
+    def __init__(
+        self,
+        config: LlamaConfig,
+        layer_idx: Optional[int] = None,
+        group: Optional[ProcessGroup] = None,
+    ):
+        super().__init__(config, layer_idx)
+
+        assert torch.distributed.is_initialized()
+        rank, world_size = distributed.rank_and_world(group)
+        assert config.num_attention_heads % world_size == 0, "The number of heads must be divisible by world size"
+        self.config = copy.deepcopy(config)
+
+        self.pre_tp_kvheads = config.num_key_value_heads
+        GaudiLlamaAttention.__init__(self, self.config, layer_idx)
+        self.config.num_attention_heads = self.config.num_attention_heads // world_size
+        self.config.num_key_value_heads = (
+            (self.config.num_key_value_heads // world_size)
+            if self.config.num_key_value_heads > 1
+            else self.config.num_key_value_heads
+        )
+        self.head_dim = config.hidden_size // config.num_attention_heads
+        self.hidden_size = self.config.hidden_size // world_size
+        self.num_heads = self.config.num_attention_heads
+
+        self.q_proj = torch.nn.Linear(
+            config.hidden_size, self.config.num_attention_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.k_proj = torch.nn.Linear(
+            config.hidden_size, self.config.num_key_value_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.v_proj = torch.nn.Linear(
+            config.hidden_size, self.config.num_key_value_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.o_proj = torch.nn.Linear(
+            self.config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias
+        )
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.setup_tp(rank, world_size)
+
+    def colwise_param_names(self) -> List[str]:
+        colwise_weights = ["q_proj"]
+        if self.pre_tp_kvheads != 1:
+            colwise_weights.append("k_proj")
+            colwise_weights.append("v_proj")
+        return colwise_weights
+
+    def rowwise_param_names(self) -> List[str]:
+        return ["o_proj"]
+
+    @staticmethod
+    def import_module(mha: GaudiLlamaAttention, layer_idx, group: ProcessGroup) -> "TPGaudiLlamaAttention":
+        tp_mha = TPGaudiLlamaAttention(config=mha.config, layer_idx=layer_idx, group=group)
+        return tp_mha
+
+    def pre_attn_forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        cache_idx: int = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        hidden_states, attn_weights, present_key_value = GaudiLlamaAttention.pre_attn_forward(
+            self,
+            hidden_states,
+            attention_mask,
+            position_ids,
+            past_key_value,
+            output_attentions,
+            use_cache,
+            cache_position,
+            token_idx,
+            attn_softmax_bf16,
+            reuse_cache,
+            use_flash_attention,
+            flash_attention_recompute,
+            flash_attention_causal_mask,
+            flash_attention_fast_softmax,
+            cache_idx,
+            **kwargs,
+        )
+
+        hidden_states = reduce_from_tensor_model_parallel_region(hidden_states)
+        return hidden_states, attn_weights, present_key_value
+
+
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super(LlamaDecoderLayer, self).__init__()
@@ -638,20 +798,20 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
-            use_flash_attention,
-            flash_attention_recompute,
-            flash_attention_causal_mask,
-            flash_attention_fast_softmax,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             num_virtual_tokens=num_virtual_tokens,
         )
@@ -698,11 +858,17 @@ class GaudiLlamaModel(LlamaModel):
         super(LlamaModel, self).__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
-
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = torch.nn.ModuleList(
-            [GaudiLlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
-        )
+        layers = []
+        for layer_idx in range(config.num_hidden_layers):
+            layer = GaudiLlamaDecoderLayer(config, layer_idx)
+            if config.parallel_strategy is not None:
+                layer = config.parallel_strategy.distribute_layer(layer, layer_idx)
+            layers.append(layer)
+        self.layers = torch.nn.ModuleList(layers)
+        # parallel_strategy is not JSON serializable
+        config.parallel_strategy = None
+
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
@@ -772,6 +938,12 @@ class GaudiLlamaModel(LlamaModel):
             batch_size, seq_length = inputs_embeds.shape[:2]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
+        if hasattr(self.config, "use_fused_rope") and self.config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+        if hasattr(self.config, "use_fused_rms_norm") and self.config.use_fused_rms_norm is False:
+            global has_fused_rms_norm
+            has_fused_rms_norm = False
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -930,6 +1102,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args attn_softmax_bf16
     - add new args reuse_cache
     """
+
+    def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
+        config.parallel_strategy = parallel_strategy
+        super().__init__(config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)

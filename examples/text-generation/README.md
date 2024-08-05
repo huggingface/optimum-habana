@@ -142,7 +142,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
---batch_size 52 \
+--batch_size 180 \
 --attn_softmax_bf16 \
 --limit_hpu_graphs \
 --reuse_cache \
@@ -264,6 +264,37 @@ set the following environment variables before running the command: `PT_ENABLE_I
 
 You will also need to add `--torch_compile` in your command.
 
+### Running with tensor-parallel strategy
+
+> [!NOTE]
+> This strategy includes code from the [foundation-model-stack](https://github.com/foundation-model-stack/foundation-model-stack) repository, which is licensed under the Apache License 2.0. See the `LICENSE` file for more details.
+
+> [!WARNING]
+> torch.compile with tensor parallel strategy is an experimental feature. It has not been validated for all models.
+
+To enable torch.compile with tensor parallel strategy, please set the following environment variables before running the
+command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`. This will enable tensor parallel strategy without deepspeed.
+
+You will also need to add `--torch_compile` and `--parallel_strategy="tp"` in your command.
+
+Here is an example:
+```bash
+PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf  \
+--trim_logits \
+--use_kv_cache \
+--attn_softmax_bf16 \
+--bf16 \
+--bucket_internal  \
+--bucket_size=128  \
+--use_flash_attention \
+--flash_attention_recompute \
+--batch_size 246 \
+--max_input_tokens 2048 \
+--max_new_tokens 2048 \
+--torch_compile \
+--parallel_strategy="tp"
+```
 
 ### Running with FP8
 
@@ -443,7 +474,9 @@ More information on usage of the unifier script can be found in fp8 Habana docs:
 Some models can fit on HPU DRAM but can't fit on the CPU RAM.
 When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
-Here is an example of using disk_offload in quantize command. Please make sure to run the measurement first.
+Here is an example of using disk_offload in quantize command.
+Please follow the "Running FP8 models on single device" section first before running the cmd below.
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json TQDM_DISABLE=1 \
 python run_generation.py \

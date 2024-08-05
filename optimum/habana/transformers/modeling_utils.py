@@ -26,9 +26,16 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
     GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -45,6 +52,7 @@ from .models import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
+    GaudiGPTJModel,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
@@ -97,6 +105,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_BertModel_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
@@ -115,6 +124,7 @@ from .models import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
+    gaudi_DetrConvModel_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
@@ -130,9 +140,10 @@ from .models import (
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
-    gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -181,10 +192,10 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_table_transformer_conv_encoder_forward,
     gaudi_unconstrained_rational_quadratic_spline,
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
-    gaudi_VitsResidualCouplingLayer_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
@@ -294,6 +305,9 @@ def adapt_transformers_to_gaudi():
         gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
     )
 
+    # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
+
     # Optimization for codegen generation on Gaudi
     transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
     transformers.models.codegen.modeling_codegen.CodeGenForCausalLM = GaudiCodeGenForCausalLM
@@ -336,7 +350,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock = GaudiGPTJBlock
-    transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+    transformers.models.gptj.modeling_gptj.GPTJModel = GaudiGPTJModel
 
     # Optimization for GPTBigCode on Gaudi
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = (
@@ -377,6 +391,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
+    transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
+    transformers.models.clip.modeling_clip.CLIPEncoderLayer = GaudiCLIPEncoderLayer
+    transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
+    transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
+    transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
@@ -407,6 +426,12 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.mt5.modeling_mt5.MT5Attention.forward = gaudi_MT5Attention_forward
     transformers.models.mt5.modeling_mt5.MT5Block.forward = gaudi_MT5Block_forward
+
+    # Optimization for table transformer on Gaudi
+    transformers.models.table_transformer.modeling_table_transformer.TableTransformerConvEncoder.forward = (
+        gaudi_table_transformer_conv_encoder_forward
+    )
+
 
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
@@ -508,7 +533,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.vits.modeling_vits._unconstrained_rational_quadratic_spline = (
         gaudi_unconstrained_rational_quadratic_spline
     )
-    transformers.models.vits.modeling_vits.VitsResidualCouplingLayer.forward = gaudi_VitsResidualCouplingLayer_forward
 
     # Optimization for starcoder2 on Gaudi
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM
@@ -537,5 +561,19 @@ def adapt_transformers_to_gaudi():
         gaudi_owlvitclasspredictionhead_forward
     )
 
+    # Optimization for DETR model on Gaudi
+    transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
+
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
+
+    # Optimization for mamba on Gaudi
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_MambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
+        gaudi_MambaForCausalLM_update_model_kwargs_for_generation
+    )
+
+    transformers.AutoConfig.register("deci", DeciLMConfig)
+    transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)

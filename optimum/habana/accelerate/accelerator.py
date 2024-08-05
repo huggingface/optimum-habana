@@ -37,7 +37,6 @@ from accelerate.utils import (
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
-    FP8RecipeKwargs,
     GradientAccumulationPlugin,
     GradScalerKwargs,
     InitProcessGroupKwargs,
@@ -73,12 +72,11 @@ from .state import GaudiAcceleratorState, GaudiPartialState
 from .utils import (
     GaudiDistributedType,
     GaudiDynamoBackend,
+    GaudiFP8RecipeKwargs,
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
-    te_forward_convert,
-    te_setup_fp8_recipe_handler,
-    te_wrap_fp8,
-    te_wrap_fp8_forward_convert,
+    convert_model,
+    get_fp8_recipe,
 )
 
 
@@ -113,7 +111,6 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
-        fp8_recipe_format: str = None,
     ):
         self.trackers = []
         if project_config is not None:
@@ -181,7 +178,6 @@ class GaudiAccelerator(Accelerator):
         self.scaler_handler = None
         self.init_handler = None
         self.fp8_recipe_handler = None
-        self.fp8_recipe_format = None
         self.autocast_handler = None
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
@@ -203,9 +199,9 @@ class GaudiAccelerator(Accelerator):
                         raise ValueError("You can only pass one `InitProcessGroupKwargs` in `kwargs_handler`.")
                     else:
                         self.init_handler = handler
-                elif isinstance(handler, FP8RecipeKwargs):
+                elif isinstance(handler, GaudiFP8RecipeKwargs):
                     if self.fp8_recipe_handler is not None:
-                        raise ValueError("You can only pass one `FP8RecipeKwargs` in `kwargs_handler`.")
+                        raise ValueError("You can only pass one `GaudiFP8RecipeKwargs` in `kwargs_handler`.")
                     else:
                         self.fp8_recipe_handler = handler
                 elif isinstance(handler, AutocastKwargs):
@@ -225,8 +221,14 @@ class GaudiAccelerator(Accelerator):
             _from_accelerator=True,
             **kwargs,
         )
-        if self.fp8_recipe_handler is None and self.state.is_fp8_enabled:
-            self.fp8_recipe_handler = te_setup_fp8_recipe_handler(self.fp8_recipe_format)
+
+        if self.state.is_fp8_enabled:
+            if self.fp8_recipe_handler is None:
+                self.fp8_recipe_handler = GaudiFP8RecipeKwargs()
+            # Handling FP8 recipe creation in init since both `prepare_model` and `_prepare_deepspeed` require it.
+            # (Base accelerator handles this in `prepare_model` function)
+            self.fp8_recipe_handler = get_fp8_recipe(self.fp8_recipe_handler)
+
         trackers = filter_trackers(log_with, self.logging_dir)
         if len(trackers) < 1 and log_with is not None:
             warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")
@@ -349,31 +351,8 @@ class GaudiAccelerator(Accelerator):
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
-        elif self.state.is_fp8_enabled:
-            model = te_wrap_fp8_forward_convert(model, self.fp8_recipe_handler)
-        # FP8 is not supported on Gaudi2 yet
-        # elif self.mixed_precision == "fp8":
-        #     if not has_transformer_engine_layers(model):
-        #         with torch.no_grad():
-        #             convert_model(model)
-        #         model._converted_to_transformer_engine = True
-        #     model._original_forward = model.forward
-
-        #     kwargs = self.fp8_recipe_handler.to_kwargs() if self.fp8_recipe_handler is not None else {}
-        #     if "fp8_format" in kwargs:
-        #         kwargs["fp8_format"] = getattr(te_recipe.Format, kwargs["fp8_format"])
-        #     fp8_recipe = te_recipe.DelayedScaling(**kwargs)
-        #     cuda_device_capacity = torch.cuda.get_device_capability()
-        #     fp8_enabled = cuda_device_capacity[0] >= 9 or (
-        #         cuda_device_capacity[0] == 8 and cuda_device_capacity[1] >= 9
-        #     )
-        #     if not fp8_enabled:
-        #         logger.warn(
-        #             f"The current device has compute capability of {cuda_device_capacity} which is "
-        #             "insufficient for FP8 mixed precision training (requires a GPU Hopper/Ada Lovelace "
-        #             "or higher, compute capability of 8.9 or higher). Will use FP16 instead."
-        #         )
-        #     model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
+        if self.state.is_fp8_enabled:
+            model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -433,7 +412,7 @@ class GaudiAccelerator(Accelerator):
                         "param_init_fn": fsdp_plugin.param_init_fn,
                         "ignored_modules": fsdp_plugin.ignored_modules,
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        "device_id": torch.device("hpu"),
+                        "device_id": torch.device("hpu", torch.hpu.current_device()),
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
@@ -469,7 +448,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else te_wrap_fp8(obj)
+            else convert_model(obj)
             if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
             else obj
             for obj in args
@@ -685,8 +664,6 @@ class GaudiAccelerator(Accelerator):
                     result[i] = scheduler
             # pointing for deepspeed_engine_wrapped.backward()
             self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
-            if self.state.is_fp8_enabled:
-                model = te_forward_convert(engine, self.fp8_recipe_handler)
             self._models.append(engine)
             if optimizer is not None:
                 self._optimizers.append(optimizer)

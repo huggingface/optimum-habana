@@ -1,0 +1,18 @@
+{{- if .Values.storage.deployDataAccessPod}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-dataaccess
+spec:
+  containers:
+  - name: busybox
+    image: busybox:latest
+    command: ['sleep', 'infinity']
+    volumeMounts:
+    - name: pvc-volume
+      mountPath: {{ .Values.storage.pvcMountPath }}
+  volumes:
+  - name: pvc-volume
+    persistentVolumeClaim:
+      claimName: {{ .Release.Name }}-pvc
+{{- end }}

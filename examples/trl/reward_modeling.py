@@ -43,13 +43,13 @@ class ScriptArguments:
     gradient_accumulation_steps: Optional[int] = field(default=1)
     learning_rate: Optional[float] = field(default=2e-5)
     weight_decay: Optional[float] = field(default=0.001)
-    model_name: Optional[str] = field(
+    model_name_or_path: Optional[str] = field(
         default="meta-llama/Llama-2-7b-hf",
         metadata={
             "help": "The model that you want to train from the Hugging Face hub. E.g. gpt2, gpt2-xl, bert, etc."
         },
     )
-    tokenizer_name: Optional[str] = field(
+    tokenizer_name_or_path: Optional[str] = field(
         default="meta-llama/Llama-2-7b-hf",
         metadata={
             "help": "The tokenizer for your model, if left empty will use the default for your model",
@@ -156,10 +156,12 @@ training_args = GaudiTrainingArguments(
 )
 
 # Load the value-head model and tokenizer.
-tokenizer_name = script_args.tokenizer_name if script_args.tokenizer_name is not None else script_args.model_name
+tokenizer_name = (
+    script_args.tokenizer_name_or_path
+    if script_args.tokenizer_name_or_path is not None
+    else script_args.model_name_or_path
+)
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, token=script_args.token)
-tokenizer.pad_token = tokenizer.eos_token
-
 peft_config = LoraConfig(
     task_type=TaskType.SEQ_CLS,
     inference_mode=False,
@@ -171,16 +173,17 @@ peft_config = LoraConfig(
 )
 torch.autograd.set_detect_anomaly(True)
 model = AutoModelForSequenceClassification.from_pretrained(
-    script_args.model_name, num_labels=1, torch_dtype=torch.bfloat16
+    script_args.model_name_or_path, num_labels=1, torch_dtype=torch.bfloat16
 )
 
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
-
 # Need to do this for gpt2, because it doesn't have an official pad token.
 tokenizer.pad_token = tokenizer.eos_token
+tokenizer.padding_side = "right"
 model.config.pad_token_id = tokenizer.eos_token_id
 model.config.use_cache = not script_args.gradient_checkpointing
+model.config.use_fused_rope = False
 num_proc = 24  # Can adjust to be higher if you have more processors.
 original_columns = train_dataset.column_names
 
@@ -267,7 +270,10 @@ if script_args.eval_first_step:
 
     trainer.add_callback(EvaluateFirstStepCallback())
 
-trainer.train(script_args.resume_from_checkpoint)
+train_result = trainer.train(script_args.resume_from_checkpoint)
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)
 
 print("Saving last checkpoint of the model")
 trainer.save_model(script_args.output_dir)

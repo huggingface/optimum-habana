@@ -97,6 +97,48 @@
                     ]
                 }
             }
+        },
+        "multitask-prompt-tuning": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 33,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 64,
+                    "eval_f1": 0.88,
+                    "train_runtime": 8,
+                    "train_samples_per_second": 18500,
+                    "extra_arguments": [
+                        "--use_hpu_graphs_for_inference",
+                        "--use_hpu_graphs_for_training",
+                        "--max_source_length 256",
+                        "--max_target_length 16",
+                        "--bf16"
+                    ]
+                }
+            }
+        },
+        "poly-tuning": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 8,
+                    "eval_accuracy": 0.38,
+                    "train_runtime": 16,
+                    "train_samples_per_second": 1268,
+                    "extra_arguments": [
+                        "--use_hpu_graphs_for_inference",
+                        "--use_hpu_graphs_for_training",
+                        "--max_source_length 256",
+                        "--max_target_length 2",
+                        "--max_train_samples 1000",
+                        "--max_eval_samples 100",
+                        "--bf16"
+                    ]
+                }
+            }
         }
     }
 }

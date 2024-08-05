@@ -27,7 +27,8 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 
 If you would like to use the pipeline with LangChain classes, you can install LangChain as follows:
 ```bash
-pip install langchain==0.1.16
+pip install langchain==0.2.5
+pip install langchain-huggingface
 ```
 
 ## Usage
@@ -72,6 +73,7 @@ python run_pipeline.py \
 --use_kv_cache \
 --max_new_tokens 100 \
 --do_sample \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -95,6 +97,7 @@ python run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -108,6 +111,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
@@ -122,6 +126,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
@@ -135,9 +140,10 @@ python run_pipeline_langchain.py \
     --use_hpu_graphs \
     --use_kv_cache \
     --batch_size 32 \
+    --max_input_tokens 200 \
     --max_new_tokens 1024 \
     --do_sample \
     --device=hpu
 ```
 
-> The pipeline class has been validated for LangChain version 0.1.16 and may not work with other versions of the package.
+> The pipeline class has been validated for LangChain version 0.2.5 and may not work with other versions of the package.

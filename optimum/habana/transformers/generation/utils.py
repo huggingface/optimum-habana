@@ -98,6 +98,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "llava",
     "llava_next",
     "stablelm",
+    "mamba",
+    "deci",
 ]
 
 
@@ -164,7 +166,7 @@ class GaudiGenerationMixin(GenerationMixin):
         dtype: str = bool,
     ) -> torch.Tensor:
         x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor([0]), 1)  # First the position with pad_token_id
+        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
 
     def _prepare_decoder_input_ids_for_generation(
         self,
@@ -858,7 +860,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "mixtral",
                 "phi",
                 "qwen2",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
+                "gptj",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2 and gptj at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1014,7 +1017,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["kv_cache_len"] = calculated_max_length
                 model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
 
-            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2", "gptj"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
@@ -1830,6 +1833,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
@@ -1864,16 +1870,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
-
-            if (
-                not model_kwargs.get("pad_done", False)
-                and not model_kwargs.get("reuse_cache", False)
-                and bucket_internal
-            ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
-                # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
-                model_kwargs["pad_done"] = True
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -1882,6 +1878,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2249,6 +2256,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
@@ -2283,17 +2293,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
-
-            if (
-                not model_kwargs.get("pad_done", False)
-                and not model_kwargs.get("reuse_cache", False)
-                and bucket_internal
-            ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
-                # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
-                model_kwargs["pad_done"] = True
-
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -2302,6 +2301,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2804,12 +2814,19 @@ class GaudiGenerationMixin(GenerationMixin):
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices = next_indices.flatten()
+                next_indices_flattened = next_indices.flatten()
+                static_beam_indices = (
+                    next_indices_flattened
+                    + torch.tensor(
+                        [[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)],
+                        device=next_indices.device,
+                    ).flatten()
+                )
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
                 beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
-                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                beam_trace_indices.index_copy_(0, beam_trace_idx, next_indices_flattened.unsqueeze(0))
                 beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
                 beam_trace_idx.add_(1)
 
