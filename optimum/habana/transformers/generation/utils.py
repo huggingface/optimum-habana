@@ -195,23 +195,25 @@ class GaudiGenerationMixin(GenerationMixin):
         decoder_start_token_id = self._get_decoder_start_token_id(decoder_start_token_id, bos_token_id)
         if device is None:
             device = self.device
-        if token_idx is None:
-            if isinstance(decoder_start_token_id, list):
-                if len(decoder_start_token_id) != batch_size:
-                    raise ValueError(
-                        f"`decoder_start_token_id` expcted to have length {batch_size} but got {len(decoder_start_token_id)}"
-                    )
-                decoder_input_ids_start = torch.tensor(decoder_start_token_id, dtype=torch.long, device=device)
-                decoder_input_ids_start = decoder_input_ids_start.view(-1, 1)
-            else:
-                decoder_input_ids_start = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+
+        if isinstance(decoder_start_token_id, list):
+            if len(decoder_start_token_id) != batch_size:
+                raise ValueError(
+                    f"`decoder_start_token_id` expected to have length {batch_size} but got {len(decoder_start_token_id)}"
                 )
+            decoder_input_ids_start = torch.tensor(decoder_start_token_id, dtype=torch.long, device=device)
+            decoder_input_ids_start = decoder_input_ids_start.view(-1, 1)
         else:
-            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
-            max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_input_ids_start = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
+        if token_idx is not None:
+            # creating padded decoder_input_ids to achieve static shapes.
+            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
+            decoder_input_ids_start = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_input_ids_start
             )
             decoder_input_ids_start = torch.nn.functional.pad(
                 decoder_input_ids_start, (0, max_length - 1), value=pad_token_id
@@ -959,6 +961,10 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids_length=input_ids_length,
             has_token_idx="token_idx" in model_kwargs,
         )
+        if model_input_name == "inputs_embeds" and "token_idx" in model_kwargs:
+            # Need to make sure that generation_config.max_length is correct in this code path
+            # otherwise it will crash withs self._validate_generated_length() below
+            assert input_ids.numel() > 0, "optimum-habana does not support inputs_embeds yet"
 
         if generation_config.cache_implementation in NEED_SETUP_CACHE_CLASSES_MAPPING:
             if generation_config.cache_implementation == "static":
@@ -2727,6 +2733,9 @@ class GaudiGenerationMixin(GenerationMixin):
                         f"for `low_memory beam_search`. Please open an issue on GitHub if you need this feature."
                     )
 
+                # the function _split_model_inputs cannot split 'token_idx'
+                # note that we always read `token_idx` from `model_kwargs`
+                model_inputs.pop("token_idx", None)
                 inputs_per_sub_batches = _split_model_inputs(
                     model_inputs, split_size=batch_size, full_batch_size=batch_beam_size
                 )
@@ -2957,6 +2966,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         if return_dict_in_generate:
+            if self.generation_config.static_shapes and "sequence_scores" not in sequence_outputs:
+                # for static_shapes we only have "sequences" in sequence_outputs
+                raise ValueError("optimum-habana does not support return_dict_in_generate with static_shapes")
+
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
 
