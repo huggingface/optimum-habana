@@ -259,6 +259,10 @@ def gaudi_MT5Block_forward(
         return_dict=True,
         token_idx=None,
     ):
+    """
+    The only differences are:
+    - add new args token_idx
+    """
         if past_key_value is not None:
             if not self.is_decoder:
                 logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
