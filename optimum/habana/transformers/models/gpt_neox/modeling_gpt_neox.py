@@ -3,7 +3,14 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
+from transformers.models.gpt_neox.modeling_gpt_neox import (
+    GPTNeoXForCausalLM,
+    GPTNeoXModel,
+    apply_rotary_pos_emb,
+    logger,
+)
+
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 try:
@@ -22,7 +29,6 @@ def gaudi_gpt_neox_attention_forward(
     layer_past: Optional[Tuple[torch.Tensor]] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    padding_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -195,24 +201,17 @@ def gaudi_gpt_neox_model_forward(
         position_ids = torch.arange(past_length, seq_length + past_length, dtype=torch.long, device=device)
         position_ids = position_ids.unsqueeze(0)
 
-    # Attention mask.
-    if attention_mask is not None:
-        assert batch_size > 0, "batch_size has to be defined and > 0"
-        attention_mask = attention_mask.view(batch_size, -1)
-        # We create a 3D attention mask from a 2D tensor mask.
-        # Sizes are [batch_size, 1, 1, to_seq_length]
-        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
-        # this attention mask is more simple than the triangular masking of causal attention
-        # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
-        attention_mask = attention_mask[:, None, None, :]
+    if inputs_embeds is None:
+        inputs_embeds = self.embed_in(input_ids)
 
-        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-        # masked positions, this operation will create a tensor which is 0.0 for
-        # positions we want to attend and the dtype's smallest value for masked positions.
-        # Since we are adding it to the raw scores before the softmax, this is
-        # effectively the same as removing these entirely.
-        attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
+    # Attention mask.
+    attention_mask = attention_mask.view(batch_size, -1) if attention_mask is not None else None
+    attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+        attention_mask=attention_mask,
+        input_shape=(batch_size, seq_length),
+        inputs_embeds=inputs_embeds,
+        past_key_values_length=past_length,
+    )
 
     # Prepare head mask if needed
     # 1.0 in head_mask indicate we keep the head
@@ -220,9 +219,6 @@ def gaudi_gpt_neox_model_forward(
     # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
     # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
     head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-
-    if inputs_embeds is None:
-        inputs_embeds = self.embed_in(input_ids)
 
     hidden_states = self.emb_dropout(inputs_embeds)
 
@@ -294,6 +290,16 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
+    def __init__(self, config):
+        super(GPTNeoXForCausalLM, self).__init__(config)
+
+        config._attn_implementation = "eager"
+        self.gpt_neox = GPTNeoXModel(config)
+        self.embed_out = torch.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        # Initialize weights and apply final processing
+        self.post_init()
 
     def forward(
         self,
@@ -397,6 +403,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                 "attention_mask": attention_mask,
                 "past_key_values": past_key_values,
                 "position_ids": position_ids,
+                "use_cache": kwargs.get("use_cache"),
                 "token_idx": token_idx,
             }
         )

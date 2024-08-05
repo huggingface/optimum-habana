@@ -362,34 +362,45 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.disable_tqdm is None:
             self.disable_tqdm = logger.getEffectiveLevel() > logging.WARN
 
-        if isinstance(self.evaluation_strategy, EvaluationStrategy):
+        if self.evaluation_strategy is not None:
             warnings.warn(
-                (
-                    "using `EvaluationStrategy` for `evaluation_strategy` is deprecated and will be removed in version"
-                    " 5 of 🤗 Transformers. Use `IntervalStrategy` instead"
-                ),
+                "`evaluation_strategy` is deprecated and will be removed in version 4.46 of 🤗 Transformers. Use `eval_strategy` instead",
+                FutureWarning,
+            )
+            self.eval_strategy = self.evaluation_strategy
+
+        if isinstance(self.eval_strategy, EvaluationStrategy):
+            warnings.warn(
+                "using `EvaluationStrategy` for `eval_strategy` is deprecated and will be removed in version 5"
+                " of 🤗 Transformers. Use `IntervalStrategy` instead",
                 FutureWarning,
             )
             # Go back to the underlying string or we won't be able to instantiate `IntervalStrategy` on it.
-            self.evaluation_strategy = self.evaluation_strategy.value
+            self.eval_strategy = self.eval_strategy.value
 
-        self.evaluation_strategy = IntervalStrategy(self.evaluation_strategy)
+        self.eval_strategy = IntervalStrategy(self.eval_strategy)
         self.logging_strategy = IntervalStrategy(self.logging_strategy)
         self.save_strategy = IntervalStrategy(self.save_strategy)
         self.hub_strategy = HubStrategy(self.hub_strategy)
 
         self.lr_scheduler_type = SchedulerType(self.lr_scheduler_type)
-        if self.do_eval is False and self.evaluation_strategy != IntervalStrategy.NO:
+        if self.do_eval is False and self.eval_strategy != IntervalStrategy.NO:
             self.do_eval = True
 
+        if self.torch_empty_cache_steps is not None:
+            if not (isinstance(self.torch_empty_cache_steps, int) or self.torch_empty_cache_steps > 0):
+                raise ValueError(
+                    f"`torch_empty_cache_steps` must be an integer bigger than 0, got {self.torch_empty_cache_steps}."
+                )
+
         # eval_steps has to be defined and non-zero, fallbacks to logging_steps if the latter is non-zero
-        if self.evaluation_strategy == IntervalStrategy.STEPS and (self.eval_steps is None or self.eval_steps == 0):
+        if self.eval_strategy == IntervalStrategy.STEPS and (self.eval_steps is None or self.eval_steps == 0):
             if self.logging_steps > 0:
                 logger.info(f"using `logging_steps` to initialize `eval_steps` to {self.logging_steps}")
                 self.eval_steps = self.logging_steps
             else:
                 raise ValueError(
-                    f"evaluation strategy {self.evaluation_strategy} requires either non-zero --eval_steps or"
+                    f"evaluation strategy {self.eval_strategy} requires either non-zero --eval_steps or"
                     " --logging_steps"
                 )
 
@@ -401,7 +412,7 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.logging_steps != int(self.logging_steps):
                 raise ValueError(f"--logging_steps must be an integer if bigger than 1: {self.logging_steps}")
             self.logging_steps = int(self.logging_steps)
-        if self.evaluation_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
+        if self.eval_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
             if self.eval_steps != int(self.eval_steps):
                 raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
             self.eval_steps = int(self.eval_steps)
@@ -412,12 +423,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
         if self.load_best_model_at_end:
-            if self.evaluation_strategy != self.save_strategy:
+            if self.eval_strategy != self.save_strategy:
                 raise ValueError(
                     "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
-                    f"strategy: {self.evaluation_strategy}\n- Save strategy: {self.save_strategy}"
+                    f"strategy: {self.eval_strategy}\n- Save strategy: {self.save_strategy}"
                 )
-            if self.evaluation_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
+            if self.eval_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
                 if self.eval_steps < 1 or self.save_steps < 1:
                     if not (self.eval_steps < 1 and self.save_steps < 1):
                         raise ValueError(
@@ -453,12 +464,12 @@ class GaudiTrainingArguments(TrainingArguments):
         ) and self.metric_for_best_model is None:
             self.metric_for_best_model = "loss"
         if self.greater_is_better is None and self.metric_for_best_model is not None:
-            self.greater_is_better = self.metric_for_best_model not in ["loss", "eval_loss"]
+            self.greater_is_better = not (self.metric_for_best_model.endswith("loss"))
         if self.run_name is None:
             self.run_name = self.output_dir
 
         if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
-            if self.evaluation_strategy == IntervalStrategy.NO:
+            if self.eval_strategy == IntervalStrategy.NO:
                 raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires an eval strategy")
             if not is_torch_available():
                 raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
@@ -476,6 +487,42 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
+
+        # We need to setup the accelerator config here *before* the first call to `self.device`
+        if is_accelerate_available():
+            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
+                if self.accelerator_config is None:
+                    self.accelerator_config = AcceleratorConfig()
+                elif isinstance(self.accelerator_config, dict):
+                    self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
+                # Check that a user didn't pass in the class instantiator
+                # such as `accelerator_config = AcceleratorConfig`
+                elif isinstance(self.accelerator_config, type):
+                    raise NotImplementedError(
+                        "Tried passing in a callable to `accelerator_config`, but this is not supported. "
+                        "Please pass in a fully constructed `AcceleratorConfig` object instead."
+                    )
+                else:
+                    self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
+
+            if self.dispatch_batches is not None:
+                warnings.warn(
+                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.dispatch_batches = self.dispatch_batches
+
+            if self.split_batches is not None:
+                warnings.warn(
+                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'split_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.split_batches = self.split_batches
+
+            if self.dataloader_drop_last:
+                self.accelerator_config.even_batches = False
 
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
@@ -514,6 +561,13 @@ class GaudiTrainingArguments(TrainingArguments):
             from transformers.integrations import get_available_reporting_integrations
 
             self.report_to = get_available_reporting_integrations()
+
+            if "codecarbon" in self.report_to and torch.version.hip:
+                logger.warning(
+                    "When using the Trainer, CodeCarbonCallback requires the `codecarbon` package, which is not compatible with AMD ROCm (https://github.com/mlco2/codecarbon/pull/490). Automatically disabling the codecarbon callback. Reference: https://huggingface.co/docs/transformers/v4.39.3/en/main_classes/trainer#transformers.TrainingArguments.report_to."
+                )
+                self.report_to.remove("codecarbon")
+
         elif self.report_to == "none" or self.report_to == ["none"]:
             self.report_to = []
         elif not isinstance(self.report_to, list):
@@ -527,10 +581,13 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
+        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0 or 0 < self.warmup_steps <= 1:
+            raise ValueError("warmup_steps must be either 0 or > 1")
+
         # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563
         # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
         if isinstance(self.fsdp, bool):
-            self.fsdp = "full_shard" if self.fsdp else ""
+            self.fsdp = [FSDPOption.FULL_SHARD] if self.fsdp else ""
         if isinstance(self.fsdp, str):
             self.fsdp = [FSDPOption(s) for s in self.fsdp.split()]
         if self.fsdp == [FSDPOption.OFFLOAD]:
@@ -540,6 +597,15 @@ class GaudiTrainingArguments(TrainingArguments):
             )
         elif FSDPOption.FULL_SHARD in self.fsdp and FSDPOption.SHARD_GRAD_OP in self.fsdp:
             raise ValueError("`--fsdp full_shard` is not compatible with `--fsdp shard_grad_op`.")
+
+        if self.gradient_checkpointing and (
+            FSDPOption.FULL_SHARD in self.fsdp or FSDPOption.HYBRID_SHARD in self.fsdp
+        ):
+            logger.warning(
+                "When using FSDP full shard, instead of using `gradient_checkpointing` in TrainingArguments, please"
+                " use `activation_checkpointing` in `fsdp_config`. The former introduces a redundant AllGather"
+                " operation in backward pass. Reference: https://github.com/huggingface/transformers/issues/30404"
+            )
 
         if self.fsdp_config is None:
             self.fsdp_config = {}
@@ -616,46 +682,24 @@ class GaudiTrainingArguments(TrainingArguments):
                         )
             prefetch_policy = self.fsdp_config.get("backward_prefetch", "NO_PREFETCH")
             os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
-            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefetch", "false"))
-            os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
-            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true"))
+            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefetch", "false")).lower()
+
+            sync_module_states = str(self.fsdp_config.get("sync_module_states", "true")).lower()
+            cpu_ram_efficient_loading = str(self.fsdp_config.get("cpu_ram_efficient_loading", "false")).lower()
+
+            if sync_module_states == "false" and cpu_ram_efficient_loading == "true":
+                # In this case, all the processes except the main process would have random weights leading
+                # to unexpected behaviour during training, thus throwing error here to prevent it.
+                raise ValueError('`sync_module_states` must be `"True"` if `cpu_ram_efficient_loading` is `"True"`')
+
+            os.environ[f"{prefix}SYNC_MODULE_STATES"] = sync_module_states
+            os.environ[f"{prefix}CPU_RAM_EFFICIENT_LOADING"] = cpu_ram_efficient_loading
+
+            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true")).lower()
+
             os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
                 self.fsdp_config.get("activation_checkpointing", "false")
             )
-
-        if is_accelerate_available():
-            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
-                if self.accelerator_config is None:
-                    self.accelerator_config = AcceleratorConfig()
-                elif isinstance(self.accelerator_config, dict):
-                    self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
-                # Check that a user didn't pass in the class instantiator
-                # such as `accelerator_config = AcceleratorConfig`
-                elif isinstance(self.accelerator_config, type):
-                    raise NotImplementedError(
-                        "Tried passing in a callable to `accelerator_config`, but this is not supported. "
-                        "Please pass in a fully constructed `AcceleratorConfig` object instead."
-                    )
-                else:
-                    self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
-            if self.dispatch_batches is not None:
-                warnings.warn(
-                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.dispatch_batches = self.dispatch_batches
-
-            if self.split_batches is not None:
-                warnings.warn(
-                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'split_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.split_batches = self.split_batches
-
-            if self.dataloader_drop_last:
-                self.accelerator_config.even_batches = False
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
@@ -747,6 +791,12 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
 
+        if self.eval_use_gather_object and not is_accelerate_available("0.30.0"):
+            raise ValueError(
+                "--eval_use_gather_object requires Accelerate to be version of `accelerate` > 0.30.0."
+                "This is not supported and we recommend you to update your version."
+            )
+
     def __str__(self):
         self_as_dict = asdict(self)
 
@@ -785,9 +835,30 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
                 "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
-        GaudiAcceleratorState._reset_state()
-        GaudiPartialState._reset_state()
-        self.distributed_state = None
+        # We delay the init of `PartialState` to the end for clarity
+        accelerator_state_kwargs = {"enabled": True, "use_configured_state": False}
+        if isinstance(self.accelerator_config, AcceleratorConfig):
+            accelerator_state_kwargs["use_configured_state"] = self.accelerator_config.pop(
+                "use_configured_state", False
+            )
+        if accelerator_state_kwargs["use_configured_state"]:
+            if GaudiPartialState._shared_state == {}:
+                raise ValueError(
+                    "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
+                    "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
+                )
+            # We rely on `PartialState` to yell if there's issues here (which it will)
+            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
+            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
+                raise RuntimeError(
+                    "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
+                    "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
+                    "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
+                )
+        else:
+            GaudiAcceleratorState._reset_state()
+            GaudiPartialState._reset_state()
+            self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
         # otherwise logs are not sent in this method.
@@ -796,8 +867,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
             os.environ["ACCELERATE_USE_IPEX"] = "false"
+
+        self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
-            self.distributed_state = GaudiPartialState(cpu=True, backend=self.ddp_backend)
+            accelerator_state_kwargs["cpu"] = True
+            accelerator_state_kwargs["backend"] = self.ddp_backend
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -816,19 +890,27 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
 
             if self.deepspeed:
-                # Need to do similar for Accelerator init
-                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-                self.distributed_state = GaudiPartialState(timeout=timedelta(seconds=self.ddp_timeout))
-                del os.environ["ACCELERATE_USE_DEEPSPEED"]
+                accelerator_state_kwargs["use_deepspeed"] = True
+                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
             else:
-                self.distributed_state = GaudiPartialState(
-                    backend=self.ddp_backend, timeout=timedelta(seconds=self.ddp_timeout)
-                )
-            self._n_gpu = 1
+                accelerator_state_kwargs["backend"] = self.ddp_backend
+                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
             )
+
+        # Now we pop everything
+        if accelerator_state_kwargs.pop("enabled", False) and not accelerator_state_kwargs.pop(
+            "use_configured_state", False
+        ):
+            # We need to patch this env var when enabling to detect deepspeed
+            use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
+            if use_deepspeed:
+                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
+            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
+            if use_deepspeed:
+                del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index

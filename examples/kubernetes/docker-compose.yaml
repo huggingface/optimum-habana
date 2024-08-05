@@ -1,0 +1,34 @@
+services:
+  optimum-habana:
+    build:
+      args:
+        http_proxy: ${http_proxy:-""}
+        https_proxy: ${https_proxy:-""}
+        no_proxy: ${no_proxy:-""}
+        GAUDI_SW_VER: ${GAUDI_SW_VER:-1.16.2}
+        OS: ${OS:-ubuntu22.04}
+        OPTIMUM_HABANA_VER:  ${OPTIMUM_HABANA_VER:-1.12.1}
+        TORCH_VER: ${TORCH_VER:-2.2.2}
+        REGISTRY: ${REGISTRY}
+        REPO: ${REPO}
+      context: .
+      labels:
+        org.opencontainers.base.name: "vault.habana.ai/gaudi-docker/${GAUDI_SW_VER:-1.16.2}/${OS:-ubuntu22.04}/habanalabs/pytorch-installer-${TORCH_VER:-2.2.2}:latest"
+        org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators"
+        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.16.2}-optimum-habana-${OPTIMUM_HABANA_VER:-1.12.1}
+    command: >
+      sh -c "python -c 'from optimum import habana; print(\"optimum-habana:\", habana.__version__)'"
+    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.16.2}-optimum-habana-${OPTIMUM_HABANA_VER:-1.12.1}
+    pull_policy: always
+  optimum-habana-examples:
+    build:
+      labels:
+        org.opencontainers.base.name: "${REGISTRY}/${REPO}:gaudi-${GAUDI_SW_VER:-1.16.2}-optimum-habana-${OPTIMUM_HABANA_VER:-1.12.1}"
+        org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators Examples"
+        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.16.2}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.12.1}
+      target: optimum-habana-examples
+    command: >
+      sh -c "python -c 'from optimum import habana; print(\"optimum-habana:\", habana.__version__)'"
+    extends: optimum-habana
+    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.16.2}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.12.1}
+

@@ -322,9 +322,14 @@ def gaudi_gpt2_forward(
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
         position_ids = position_ids.unsqueeze(0)
 
+    if inputs_embeds is None:
+        inputs_embeds = self.wte(input_ids)
+    position_embeds = self.wpe(position_ids)
+    hidden_states = inputs_embeds + position_embeds
+
     # GPT2Attention mask.
+    attention_mask = attention_mask.view(batch_size, -1) if attention_mask is not None else None
     if attention_mask is not None:
-        attention_mask = attention_mask.view(batch_size, -1)
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]
         # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
@@ -358,11 +363,6 @@ def gaudi_gpt2_forward(
     # attention_probs has shape bsz x n_heads x N x N
     # head_mask has shape n_layer x batch x n_heads x N x N
     head_mask = self.get_head_mask(head_mask, self.config.n_layer)
-
-    if inputs_embeds is None:
-        inputs_embeds = self.wte(input_ids)
-    position_embeds = self.wpe(position_ids)
-    hidden_states = inputs_embeds + position_embeds
 
     if token_type_ids is not None:
         token_type_embeds = self.wte(token_type_ids)

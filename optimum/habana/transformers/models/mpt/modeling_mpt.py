@@ -48,6 +48,9 @@ def gaudi_mpt_attention_forward(
     batch_size, seq_length = hidden_states.shape[:2]
 
     mixed_qkv = self.Wqkv(hidden_states)
+    if self.clip_qkv:
+        mixed_qkv = mixed_qkv.clamp(min=-self.clip_qkv, max=self.clip_qkv)
+
     bs, seq_len, three_times_hidden_size = mixed_qkv.shape
     mixed_qkv = mixed_qkv.view(bs, seq_len, self.n_heads * 3, self.head_dim)
     mixed_qkv = mixed_qkv.transpose(1, 2)
@@ -67,9 +70,14 @@ def gaudi_mpt_attention_forward(
             else:
                 key_states = torch.cat([past_key_value[0], key_states], dim=2)
                 value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        past_key_value = [key_states, value_states]
+                past_key_value = [key_states, value_states]
     else:
-        past_key_value = [key_states, value_states]
+        past_key_value = [
+            torch.empty(key_states.shape, dtype=key_states.dtype, device=key_states.device),
+            torch.empty(key_states.shape, dtype=key_states.dtype, device=key_states.device),
+        ]
+        past_key_value[0][:] = key_states[:]
+        past_key_value[1][:] = value_states[:]
 
     attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
 

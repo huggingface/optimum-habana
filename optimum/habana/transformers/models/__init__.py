@@ -45,6 +45,10 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .decilm import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
+)
 from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
@@ -90,7 +94,7 @@ from .gptj import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_model_forward,
+    GaudiGPTJModel,
 )
 from .llama import (
     GaudiLlamaAttention,
@@ -198,7 +202,6 @@ from .starcoder2 import (
     gaudi_starcoder2_attention_forward,
     gaudi_starcoder2_model_forward,
 )
-from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,

@@ -1,5 +1,4 @@
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -45,6 +44,7 @@ def gaudi_starcoder2_attention_forward(
     past_key_value: Optional[Cache] = None,
     output_attentions: bool = False,
     use_cache: bool = False,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     use_flash_attention: Optional[bool] = False,
     flash_attention_recompute: Optional[bool] = False,
@@ -58,10 +58,6 @@ def gaudi_starcoder2_attention_forward(
     - add new args use_flash_attention
     - add new arg flash_attention_recompute
     """
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-        )
     bsz, q_len, _ = hidden_states.size()
     norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -100,7 +96,7 @@ def gaudi_starcoder2_attention_forward(
                 past_key_value.key_cache.append(key_states)
                 past_key_value.value_cache.append(value_states)
         else:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}  # Specific to RoPE models
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
     # repeat k/v heads if n_kv_heads < n_heads
@@ -115,13 +111,9 @@ def gaudi_starcoder2_attention_forward(
             f" {attn_weights.size()}"
         )
 
-    if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-            )
-
-        attn_weights = attn_weights + attention_mask
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights += causal_mask
 
     query_length = q_len if past_key_value is None else q_len + past_key_value.key_cache[self.layer_idx].shape[2]
     # Taken from mpt: https://github.com/huggingface/optimum-habana/blob/main/optimum/habana/transformers/models/mpt/modeling_mpt.py
@@ -181,6 +173,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -206,6 +199,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
@@ -240,6 +234,7 @@ def gaudi_starcoder2_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     use_flash_attention: Optional[bool] = False,
     flash_attention_recompute: Optional[bool] = False,
@@ -284,26 +279,16 @@ def gaudi_starcoder2_model_forward(
         if token_idx is None:
             past_key_values_length = past_key_values.get_usable_length(seq_length)
 
-    if position_ids is None:
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
-        position_ids = torch.arange(
-            past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
-        )
-        position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    else:
-        position_ids = position_ids.view(-1, seq_length).long()
-
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
-        is_padding_right = attention_mask[:, -1].sum().item() != batch_size
-        if is_padding_right:
-            raise ValueError(
-                "You are attempting to perform batched generation with padding_side='right'"
-                " this may lead to unexpected behaviour for Flash Attention version of Starcoder2. Make sure to "
-                " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
-            )
+    if cache_position is None:
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        cache_position = torch.arange(
+            past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+        )
+    if position_ids is None:
+        position_ids = cache_position.unsqueeze(0)
 
     # 4d mask is passed through the layers
     attention_mask = _gaudi_prepare_4d_causal_attention_mask(
@@ -335,6 +320,7 @@ def gaudi_starcoder2_model_forward(
                 past_key_values,
                 output_attentions,
                 use_cache,
+                cache_position,
                 None,
                 use_flash_attention,
                 flash_attention_recompute,
@@ -347,6 +333,7 @@ def gaudi_starcoder2_model_forward(
                 past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
+                cache_position=cache_position,
                 token_idx=token_idx,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
@@ -393,6 +380,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -419,6 +407,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
@@ -454,7 +443,15 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        **kwargs,
     ):
         """
         Inherits from Starcoder2ForCausalLM: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
@@ -468,37 +465,15 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values is not None:
             if token_idx is None:
-                if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
-                else:
-                    cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
-
-                # Keep only the unprocessed tokens:
-                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
-                # input)
-                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
-                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
-                # input_ids based on the past_length.
-                elif past_length < input_ids.shape[1]:
-                    input_ids = input_ids[:, past_length:]
-                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
-
-                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
-                if (
-                    max_cache_length is not None
-                    and attention_mask is not None
-                    and cache_length + input_ids.shape[1] > max_cache_length
-                ):
-                    attention_mask = attention_mask[:, -max_cache_length:]
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -513,13 +488,14 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
         model_inputs.update(
             {
                 "position_ids": position_ids,
+                "cache_position": cache_position,
                 "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
             }

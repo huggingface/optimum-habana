@@ -13,6 +13,7 @@ def gaudi_BlipForConditionalGeneration_generate(
     pixel_values: torch.FloatTensor,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.LongTensor] = None,
+    interpolate_pos_encoding: bool = False,
     **generate_kwargs,
 ) -> torch.LongTensor:
     """
@@ -29,7 +30,10 @@ def gaudi_BlipForConditionalGeneration_generate(
             self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
 
     batch_size = pixel_values.shape[0]
-    vision_outputs = self.vision_model(pixel_values=pixel_values)
+    vision_outputs = self.vision_model(
+        pixel_values=pixel_values,
+        interpolate_pos_encoding=interpolate_pos_encoding,
+    )
 
     image_embeds = vision_outputs[0]
 
@@ -66,6 +70,7 @@ def gaudi_BlipForQuestionAnswering_generate(
     input_ids: torch.LongTensor,
     pixel_values: torch.FloatTensor,
     attention_mask: Optional[torch.LongTensor] = None,
+    interpolate_pos_encoding: bool = False,
     **generate_kwargs,
 ) -> torch.LongTensor:
     """
@@ -84,7 +89,10 @@ def gaudi_BlipForQuestionAnswering_generate(
         if not hasattr(self.text_decoder, "clear_cache"):
             self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
 
-    vision_outputs = self.vision_model(pixel_values=pixel_values)
+    vision_outputs = self.vision_model(
+        pixel_values=pixel_values,
+        interpolate_pos_encoding=interpolate_pos_encoding,
+    )
 
     image_embeds = vision_outputs[0]
 
