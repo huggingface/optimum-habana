@@ -50,7 +50,7 @@ def gaudi_mt5_layernorm_forward(self, hidden_states):
     # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
     # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
     # half-precision inputs is done in fp32
-    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+    if hidden_states.device.type == "hpu" and has_fused_rms_norm:
         orig_dtype = hidden_states.dtype
         hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
         return hidden_states.to(orig_dtype)
