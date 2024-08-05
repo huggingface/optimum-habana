@@ -16,19 +16,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from .transformers import (
-    GaudiConfig,
-    GaudiSeq2SeqTrainer,
-    GaudiSeq2SeqTrainingArguments,
-    GaudiTrainer,
-    GaudiTrainingArguments,
-)
-from .sentence_transformers import (
-    SentenceTransformerGaudiTrainer,
-    SentenceTransformerGaudiTrainingArguments,
-)
-
-from .utils import check_synapse_version
-from .version import __version__
-
-check_synapse_version()
+from .st_gaudi_trainer import SentenceTransformerGaudiTrainer
+from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
+from .st_gaudi_encoder import st_gaudi_encode
+from .st_gaudi_transformer_tokenize import st_gaudi_transformer_tokenize
+from .st_gaudi_data_collator import st_gaudi_data_collator_call
