@@ -4,15 +4,6 @@ Given two sentences (premise and hypothesis), the task of Natural Language Infer
 
 The paper in [Conneau et al.](https://arxiv.org/abs/1705.02364) shows that NLI data can be quite useful when training Sentence Embedding methods. In [Sentence-BERT-Paper](https://arxiv.org/abs/1908.10084) NLI as a first fine-tuning step for sentence embedding methods has been used.
 
-## Requirements
-
-First, you should install the requirements:
-
-```bash
-pip install -U sentence-transformers
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
 ## Single-card Training
 
 To pre-train on the NLI task:
@@ -28,9 +19,9 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```
 
 3. Choose one of the following scripts based on the loss model:
-   
+
 	a. **[training_nli.py](training_nli.py)**:
-	
+
 	> This example uses `sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
 
 	b. **[training_nli_v2.py](training_nli_v2.py)**:
@@ -41,7 +32,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
 	> Following the [GISTEmbed](https://arxiv.org/abs/2402.16829) paper, we can modify the in-batch negative selection from `sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the `sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than `sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
 
-4. Execute the script:  
+4. Execute the script:
 
 ```bash
 python training_nli.py bert-base-uncased
@@ -49,7 +40,7 @@ python training_nli.py bert-base-uncased
 
 ## Multi-card Training
 
-For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training.
 
 ```bash
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_nli.py bert-base-uncased
