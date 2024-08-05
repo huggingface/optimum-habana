@@ -122,22 +122,22 @@ def gaudi_MT5Attention_forward(
                 hidden_states = shape(proj_layer(key_value_states))
 
             if past_key_value is not None:
-              if key_value_states is None:
-                # self-attn
-                # (batch_size, n_heads, key_length, dim_per_head)
-                if token_idx is None:
-                    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+                if key_value_states is None:
+                    # self-attn
+                    # (batch_size, n_heads, key_length, dim_per_head)
+                    if token_idx is None:
+                        hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+                    else:
+                        hidden_states = past_key_value.index_copy_(-2, token_idx - 1, hidden_states)
+                elif past_key_value.shape[2] != key_value_states.shape[1]:
+                    # checking that the `sequence_length` of the `past_key_value` is the same as
+                    # the provided `key_value_states` to support prefix tuning
+                    # cross-attn
+                    # (batch_size, n_heads, seq_length, dim_per_head)
+                    hidden_states = shape(proj_layer(key_value_states))
                 else:
-                    hidden_states = past_key_value.index_copy_(-2, token_idx - 1, hidden_states)
-              elif past_key_value.shape[2] != key_value_states.shape[1]:
-                # checking that the `sequence_length` of the `past_key_value` is the same as
-                # the provided `key_value_states` to support prefix tuning
-                # cross-attn
-                # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(key_value_states))
-              else:
-                # cross-attn
-                hidden_states = past_key_value
+                    # cross-attn
+                    hidden_states = past_key_value
             return hidden_states
 
         # get query states
