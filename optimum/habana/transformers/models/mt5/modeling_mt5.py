@@ -96,9 +96,9 @@ def gaudi_MT5Attention_forward(
                     f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
             )
             if token_idx is None:
-              real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
+                real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
             else:
-              real_seq_length = past_key_value[0].shape[2]
+                real_seq_length = past_key_value[0].shape[2]
 
         key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
 
