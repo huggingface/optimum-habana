@@ -1869,7 +1869,9 @@ class GaudiGenerationMixin(GenerationMixin):
             selected_idx = _ranking_fast(context_hidden, next_hidden, top_k_probs, penalty_alpha, top_k)
 
             # This will be used instead of the previous inneficient torch.stack(torch.split())
-            augmented_idx = torch.tensor([x + i * top_k for i, x in enumerate(selected_idx)])
+            augmented_idx = torch.tensor(
+                [x + i * top_k for i, x in enumerate(selected_idx)], device=selected_idx.device
+            )
 
             # prepare for the next step: (1) next token_id; (2) past_key_values; (3) last_hidden_states for computing
             # the degeneration penalty; (4) logits for selecting next top-k candidates; (5) selected tokens scores
