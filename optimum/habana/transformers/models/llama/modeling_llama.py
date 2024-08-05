@@ -516,7 +516,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
                 with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None, "None"
                     )
             else:
                 # first token
