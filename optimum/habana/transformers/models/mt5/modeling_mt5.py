@@ -34,9 +34,11 @@ logger = logging.get_logger(__name__)
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+    
+    has_fused_rms_norm = True
 except ImportError:
+    has_fused_rms_norm = False
     print("Not using HPU fused kernel for RMSNorm")
-    FusedRMSNorm = None
 
 def gaudi_mt5_layernorm_forward(self, hidden_states):
     """
