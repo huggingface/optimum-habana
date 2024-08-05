@@ -155,6 +155,7 @@ class ScaledDotProductAttention(nn.Module):
         attn_output = self.bmm2(attn_weight, value)
         return attn_output
 
+
 class GaudiFalconAttention(FalconAttention):
     """
     Inherits from FalconAttention: https://github.com/huggingface/transformers/blob/838b87abe231fd70be5132088d0dee72a7bb8d62/src/transformers/models/falcon/modeling_falcon.py#L267
