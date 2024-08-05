@@ -76,8 +76,8 @@ def gaudi_MT5Attention_forward(
         use_cache=False,
         output_attentions=False,
         token_idx=None,
-    ):
-        """
+):
+    """
         Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/models/mt5/modeling_mt5.py
         Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
         The only differences are:
