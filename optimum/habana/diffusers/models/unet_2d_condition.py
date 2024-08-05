@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.utils.checkpoint
-from diffusers.models.unet_2d_condition import UNet2DConditionOutput
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 
 
