@@ -70,7 +70,13 @@ from .gemma import (
     gaudi_gemma_attention_forward,
     gaudi_gemma_model_forward,
 )
-from .gpt2 import GaudiGPT2Attention, GaudiGPT2Block, GaudiGPT2LMHeadModel, gaudi_gpt2_forward
+from .gpt2 import (
+    GaudiGPT2Attention,
+    GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
+    GaudiGPT2LMHeadModel,
+    gaudi_gpt2_forward,
+)
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,
     gaudi_gpt_bigcode_attention_forward,

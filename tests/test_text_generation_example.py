@@ -75,6 +75,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "distributed_tp": [
             ("meta-llama/Llama-2-7b-hf", 1345.2369318328463),
         ],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 51.61471298016438),
+        ],
     }
 else:
     # Gaudi1 CI baselines
@@ -106,6 +109,9 @@ else:
         "torch_compile": [],
         "torch_compile_distributed": [],
         "distributed_tp": [],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 34.48141280163397),
+        ],
     }
 
 
@@ -122,6 +128,7 @@ def _test_text_generation(
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
+    contrastive_search: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -176,6 +183,9 @@ def _test_text_generation(
 
     if not deepspeed:
         command.append("--bf16")
+
+    if contrastive_search:
+        command += ["--top_k 4", "--penalty_alpha 0.5"]
 
     if fp8:
         if "--trim_logits" not in command:
@@ -325,6 +335,13 @@ def test_text_generation_distributed_tp(model_name: str, baseline: float, token:
         torch_compile=True,
         parallel_strategy="tp",
     )
+
+
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["contrastive_search"])
+def test_text_generation_contrastive_search(
+    model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
+):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
 class TextGenPipeline(TestCase):

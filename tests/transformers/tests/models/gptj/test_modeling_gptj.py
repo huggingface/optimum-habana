@@ -630,7 +630,7 @@ class GPTJModelLanguageGenerationTest(unittest.TestCase):
 
         tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
         model = GPTJForCausalLM.from_pretrained(
-            "EleutherAI/gpt-j-6B", revision="float16", torch_dtype=torch.float16
+            "EleutherAI/gpt-j-6B", revision="float16", torch_dtype=torch.bfloat16
         ).to(torch_device)
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
 
@@ -641,17 +641,17 @@ class GPTJModelLanguageGenerationTest(unittest.TestCase):
             generated_text,
             [
                 "DeepMind Technologies is a British artificial intelligence subsidiary of Alphabet Inc. and research "
-                "laboratory founded in 2010. DeepMind was acquired by Google in 2014. The company is based in London, "
-                "United Kingdom with offices in Mountain View, San Francisco, New York City, Paris, Tokyo, Seoul, "
-                "Beijing, Singapore, Tel Aviv, Dublin, Sydney, and Melbourne.[1]\n\nContents\n\nIn 2010, Google's "
-                "parent company, Alphabet, announced a $500 million investment in DeepMind, with the aim of creating "
-                "a company that would apply deep learning to problems in healthcare, energy, transportation, and "
-                "other areas.[2]\n\nOn April 23, 2014, Google announced that it had acquired DeepMind for $400 "
-                "million in cash and stock.[3] The acquisition was seen as a way for Google to enter the "
-                "fast-growing field of artificial intelligence (AI), which it had so far avoided due to concerns "
-                'about ethical and social implications.[4] Google co-founder Sergey Brin said that he was "thrilled" '
-                'to have acquired DeepMind, and that it would "help us push the boundaries of AI even further."'
-                "[5]\n\nDeepMind's founders, Demis Hassabis and Mustafa Suleyman, were joined by a number of Google "
-                "employees"
+                "laboratory founded in 2010. DeepMind was acquired by Google in 2014. The company is based in London "
+                "and has offices in New York, San Francisco, Cambridge, London, Paris, Tokyo, Beijing, Seoul, "
+                "Singapore, Sydney, and Mountain View.[1]\n\nContents\n\nIn 2010, Google's parent company, "
+                "Alphabet, announced a $500 million investment in DeepMind, with the aim of creating a company that "
+                "would apply deep learning to problems in healthcare, energy, transportation, and other areas.[2] "
+                "The investment was led by Founders Fund, a venture capital firm that invests in early-stage "
+                "start-ups, and the London-based venture capital firm Atomico.[3]\n\nOn April 23, 2014, Google "
+                "announced that it had acquired DeepMind for $400 million in cash and stock.[4] The acquisition was "
+                "seen as a way for Google to gain access to the company's expertise in machine learning and "
+                "artificial intelligence (AI), which it could apply to a range of products and services at Google.[5] "
+                'Google CEO Larry Page said that the acquisition would "make Google a leader in this new field and '
+                "help answer some of the most challenging questions we face as a society—"
             ],
         )

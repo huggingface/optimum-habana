@@ -526,6 +526,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
+    generation_config.top_k = args.top_k
+    generation_config.penalty_alpha = args.penalty_alpha
     generation_config.bad_words_ids = bad_words_ids
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences

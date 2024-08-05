@@ -103,6 +103,18 @@ def setup_parser(parser):
         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
     )
     parser.add_argument(
+        "--top_k",
+        default=None,
+        type=int,
+        help="Size of candidate set used for re-ranking in contrastive search. top_k > 1 enables contrastive search.",
+    )
+    parser.add_argument(
+        "--penalty_alpha",
+        default=None,
+        type=float,
+        help="Degeneration penalty for contrastive search. penalty_alpha > 0 enables contrastive search.",
+    )
+    parser.add_argument(
         "--trim_logits",
         action="store_true",
         help="Calculate logits only for the last token to save memory in the first step.",
