@@ -544,7 +544,10 @@ def gaudi_MT5ForConditionalGeneration_forward(
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
-
+    """
+    The only differences are:
+    - add new args token_idx
+    """
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
