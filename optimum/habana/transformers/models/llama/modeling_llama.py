@@ -752,6 +752,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -771,6 +772,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
             output_attentions,
             use_cache,
             cache_position,
+            position_embeddings,
             token_idx,
             attn_softmax_bf16,
             reuse_cache,
