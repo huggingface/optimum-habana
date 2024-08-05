@@ -333,7 +333,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
             )
 
             # 4. Prepare timesteps
-            self.scheduler.set_timesteps(num_inference_steps, device="cpu")
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
 
             # 5. Prepare latent variables
@@ -379,13 +379,12 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
-                    noise_pred = self.unet(
+                    noise_pred = self.unet_hpu(
                         latent_model_input,
                         t,
                         text_embeddings_batch,
                         cross_attention_kwargs=cross_attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    )
 
                     # perform guidance
                     if do_classifier_free_guidance:
@@ -405,9 +404,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                         latents_batch[None, :].reshape(bsz, frames, channel, width, height).permute(0, 2, 1, 3, 4)
                     )
 
-                    if self.use_hpu_graphs:
-                        self.ht.core.mark_step()
-                    else:
+                    if not self.use_hpu_graphs:
                         self.htcore.mark_step()
 
                     # call the callback, if provided
@@ -421,9 +418,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                     video_tensor = self.decode_latents(latents_batch)
                 outputs.append(video_tensor)
 
-                if self.use_hpu_graphs:
-                    self.ht.core.mark_step()
-                else:
+                if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
             # Remove dummy generations if needed
@@ -458,3 +453,43 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 return (videos,)
 
             return GaudiTextToVideoSDPipelineOutput(videos=videos)
+
+    @torch.no_grad()
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs):
+        if self.use_hpu_graphs:
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs)
+        else:
+            return self.unet(
+                latent_model_input,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+                return_dict=False,
+            )[0]
+
+    @torch.no_grad()
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs):
+        inputs = [latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, False]
+        h = self.ht.hpu.graphs.input_hash(inputs)
+        cached = self.cache.get(h)
+
+        if cached is None:
+            # Capture the graph and cache it
+            with self.ht.hpu.stream(self.hpu_stream):
+                graph = self.ht.hpu.HPUGraph()
+                graph.capture_begin()
+                outputs = self.unet(
+                    inputs[0], inputs[1], inputs[2], cross_attention_kwargs=inputs[3], return_dict=inputs[4]
+                )[0]
+                graph.capture_end()
+                graph_inputs = inputs
+                graph_outputs = outputs
+                self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
+            return outputs
+
+        # Replay the cached graph with updated inputs
+        self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
+        cached.graph.replay()
+        self.ht.core.hpu.default_stream().synchronize()
+
+        return cached.graph_outputs
