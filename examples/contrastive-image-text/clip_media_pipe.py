@@ -47,7 +47,7 @@ class read_image_text_from_dataset(media_ext_reader_op_impl):
 
     """
 
-    def __init__(self, params):
+    def __init__(self, params, fw_params):
         self.batch_size = 1
         params = params["priv_params"]
         self.meta_dtype = params["label_dtype"]
@@ -64,9 +64,7 @@ class read_image_text_from_dataset(media_ext_reader_op_impl):
         else:
             self.max_file = get_max_file([img["path"] for img in self.dataset["image"]])
         logger.info(f"The largest file is {self.max_file}.")
-
-    def set_params(self, params):
-        self.batch_size = params.batch_size
+        self.batch_size = fw_params.batch_size
 
     def gen_output_info(self):
         out_info = []
@@ -134,7 +132,7 @@ class ClipMediaPipe(MediaPipe):
     instance_count = 0
 
     def __init__(self, dataset=None, sampler=None, batch_size=512, drop_last=False, queue_depth=1):
-        self.device = get_device_name()
+        self.device = "legacy"
         self.dataset = dataset
         self.drop_last = drop_last
         self.sampler = sampler
@@ -157,7 +155,7 @@ class ClipMediaPipe(MediaPipe):
         def_output_image_size = [self.image_size, self.image_size]
         res_pp_filter = ftype.BICUBIC
         self.decode = fn.ImageDecoder(
-            device=self.device,
+            device="hpu",
             output_format=imgtype.RGB_P,
             random_crop_type=randomCropType.CENTER_CROP,
             resize=def_output_image_size,
