@@ -350,8 +350,11 @@ def gaudi_MT5Stack_forward(
         return_dict=None,
         token_idx=None,
     ):
-
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+    """
+    The only differences are:
+    - add new args token_idx
+    """
+    use_cache = use_cache if use_cache is not None else self.config.use_cache
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
