@@ -109,7 +109,9 @@ else:
         "torch_compile": [],
         "torch_compile_distributed": [],
         "distributed_tp": [],
-        "contrastive_search": [],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 34.48141280163397),
+        ],
     }
 
 
