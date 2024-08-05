@@ -77,6 +77,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "contrastive_search": [
             ("gpt2-xl", 1, False, 51.61471298016438),
+        ],
         "load_checkpoint": [
             ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 76, False, 128, 2048, 1530),
         ],
