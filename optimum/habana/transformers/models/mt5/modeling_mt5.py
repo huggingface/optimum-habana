@@ -388,7 +388,7 @@ def gaudi_MT5Stack_forward(
         else:
             mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
 
-        if use_cache is True:
+        if use_cache:
             if not self.is_decoder:
                 raise ValueError(f"`use_cache` can only be set to `True` if {self} is used as a decoder")
 
