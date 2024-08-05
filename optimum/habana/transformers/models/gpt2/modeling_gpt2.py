@@ -602,7 +602,7 @@ class GaudiGPT2DoubleHeadsModel(GPT2DoubleHeadsModel):
     - add new args token_idx to support static shapes
     """
 
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, token_idx=None, **kwargs):
+    def prepare_inputs_for_generation(self, input_ids, inputs_embeds=None, past_key_values=None, token_idx=None, **kwargs):
         token_type_ids = kwargs.get("token_type_ids", None)
         # Omit tokens covered by past_key_values
         if past_key_values:
@@ -638,8 +638,13 @@ class GaudiGPT2DoubleHeadsModel(GPT2DoubleHeadsModel):
         else:
             position_ids = None
 
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids.contiguous()}
+
         return {
-            "input_ids": input_ids,
             "past_key_values": past_key_values,
             "use_cache": kwargs.get("use_cache"),
             "position_ids": position_ids,
