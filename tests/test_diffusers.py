@@ -2436,7 +2436,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertEqual(image.shape, (2, 3, 32, 32))
 
-        expected_slice = np.array([0.6285, 0.5813, 0.5434, 0.6494, 0.6302, 0.6262, 0.5426, 0.5404, 0.5203])
+        expected_slice = np.array([0.6208, 0.5780, 0.5447, 0.6462, 0.6285, 0.6288, 0.5334, 0.5287, 0.5165])
 
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 

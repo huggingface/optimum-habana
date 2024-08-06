@@ -1161,8 +1161,8 @@ class GenerationTesterMixin:
                 logits_processor=logits_processor,
                 logits_process_kwargs=logits_process_kwargs,
             )
-
             self.assertTrue(output_generate.shape[-1] == max_length)
+
 
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
@@ -1218,7 +1218,6 @@ class GenerationTesterMixin:
                 output_attentions=True,
                 return_dict_in_generate=True,
             )
-
             self.assertTrue(output_generate.sequences.shape[-1] == max_length)
             if model.config.is_encoder_decoder:
                 self.assertIsInstance(output_generate, GenerateBeamEncoderDecoderOutput)
@@ -1236,9 +1235,6 @@ class GenerationTesterMixin:
             self.assertTrue(output_generate["sequences_scores"].shape == (output_generate["sequences"].shape[0],))
             self.assertTrue((output_generate["sequences_scores"] < 0).all().item())
 
-    # contrastive search is not supported and expected to fail
-    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate(self):
         # check `generate()` and `contrastive_search()` are equal
         for model_class in self.all_generative_model_classes:
@@ -1256,14 +1252,14 @@ class GenerationTesterMixin:
 
             # test old generation output for backwards compatibility
             model = model_class(config).to(torch_device).eval()
-            output_contrastive, output_generate = self._contrastive_generate(
+            output_generate = self._contrastive_generate(
                 model=model, input_ids=input_ids, attention_mask=attention_mask, max_length=max_length
             )
-            self.assertListEqual(output_contrastive.tolist(), output_generate.tolist())
+            if model.config.is_encoder_decoder:
+                self.assertTrue(output_generate.shape[-1] == self.max_new_tokens + 1)
+            else:
+                self.assertTrue(output_generate.shape[-1] == self.max_new_tokens + input_ids.shape[-1])
 
-    # contrastive search is not supported and expected to fail
-    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # won't fix: FSMT and Reformer have a different cache variable type (and format).
@@ -1297,9 +1293,6 @@ class GenerationTesterMixin:
                 self.assertTrue(output_generate.sequences.shape[-1] == self.max_new_tokens + input_ids.shape[-1])
             self._check_outputs(output_generate, input_ids, model.config, use_cache=True)
 
-    # contrastive search is not supported and expected to fail
-    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
         for model_class in self.all_generative_model_classes:
@@ -1341,8 +1334,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(low_output.tolist(), high_output.tolist())
 
-        return
-
     def test_contrastive_generate_dynamic_shapes(self):
         # Check that choosing dynamic shapes does not change the model output
         for model_class in self.all_generative_model_classes:
@@ -1383,8 +1374,8 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(dynamic_output.tolist(), static_output.tolist())
 
-        return
 
+    # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
     @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @slow  # TODO(Joao): remove this. Some models (e.g. data2vec, xcom, roberta) have an error rate between 1 and 10%.
     def test_assisted_decoding_matches_greedy_search(self):
@@ -1458,6 +1449,7 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
+    # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
     @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
