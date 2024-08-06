@@ -21,10 +21,15 @@ import argparse
 import json
 import logging
 import os
+
+
+os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
+import multiprocessing as mp
 import time
 
 import lm_eval.evaluator
 import lm_eval.tasks
+import psutil
 import torch
 import torch.nn.functional as F
 from run_generation import setup_parser
@@ -35,6 +40,28 @@ from optimum.habana.utils import get_hpu_memory_stats
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 logger = logging.getLogger(__name__)
+
+
+# This hack is a workaround to limitations of lm_eval which always allocates
+# mp.Pool with max cpu count which explodes on multinode scenarios and for hpu
+# create multiprocess with spawn context
+OrigPool = mp.Pool
+
+
+def LimitedSpawnPool(_):
+    spawn_context = mp.get_context("spawn")
+    physical_cpu_count = psutil.cpu_count(logical=False)
+    pool_size = physical_cpu_count
+    world_size = int(os.getenv("WORLD_SIZE", 1))
+    if world_size == 0:
+        world_size = 1
+    pool_size //= world_size
+    if (pool_size * world_size) != physical_cpu_count:
+        pool_size -= 1
+    return spawn_context.Pool(pool_size)
+
+
+mp.Pool = LimitedSpawnPool
 
 
 def setup_lm_eval_parser():
