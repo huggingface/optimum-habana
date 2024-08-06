@@ -94,6 +94,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
     ):
         super().__init__()
 
+
         # TODO (joao): remove the `if` below, only used for BC
         self.rope_kwargs = {}
         if config is None:
@@ -127,13 +128,9 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.original_inv_freq = self.inv_freq
 
-        # max_position_embeddings value is not passed as argument from Transformer 4.43.
-        # initialize the value here before update cos_sin cache
-        max_position_embeddings = config.max_position_embeddings
-
         # Build here to make `torch.jit.trace` work.
         self._set_cos_sin_cache(
-            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+            seq_len=self.max_seq_len_cached, device=self.inv_freq.device, dtype=torch.get_default_dtype()
         )
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
