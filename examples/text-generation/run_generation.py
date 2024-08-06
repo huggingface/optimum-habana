@@ -28,7 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from utils import adjust_batch, count_hpu_graphs, initialize_model
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -314,6 +314,9 @@ def setup_parser(parser):
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+
+    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+        args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config == "" and args.disk_offload:
@@ -673,9 +676,7 @@ def main():
             print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+        finalize_quantization(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

@@ -763,6 +763,11 @@ class GaudiAccelerator(Accelerator):
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
 
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
+            # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
+            if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
+                kwargs["model"]
+            ):
+                engine.compile()
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
