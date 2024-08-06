@@ -356,6 +356,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXSdpaAttention.forward = gaudi_gpt_neox_attention_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXRotaryEmbedding._set_cos_sin_cache = (
         gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache
     )
