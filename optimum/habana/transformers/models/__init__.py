@@ -197,10 +197,10 @@ from .stablelm import (
     gaudi_stablelm_model_forward,
 )
 from .starcoder2 import (
+    GaudiStarcoder2Attention,
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
-    gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_model_forward,
+    GaudiStarcoder2Model,
 )
 from .t5 import (
     gaudi_t5_layernorm_forward,
