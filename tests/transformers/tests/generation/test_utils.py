@@ -75,6 +75,7 @@ if is_torch_available():
         TopKLogitsWarper,
         TopPLogitsWarper,
         GenerateBeamDecoderOnlyOutput,
+        GenerateDecoderOnlyOutput,
         GenerateBeamEncoderDecoderOutput,
     )
     from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator

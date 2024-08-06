@@ -36,7 +36,7 @@
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 0.06120587068623562,
+                    "eval_wer": 0.11090,
                     "train_runtime": 308.8036,
                     "train_samples_per_second": 225.572,
                     "eval_samples_per_second": 196.665,
