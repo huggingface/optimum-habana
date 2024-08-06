@@ -55,11 +55,13 @@ if is_torch_available():
         DisjunctiveConstraint,
         ForcedBOSTokenLogitsProcessor,
         ForcedEOSTokenLogitsProcessor,
+        GenerateBeamDecoderOnlyOutput,
+        GenerateBeamEncoderDecoderOutput,
+        GenerateDecoderOnlyOutput,
         GenerateEncoderDecoderOutput,
         GreedySearchDecoderOnlyOutput,
         GreedySearchEncoderDecoderOutput,
         HammingDiversityLogitsProcessor,
-        InfNanRemoveLogitsProcessor,
         LogitsProcessorList,
         MaxLengthCriteria,
         MinLengthLogitsProcessor,
@@ -74,9 +76,6 @@ if is_torch_available():
         TemperatureLogitsWarper,
         TopKLogitsWarper,
         TopPLogitsWarper,
-        GenerateBeamDecoderOnlyOutput,
-        GenerateDecoderOnlyOutput,
-        GenerateBeamEncoderDecoderOutput,
     )
     from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator
     from transformers.generation.streamers import BaseStreamer
@@ -282,7 +281,6 @@ class GenerationTesterMixin:
             max_length=max_length,
         )
 
-        kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
@@ -404,7 +402,7 @@ class GenerationTesterMixin:
             **logits_warper_kwargs,
             **model_kwargs,
         )
-        return output_beam_sample
+        return output_generate
 
     def _group_beam_search_generate(
         self,
@@ -473,7 +471,6 @@ class GenerationTesterMixin:
             **model_kwargs,
         )
 
-
         return output_generate
 
     def _contrastive_generate(
@@ -502,7 +499,6 @@ class GenerationTesterMixin:
             max_length=max_length,
         )
 
-        kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
         model.generation_config.static_shapes = self._get_static_shapes()
@@ -774,7 +770,6 @@ class GenerationTesterMixin:
                 self.assertIsInstance(output_generate, BeamSearchEncoderDecoderOutput)
             else:
                 self.assertIsInstance(output_generate, BeamSearchDecoderOnlyOutput)
-
 
             self.assertTrue(output_generate["sequences_scores"].shape == (output_generate["sequences"].shape[0],))
             self.assertTrue((output_generate["sequences_scores"] < 0).all().item())
@@ -1247,7 +1242,6 @@ class GenerationTesterMixin:
 
             self.assertTrue(output_generate["sequences_scores"].shape == (output_generate["sequences"].shape[0],))
             self.assertTrue((output_generate["sequences_scores"] < 0).all().item())
-
 
     # contrastive search is not supported and expected to fail
     # In earlier versions it was passing because it was going down default implementation, and it just happened to pass

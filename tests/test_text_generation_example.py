@@ -133,7 +133,7 @@ def _test_text_generation(
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
     contrastive_search: bool = False,
-    load_cp = False,
+    load_cp=False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -410,7 +410,7 @@ class TextGenPipeline(TestCase):
 
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
-    MODELS_TO_TEST["load_checkpoint"]
+    MODELS_TO_TEST["load_checkpoint"],
 )
 def test_text_generation_load_cp(
     model_name: str,
@@ -434,5 +434,5 @@ def test_text_generation_load_cp(
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,
         max_output_tokens=output_len,
-        load_cp=True
+        load_cp=True,
     )

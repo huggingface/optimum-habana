@@ -428,15 +428,15 @@ class GaudiLlamaAttention(LlamaAttention):
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def get_k_proj_weight(self):
-        """ 4bit quantization in GPTQ replaces the k_proj.weight with qweight. """
-        if hasattr(self.k_proj, 'qweight'):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
+        if hasattr(self.k_proj, "qweight"):
             return self.k_proj.qweight
         return self.k_proj.weight
 
     def get_k_proj_weight_dtype(self):
-        """ 4bit quantization in GPTQ replaces the k_proj.weight with qweight.
-            Scales tensor gets the weight dtype. """
-        if hasattr(self.k_proj, 'qweight'):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight.
+        Scales tensor gets the weight dtype."""
+        if hasattr(self.k_proj, "qweight"):
             return self.k_proj.scales.dtype
         return self.k_proj.weight.dtype
 
@@ -578,7 +578,9 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                    )
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )

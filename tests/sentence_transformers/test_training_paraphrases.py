@@ -59,6 +59,7 @@ def test_training_paraphrase():
     stack_exchange_train_dataset = load_dataset(
         "sentence-transformers/stackexchange-duplicates", "title-title-pair", split="train"
     )
+
     train_dataset_dict = {
         "all-nli": all_nli_train_dataset,
         "sentence-compression": sentence_compression_train_dataset,
@@ -71,6 +72,7 @@ def test_training_paraphrase():
         "stack-exchange": stack_exchange_train_dataset,
     }
     print(train_dataset_dict)
+
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
     model = SentenceTransformer(model_name)
@@ -90,6 +92,7 @@ def test_training_paraphrase():
         main_similarity=SimilarityFunction.COSINE,
         name="sts-dev",
     )
+
     # 5. Define the training arguments
     args = SentenceTransformerGaudiTrainingArguments(
         # Required parameter:
@@ -130,6 +133,7 @@ def test_training_paraphrase():
         evaluator=dev_evaluator,
     )
     trainer.train()
+
     # 7. Evaluate the model performance on the STS Benchmark test dataset
     test_dataset = load_dataset("sentence-transformers/stsb", split="test")
     test_evaluator = EmbeddingSimilarityEvaluator(

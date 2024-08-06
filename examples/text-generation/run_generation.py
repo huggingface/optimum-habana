@@ -50,13 +50,12 @@ def setup_parser(parser):
             else:
                 # Flag passed with value -> pattern match and set accordingly
                 value_str = values.lower()
-                if value_str in ('true', '1', 'yes'):
+                if value_str in ("true", "1", "yes"):
                     setattr(namespace, self.dest, True)
-                elif value_str in ('false', '0', 'no'):
+                elif value_str in ("false", "0", "no"):
                     setattr(namespace, self.dest, False)
                 else:
                     raise ValueError(f"Invalid value for {option_string}: {values}")
-
 
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
@@ -263,34 +262,34 @@ def setup_parser(parser):
 
     parser.add_argument(
         "--use_flash_attention",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention, provided that the model supports it."
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption."
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in causal mode on first token generation."
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
-        nargs='?',
+        nargs="?",
         const=None,  # Default value handled post-parsing
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in fast softmax mode."
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",

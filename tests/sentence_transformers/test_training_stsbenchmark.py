@@ -43,11 +43,13 @@ def test_training_stsbenchmark():
     eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
     test_dataset = load_dataset("sentence-transformers/stsb", split="test")
     logging.info(train_dataset)
+
     # 3. Define our training loss
     # CosineSimilarityLoss (https://sbert.net/docs/package_reference/losses.html#cosentloss) needs two text columns and one
     # similarity score column (between 0 and 1)
     train_loss = losses.CosineSimilarityLoss(model=model)
     # train_loss = losses.CoSENTLoss(model=model)
+
     # 4. Define an evaluator for use during training. This is useful to keep track of alongside the evaluation loss.
     dev_evaluator = EmbeddingSimilarityEvaluator(
         sentences1=eval_dataset["sentence1"],
@@ -97,6 +99,7 @@ def test_training_stsbenchmark():
         evaluator=dev_evaluator,
     )
     trainer.train()
+
     # 7. Evaluate the model performance on the STS Benchmark test dataset
     test_evaluator = EmbeddingSimilarityEvaluator(
         sentences1=test_dataset["sentence1"],

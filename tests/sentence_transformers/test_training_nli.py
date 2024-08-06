@@ -44,12 +44,14 @@ def test_training_nli():
     train_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="train").select(range(10000))
     eval_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="dev").select(range(1000))
     logging.info(train_dataset)
+
     # 3. Define our training loss: https://sbert.net/docs/package_reference/sentence_transformer/losses.html#softmaxloss
     train_loss = losses.SoftmaxLoss(
         model=model,
         sentence_embedding_dimension=model.get_sentence_embedding_dimension(),
         num_labels=3,
     )
+
     # 4. Define an evaluator for use during training. This is useful to keep track of alongside the evaluation loss.
     stsb_eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
     dev_evaluator = EmbeddingSimilarityEvaluator(
@@ -99,6 +101,7 @@ def test_training_nli():
         evaluator=dev_evaluator,
     )
     trainer.train()
+
     # 7. Evaluate the model performance on the STS Benchmark test dataset
     test_dataset = load_dataset("sentence-transformers/stsb", split="test")
     test_evaluator = EmbeddingSimilarityEvaluator(
