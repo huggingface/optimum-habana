@@ -590,7 +590,7 @@ class GaudiGemmaModel(GemmaModel):
         # embed positions
         hidden_states = inputs_embeds
 
-        normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype)
+        normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
         hidden_states = hidden_states * normalizer
 
         # decoder layers
