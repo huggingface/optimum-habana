@@ -1732,7 +1732,6 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         hb_profer.start()
         bucket_size = model_kwargs.get("bucket_size", -1)
-        prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
@@ -1849,15 +1848,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 is_encoder_decoder=self.config.is_encoder_decoder,
             )
             if bucket_size > 0 and bucket_internal:
-                # Calculate slice idx for kv cache during the decode phase.
-                # Breaking down the kv cache in the attention block helps to reduce computation time.
-                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
-                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
-                    if prev_idx != idx:
-                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
-                        prev_idx = idx
-                else:
-                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
+                # cache_idx is used for kv_cache slice, which means upper boundary idx of current kv cache bucket
+                # slice operation will handle out-of-bounds situations, so boundary handling is omitted here
+                past_token_len = model_kwargs.get("token_idx_cpu") - 1
+                cache_idx = model_kwargs.get("cache_idx", None)
+                if cache_idx is None or past_token_len >= cache_idx:
+                    model_kwargs["cache_idx"] = (past_token_len // bucket_size + 1) * bucket_size
             cur_len = cur_len + 1
 
             if ignore_eos:
@@ -2153,7 +2149,6 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
         bucket_size = model_kwargs.get("bucket_size", -1)
-        prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
@@ -2273,15 +2268,12 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             cur_len = cur_len + 1
             if bucket_size > 0 and bucket_internal:
-                # Calculate slice idx for kv cache during the decode phase.
-                # Breaking down the kv cache in the attention block helps to reduce computation time.
-                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
-                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
-                    if prev_idx != idx:
-                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
-                        prev_idx = idx
-                else:
-                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
+                # cache_idx is used for kv_cache slice, which means upper boundary idx of current kv cache bucket
+                # slice operation will handle out-of-bounds situations, so boundary handling is omitted here
+                past_token_len = model_kwargs.get("token_idx_cpu") - 1
+                cache_idx = model_kwargs.get("cache_idx", None)
+                if cache_idx is None or past_token_len >= cache_idx:
+                    model_kwargs["cache_idx"] = (past_token_len // bucket_size + 1) * bucket_size
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
