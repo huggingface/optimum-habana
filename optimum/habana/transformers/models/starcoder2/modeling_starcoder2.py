@@ -21,13 +21,6 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
-
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
-
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
@@ -525,25 +518,3 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             }
         )
         return model_inputs
-
-
-def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
-    if q.device.type == "hpu" and FusedRoPE:
-        if not is_training and (q.dtype == torch.bfloat16 or k.dtype == torch.bfloat16):
-            return FusedRoPE.apply(
-                q,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            )
-        else:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-    else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

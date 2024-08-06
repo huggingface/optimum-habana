@@ -45,14 +45,6 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
