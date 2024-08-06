@@ -98,6 +98,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "llava_next",
     "stablelm",
     "mamba",
+    "deci",
 ]
 
 
@@ -164,7 +165,7 @@ class GaudiGenerationMixin(GenerationMixin):
         dtype: str = bool,
     ) -> torch.Tensor:
         x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor([0]), 1)  # First the position with pad_token_id
+        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
 
     def _prepare_decoder_input_ids_for_generation(
         self,
@@ -858,7 +859,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "mixtral",
                 "phi",
                 "qwen2",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
+                "gptj",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2 and gptj at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1014,7 +1016,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["kv_cache_len"] = calculated_max_length
                 model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
 
-            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2", "gptj"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
@@ -1830,6 +1832,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
@@ -2250,6 +2255,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
