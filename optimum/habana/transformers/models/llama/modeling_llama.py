@@ -94,7 +94,6 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
     ):
         super().__init__()
 
-
         # TODO (joao): remove the `if` below, only used for BC
         self.rope_kwargs = {}
         if config is None:
