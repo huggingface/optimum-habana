@@ -55,7 +55,9 @@ except ImportError:
 
 import habana_frameworks.torch.core as htcore
 
+
 logger = logging.get_logger(__name__)
+
 
 class GaudiStarcoder2MLP(Starcoder2MLP):
     def pre_mlp_forward(self, x):
@@ -271,7 +273,9 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -359,9 +363,8 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
         attn_output = attn_output.transpose(1, 2).contiguous()
 
-
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-        
+
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -520,7 +523,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
     def update_sincos_cache(self, seq_len):
         for layer in self.layers:
             layer.update_sincos_cache(seq_len)
-
 
     def forward(
         self,
@@ -712,7 +714,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -870,6 +871,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             }
         )
         return model_inputs
+
 
 def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
     if q.device.type == "hpu" and FusedRoPE:
