@@ -501,14 +501,14 @@ python run_generation.py \
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
-You can load pre-quantized 4bit models with the argument `--load_cp`.
+You can load pre-quantized 4bit models with the argument `--load_in_4bit`.
 Currently, uint4 checkpoints and single device are supported.
 More information on enabling 4 bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
 
 Below is an example to load a model with 4bit checkpoints from Hugging Face.
 Please note that model name is denoted as `<model_path_in_hugging_face>`.
-Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
+Additionally, the below environment variables are used for performance optimizations, and are planned to be removed in future versions:
 `SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
 ```bash
 SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
@@ -523,7 +523,7 @@ python run_lm_eval.py \
 --attn_softmax_bf16 \
 --bucket_size=128 \
 --bucket_internal \
---load_cp
+--load_in_4bit
 ```
 
 

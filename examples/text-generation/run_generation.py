@@ -333,9 +333,9 @@ def setup_parser(parser):
         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
     )
     parser.add_argument(
-        "--load_cp",
+        "--load_in_4bit",
         action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
+        help="Whether to load a pre-quantized 4bit checkpoint.",
     )
 
     args = parser.parse_args()
