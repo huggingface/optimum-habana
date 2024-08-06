@@ -2228,33 +2228,43 @@ class DreamBooth(TestCase):
                 if train_text_encoder:
                     self.assertTrue(os.path.isfile(os.path.join(tmpdir, "text_encoder", "adapter_model.safetensors")))
 
+    @slow
     def test_dreambooth_full(self):
         self._test_dreambooth("full")
 
+    @slow
     def test_dreambooth_full_with_text_encoder(self):
         self._test_dreambooth("full", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lora(self):
         self._test_dreambooth("lora")
 
+    @slow
     def test_dreambooth_lora_with_text_encoder(self):
         self._test_dreambooth("lora", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lokr(self):
         self._test_dreambooth("lokr")
 
+    @slow
     def test_dreambooth_lokr_with_text_encoder(self):
         self._test_dreambooth("lokr", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_loha(self):
         self._test_dreambooth("loha")
 
+    @slow
     def test_dreambooth_loha_with_text_encoder(self):
         self._test_dreambooth("loha", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_oft(self):
         self._test_dreambooth("oft")
 
+    @slow
     def test_dreambooth_oft_with_text_encoder(self):
         self._test_dreambooth("oft", train_text_encoder=True)
 
@@ -2318,9 +2328,11 @@ class DreamBoothLoRASDXL(TestCase):
                 starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_unet)
 
+    @slow
     def test_dreambooth_lora_sdxl_with_text_encoder(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lora_sdxl(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=False)
 
@@ -4298,6 +4310,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
 
         return sdi_pipe
 
+    @slow
     def test_stable_diffusion_inpaint_pipeline(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -4340,6 +4353,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
         # np.abs(expected_image - image).max() = 0.31966144
         assert np.abs(expected_image - image).max() < 0.4
 
+    @slow
     def test_stable_diffusion_inpaint_pipeline_bf16(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
