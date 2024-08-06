@@ -2,6 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from diffusers.models.unets.unet_2d import UNet2DOutput
+from diffusers.models.unets.unet_2d import UNet2DOutput
 
 from optimum.utils import logging
 
