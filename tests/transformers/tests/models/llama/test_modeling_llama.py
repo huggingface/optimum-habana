@@ -19,6 +19,18 @@ import unittest
 from parameterized import parameterized
 from transformers import LlamaConfig, is_torch_available
 from transformers.testing_utils import require_torch, slow
+from optimum.habana.transformers.models.llama.configuration_llama import LlamaConfig
+from transformers import is_torch_available, set_seed
+from transformers.testing_utils import (
+    require_bitsandbytes,
+    require_flash_attn,
+    require_torch,
+    require_torch_accelerator,
+    require_torch_gpu,
+    require_torch_sdpa,
+    slow,
+    torch_device,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import set_seed
