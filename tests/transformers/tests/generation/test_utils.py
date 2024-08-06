@@ -1131,10 +1131,7 @@ class GenerationTesterMixin:
                 logits_processor=logits_processor,
                 logits_process_kwargs=logits_process_kwargs,
             )
-            if model.config.is_encoder_decoder:
-                self.assertTrue(output_generate.shape[-1] == max_length)
-            else:
-                self.assertTrue(output_generate.shape[-1] == max_length + input_ids.shape[-1])
+            self.assertTrue(output_generate.shape[-1] == max_length)
 
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
@@ -1165,10 +1162,7 @@ class GenerationTesterMixin:
                 logits_process_kwargs=logits_process_kwargs,
             )
 
-            if model.config.is_encoder_decoder:
-                self.assertTrue(output_generate.shape[-1] == max_length)
-            else:
-                self.assertTrue(output_generate.shape[-1] == max_length + input_ids.shape[-1])
+            self.assertTrue(output_generate.shape[-1] == max_length)
 
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
@@ -1225,13 +1219,12 @@ class GenerationTesterMixin:
                 return_dict_in_generate=True,
             )
 
+            self.assertTrue(output_generate.sequences.shape[-1] == max_length)
             if model.config.is_encoder_decoder:
-                self.assertTrue(output_generate.sequences.shape[-1] == max_length)
                 self.assertIsInstance(output_generate, GenerateBeamEncoderDecoderOutput)
                 # Retrocompatibility check
                 self.assertIsInstance(output_generate, BeamSearchEncoderDecoderOutput)
             else:
-                self.assertTrue(output_generate.sequences.shape[-1] == max_length + input_ids.shape[-1])
                 self.assertIsInstance(output_generate, GenerateBeamDecoderOnlyOutput)
                 # Retrocompatibility check
                 self.assertIsInstance(output_generate, BeamSearchDecoderOnlyOutput)
