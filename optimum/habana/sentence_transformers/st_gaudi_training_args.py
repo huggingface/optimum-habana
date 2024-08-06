@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SentenceTransformerGaudiTrainingArguments(GaudiTrainingArguments):
+    """
+    Inherits from GaudiTrainingArguments and adapted from: https://github.com/UKPLab/sentence-transformers/blob/v3.0.1/sentence_transformers/training_args.py
+    """
+
     batch_sampler: Union[BatchSamplers, str] = field(
         default=BatchSamplers.BATCH_SAMPLER, metadata={"help": "The batch sampler to use."}
     )
