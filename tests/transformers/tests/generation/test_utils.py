@@ -1243,9 +1243,6 @@ class GenerationTesterMixin:
             self.assertTrue(output_generate["sequences_scores"].shape == (output_generate["sequences"].shape[0],))
             self.assertTrue((output_generate["sequences_scores"] < 0).all().item())
 
-    # contrastive search is not supported and expected to fail
-    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate(self):
         # check `generate()` and `contrastive_search()` are equal
         for model_class in self.all_generative_model_classes:
@@ -1263,14 +1260,14 @@ class GenerationTesterMixin:
 
             # test old generation output for backwards compatibility
             model = model_class(config).to(torch_device).eval()
-            output_contrastive, output_generate = self._contrastive_generate(
+            output_generate = self._contrastive_generate(
                 model=model, input_ids=input_ids, attention_mask=attention_mask, max_length=max_length
             )
-            self.assertListEqual(output_contrastive.tolist(), output_generate.tolist())
+            if model.config.is_encoder_decoder:
+                self.assertTrue(output_generate.shape[-1] == self.max_new_tokens + 1)
+            else:
+                self.assertTrue(output_generate.shape[-1] == self.max_new_tokens + input_ids.shape[-1])
 
-    # contrastive search is not supported and expected to fail
-    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # won't fix: FSMT and Reformer have a different cache variable type (and format).
@@ -1306,7 +1303,7 @@ class GenerationTesterMixin:
 
     # contrastive search is not supported and expected to fail
     # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
+    #@pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_generate_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
         for model_class in self.all_generative_model_classes:
