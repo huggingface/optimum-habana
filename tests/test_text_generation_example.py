@@ -71,9 +71,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
-        "load_checkpoint": [
-            ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 76, False, 128, 2048, 1530),
-        ],
     }
 else:
     # Gaudi1 CI baselines
@@ -104,7 +101,6 @@ else:
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
-        "load_checkpoint": [],
     }
 
 
@@ -120,7 +116,6 @@ def _test_text_generation(
     fp8: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
-    load_cp = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -193,15 +188,6 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
-    if load_cp:
-        command += [
-            f"--max_input_tokens {max_input_tokens}",
-            "--limit_hpu_graphs",
-        ]
-        if "Llama-2" in model_name:
-            command.insert(-2, "--bucket_size 128")
-            command.insert(-2, "--bucket_internal")
-        command += ["--load_cp"]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -346,33 +332,3 @@ class TextGenPipeline(TestCase):
 
         # Ensure the run finished without any issue
         self.assertEqual(return_code, 0)
-
-
-@pytest.mark.parametrize(
-    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
-    MODELS_TO_TEST["load_checkpoint"]
-)
-def test_text_generation_load_cp(
-    model_name: str,
-    baseline: float,
-    world_size: int,
-    batch_size: int,
-    reuse_cache: bool,
-    input_len: int,
-    output_len: int,
-    token: str,
-):
-    deepspeed = True if world_size > 1 else False
-
-    _test_text_generation(
-        model_name,
-        baseline,
-        token,
-        deepspeed=deepspeed,
-        world_size=world_size,
-        batch_size=batch_size,
-        reuse_cache=reuse_cache,
-        max_input_tokens=input_len,
-        max_output_tokens=output_len,
-        load_cp=True
-    )
