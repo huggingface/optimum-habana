@@ -1,14 +1,5 @@
 # Paraphrases Training
 
-## Requirements
-
-First, you should install the requirements:
-
-```bash
-pip install -U sentence-transformers
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
 ## Usage
 
 To fine-tune on the paraphrase task:

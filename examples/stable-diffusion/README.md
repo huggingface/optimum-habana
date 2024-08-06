@@ -279,6 +279,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 28 \
     --image_save_dir /tmp/stable_diffusion_3_images \
+    --scheduler default \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \

@@ -5,15 +5,6 @@ Semantic Textual Similarity (STS) assigns a score on the similarity of two texts
 - **[training_stsbenchmark.py](training_stsbenchmark.py)** - This example shows how to create a SentenceTransformer model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
 - **[training_stsbenchmark_continue_training.py](training_stsbenchmark_continue_training.py)** - This example shows how to continue training on STS data for a previously created & trained SentenceTransformer model (e.g. [`all-mpnet-base-v2`](https://huggingface.co/sentence-transformers/all-mpnet-base-v2)).
 
-## Requirements
-
-First, you should install the requirements:
-
-```bash
-pip install -U sentence-transformers
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
 ## Single-card Training
 
 To fine tune on the STS task:
@@ -36,7 +27,7 @@ python training_stsbenchmark.py bert-base-uncased
 
 ## Multi-card Training
 
-For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training. 
+For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training.
 
 ```bash
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_stsbenchmark.py bert-base-uncased

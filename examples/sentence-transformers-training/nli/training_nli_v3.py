@@ -12,35 +12,36 @@ python training_nli_v3.py pretrained_transformer_model_name
 
 import logging
 import sys
-import traceback
 from datetime import datetime
 
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer, losses
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
 from sentence_transformers.similarity_functions import SimilarityFunction
-from sentence_transformers.trainer import SentenceTransformerTrainer
-from sentence_transformers.training_args import BatchSamplers, SentenceTransformerTrainingArguments
+from sentence_transformers.training_args import BatchSamplers
+
 
 def main():
-
     # Set the log level to INFO to get more information
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
     model_name = sys.argv[1] if len(sys.argv) > 1 else "distilroberta-base"
-    train_batch_size = 16  # The larger you select this, the better the results (usually). But it requires more GPU memory
+    train_batch_size = (
+        16  # The larger you select this, the better the results (usually). But it requires more GPU memory
+    )
 
     # Save path of the model
     output_dir = (
         "output/training_nli_v3_" + model_name.replace("/", "-") + "-" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
 
-    from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments, SentenceTransformerGaudiTrainer
-    from optimum.habana import SentenceTransformerGaudiTrainingArguments
-
+    from optimum.habana import (
+        SentenceTransformerGaudiTrainer,
+        SentenceTransformerGaudiTrainingArguments,
+    )
     from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_transformers_to_gaudi
-    adapt_sentence_transformers_to_gaudi()
 
+    adapt_sentence_transformers_to_gaudi()
 
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
@@ -79,8 +80,8 @@ def main():
         per_device_train_batch_size=train_batch_size,
         per_device_eval_batch_size=train_batch_size,
         warmup_ratio=0.1,
-        #fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-        #bf16=False,  # Set to True if you have a GPU that supports BF16
+        # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
+        # bf16=False,  # Set to True if you have a GPU that supports BF16
         batch_sampler=BatchSamplers.NO_DUPLICATES,
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
@@ -90,13 +91,13 @@ def main():
         save_total_limit=2,
         logging_steps=100,
         run_name="nli-v3",  # Will be used in W&B if `wandb` is installed
-        use_habana = True,
-        gaudi_config_name = 'Habana/bert-base-uncased',
-        use_lazy_mode = True,
-        use_hpu_graphs = True,
-        use_hpu_graphs_for_inference = False,
-        use_hpu_graphs_for_training = True,
-        dataloader_drop_last = True,
+        use_habana=True,
+        gaudi_config_name="Habana/bert-base-uncased",
+        use_lazy_mode=True,
+        use_hpu_graphs=True,
+        use_hpu_graphs_for_inference=False,
+        use_hpu_graphs_for_training=True,
+        dataloader_drop_last=True,
     )
 
     # 6. Create the trainer & start training
@@ -125,5 +126,6 @@ def main():
     final_output_dir = f"{output_dir}/final"
     model.save(final_output_dir)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

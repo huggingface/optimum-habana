@@ -1,14 +1,11 @@
-import json
-import os
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-from torch import nn
-from transformers import AutoConfig, AutoModel, AutoTokenizer, MT5Config, T5Config
+from typing import Dict, List, Tuple, Union
 
 
-def st_gaudi_transformer_tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True):
+def st_gaudi_transformer_tokenize(
+    self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True
+):
     """Tokenizes a text and maps tokens to token-ids"""
-    
+
     output = {}
     if isinstance(texts[0], str):
         to_tokenize = [texts]
@@ -37,11 +34,10 @@ def st_gaudi_transformer_tokenize(self, texts: Union[List[str], List[Dict], List
     output.update(
         self.tokenizer(
             *to_tokenize,
-            padding=True, 
+            padding=True,
             truncation="longest_first",
             return_tensors="pt",
             max_length=self.max_seq_length,
         )
     )
     return output
-
