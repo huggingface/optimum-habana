@@ -65,11 +65,10 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
         type=str,
         help="Name of scheduler",
     )
-
     parser.add_argument(
         "--timestep_spacing",
         default="linspace",
