@@ -827,22 +827,26 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
+        from optimum.habana.utils import HabanaProfile
 
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            logger.info("Graph compilation...")
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        logger.info("Graph compilation...")
+        t0 = time.perf_counter()
+        for i, batch in enumerate(dataloader):
+            print("Warming up", flush=True)
             t0 = time.perf_counter()
-            for i, batch in enumerate(dataloader):
-                generate_dataset(batch)
-                # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
-                    break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+            print(f"Step4+ starting time is {t0*1000}", flush=True)
+            generate_dataset(batch)
+            duration = time.perf_counter() - t0
+            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
+            # The first three iterations take longer because of graph compilation
+            if (i + 1) == 3:
+                break
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
