@@ -120,6 +120,7 @@ Here are a few settings you may be interested in:
 - `--limit_hpu_graphs` to skip HPU Graph usage for first token to save memory
 - `--use_kv_cache` to use the [key/value cache](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationConfig.use_cache) to speed up generation
 - `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
+- `--top_k` and `--penalty_alpha` to generate new tokens doing contrastive search (greedy search is the default)
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
@@ -298,7 +299,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Intel Neural Compressor (INC), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -472,7 +473,7 @@ More information on usage of the unifier script can be found in fp8 Habana docs:
 ### CPU memory reduction on single card
 
 Some models can fit on HPU DRAM but can't fit on the CPU RAM.
-When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
+When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in INC. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
 Here is an example of using disk_offload in quantize command.
 Please follow the "Running FP8 models on single device" section first before running the cmd below.
@@ -496,6 +497,7 @@ python run_generation.py \
 --use_flash_attention \
 --flash_attention_recompute
 ```
+
 
 ### Using Habana Flash Attention
 

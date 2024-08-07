@@ -34,6 +34,7 @@ from accelerate.state import GradientState
 from accelerate.tracking import GeneralTracker, filter_trackers
 from accelerate.utils import (
     AutocastKwargs,
+    DataLoaderConfiguration,
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
@@ -44,6 +45,7 @@ from accelerate.utils import (
     LoggerType,
     MegatronLMPlugin,
     PrecisionType,
+    ProfileKwargs,
     ProjectConfiguration,
     RNGType,
     check_os_kernel,
@@ -82,6 +84,12 @@ from .utils import (
 
 logger = get_logger(__name__)
 
+# Sentinel values for defaults
+_split_batches = object()
+_dispatch_batches = object()
+_even_batches = object()
+_use_seedable_sampler = object()
+
 
 class GaudiAccelerator(Accelerator):
     """
@@ -91,10 +99,11 @@ class GaudiAccelerator(Accelerator):
     def __init__(
         self,
         device_placement: bool = True,
-        split_batches: bool = False,
+        split_batches: bool = _split_batches,
         mixed_precision: PrecisionType | str | None = None,
         gradient_accumulation_steps: int = 1,
         cpu: bool = False,
+        dataloader_config: DataLoaderConfiguration | None = None,
         deepspeed_plugin: DeepSpeedPlugin | None = None,
         fsdp_plugin: GaudiFullyShardedDataParallelPlugin | None = None,
         megatron_lm_plugin: MegatronLMPlugin | None = None,
@@ -103,9 +112,9 @@ class GaudiAccelerator(Accelerator):
         project_dir: str | os.PathLike | None = None,
         project_config: ProjectConfiguration | None = None,
         gradient_accumulation_plugin: GradientAccumulationPlugin | None = None,
-        dispatch_batches: bool | None = None,
-        even_batches: bool = True,
-        use_seedable_sampler: bool = False,
+        dispatch_batches: bool | None = _dispatch_batches,
+        even_batches: bool = _even_batches,
+        use_seedable_sampler: bool = _use_seedable_sampler,
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
         dynamo_backend: GaudiDynamoBackend | str | None = None,
@@ -179,6 +188,9 @@ class GaudiAccelerator(Accelerator):
         self.init_handler = None
         self.fp8_recipe_handler = None
         self.autocast_handler = None
+        self.profile_handler = None
+        self.has_lomo_optimizer = False
+
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
                 assert isinstance(
@@ -209,6 +221,11 @@ class GaudiAccelerator(Accelerator):
                         raise ValueError("You can only pass one `AutocastKwargs` in `kwargs_handler`.")
                     else:
                         self.autocast_handler = handler
+                elif isinstance(handler, ProfileKwargs):
+                    if self.profile_handler is not None:
+                        raise ValueError("You can only pass one `ProfileKwargs` in `kwargs_handler`.")
+                    else:
+                        self.profile_handler = handler
 
         kwargs = self.init_handler.to_kwargs() if self.init_handler is not None else {}
         self.state = GaudiAcceleratorState(
@@ -221,6 +238,16 @@ class GaudiAccelerator(Accelerator):
             _from_accelerator=True,
             **kwargs,
         )
+
+        self.delayed_fp8_autocast = False
+        if self.fp8_recipe_handler is not None:
+            # We already check if FP8 is available during `self.state`
+            if self.state.mixed_precision != "fp8":
+                raise ValueError("Passing in a `FP8RecipeKwargs` object requires setting `mixed_precision='fp8'`.")
+            self.delayed_fp8_autocast = self.fp8_recipe_handler.backend == "TE" and self.distributed_type in (
+                DistributedType.MULTI_GPU,
+                DistributedType.FSDP,
+            )
 
         if self.state.is_fp8_enabled:
             if self.fp8_recipe_handler is None:
@@ -256,10 +283,32 @@ class GaudiAccelerator(Accelerator):
         )
 
         self.device_placement = device_placement
-        self.split_batches = split_batches
-        self.dispatch_batches = dispatch_batches
-        self.even_batches = even_batches
-        self.use_seedable_sampler = use_seedable_sampler
+        if dataloader_config is None:
+            dataloader_config = DataLoaderConfiguration()
+        self.dataloader_config = dataloader_config
+        # Deal with deprecated args
+        # TODO: Remove in v1.0.0
+        deprecated_dl_args = {}
+        if dispatch_batches is not _dispatch_batches:
+            deprecated_dl_args["dispatch_batches"] = dispatch_batches
+            self.dataloader_config.dispatch_batches = dispatch_batches
+        if split_batches is not _split_batches:
+            deprecated_dl_args["split_batches"] = split_batches
+            self.dataloader_config.split_batches = split_batches
+        if even_batches is not _even_batches:
+            deprecated_dl_args["even_batches"] = even_batches
+            self.dataloader_config.even_batches = even_batches
+        if use_seedable_sampler is not _use_seedable_sampler:
+            deprecated_dl_args["use_seedable_sampler"] = use_seedable_sampler
+            self.dataloader_config.use_seedable_sampler = use_seedable_sampler
+        if len(deprecated_dl_args) > 0:
+            values = ", ".join([f"{k}={v}" for k, v in deprecated_dl_args.items()])
+            warnings.warn(
+                f"Passing the following arguments to `Accelerator` is deprecated and will be removed in version 1.0 of Accelerate: {deprecated_dl_args.keys()}. "
+                "Please pass an `accelerate.DataLoaderConfiguration` instead: \n"
+                f"dataloader_config = DataLoaderConfiguration({values})",
+                FutureWarning,
+            )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
 
         # Mixed precision attributes
@@ -351,6 +400,7 @@ class GaudiAccelerator(Accelerator):
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
+
         if self.state.is_fp8_enabled:
             model = convert_model(model)
 
@@ -364,16 +414,19 @@ class GaudiAccelerator(Accelerator):
                     " In order to use 8-bit models that have been loaded across multiple GPUs the solution is to use Naive Pipeline Parallelism."
                     " Therefore you should not specify that you are under any distributed regime in your accelerate config."
                 )
-            current_device = list(model_devices)[0]
-            current_device_index = current_device.index if isinstance(current_device, torch.device) else current_device
+            elif len(model_devices) == 1:
+                current_device = list(model_devices)[0]
+                current_device_index = (
+                    current_device.index if isinstance(current_device, torch.device) else current_device
+                )
 
-            if torch.device(current_device_index) != self.device:
-                # if on the first device (GPU 0) we don't care
-                if (self.device.index is not None) or (current_device_index != 0):
-                    raise ValueError(
-                        "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
-                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
-                    )
+                if torch.device(current_device_index) != self.device:
+                    # if on the first device (GPU 0) we don't care
+                    if (self.device.index is not None) or (current_device_index != 0):
+                        raise ValueError(
+                            "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
+                            "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
+                        )
 
             if "cpu" in model_devices or "disk" in model_devices:
                 raise ValueError(
@@ -386,6 +439,8 @@ class GaudiAccelerator(Accelerator):
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
+                    if self.ddp_handler is not None:
+                        self.ddp_handler.register_comm_hook(model)
             elif self.distributed_type == GaudiDistributedType.FSDP:
                 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 
@@ -430,6 +485,72 @@ class GaudiAccelerator(Accelerator):
                             ),
                             auto_wrap_policy=fsdp_plugin.auto_wrap_policy,
                         )
+                # In the event the model had been loaded in low precision, but
+                # mixed precision had also been activated, then we follow DeepSpeed's
+                # strategy to hold the parameters in full precision.
+                # - assume that trainer.args.bf16 and trainer.args.fp16 are already checked against
+                #   fsdp_plugin.mixed_precision_policy.
+                # - NOTE: we do not check the mixed_precision attribute on the FSDP root wrapper.
+                #   * this attribute will always set by init_utils.init_core_state so its always not None.
+                #   * mixed_precision.param_dtype only regards _fwd_bwd_param_dtype
+                #   * if model is loaded in 16bit, and even if mixed_precision.param_dtype is None,
+                #     we sill want to upcast the flat_param.
+                if self.mixed_precision != "no":  # if mixed precision is set
+                    upcasted_log = []
+                    for module in FSDP.fsdp_modules(model):
+                        # Referencing DeepSpeed Zero3
+                        # - in Init, params are converted to 16bit while partitioning.
+                        # - in accelerator.prepare, deepspeed.initalize is called to:
+                        #   * creates the DeepSpeeedEngine.
+                        #   * since zero_optimization() is True , calls engine._configure_zero_optimizer.
+                        #
+                        # Inside the DeepSpeed Zero3 optimizer configuration, which initalizes
+                        # DeepSpeedZeroOptimizer_Stage3, during which:
+                        #   * trainable_param_groups are obtained from the attached optimizer
+                        #     (already partitioned in 16bit).
+                        #   * then _setup_for_real_optimizer -> _create_fp32_partitions
+                        #     which performs the fp32 upcasting.
+
+                        # To mimick DeepSeepds's casting in FSDP, we look at the (single) FlatParameter held
+                        # within an FSDP wrapper. This FlatParameter will be seen by the optimizer.
+                        #  - even though there is a torch.device('meta') guard below, we
+                        #    expect _init_utils._init_param_handle_from_module to already
+                        #    sync the parameter.
+
+                        if not module._has_params:
+                            continue  # skip if FSDP module not managing parameters
+                        param = module._flat_param
+                        if (
+                            param.dtype != torch.float32
+                            and param.device != torch.device("meta")
+                            and param.requires_grad
+                        ):
+                            # keep log of names_params that was upcasted
+                            # NOTE: resorted to this because warnings.simplefilter("once") is somehow not working
+                            name_param_log = (module.module.__class__.__name__, ", ".join(module._flat_param._fqns))
+                            if name_param_log not in upcasted_log:
+                                upcasted_log.append(name_param_log)
+
+                            # this works because of FSDP's _runtime_utils.lazy_init.
+                            # Have to be careful not to call anything before this that
+                            # triggers lazy_init (e.g., _is_fsdp_root).
+                            param.data = param.data.to(torch.float32)  # upcasting
+                            module._handle._orig_param_dtype = torch.float32  # update
+
+                    # report the warnings
+                    # some messages can be quite repetitive, especially when reporting about layers that have identical architecture.
+                    if self.is_main_process:
+                        for name_log, param_log in upcasted_log:
+                            warnings.warn(
+                                f"Upcasted low precision parameters in {name_log} because mixed precision turned on in FSDP. "
+                                f"Affects: {param_log}."
+                            )
+
+                        if len(upcasted_log) > 0:
+                            warnings.warn(
+                                "FSDP upcast of low precision parameters may affect the precision of model checkpoints."
+                            )
+
                 # if the previous and current models are same, delete the previous one
                 if len(self._models) > 1 and (self._models[-2] is self._models[-1]):
                     del self._models[-2]
@@ -551,6 +672,8 @@ class GaudiAccelerator(Accelerator):
                 )
 
         if model is not None:
+            # if the model is an MOE, set the appropriate MOE layers as leaf Z3 modules
+            deepspeed_plugin.set_moe_leaf_modules(model)
             # deal with config keys that use `auto` value and rely on model's hidden_size
             hidden_size_based_keys = [
                 "zero_optimization.reduce_bucket_size",
@@ -580,7 +703,7 @@ class GaudiAccelerator(Accelerator):
                 config_kwargs.update(
                     {
                         "zero_optimization.reduce_bucket_size": hidden_size * hidden_size,
-                        "zero_optimization.stage3_prefetch_bucket_size": 0.9 * hidden_size * hidden_size,
+                        "zero_optimization.stage3_prefetch_bucket_size": int(0.9 * hidden_size * hidden_size),
                         "zero_optimization.stage3_param_persistence_threshold": 10 * hidden_size,
                     }
                 )
@@ -640,6 +763,11 @@ class GaudiAccelerator(Accelerator):
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
 
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
+            # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
+            if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
+                kwargs["model"]
+            ):
+                engine.compile()
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
@@ -723,6 +851,7 @@ class GaudiAccelerator(Accelerator):
             even_batches=self.even_batches,
             slice_fn_for_dispatch=slice_fn_for_dispatch,
             use_seedable_sampler=self.use_seedable_sampler,
+            non_blocking=self.non_blocking,
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader

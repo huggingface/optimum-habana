@@ -33,7 +33,7 @@ import psutil
 import torch
 import torch.nn.functional as F
 from run_generation import setup_parser
-from utils import initialize_model
+from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -102,13 +102,22 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2", "gptj"]:
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "falcon",
+            "phi",
+            "mixtral",
+            "qwen2",
+            "gptj",
+            "starcoder2",
+        ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
@@ -209,9 +218,8 @@ def main():
         json.dump(results, open(args.output_file, "w"), indent=2)
         print(json.dumps(results, indent=2))
     if args.quant_config:
-        import habana_quantization_toolkit
+        finalize_quantization(model)
 
-        habana_quantization_toolkit.finish_measurements(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

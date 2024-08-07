@@ -853,7 +853,11 @@ class ModelTesterMixin:
                     ):
                         model.config.problem_type = "single_label_classification"
 
-                    traced_model = symbolic_trace(model, input_names)
+                    from optimum.habana.transformers.models import GaudiGPT2DoubleHeadsModel
+
+                    traced_model = symbolic_trace(
+                        model, input_names, disable_check=isinstance(model, GaudiGPT2DoubleHeadsModel)
+                    )
                     traced_output = traced_model(**filtered_inputs)
                     model_output = model(**filtered_inputs)
 

@@ -53,10 +53,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, 7422.4),
             ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
             ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 12397.11410288204),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 5394.675714459493),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 919.8470890081497),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 2471.950758729518),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 17068.965283763682),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
@@ -74,6 +74,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "distributed_tp": [
             ("meta-llama/Llama-2-7b-hf", 1345.2369318328463),
+        ],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 51.61471298016438),
         ],
     }
 else:
@@ -106,6 +109,9 @@ else:
         "torch_compile": [],
         "torch_compile_distributed": [],
         "distributed_tp": [],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 34.48141280163397),
+        ],
     }
 
 
@@ -122,6 +128,7 @@ def _test_text_generation(
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
+    contrastive_search: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -177,6 +184,9 @@ def _test_text_generation(
     if not deepspeed:
         command.append("--bf16")
 
+    if contrastive_search:
+        command += ["--top_k 4", "--penalty_alpha 0.5"]
+
     if fp8:
         if "--trim_logits" not in command:
             command += ["--trim_logits"]
@@ -185,6 +195,11 @@ def _test_text_generation(
             command.insert(-2, "--flash_attention_recompute")
             command.insert(-2, "--bucket_size 128")
             command.insert(-2, "--bucket_internal")
+        if "Mistral" in model_name:
+            command.insert(-2, "--use_flash_attention")
+            command.insert(-2, "--flash_attention_recompute")
+            command.insert(-2, "--attn_softmax_bf16")
+            command.insert(-2, "--trim_logits")
         elif "falcon-180b" in model_name.lower():
             command.insert(-2, "--flash_attention_recompute")
 
@@ -325,6 +340,13 @@ def test_text_generation_distributed_tp(model_name: str, baseline: float, token:
         torch_compile=True,
         parallel_strategy="tp",
     )
+
+
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["contrastive_search"])
+def test_text_generation_contrastive_search(
+    model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
+):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
 class TextGenPipeline(TestCase):

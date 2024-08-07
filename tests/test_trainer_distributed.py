@@ -85,6 +85,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         command_list += [output_dir]
         command_list += ["--use_habana"]
         command_list += ["--use_lazy_mode"]
+        command_list += ["--report_to none"]
         for key, value in kwargs.items():
             command_list += [f"--{key} {value}"]
         command = [" ".join(command_list)]

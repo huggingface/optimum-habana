@@ -252,6 +252,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
