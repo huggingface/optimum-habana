@@ -348,6 +348,7 @@ def main():
     )
     peft_model = get_peft_model(model, peft_config)
     peft_model.print_trainable_parameters()
+    peft_model_t = get_peft_model(model, peft_config_target)
 
     # training and evaluation
     gaudi_config = GaudiConfig()
@@ -386,10 +387,9 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     # target train
-    peft_model = get_peft_model(model, peft_config_target)
-    peft_model.print_trainable_parameters()
+    peft_model_t.print_trainable_parameters()
     trainer = GaudiSeq2SeqTrainer(
-        model=peft_model,
+        model=peft_model_t,
         gaudi_config=gaudi_config,
         args=training_args,
         data_collator=collate_fn,
