@@ -556,6 +556,9 @@ class ModelTesterMixin:
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
+            # in latest upgrade there are 2 impls of attention:
+            # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
+            config._attn_implementation = 'eager'
             model = model_class(config)
             model.to(torch_device)
             model.eval()
