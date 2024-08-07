@@ -113,7 +113,8 @@
                         "--use_hpu_graphs_for_training",
                         "--max_source_length 256",
                         "--max_target_length 16",
-                        "--bf16"
+                        "--bf16",
+                        "--trust_remote_code True"
                     ]
                 }
             }
