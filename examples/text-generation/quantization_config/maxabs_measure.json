@@ -2,5 +2,5 @@
     "method": "HOOKS",
     "mode": "MEASURE",
     "observer": "maxabs",
-    "dump_stats_path": "./hqt_output/measure",
+    "dump_stats_path": "./hqt_output/measure"
 }

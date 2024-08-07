@@ -3,5 +3,5 @@
     "mode": "QUANTIZE",
     "observer": "maxabs",
     "scale_method": "unit_scale",
-    "dump_stats_path": "./hqt_output/measure",
+    "dump_stats_path": "./hqt_output/measure"
 }
