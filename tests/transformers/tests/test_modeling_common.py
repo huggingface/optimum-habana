@@ -28,6 +28,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import numpy as np
+import transformers
 from pytest import mark
 from transformers import (
     AutoModel,
@@ -74,7 +75,7 @@ from transformers.utils import (
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-import transformers
+
 
 if is_accelerate_available():
     from accelerate.utils import compute_module_sizes
@@ -559,7 +560,7 @@ class ModelTesterMixin:
             if isinstance(config, transformers.ViTConfig):
                 # in latest upgrade there are 2 impls of attention:
                 # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
-                config._attn_implementation = 'eager'
+                config._attn_implementation = "eager"
             model = model_class(config)
             model.to(torch_device)
             model.eval()
@@ -1203,7 +1204,7 @@ class ModelTesterMixin:
         if isinstance(config, transformers.ViTConfig):
             # in latest upgrade there are 2 impls of attention:
             # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
-            config._attn_implementation = 'eager'
+            config._attn_implementation = "eager"
 
         # no need to test all models as different heads yield the same functionality
         model_class = self.all_model_classes[0]

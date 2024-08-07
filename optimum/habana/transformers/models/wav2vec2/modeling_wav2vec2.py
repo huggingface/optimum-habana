@@ -98,7 +98,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
         num_masked_span = compute_num_masked_span(input_length)
 
         # get random indices to mask
-        '''
+        """
         Original code:
         spec_aug_mask_idx = np.random.choice(
             np.arange(input_length - (mask_length - 1)), num_masked_span, replace=False
@@ -108,7 +108,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
         However torch rewrite fails, because torch.randperm expects positive number
         This causes a unit test to fail:
         RUN_SLOW=true  GAUDI2_CI=1 python -m pytest tests/transformers/tests/models/wav2vec2/test_modeling_wav2vec2.py -v -s -k test_compute_mask_indices_short_audio
-        '''
+        """
         spec_aug_mask_idx = torch.randperm(input_length - (mask_length - 1), device="hpu")[:num_masked_span]
 
         # pick first sampled index that will serve as a dummy index to pad vector
