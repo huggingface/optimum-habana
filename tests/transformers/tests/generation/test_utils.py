@@ -1163,7 +1163,6 @@ class GenerationTesterMixin:
             )
             self.assertTrue(output_generate.shape[-1] == max_length)
 
-
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
 
@@ -1373,7 +1372,6 @@ class GenerationTesterMixin:
                 attention_mask=attention_mask,
             )
             self.assertListEqual(dynamic_output.tolist(), static_output.tolist())
-
 
     # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
     @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")

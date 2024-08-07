@@ -178,7 +178,6 @@ from .models import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
-    gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,

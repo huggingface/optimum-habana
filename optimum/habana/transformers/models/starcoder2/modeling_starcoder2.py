@@ -243,11 +243,6 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
-
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -338,9 +333,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
             attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
 
             if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
                 attn_weights = attn_weights + causal_mask
 
             if attn_softmax_bf16:
@@ -383,9 +376,15 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
 class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
     def __init__(self, config: Starcoder2Config, layer_idx: int):
-        super().__init__(config, layer_idx)
+        super(Starcoder2DecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
+
         self.self_attn = GaudiStarcoder2Attention(config, layer_idx)
+
+        self.mlp = GaudiStarcoder2MLP(config)
+
+        self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.norm_epsilon)
+        self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.norm_epsilon)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -415,16 +414,16 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -512,6 +511,22 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
 
 
 class GaudiStarcoder2Model(Starcoder2Model):
+    def __init__(self, config: Starcoder2Config):
+        super(Starcoder2Model, self).__init__(config)
+        self.padding_idx = config.pad_token_id
+        self.vocab_size = config.vocab_size
+
+        self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        self.embedding_dropout = config.embedding_dropout
+        self.layers = torch.nn.ModuleList(
+            [GaudiStarcoder2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+        )
+        self._attn_implementation = "eager"
+        self.norm = torch.nn.LayerNorm(config.hidden_size, eps=config.norm_epsilon)
+        self.gradient_checkpointing = False
+        # Initialize weights and apply final processing
+        self.post_init()
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -551,8 +566,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        self._attn_implementation = "eager"
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
@@ -690,6 +703,15 @@ class GaudiStarcoder2Model(Starcoder2Model):
 
 
 class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
+    def __init__(self, config):
+        super(Starcoder2ForCausalLM, self).__init__(config)
+        self.model = GaudiStarcoder2Model(config)
+        self.vocab_size = config.vocab_size
+        self.lm_head = torch.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
@@ -799,42 +821,20 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        token_idx=None,
         **kwargs,
     ):
-        past_length = 0
-
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
-                else:
-                    cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
-
-                # Keep only the unprocessed tokens:
-                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
-                # input)
-                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
-                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
-                # input_ids based on the past_length.
-                elif past_length < input_ids.shape[1]:
-                    input_ids = input_ids[:, past_length:]
-                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
-
-                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
-                if (
-                    max_cache_length is not None
-                    and attention_mask is not None
-                    and cache_length + input_ids.shape[1] > max_cache_length
-                ):
-                    attention_mask = attention_mask[:, -max_cache_length:]
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
             input_ids = input_ids[:, :token_idx]
