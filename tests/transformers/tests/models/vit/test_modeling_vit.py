@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -12,7 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Testing suite for the PyTorch ViT model."""
+""" Testing suite for the PyTorch ViT model. """
+
 
 import inspect
 import unittest
@@ -21,9 +23,11 @@ from transformers import ViTConfig
 from transformers.testing_utils import (
     require_accelerate,
     require_torch,
-    require_torch_gpu,
+    require_torch_accelerator,
+    require_torch_fp16,
     require_vision,
     slow,
+    torch_device,
 )
 from transformers.utils import cached_property, is_torch_available, is_vision_available
 
@@ -36,12 +40,14 @@ from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor
 if is_torch_available():
     import torch
     from torch import nn
+
     from transformers import ViTForImageClassification, ViTForMaskedImageModeling, ViTModel
     from transformers.models.vit.modeling_vit import VIT_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 if is_vision_available():
     from PIL import Image
+
     from transformers import ViTImageProcessor
 
 torch_device = "hpu"
@@ -192,7 +198,11 @@ class ViTModelTest(ModelTesterMixin, unittest.TestCase):
         if is_torch_available()
         else ()
     )
-
+    pipeline_model_mapping = (
+        {"image-feature-extraction": ViTModel, "image-classification": ViTForImageClassification}
+        if is_torch_available()
+        else {}
+    )
     fx_compatible = True
 
     test_pruning = False
@@ -245,9 +255,9 @@ class ViTModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in VIT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = ViTModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "google/vit-base-patch16-224"
+        model = ViTModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
 
 # We will verify our results on an image of cute cats
@@ -305,14 +315,15 @@ class ViTModelIntegrationTest(unittest.TestCase):
         self.assertEqual(outputs.last_hidden_state.shape, expected_shape)
 
         expected_slice = torch.tensor(
-            [[4.2429, 4.3938, -6.6483], [4.5475, 1.8862, -6.7303], [4.4427, 0.8451, -5.8586]]
+            [[4.2340, 4.3906, -6.6692], [4.5463, 1.8928, -6.7257], [4.4429, 0.8496, -5.8585]]
         ).to(torch_device)
 
         self.assertTrue(torch.allclose(outputs.last_hidden_state[0, :3, :3], expected_slice, atol=1e-4))
 
     @slow
     @require_accelerate
-    @require_torch_gpu
+    @require_torch_accelerator
+    @require_torch_fp16
     def test_inference_fp16(self):
         r"""
         A small test to make sure that inference work in half precision without any problem.
@@ -327,3 +338,4 @@ class ViTModelIntegrationTest(unittest.TestCase):
         # forward pass to make sure inference works in fp16
         with torch.no_grad():
             _ = model(pixel_values)
+

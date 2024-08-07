@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -17,7 +18,7 @@
 import unittest
 
 from transformers import RobertaConfig, is_torch_available
-from transformers.testing_utils import TestCasePlus, require_torch, slow
+from transformers.testing_utils import TestCasePlus, require_torch, slow, torch_device
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -31,6 +32,7 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         RobertaForCausalLM,
         RobertaForMaskedLM,
@@ -480,9 +482,9 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = RobertaModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "FacebookAI/roberta-base"
+        model = RobertaModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     def test_create_position_ids_respects_padding_index(self):
         """Ensure that the default position ids only assign a sequential . This is a regression
@@ -530,7 +532,7 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
 class RobertaModelIntegrationTest(TestCasePlus):
     @slow
     def test_inference_masked_lm(self):
-        model = RobertaForMaskedLM.from_pretrained("roberta-base")
+        model = RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base")
 
         input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
         with torch.no_grad():
@@ -550,7 +552,7 @@ class RobertaModelIntegrationTest(TestCasePlus):
 
     @slow
     def test_inference_no_head(self):
-        model = RobertaModel.from_pretrained("roberta-base")
+        model = RobertaModel.from_pretrained("FacebookAI/roberta-base")
 
         input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
         with torch.no_grad():
@@ -568,7 +570,7 @@ class RobertaModelIntegrationTest(TestCasePlus):
 
     @slow
     def test_inference_classification_head(self):
-        model = RobertaForSequenceClassification.from_pretrained("roberta-large-mnli")
+        model = RobertaForSequenceClassification.from_pretrained("FacebookAI/roberta-large-mnli")
 
         input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
         with torch.no_grad():
@@ -582,3 +584,4 @@ class RobertaModelIntegrationTest(TestCasePlus):
         # expected_tensor = roberta.predict("mnli", input_ids, return_logits=True).detach()
 
         self.assertTrue(torch.allclose(output, expected_tensor, atol=1e-4))
+
