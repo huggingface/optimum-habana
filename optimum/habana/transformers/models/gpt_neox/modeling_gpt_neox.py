@@ -4,7 +4,10 @@ import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import (
+    GPTNeoXAttention,
     GPTNeoXForCausalLM,
+    GPTNeoXLayer,
+    GPTNeoXMLP,
     GPTNeoXModel,
     apply_rotary_pos_emb,
     logger,
@@ -99,57 +102,68 @@ def gaudi_gpt_neox_attention_forward(
     return outputs
 
 
-def gaudi_gpt_neox_layer_forward(
-    self,
-    hidden_states: Optional[torch.FloatTensor],
-    attention_mask: Optional[torch.FloatTensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    head_mask: Optional[torch.FloatTensor] = None,
-    use_cache: Optional[bool] = False,
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-):
-    """
-    Copied from GPTNeoxLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
-    The only differences are:
-    - add new args token_idx
-    """
-    attention_layer_outputs = self.attention(
-        self.input_layernorm(hidden_states),
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        layer_past=layer_past,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-    )
-    attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
-    attn_output = self.post_attention_dropout(attn_output)
-    outputs = attention_layer_outputs[1:]
+class GaudiGPTNeoXLayer(GPTNeoXLayer):
+    def __init__(self, config):
+        super(GPTNeoXLayer, self).__init__()
+        self.use_parallel_residual = config.use_parallel_residual
+        self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.post_attention_dropout = torch.nn.Dropout(config.hidden_dropout)
+        self.post_mlp_dropout = torch.nn.Dropout(config.hidden_dropout)
+        self.attention = GPTNeoXAttention(config)
+        self.mlp = GPTNeoXMLP(config)
 
-    if self.use_parallel_residual:
-        # pseudocode:
-        # x = x + attn(ln1(x)) + mlp(ln2(x))
-        mlp_output = self.mlp(self.post_attention_layernorm(hidden_states))
-        mlp_output = self.post_mlp_dropout(mlp_output)
-        hidden_states = mlp_output + attn_output + hidden_states
-    else:
-        # pseudocode:
-        # x = x + attn(ln1(x))
-        # x = x + mlp(ln2(x))
-        attn_output = attn_output + hidden_states
-        mlp_output = self.mlp(self.post_attention_layernorm(attn_output))
-        mlp_output = self.post_mlp_dropout(mlp_output)
-        hidden_states = mlp_output + attn_output
+    def forward(
+        self,
+        hidden_states: Optional[torch.FloatTensor],
+        attention_mask: Optional[torch.FloatTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = False,
+        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+    ):
+        """
+        Copied from GPTNeoxLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
+        The only differences are:
+        - add new args token_idx
+        """
+        attention_layer_outputs = self.attention(
+            self.input_layernorm(hidden_states),
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            layer_past=layer_past,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+        )
+        attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
+        attn_output = self.post_attention_dropout(attn_output)
+        outputs = attention_layer_outputs[1:]
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs  # hidden_states, present, (attn_weights)
-    else:
-        outputs = (hidden_states,) + outputs[1:]  # hidden_states, (attn_weights)
+        if self.use_parallel_residual:
+            # pseudocode:
+            # x = x + attn(ln1(x)) + mlp(ln2(x))
+            mlp_output = self.mlp(self.post_attention_layernorm(hidden_states))
+            mlp_output = self.post_mlp_dropout(mlp_output)
+            hidden_states = mlp_output + attn_output + hidden_states
+        else:
+            # pseudocode:
+            # x = x + attn(ln1(x))
+            # x = x + mlp(ln2(x))
+            attn_output = attn_output + hidden_states
+            mlp_output = self.mlp(self.post_attention_layernorm(attn_output))
+            mlp_output = self.post_mlp_dropout(mlp_output)
+            hidden_states = mlp_output + attn_output
 
-    return outputs
+        if use_cache:
+            outputs = (hidden_states,) + outputs  # hidden_states, present, (attn_weights)
+        else:
+            outputs = (hidden_states,) + outputs[1:]  # hidden_states, (attn_weights)
+
+        return outputs
 
 
 def gaudi_gpt_neox_model_forward(
