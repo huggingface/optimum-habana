@@ -143,6 +143,15 @@ from .mpt import (
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
 )
+from .mt5 import (
+    gaudi_mt5_layernorm_forward,
+    gaudi_MT5Attention_forward,
+    gaudi_MT5Block_forward,
+    gaudi_MT5ForConditionalGeneration_forward,
+    gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_MT5LayerSelfAttention_forward,
+    gaudi_MT5Stack_forward,
+)
 from .opt import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
