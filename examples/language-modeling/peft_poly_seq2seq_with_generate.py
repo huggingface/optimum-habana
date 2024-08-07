@@ -390,6 +390,8 @@ def main():
         token=model_args.token,
     )
     peft_model = get_peft_model(model, peft_config)
+    if training_args.bf16:
+        peft_model = peft_model.to(torch.bfloat16)
     peft_model.print_trainable_parameters()
 
     # training and evaluation
