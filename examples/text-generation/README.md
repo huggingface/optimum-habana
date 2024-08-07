@@ -497,7 +497,7 @@ To enable this weights offload mechanism, add `--disk_offload` flag to the topol
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
-You can load pre-quantized 4bit models with the argument `--load_quantized_model`.
+You can load pre-quantized 4bit models with the argument `--load_quantized_model_with_inc`.
 Currently, uint4 checkpoints and single device are supported.
 More information on enabling 4 bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
@@ -519,7 +519,35 @@ python run_lm_eval.py \
 --attn_softmax_bf16 \
 --bucket_size=128 \
 --bucket_internal \
---load_quantized_model
+--load_quantized_model_with_inc
+```
+
+### Loading 4 Bit Checkpoints from Neural Compressor (INC)
+
+You can load pre-quantized 4bit checkpoint with the argument `--quantized_inc_model_path`, supplied together with the original model with the argument `--model_name_or_path`.
+Currently, uint4 checkpoints and single device are supported.
+NOTE: In this flow you can load a checkpoint that was quantized using INC.
+More information on enabling 4 bit inference in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
+
+Below is an example to load a llama7b model with a 4bit checkpoint quantized in INC.
+Please note that model checkpoint name is denoted as `<local_model_path_from_inc>`.
+Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
+`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+```bash
+SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
+python run_lm_eval.py \
+-o acc_load_uint4_model.txt \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--attn_softmax_bf16 \
+--bucket_size=128 \
+--bucket_internal \
+--quantized_inc_model_path <local_model_path_from_inc> \
 ```
 
 ### Using Habana Flash Attention
@@ -558,7 +586,7 @@ Currently, the support is for UINT4 inference of pre-quantized models only.
 
 You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
 `SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
-and by adding the argument `--gptq`.
+and by adding the argument `--load_quantized_model_with_autogptq`.
 
 ***Note:***
 Setting the above environment variables improves performance. These variables will be removed in future releases.
@@ -579,7 +607,7 @@ ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
 --max_new_tokens 128 \
 --batch_size 1 \
 --bf16 \
---gptq
+--load_quantized_model_with_autogptq
 ```
 
 ## Language Model Evaluation Harness

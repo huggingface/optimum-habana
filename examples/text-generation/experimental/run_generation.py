@@ -256,7 +256,9 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument("--gptq", action="store_true", help="Enable Quantization to 4 bit with AutoGPTQ")
+    parser.add_argument(
+        "--load_quantized_model_with_autogptq", action="store_true", help="Enable Quantization to 4 bit with AutoGPTQ"
+    )
 
     parser.add_argument(
         "--use_flash_attention",
@@ -373,8 +375,8 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = args.use_flash_attention
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.gptq:
-        raise RuntimeError("Setting both quant_config and gptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(

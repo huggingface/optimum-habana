@@ -60,7 +60,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
-        "gptq": [
+        "load_quantized_model_with_autogptq": [
             ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
         ],
         "deepspeed": [
@@ -106,7 +106,7 @@ else:
             ("state-spaces/mamba-130m-hf", 224, False, 794.542),
         ],
         "fp8": [],
-        "gptq": [],
+        "load_quantized_model_with_autogptq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
@@ -129,7 +129,7 @@ def _test_text_generation(
     world_size: int = 8,
     torch_compile: bool = False,
     fp8: bool = False,
-    gptq: bool = False,
+    load_quantized_model_with_autogptq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -228,8 +228,8 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
-    if gptq:
-        command += ["--gptq"]
+    if load_quantized_model_with_autogptq:
+        command += ["--load_quantized_model_with_autogptq"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -319,7 +319,8 @@ def test_text_generation_fp8(
 
 
 @pytest.mark.parametrize(
-    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["gptq"]
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
+    MODELS_TO_TEST["load_quantized_model_with_autogptq"],
 )
 def test_text_generation_gptq(
     model_name: str,
@@ -339,7 +340,7 @@ def test_text_generation_gptq(
         deepspeed=deepspeed,
         world_size=world_size,
         fp8=False,
-        gptq=True,
+        load_quantized_model_with_autogptq=True,
         batch_size=batch_size,
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,

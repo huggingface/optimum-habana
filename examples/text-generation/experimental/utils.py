@@ -277,7 +277,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
-    elif args.gptq:
+    elif args.load_quantized_model_with_autogptq:
         from transformers import GPTQConfig
 
         quantization_config = GPTQConfig(bits=4, use_exllama=False)
