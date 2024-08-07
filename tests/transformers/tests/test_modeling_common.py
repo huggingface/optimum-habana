@@ -72,6 +72,7 @@ from transformers.utils import (
     is_accelerate_available,
     is_torch_fx_available,
 )
+import transformers
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -556,9 +557,10 @@ class ModelTesterMixin:
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
-            # in latest upgrade there are 2 impls of attention:
-            # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
-            config._attn_implementation = 'eager'
+            if isinstance(config, transformers.ViTConfig):
+                # in latest upgrade there are 2 impls of attention:
+                # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
+                config._attn_implementation = 'eager'
             model = model_class(config)
             model.to(torch_device)
             model.eval()
@@ -1195,6 +1197,11 @@ class ModelTesterMixin:
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.output_hidden_states = True
         config.output_attentions = self.has_attentions
+
+        if isinstance(config, transformers.ViTConfig):
+            # in latest upgrade there are 2 impls of attention:
+            # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
+            config._attn_implementation = 'eager'
 
         # no need to test all models as different heads yield the same functionality
         model_class = self.all_model_classes[0]
