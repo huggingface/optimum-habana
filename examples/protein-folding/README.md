@@ -66,7 +66,7 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_sequence_classification.py
     --num_train_epochs 100 \
     --lr_scheduler_type constant \
     --do_eval \
-    --evaluation_strategy epoch \
+    --eval_strategy epoch \
     --per_device_eval_batch_size 32 \
     --logging_strategy epoch \
     --save_strategy epoch \

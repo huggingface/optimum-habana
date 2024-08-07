@@ -31,8 +31,6 @@ logger = logging.get_logger(__name__)
 
 try:
     from habana_frameworks.mediapipe import fn
-    from habana_frameworks.mediapipe.backend.nodes import opnode_tensor_info
-    from habana_frameworks.mediapipe.backend.operator_specs import schema
     from habana_frameworks.mediapipe.media_types import (
         dtype,
         ftype,
@@ -41,8 +39,10 @@ try:
     )
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
     from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
-    from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
-    from habana_frameworks.torch.hpu import get_device_name
+    from habana_frameworks.mediapipe.operators.reader_nodes.reader_nodes import (
+        media_ext_reader_op_impl,
+        media_ext_reader_op_tensor_info,
+    )
 except ImportError:
     pass
 
@@ -65,14 +65,14 @@ def get_dataset_for_pipeline(img_dir):
     return DatasetHF.from_generator(gen)
 
 
-class ReadImageTextFromDataset(MediaReaderNode):
+class ReadImageTextFromDataset(media_ext_reader_op_impl):
     """
     Class defining read image/text from directory node.
     """
 
-    def __init__(self, name, guid, device, inputs, params, cparams, node_attr):
-        super().__init__(name, guid, device, inputs, params, cparams, node_attr)
-        self.dataset = params["dataset"]
+    def __init__(self, params, fw_params):
+        priv_params = params["priv_params"]
+        self.dataset = priv_params["dataset"]
 
         self.dataset_image = []
         self.dataset_prompt_embeds = []
@@ -92,33 +92,31 @@ class ReadImageTextFromDataset(MediaReaderNode):
         self.dataset_original_sizes = np.array(self.dataset_original_sizes, dtype=np.uint32)
         self.dataset_crop_top_lefts = np.array(self.dataset_crop_top_lefts, dtype=np.uint32)
         self.epoch = 0
-        self.batch_sampler = params["batch_sampler"]
+        self.batch_sampler = priv_params["batch_sampler"]
 
         self.num_imgs_slice = len(self.batch_sampler.sampler)
         self.num_batches_slice = len(self.batch_sampler)
 
         logger.info("Finding largest file ...")
         self.max_file = max(self.dataset["image"], key=lambda x: len(x))
-
-    def set_params(self, params):
-        self.batch_size = params.batch_size
+        self.batch_size = fw_params.batch_size
 
     def gen_output_info(self):
         out_info = []
-        o = opnode_tensor_info(dtype.NDT, np.array([self.batch_size], dtype=np.uint32), "")
+        o = media_ext_reader_op_tensor_info(dtype.NDT, np.array([self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
         sample = self.dataset[0]
         sample["pooled_prompt_embeds"]
         d0 = len(sample["pooled_prompt_embeds"])
         d1 = len(sample["prompt_embeds"])
         d2 = len(sample["prompt_embeds"][0])
-        o = opnode_tensor_info(dtype.FLOAT32, np.array([d2, d1, self.batch_size], dtype=np.uint32), "")
+        o = media_ext_reader_op_tensor_info(dtype.FLOAT32, np.array([d2, d1, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info(dtype.FLOAT32, np.array([d0, self.batch_size], dtype=np.uint32), "")
+        o = media_ext_reader_op_tensor_info(dtype.FLOAT32, np.array([d0, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
+        o = media_ext_reader_op_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
+        o = media_ext_reader_op_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
         return out_info
 
@@ -159,25 +157,6 @@ class ReadImageTextFromDataset(MediaReaderNode):
             original_sizes,
             crop_top_lefts,
         )
-
-
-read_image_text_from_dataset_params = {"dataset": None, "batch_sampler": []}
-
-schema.add_operator(
-    "SDXLDataReader",
-    None,
-    0,
-    0,
-    [],
-    5,
-    read_image_text_from_dataset_params,
-    None,
-    ReadImageTextFromDataset,
-    dtype.NDT,
-)
-op_class = fn.operator_add("SDXLDataReader", False)
-op_class.__module__ = fn.__name__
-setattr(fn, "SDXLDataReader", op_class)
 
 
 class RandomFlipFunction(media_function):
@@ -228,7 +207,7 @@ class SDXLMediaPipe(MediaPipe):
         drop_last=True,
         queue_depth=5,
     ):
-        self.device = get_device_name()
+        self.device = "legacy"
         self.dataset = dataset
         self.batch_size = batch_size
 
@@ -248,11 +227,16 @@ class SDXLMediaPipe(MediaPipe):
             pipe_name=pipe_name,
         )
 
-        self.input = fn.SDXLDataReader(dataset=self.dataset, batch_sampler=self.batch_sampler)
+        priv_params = {}
+        priv_params["dataset"] = self.dataset
+        priv_params["batch_sampler"] = self.batch_sampler
+
+        self.input = fn.MediaExtReaderOp(impl=ReadImageTextFromDataset, num_outputs=5, priv_params=priv_params)
+
         def_output_image_size = [self.image_size, self.image_size]
         res_pp_filter = ftype.BI_LINEAR
         self.decode = fn.ImageDecoder(
-            device=self.device,
+            device="hpu",
             output_format=imgtype.RGB_P,
             # random_crop_type=randomCropType.CENTER_CROP,
             resize=def_output_image_size,
@@ -279,7 +263,7 @@ class SDXLMediaPipe(MediaPipe):
             dtype=dtype.UINT8,
             seed=100,
         )
-        self.random_flip = fn.RandomFlip(horizontal=1, device=self.device)
+        self.random_flip = fn.RandomFlip(horizontal=1)
 
         SDXLMediaPipe.instance_count += 1
 

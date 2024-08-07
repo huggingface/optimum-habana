@@ -41,7 +41,6 @@ if is_torch_available():
         AlbertForTokenClassification,
         AlbertModel,
     )
-    from transformers.models.albert.modeling_albert import ALBERT_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 class AlbertModelTester:
@@ -325,9 +324,9 @@ class AlbertModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in ALBERT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = AlbertModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "albert/albert-base-v1"
+        model = AlbertModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
 
 @require_torch

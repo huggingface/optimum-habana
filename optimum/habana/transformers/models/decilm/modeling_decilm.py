@@ -30,6 +30,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
 from .configuration_decilm import DeciLMConfig
 
 
@@ -64,7 +65,7 @@ class DeciLMAttention(LlamaAttention):
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
 
-        self._init_rope()
+        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=self.config)
 
     def forward(
         self,
