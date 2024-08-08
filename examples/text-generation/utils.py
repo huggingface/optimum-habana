@@ -203,7 +203,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
-    elif args.load_cp:
+    elif args.load_quantized_model:
         from neural_compressor.torch.quantization import load
         model = load(
             model_name_or_path=args.model_name_or_path,
@@ -523,7 +523,7 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
-    if args.load_cp:
+    if args.load_quantized_model:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:
