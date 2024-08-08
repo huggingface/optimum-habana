@@ -1,6 +1,42 @@
 {
     "gaudi": {
-        "tatsu-lab/alpaca": {
+         "databricks/databricks-dolly-15k": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 2,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 2,
+                    "perplexity": 3.9168,
+                    "train_runtime": 132.665,
+                    "train_samples_per_second": 2.295,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio 0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm 0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--validation_split_percentage 20",
+                        "--attn_softmax_bf16",
+                        "--max_steps 100",
+                        "--input_column_name context",
+                        "--output_column_name response"
+                    ]
+                }
+            }
+        },
+       "tatsu-lab/alpaca": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -38,7 +74,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio 0.03",
                         "--lr_scheduler_type constant",
@@ -74,7 +110,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -109,7 +145,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -143,7 +179,7 @@
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -182,7 +218,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -219,7 +255,7 @@
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -414,7 +450,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",

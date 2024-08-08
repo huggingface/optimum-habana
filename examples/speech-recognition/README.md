@@ -237,7 +237,7 @@ python run_speech_recognition_seq2seq.py \
     --logging_steps="25" \
     --learning_rate="1e-5" \
     --warmup_steps="500" \
-    --evaluation_strategy="steps" \
+    --eval_strategy="steps" \
     --eval_steps="1000" \
     --save_strategy="steps" \
     --save_steps="1000" \

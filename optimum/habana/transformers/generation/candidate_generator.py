@@ -20,17 +20,17 @@ class GaudiAssistedCandidateGenerator(AssistedCandidateGenerator):
         input_ids: torch.LongTensor,
         assistant_model: "PreTrainedModel",
         generation_config: "GaudiGenerationConfig",
-        logits_processor: "LogitsProcessorList",
         model_kwargs: Dict,
         inputs_tensor: Optional[torch.Tensor] = None,
+        logits_processor: "LogitsProcessorList" = None,
     ):
         super().__init__(
             input_ids,
             assistant_model,
             generation_config,
-            logits_processor,
             model_kwargs,
             inputs_tensor,
+            logits_processor,
         )
 
         # Remove model kwargs that are specific to optimized models

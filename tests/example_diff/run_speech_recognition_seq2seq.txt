@@ -20,10 +20,10 @@
 >         return ()
 > 
 51c58,59
-< check_min_version("4.42.0.dev0")
+< check_min_version("4.45.0.dev0")
 ---
-> check_min_version("4.40.0")
-> check_optimum_habana_min_version("1.11.0")
+> check_min_version("4.43.0")
+> check_optimum_habana_min_version("1.12.0")
 230a239,242
 >     label_features_max_length: int = field(
 >         default=None,
@@ -59,18 +59,18 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-442d466
+444d468
 <         model.generation_config.forced_decoder_ids = model_args.forced_decoder_ids
-456a481,484
+458a483,486
 >         logger.warning(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done."
 >         )
-561a590
+563a592
 >         label_features_max_length=data_args.label_features_max_length,
-565c594
+567c596
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-566a596
+568a598
 >         gaudi_config=gaudi_config,
