@@ -35,3 +35,11 @@ jobs:
         source venv/bin/activate
         ruff check . setup.py
         ruff format --check . setup.py
+  comment:
+    runs-on: ubuntu-latest
+    name: Post comment to run make style
+    if: failure()
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      issue-number: ${{ github.event.number }}
+      body: Please run `make style`
