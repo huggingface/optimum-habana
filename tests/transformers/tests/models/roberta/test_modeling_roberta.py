@@ -529,7 +529,6 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
 
 @require_torch
 class RobertaModelIntegrationTest(TestCasePlus):
-
     def _helper(self, model, device, input_ids):
         model = model.to(device)
         input_ids = input_ids.to(device)
