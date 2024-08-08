@@ -20,11 +20,8 @@
 import argparse
 import json
 import logging
-import os
-
-
-os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 import multiprocessing as mp
+import os
 import time
 
 import lm_eval.evaluator
@@ -32,6 +29,8 @@ import lm_eval.tasks
 import psutil
 import torch
 import torch.nn.functional as F
+
+# Local imports
 from run_generation import setup_parser
 from utils import finalize_quantization, initialize_model
 
