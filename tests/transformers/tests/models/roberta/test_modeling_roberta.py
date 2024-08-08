@@ -519,7 +519,9 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
             2 + embeddings.padding_idx + 1,
             3 + embeddings.padding_idx + 1,
         ]
-        expected_positions = torch.as_tensor([expected_single_positions, expected_single_positions], device=torch_device)
+        expected_positions = torch.as_tensor(
+            [expected_single_positions, expected_single_positions], device=torch_device
+        )
         position_ids = embeddings.create_position_ids_from_inputs_embeds(inputs_embeds)
         self.assertEqual(position_ids.shape, expected_positions.shape)
         self.assertTrue(torch.all(torch.eq(position_ids, expected_positions)))
@@ -538,8 +540,8 @@ class RobertaModelIntegrationTest(TestCasePlus):
     def _compare_cpu_hpu(self, model, input_ids=None, atol=0.2):
         if input_ids is None:
             input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
-        out_cpu = self._helper(model, 'cpu', input_ids)
-        out_hpu = self._helper(model, 'hpu', input_ids)
+        out_cpu = self._helper(model, "cpu", input_ids)
+        out_hpu = self._helper(model, "hpu", input_ids)
         self.assertEqual(out_cpu.shape, out_hpu.shape)
         self.assertTrue(torch.allclose(out_cpu, out_hpu, atol=atol))
 
