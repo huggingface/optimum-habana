@@ -28,7 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from utils import adjust_batch, count_hpu_graphs, initialize_model
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -101,6 +101,18 @@ def setup_parser(parser):
         default=1,
         type=int,
         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+    )
+    parser.add_argument(
+        "--top_k",
+        default=None,
+        type=int,
+        help="Size of candidate set used for re-ranking in contrastive search. top_k > 1 enables contrastive search.",
+    )
+    parser.add_argument(
+        "--penalty_alpha",
+        default=None,
+        type=float,
+        help="Degeneration penalty for contrastive search. penalty_alpha > 0 enables contrastive search.",
     )
     parser.add_argument(
         "--trim_logits",
@@ -267,7 +279,7 @@ def setup_parser(parser):
         "--ignore_eos",
         default=True,
         action=argparse.BooleanOptionalAction,
-        help="Whether to ignore eos, set False to disable it",
+        help="Whether to disable stopping with eos token when calling `generate`. --no-ignore_eos to disable it",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
@@ -292,6 +304,14 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to load model from hugging face checkpoint.",
     )
+
+        "--parallel_strategy",
+        type=str,
+        choices=["tp", "none"],  # Add other strategies as needed
+        default="none",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -299,6 +319,9 @@ def setup_parser(parser):
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+
+    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+        args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config == "" and args.disk_offload:
@@ -432,12 +455,12 @@ def main():
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
-            for _ in range(args.warmup):
+            for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print("Warming up", flush=True)
+                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -449,10 +472,10 @@ def main():
 
                 min_prompt_len = rounder(mn)
                 max_sentence_len = rounder(mx)
-                for _ in range(args.warmup):
+                for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print("Warming up for shape,", sz - 1, flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -658,9 +681,7 @@ def main():
             print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+        finalize_quantization(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

@@ -28,6 +28,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import numpy as np
+import transformers
 from pytest import mark
 from transformers import (
     AutoModel,
@@ -556,6 +557,10 @@ class ModelTesterMixin:
             inputs_dict["output_attentions"] = True
             inputs_dict["output_hidden_states"] = False
             config.return_dict = True
+            if isinstance(config, transformers.ViTConfig):
+                # in latest upgrade there are 2 impls of attention:
+                # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
+                config._attn_implementation = "eager"
             model = model_class(config)
             model.to(torch_device)
             model.eval()
@@ -853,7 +858,11 @@ class ModelTesterMixin:
                     ):
                         model.config.problem_type = "single_label_classification"
 
-                    traced_model = symbolic_trace(model, input_names)
+                    from optimum.habana.transformers.models import GaudiGPT2DoubleHeadsModel
+
+                    traced_model = symbolic_trace(
+                        model, input_names, disable_check=isinstance(model, GaudiGPT2DoubleHeadsModel)
+                    )
                     traced_output = traced_model(**filtered_inputs)
                     model_output = model(**filtered_inputs)
 
@@ -1191,6 +1200,11 @@ class ModelTesterMixin:
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.output_hidden_states = True
         config.output_attentions = self.has_attentions
+
+        if isinstance(config, transformers.ViTConfig):
+            # in latest upgrade there are 2 impls of attention:
+            # https://github.com/huggingface/transformers/blob/7ad784ae9da9b8ce61ba734199fb258d8d95460f/src/transformers/models/vit/modeling_vit.py#L363
+            config._attn_implementation = "eager"
 
         # no need to test all models as different heads yield the same functionality
         model_class = self.all_model_classes[0]

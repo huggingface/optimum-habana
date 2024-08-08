@@ -8,6 +8,7 @@ from accelerate.data_loader import (
     DataLoaderShard,
     IterableDatasetShard,
     SeedableRandomSampler,
+    get_sampler,
 )
 from accelerate.state import GradientState
 from accelerate.utils import (
@@ -55,7 +56,14 @@ class GaudiDataLoaderDispatcher(DataLoaderDispatcher, DataLoader):
     """
 
     def __init__(
-        self, dataset, split_batches: bool = False, skip_batches=0, _drop_last: bool = False, slice_fn=None, **kwargs
+        self,
+        dataset,
+        split_batches: bool = False,
+        skip_batches=0,
+        _drop_last: bool = False,
+        _non_blocking: bool = False,
+        slice_fn=None,
+        **kwargs,
     ):
         shuffle = False
         if is_torch_version(">=", "1.11.0"):
@@ -72,6 +80,7 @@ class GaudiDataLoaderDispatcher(DataLoaderDispatcher, DataLoader):
         self.gradient_state = GradientState()
         self.state = GaudiAcceleratorState()
         self._drop_last = _drop_last
+        self._non_blocking = _non_blocking
         self.skip_batches = skip_batches
 
         self.slice_fn = slice_tensors if slice_fn is None else slice_fn
@@ -144,7 +153,7 @@ class GaudiDataLoaderDispatcher(DataLoaderDispatcher, DataLoader):
             if self.state.process_index != 0:
                 # Initialize tensors on other processes than process 0.
                 batch = initialize_tensors(batch_info[0])
-            batch = send_to_device(batch, self.state.device)
+            batch = send_to_device(batch, self.state.device, non_blocking=self._non_blocking)
             # Broadcast the batch before splitting it.
             batch = broadcast(batch, from_process=0)
 
@@ -210,6 +219,7 @@ def gaudi_prepare_data_loader(
     even_batches: bool = True,
     slice_fn_for_dispatch: Optional[Callable] = None,
     use_seedable_sampler: bool = False,
+    non_blocking: bool = False,
 ) -> DataLoader:
     """
     Wraps a PyTorch `DataLoader` to generate batches for one of the processes only.
@@ -266,7 +276,11 @@ def gaudi_prepare_data_loader(
         use_seedable_sampler (`bool`, *optional*, defaults to `False`):
             Whether to use the [`~data_loader.SeedableRandomSampler`] instead of a `RandomSampler` for better
             reproducability. Comes at a cost of potentially different performances due to different shuffling
-            algorithms but ensures results will be the *exact* same.
+            algorithms but ensures results will be the *exact* same. Should be paired with `set_seed()` at every
+            `self.set_epoch`
+        non_blocking (`bool`, *optional*, defaults to `False`):
+            If set to `True`, dataloader will utilize non-blocking host-to-device transfers. If the dataloader has
+            `pin_memory` set to `True`, this will help to increase overlap between data transfer and computations.
 
     Returns:
         `torch.utils.data.dataloader.DataLoader`: A new data loader that will yield the portion of the batches
@@ -294,23 +308,34 @@ def gaudi_prepare_data_loader(
         process_index = state.process_index
 
     # Sanity check
-    batch_size = dataloader.batch_size if dataloader.batch_size is not None else dataloader.batch_sampler.batch_size
-    if split_batches and batch_size > 1 and batch_size % num_processes != 0:
-        raise ValueError(
-            f"To use a `DataLoader` in `split_batches` mode, the batch size ({dataloader.batch_size}) "
-            f"needs to be a round multiple of the number of processes ({num_processes})."
-        )
+    if split_batches:
+        if dataloader.batch_size is not None:
+            batch_size_for_check = dataloader.batch_size
+        else:
+            # For custom batch_sampler
+            if hasattr(dataloader.batch_sampler, "batch_size"):
+                batch_size_for_check = dataloader.batch_sampler.batch_size
+            else:
+                raise ValueError(
+                    "In order to use `split_batches==True` you must have a `batch_size` attribute either in the passed "
+                    "`dataloader` or `dataloader.batch_sampler` objects, and it has to return a natural number. "
+                    "Your `dataloader.batch_size` is None and `dataloader.batch_sampler` "
+                    f"(`{type(dataloader.batch_sampler)}`) does not have the `batch_size` attribute set."
+                )
+
+        if batch_size_for_check > 1 and batch_size_for_check % num_processes != 0:
+            raise ValueError(
+                f"To use a `DataLoader` in `split_batches` mode, the batch size ({dataloader.batch_size}) "
+                f"needs to be a round multiple of the number of processes ({num_processes})."
+            )
 
     new_dataset = dataloader.dataset
     # Iterable dataset doesn't like batch_sampler, but data_loader creates a default one for it
     new_batch_sampler = dataloader.batch_sampler if not isinstance(new_dataset, IterableDataset) else None
-    sampler_is_batch_sampler = False
-    synchronized_generator = None
     sampler_is_batch_sampler = isinstance(dataloader.sampler, BatchSampler)
-    if sampler_is_batch_sampler:
-        sampler = dataloader.sampler.sampler
-    else:
-        sampler = dataloader.batch_sampler.sampler
+    synchronized_generator = None
+
+    sampler = get_sampler(dataloader)
     # Commenting the block below as it makes the accuracy decrease quite a lot for a few models and tasks
     # e.g. audio classification with Wav2Vec2 or Seq2SeqQA with T5
     # if isinstance(sampler, RandomSampler) and use_seedable_sampler:
@@ -343,16 +368,10 @@ def gaudi_prepare_data_loader(
             # for a few models and tasks e.g. audio classification with Wav2Vec2 or Seq2SeqQA with T5
             # Keeping it for now
             # New batch sampler for the current process.
-            sampler_is_batch_sampler = isinstance(dataloader.sampler, BatchSampler)
-            if sampler_is_batch_sampler:
-                sampler = dataloader.sampler.sampler
-            else:
-                sampler = dataloader.batch_sampler.sampler
             if hasattr(sampler, "generator"):
                 if sampler.generator is None:
                     sampler.generator = torch.Generator()
                 synchronized_generator = sampler.generator
-
             batch_sampler = dataloader.sampler if sampler_is_batch_sampler else dataloader.batch_sampler
             new_batch_sampler = BatchSamplerShard(
                 batch_sampler,
@@ -386,11 +405,6 @@ def gaudi_prepare_data_loader(
         kwargs["batch_size"] = (
             dataloader.batch_size // num_processes if split_batches and not dispatch_batches else dataloader.batch_size
         )
-    if isinstance(sampler, SeedableRandomSampler) and use_seedable_sampler:
-        if sampler_is_batch_sampler:
-            dataloader.sampler.sampler = sampler
-        else:
-            dataloader.batch_sampler.sampler = sampler
     if dispatch_batches:
         kwargs.pop("generator")
         dataloader = GaudiDataLoaderDispatcher(
@@ -398,6 +412,7 @@ def gaudi_prepare_data_loader(
             split_batches=split_batches,
             batch_sampler=new_batch_sampler,
             _drop_last=dataloader.drop_last,
+            _non_blocking=non_blocking,
             slice_fn=slice_fn_for_dispatch,
             **kwargs,
         )
@@ -409,6 +424,7 @@ def gaudi_prepare_data_loader(
             batch_size=dataloader.batch_size,
             rng_types=rng_types,
             _drop_last=dataloader.drop_last,
+            _non_blocking=non_blocking,
             synchronized_generator=synchronized_generator,
             **kwargs,
         )
@@ -420,7 +436,11 @@ def gaudi_prepare_data_loader(
             rng_types=rng_types,
             synchronized_generator=synchronized_generator,
             _drop_last=dataloader.drop_last,
+            _non_blocking=non_blocking,
             **kwargs,
         )
+
+    if isinstance(sampler, SeedableRandomSampler) and use_seedable_sampler:
+        dataloader.set_sampler(sampler)
 
     return dataloader
