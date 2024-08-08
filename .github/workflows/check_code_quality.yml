@@ -40,4 +40,4 @@ jobs:
       uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.number }}
-        body: Please run `make style`
+        body: The code quality check failed, please run `make style`.

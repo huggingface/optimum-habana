@@ -25,7 +25,8 @@ logger = logging.get_logger(__name__)
 
 # Default bf16 and fp32 ops (BERT)
 DEFAULT_BF16_OPS = [
-    "add","addmm",
+    "add",
+    "addmm",
     "bmm",
     "div",
     "dropout",
