@@ -193,7 +193,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        self.block_size = 4096
+        self.block_size = 8192
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -344,8 +344,15 @@ class GaudiQwen2Attention(Qwen2Attention):
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                     )
+            elif q_len > 32768:
+                # first token case1: Long sequence should go to flash_attn_v1 to avoid OOM issue
+                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                    attn_output = self.gaudi_flash_attn_v1(
+                        query_states, key_states, value_states, attention_mask, 0.0, self.block_size, softmax_mode
+                    )
+                htcore.mark_step()
             else:
-                # first token
+                # first token case2: apply SDPA directly
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
@@ -354,15 +361,9 @@ class GaudiQwen2Attention(Qwen2Attention):
                         )
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        if q_len > 8192:
-                            attn_output = self.gaudi_flash_attn_v1(
-                                query_states, key_states, value_states, attention_mask, 0.0, self.block_size
-                            )
-                            htcore.mark_step()
-                        else:
-                            attn_output = self.fused_scaled_dot_product_attention(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-                            )
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
+                        )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
