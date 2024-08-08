@@ -777,9 +777,13 @@ def main(args):
 
     # Load scheduler and models
     if args.scheduler == "euler_discrete":
-        noise_scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        noise_scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
     elif args.scheduler == "euler_ancestral_discrete":
-        noise_scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        noise_scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
     elif args.scheduler == "ddim":
         noise_scheduler = GaudiDDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     elif args.scheduler == "ddpm":
