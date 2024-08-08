@@ -248,12 +248,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         )
     elif args.load_quantized_model:
         from neural_compressor.torch.quantization import load
-        model = load(
-            model_name_or_path=args.model_name_or_path,
-            format="huggingface",
-            device="hpu",
-            **model_kwargs
-        )
+
+        model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
