@@ -537,16 +537,20 @@ class GaudiLlamaAttention(LlamaAttention):
                     else:
                         kv_seq_len = past_key_value[0].shape[-2]
 
-        if position_embeddings is None:
-            logger.warning_once(
-                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-                "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
-                "removed and `position_embeddings` will be mandatory."
-            )
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        else:
-            cos, sin = position_embeddings
+        # TODO: the following section cause torch.compile performance issue with graph recompilation
+        # as we are not using position_embeddings, disable it for now
+        # if position_embeddings is None:
+        # logger.warning_once(
+        # "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
+        # "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
+        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
+        # "removed and `position_embeddings` will be mandatory."
+        # )
+        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        # else:
+        # cos, sin = position_embeddings
+
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
