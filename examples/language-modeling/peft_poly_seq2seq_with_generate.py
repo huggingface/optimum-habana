@@ -233,7 +233,7 @@ def main():
 
     # boolq
     boolq_dataset = (
-        load_dataset("super_glue", "boolq")
+        load_dataset("super_glue", "boolq", trust_remote_code=model_args.trust_remote_code)
         .map(
             lambda x: {
                 "input": f"{x['passage']}\nQuestion: {x['question']}\nA. Yes\nB. No\nAnswer:",
@@ -248,7 +248,7 @@ def main():
 
     # multirc
     multirc_dataset = (
-        load_dataset("super_glue", "multirc")
+        load_dataset("super_glue", "multirc", trust_remote_code=model_args.trust_remote_code)
         .map(
             lambda x: {
                 "input": (
@@ -266,7 +266,7 @@ def main():
 
     # rte
     rte_dataset = (
-        load_dataset("super_glue", "rte")
+        load_dataset("super_glue", "rte", trust_remote_code=model_args.trust_remote_code)
         .map(
             lambda x: {
                 "input": (
@@ -284,7 +284,7 @@ def main():
 
     # wic
     wic_dataset = (
-        load_dataset("super_glue", "wic")
+        load_dataset("super_glue", "wic", trust_remote_code=model_args.trust_remote_code)
         .map(
             lambda x: {
                 "input": (
@@ -390,6 +390,8 @@ def main():
         token=model_args.token,
     )
     peft_model = get_peft_model(model, peft_config)
+    if training_args.bf16:
+        peft_model = peft_model.to(torch.bfloat16)
     peft_model.print_trainable_parameters()
 
     # training and evaluation

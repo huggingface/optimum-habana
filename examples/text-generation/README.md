@@ -573,6 +573,8 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 -o eval.json
 ```
 
+> If the dataset you want to use requires the execution of remote code, please set the following environment variable: `HF_DATASETS_TRUST_REMOTE_CODE=true`
+
 
 ## Text-Generation Pipeline
 

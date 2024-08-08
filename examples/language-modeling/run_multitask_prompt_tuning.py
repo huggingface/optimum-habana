@@ -18,6 +18,7 @@ Adapted from the following sources:
 https://github.com/huggingface/peft/blob/main/examples/conditional_generation/multitask_prompt_tuning.ipynb
 """
 
+import copy
 import logging
 import sys
 from dataclasses import dataclass, field
@@ -346,6 +347,8 @@ def main():
         low_cpu_mem_usage=model_args.low_cpu_mem_usage,
         token=model_args.token,
     )
+    model_target = copy.deepcopy(model)
+
     peft_model = get_peft_model(model, peft_config)
     peft_model.print_trainable_parameters()
 
@@ -386,7 +389,7 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     # target train
-    peft_model = get_peft_model(model, peft_config_target)
+    peft_model = get_peft_model(model_target, peft_config_target)
     peft_model.print_trainable_parameters()
     trainer = GaudiSeq2SeqTrainer(
         model=peft_model,
