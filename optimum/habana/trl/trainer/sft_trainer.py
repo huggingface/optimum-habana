@@ -14,8 +14,10 @@
 import dataclasses
 import inspect
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Mapping
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 from datasets import Dataset
@@ -27,6 +29,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.data.data_collator import pad_without_fast_tokenizer_warning
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
@@ -41,6 +44,46 @@ if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+
+
+class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
+    def _get_bucketed_len(self, examples):
+        max_sentence_len = max([len(k["input_ids"]) for k in examples])
+        if max_sentence_len > self.buckets[-1]:
+            self.buckets = np.append(self.buckets, max_sentence_len)
+            curr_bucket = max_sentence_len
+        else:
+            curr_bucket = self.buckets[np.argmin(np.where(max_sentence_len <= self.buckets))]
+        return curr_bucket
+
+    # copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L758
+    # change is pad_to_multiple_of=self.pad_to_multiple_of -> pad_to_multiple_of=bucketed_len
+    def torch_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
+        # Handle dict or lists with proper padding and conversion to tensor.
+        if isinstance(examples[0], Mapping):
+            bucketed_len = self._get_bucketed_len(examples)
+            batch = pad_without_fast_tokenizer_warning(
+                self.tokenizer,
+                examples,
+                return_tensors="pt",
+                pad_to_multiple_of=bucketed_len,  # self.pad_to_multiple_of
+            )
+        else:
+            assert False, "This path has not been implemented/tested yet"
+            # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L765
+
+        # If special token mask has been preprocessed, pop it from the dict.
+        special_tokens_mask = batch.pop("special_tokens_mask", None)
+        if self.mlm:
+            batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
+                batch["input_ids"], special_tokens_mask=special_tokens_mask
+            )
+        else:
+            labels = batch["input_ids"].clone()
+            if self.tokenizer.pad_token_id is not None:
+                labels[labels == self.tokenizer.pad_token_id] = -100
+            batch["labels"] = labels
+        return batch
 
 
 class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
@@ -72,6 +115,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         model_init_kwargs: Optional[Dict] = None,
         dataset_kwargs: Optional[Dict] = None,
         eval_packing: Optional[bool] = None,
+        num_buckets: Optional[int] = -1,
     ):
         """
         Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/sft_trainer.py#L120
@@ -79,7 +123,13 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         - add new args gaudi_config
         - use GaudiTrainer instead of Trainer
         - cast peft model to bf16.
+        - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
         """
+        if num_buckets > 0:
+            assert (
+                data_collator is None
+            ), "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
+
         if model_init_kwargs is None:
             model_init_kwargs = {}
         elif not isinstance(model, str):
@@ -249,3 +299,19 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             self.train_dataset.infinite = True
         elif self.args.max_steps == -1 and packing:
             self.train_dataset.infinite = False
+
+        if num_buckets > 0:
+            train_dataloader = self.get_train_dataloader()
+            batched_sentence_lengths = [batch["input_ids"].shape[1] for batch in train_dataloader]
+            buckets = self._get_buckets(batched_sentence_lengths, num_buckets=num_buckets)
+            self.data_collator = BucketedDataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+            self.data_collator.buckets = buckets
+
+    def _get_buckets(self, sentence_lengths, num_buckets):
+        return np.unique(
+            np.percentile(
+                sentence_lengths,
+                np.linspace(0, 100, num_buckets + 1),
+                interpolation="lower",
+            )[1:]
+        )
