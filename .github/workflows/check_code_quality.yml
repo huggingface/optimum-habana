@@ -3,7 +3,7 @@ name: Check code quality
 on:
   push:
     branches: [ main ]
-  pull_request_target:
+  pull_request:
     branches: [ main ]
 
 jobs:
