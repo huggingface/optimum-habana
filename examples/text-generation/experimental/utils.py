@@ -231,13 +231,13 @@ def get_model_with_observer(args, model, logger):
     quant_config = habana_quant_config_symmetric(quant_dtype)
     quantizer.set_global(quant_config)
 
-    from habana_frameworks.torch.core.quantize_pt2e import (
-        export,
-        prepare_pt2e,
-    )
-
     actual_model = model.model
-    exported_model, _ = export(actual_model)
+
+    from torch._export import capture_pre_autograd_graph
+
+    exported_model = capture_pre_autograd_graph(actual_model)
+
+    from torch.ao.quantization.quantize_pt2e import prepare_pt2e
 
     prepared_model = prepare_pt2e(exported_model, quantizer)
     model.model = prepared_model
@@ -249,7 +249,7 @@ def get_model_with_observer(args, model, logger):
 def add_quant_dquant_nodes(model, logger):
     logger.info("[pt2e_quant] Converting model after calibration.")
 
-    from habana_frameworks.torch.core.quantize_pt2e import convert_pt2e
+    from torch.ao.quantization.quantize_pt2e import convert_pt2e
 
     model.model = convert_pt2e(model.model)
     return model
