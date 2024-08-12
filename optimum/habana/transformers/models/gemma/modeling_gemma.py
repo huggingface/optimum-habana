@@ -24,6 +24,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+import math
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma.modeling_gemma import (
