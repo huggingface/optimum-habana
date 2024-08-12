@@ -44,8 +44,8 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 2,
-                    "train_runtime": 360,
-                    "train_samples_per_second": 8.5,
+                    "train_runtime": 420,
+                    "train_samples_per_second": 7.5,
                     "extra_arguments": [
                         "--bf16 True",
                         "--subset ''",

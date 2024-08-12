@@ -22,7 +22,7 @@ from ... import GaudiTrainingArguments
 @dataclass
 class GaudiDPOConfig(GaudiTrainingArguments):
     r"""
-    Initialize DPOConfig.
+    Initialize GaudiDPOConfig.
         Adapted from https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/dpo_config.py#L33
         - inherit from GaudiTrainingArguments
     """
