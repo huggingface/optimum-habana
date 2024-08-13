@@ -2,20 +2,19 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
+import torch.utils.checkpoint
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
+from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, torch_utils, unscale_lora_layers
 from torch.fft import (
     fftn,
     fftshift,
-    ifftshift,
     ifftn,
+    ifftshift,
 )
-import torch.utils.checkpoint
-from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
-from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from diffusers.utils import torch_utils
-import numpy as np
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
     """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
@@ -40,7 +39,8 @@ def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "t
     # IFFT
     x_freq = ifftshift(x_freq, dim=(-2, -1))
     x_filtered = ifftn(x_freq, dim=(-2, -1)).real
-    return x_filtered.to(device= x_in.device, dtype=x_in.dtype)
+    return x_filtered.to(device=x_in.device, dtype=x_in.dtype)
+
 
 def gaudi_unet_2d_condition_model_forward(
     self,

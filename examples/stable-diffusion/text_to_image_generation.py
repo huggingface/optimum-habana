@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from accelerate import PartialState
+from compel import Compel, ReturnedEmbeddingsType
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
@@ -28,8 +29,8 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
-from compel import Compel, ReturnedEmbeddingsType
-from transformers import AutoModel, AutoTokenizer
+
+
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
@@ -417,7 +418,6 @@ def main():
             pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
 
         else:
-
             # Import SDXL pipeline
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
@@ -517,17 +517,17 @@ def main():
     # Set RNG seed
     set_seed(args.seed)
     if args.use_compel:
-        tokenizer=[pipeline.tokenizer]
-        text_encoder=[pipeline.text_encoder]
+        tokenizer = [pipeline.tokenizer]
+        text_encoder = [pipeline.text_encoder]
         if sdxl:
             tokenizer.append(pipeline.tokenizer_2)
             text_encoder.append(pipeline.text_encoder_2)
             compel = Compel(
-                tokenizer=tokenizer ,
+                tokenizer=tokenizer,
                 text_encoder=text_encoder,
                 returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
                 requires_pooled=[False, True],
-                device=torch.device("cpu")
+                device=torch.device("cpu"),
             )
         else:
             compel = Compel(tokenizer=tokenizer, text_encoder=text_encoder, device=torch.device("cpu"))
