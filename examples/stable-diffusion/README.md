@@ -256,7 +256,7 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-> Please note: there is a regression with "--guidance_scale 0.0" for the latest release.
+> Note: there is a regression with "--guidance_scale 0.0" in current release which will be addressed in later releases. Setting `--guidance_scale` to a value larger than 1 resolves the regression.
 
 ### Stable Diffusion 3 (SD3)
 
