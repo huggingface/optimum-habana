@@ -656,7 +656,6 @@ class GaudiTrainingArguments(TrainingArguments):
         # accelerate integration for FSDP
         if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
-            os.environ["FSDP_CPU_RAM_EFFICIENT_LOADING"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,
                 FSDP_SHARDING_STRATEGY,

@@ -8,5 +8,6 @@
     "fsdp_sync_module_states": true,
     "fsdp_use_orig_params": true,
     "transformer_layer_cls_to_wrap": "GaudiLlamaDecoderLayer",
-    "fsdp_activation_checkpointing": false
+    "fsdp_activation_checkpointing": false,
+    "cpu_ram_efficient_loading": true
 }
