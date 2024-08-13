@@ -96,7 +96,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --bf16
 ```
 
 > There are two different checkpoints for Stable Diffusion 2:
@@ -123,7 +124,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d
+    --ldm3d \
+    --bf16
 ```
 Here is how to generate images and depth maps with two prompts on two HPUs:
 ```bash
@@ -246,7 +248,7 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16 \
     --num_inference_steps 1 \
-    --guidance_scale 0.0 \
+    --guidance_scale 1.000001 \
     --timestep_spacing trailing
 ```
 
@@ -380,7 +382,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --bf16
 ```
 
 ## Inpainting
@@ -401,7 +404,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/inpaiting_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
 ### Stable Diffusion XL Inpainting
@@ -418,7 +422,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/xl_inpaiting_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
 ## Image-to-image Generation
