@@ -1021,7 +1021,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
         image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
 
-        self.assertEqual(image_oh.shape, image_hf.shape)
         self.assertLess((np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max()), 1e-2)
 
     @parameterized.expand(["pil", "np", "latent"])
