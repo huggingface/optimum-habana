@@ -485,6 +485,13 @@ class GaudiAccelerator(Accelerator):
                             ),
                             auto_wrap_policy=fsdp_plugin.auto_wrap_policy,
                         )
+
+                """
+                TODO: Temporarily disable this upcast due to FSDP graph compile issue.
+                Investigate why the parameters are loaded as bf16(autocast?) and why
+                graph compile failure is seen due to upcast.
+                Original accelerate PR: https://github.com/huggingface/accelerate/pull/2674
+
                 # In the event the model had been loaded in low precision, but
                 # mixed precision had also been activated, then we follow DeepSpeed's
                 # strategy to hold the parameters in full precision.
@@ -550,6 +557,8 @@ class GaudiAccelerator(Accelerator):
                             warnings.warn(
                                 "FSDP upcast of low precision parameters may affect the precision of model checkpoints."
                             )
+
+                """
 
                 # if the previous and current models are same, delete the previous one
                 if len(self._models) > 1 and (self._models[-2] is self._models[-1]):
