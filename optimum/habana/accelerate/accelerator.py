@@ -490,6 +490,7 @@ class GaudiAccelerator(Accelerator):
                 TODO: Temporarily disable this upcast due to FSDP graph compile issue.
                 Investigate why the parameters are loaded as bf16(autocast?) and why
                 graph compile failure is seen due to upcast.
+                Original accelerate PR: https://github.com/huggingface/accelerate/pull/2674
 
                 # In the event the model had been loaded in low precision, but
                 # mixed precision had also been activated, then we follow DeepSpeed's
