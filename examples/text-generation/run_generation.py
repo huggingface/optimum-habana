@@ -903,6 +903,8 @@ def main():
         print(separator)
     if args.quant_config:
         finalize_quantization(model)
+        if args.assistant_model is not None:
+            finalize_quantization(assistant_model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 
