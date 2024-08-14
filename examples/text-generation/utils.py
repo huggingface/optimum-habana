@@ -498,7 +498,6 @@ def setup_tokenizer(args, model, assistant_model):
         "revision": args.model_revision,
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
-        "add_eos_token": False,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True

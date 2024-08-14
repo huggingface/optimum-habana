@@ -482,7 +482,6 @@ def main():
         "revision": model_args.model_revision,
         "token": model_args.token,
         "padding_side": "right",
-        "add_eos_token": True,
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -678,8 +677,9 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True):
+        add_eos_token_o = tokenizer.add_eos_token
         if not data_args.dataset_concatenation:
-            add_eos_token = False
+            tokenizer.add_eos_token = add_eos_token
             padding = "max_length"
         else:
             padding = False
@@ -690,6 +690,7 @@ def main():
             padding=padding,
             return_tensors=None,
         )
+        tokenizer.add_eos_token = add_eos_token_o
         for i in range(len(results["input_ids"])):
             if (
                 results["input_ids"][i][-1] != tokenizer.eos_token_id
