@@ -246,6 +246,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
+    elif args.load_quantized_model:
+        from neural_compressor.torch.quantization import load
+
+        model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -618,6 +622,9 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
+
+    if args.load_quantized_model:
+        model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:
         logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")

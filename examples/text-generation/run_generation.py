@@ -300,6 +300,11 @@ def setup_parser(parser):
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
+        "--load_quantized_model",
+        action="store_true",
+        help="Whether to load model from hugging face checkpoint.",
+    )
+    parser.add_argument(
         "--parallel_strategy",
         type=str,
         choices=["tp", "none"],  # Add other strategies as needed
