@@ -1013,7 +1013,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             pipeline.set_progress_bar_config(disable=None)
 
             inputs = self.get_dummy_inputs(device)
-            image = sd_pipe(**inputs).images[0]
+            image = pipeline(**inputs).images[0]
 
             self.assertEqual(image.shape, (64, 64, 3))
             return image[-3:, -3:, -1]
