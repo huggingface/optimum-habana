@@ -61,7 +61,9 @@ class GaudiPartialState(PartialState):
                     import deepspeed
 
                     if world_size > 1:
-                        os.environ["HLS_MODULE_ID"] = str(local_rank)
+                        # override HLS_MODULE_ID only if it's not previously set by bridge
+                        if "HLS_MODULE_ID" not in os.environ:
+                            os.environ["HLS_MODULE_ID"] = str(local_rank)
                         os.environ["ID"] = str(rank)
 
                     deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
