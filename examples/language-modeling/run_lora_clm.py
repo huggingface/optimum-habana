@@ -482,6 +482,7 @@ def main():
         "revision": model_args.model_revision,
         "token": model_args.token,
         "padding_side": "right",
+        "add_eos_token": True,
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -785,6 +786,9 @@ def main():
             # by preprocess_logits_for_metrics but we need to shift the labels
             labels = labels[:, 1:].reshape(-1)
             preds = preds[:, :-1].reshape(-1)
+            mask = labels != -100
+            labels = labels[mask]
+            preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
     # Data collator
