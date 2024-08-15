@@ -91,12 +91,22 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
             key_states = self._shape(self.k_proj(current_states), -1, bsz)
             value_states = self._shape(self.v_proj(current_states), -1, bsz)
             if past_key_value is not None:
-                # save all key/value_states to cache to be re-used for fast auto-regressive generation
-                cache_position = cache_position if not is_cross_attention else None
-                # Change cache_position to token_idx
-                key_states, value_states = past_key_value.update(
-                    key_states, value_states, self.layer_idx, {"cache_position": token_idx}
-                )
+                if token_idx is not None:
+                    if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                        past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
+                        past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
+                        key_states = past_key_value.key_cache[self.layer_idx]
+                        value_states = past_key_value.value_cache[self.layer_idx]
+                    else:
+                        past_key_value.key_cache.append(key_states)
+                        past_key_value.value_cache.append(value_states)
+                else:
+                    # save all key/value_states to cache to be re-used for fast auto-regressive generation
+                    cache_position = cache_position if not is_cross_attention else None
+                    # Change cache_position to token_idx
+                    key_states, value_states = past_key_value.update(
+                        key_states, value_states, self.layer_idx, {"cache_position": token_idx}
+                    )
 
         causal_mask = attention_mask
         if attention_mask is not None:  # no matter the length, we just slice it
@@ -607,7 +617,7 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
 
         if cache_position is None:
             cache_position = torch.arange(
-                past_length, past_length + decoder_input_ids.shape[1], device=decoder_input_ids.device
+                past_length, past_length + token_idx, device=decoder_input_ids.device
             )
         elif use_cache:
             cache_position = cache_position[-decoder_input_ids.shape[1] :]
