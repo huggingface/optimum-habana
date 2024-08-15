@@ -5,6 +5,10 @@ import os
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.utils.checkpoint
+from torch import nn
+from torch.nn import CrossEntropyLoss
+
 from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache, StaticCache
 from transformers.modeling_outputs import (
     BaseModelOutput,
