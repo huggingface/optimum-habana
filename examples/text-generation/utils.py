@@ -191,7 +191,7 @@ def setup_quantization(model, args):
         from neural_compressor.torch.quantization import FP8Config, convert, prepare
     except ImportError:
         raise ImportError(
-            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
         )
 
     config = FP8Config.from_json_file(args.quant_config)
@@ -208,7 +208,7 @@ def finalize_quantization(model):
         from neural_compressor.torch.quantization import finalize_calibration
     except ImportError:
         raise ImportError(
-            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
         )
     finalize_calibration(model)
 
