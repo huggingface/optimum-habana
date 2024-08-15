@@ -650,4 +650,5 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
             "decoder_attention_mask": decoder_attention_mask,
             "decoder_position_ids": decoder_position_ids,
             "cache_position": cache_position,
+            "token_idx": token_idx,
         }
