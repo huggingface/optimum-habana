@@ -566,3 +566,69 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
                 return_dict=return_dict,
                 cache_position=cache_position,
             )
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        use_cache=None,
+        encoder_outputs=None,
+        attention_mask=None,
+        cache_position=None,
+        **kwargs,
+    ):
+        token_idx = kwargs.get("token_idx", None)
+
+        past_length = 0
+        '''
+        if past_key_values is not None:
+            if isinstance(past_key_values, (Cache, EncoderDecoderCache)):
+                past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
+            else:
+                past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
+
+        if cache_position is None:
+            cache_position = torch.arange(past_length, past_length + input_ids.shape[1], device=input_ids.device)
+        elif use_cache:
+            cache_position = cache_position[-input_ids.shape[1] :]
+        '''
+        breakpoint()
+        if past_key_values is not None:
+            if isinstance(past_key_values, (Cache, EncoderDecoderCache)):
+                past_length = token_idx
+            else:
+                past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
+
+        if cache_position is None:
+            cache_position = torch.arange(past_length, past_length + input_ids.shape[1], device=input_ids.device)
+        elif use_cache:
+            cache_position = cache_position[-input_ids.shape[1] :]
+
+
+        return {
+            "encoder_outputs": encoder_outputs,
+            "past_key_values": past_key_values,
+            "input_ids": input_ids,
+            "use_cache": use_cache,
+            "attention_mask": attention_mask,
+            "cache_position": cache_position,
+            "token_idx": token_idx,
+        }
