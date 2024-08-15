@@ -34,7 +34,7 @@ Models that have been validated:
 
 ### Running with FP8
 
-Llava-1.5-7b and Llava-1.5-13b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llava-1.5-7b and Llava-1.5-13b in FP8 are enabled using the Intel Neural Compressor (INC), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
