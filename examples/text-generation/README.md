@@ -260,6 +260,9 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 ### Running with torch.compile
 
+> [!NOTE]
+> For GPTBigCodeForCausalLM architecture models, such as ibm-granite/granite-20b-code-instruct, performance may have degradation with `--use_flash_attention`. Please remove it from the command line.
+
 torch.compile is an experimental feature. It has not been validated for all models. To enable torch.compile, please
 set the following environment variables before running the command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`.
 

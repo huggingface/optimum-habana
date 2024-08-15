@@ -636,11 +636,6 @@ def initialize_model(args, logger):
         if not args.parallel_strategy == "tp"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
-    if model.config.model_type == "gpt_bigcode" and args.torch_compile and args.use_flash_attention:
-        logger.warning_once(
-            f"{model.config.model_type} can't be running using use_flash_attention in torch compile now."
-        )
-        args.use_flash_attention = False
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
