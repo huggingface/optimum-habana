@@ -94,6 +94,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiWhisperForConditionalGeneration,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -553,6 +554,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+
+    # Optimization for Whisper on Gaudi
+    transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
+    transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
+    transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
+    transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
+    transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
+
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
