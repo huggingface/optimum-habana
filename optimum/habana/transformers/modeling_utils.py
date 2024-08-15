@@ -99,6 +99,7 @@ from .models import (
     GaudiWhisperDecoderLayer,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+    GAUDI_WHISPER_ATTENTION_CLASSES,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -565,6 +566,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
+    transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
 
 
     transformers.AutoConfig.register("deci", DeciLMConfig)

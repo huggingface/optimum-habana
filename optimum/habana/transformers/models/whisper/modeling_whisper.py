@@ -20,6 +20,8 @@ from transformers.modeling_outputs import (
 )
 
 from transformers.models.whisper.modeling_whisper import (
+    WhisperAttention,
+    WhisperFlashAttention2,
     WhisperSdpaAttention,
     WhisperDecoderLayer,
     WhisperDecoder,
@@ -131,6 +133,13 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, None, past_key_value
+
+# Now only support the default GaudiWhisperSdpaAttention
+GAUDI_WHISPER_ATTENTION_CLASSES = {
+    "eager": WhisperAttention,
+    "flash_attention_2": WhisperFlashAttention2,
+    "sdpa": GaudiWhisperSdpaAttention,
+}
 
 
 class GaudiWhisperDecoderLayer(WhisperDecoderLayer):
