@@ -638,8 +638,8 @@ def initialize_model(args, logger):
     )
     if model.config.model_type == "gpt_bigcode" and args.torch_compile and args.use_flash_attention:
         logger.warning_once(
-                f"{model.config.model_type} can't be running using use_flash_attention in torch compile now."
-            )
+            f"{model.config.model_type} can't be running using use_flash_attention in torch compile now."
+        )
         args.use_flash_attention = False
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
