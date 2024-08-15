@@ -512,7 +512,7 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
                 head_mask=head_mask,
                 decoder_head_mask=decoder_head_mask,
                 cross_attn_head_mask=cross_attn_head_mask,
-                past_key_values=past_key_vallues,
+                past_key_values=past_key_values,
                 decoder_inputs_embeds=decoder_inputs_embeds,
                 decoder_position_ids=decoder_position_ids,
                 use_cache=use_cache,
