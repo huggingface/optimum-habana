@@ -28,7 +28,6 @@ from typing import Optional
 import datasets
 import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
-nltk.download('punkt_tab')  # Needed for ver 3.8.2
 import numpy as np
 import torch
 import transformers
@@ -80,6 +79,8 @@ except (LookupError, OSError):
         )
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
+
+nltk.download("punkt_tab")  # Needed for version 3.8.2
 
 # A list of all multilingual tokenizer which require lang attribute.
 MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast]
