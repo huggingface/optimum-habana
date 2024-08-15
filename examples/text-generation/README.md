@@ -215,24 +215,6 @@ python run_generation.py \
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
 
-### Use PEFT models for generation
-
-You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
-
-For example:
-```bash
-python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
---use_hpu_graphs \
---use_kv_cache \
---batch_size 1 \
---bf16 \
---max_new_tokens 100 \
---prompt "Here is my prompt" \
---peft_model goliaro/llama-2-7b-lora-full
-```
-
-
 ### Using growing bucket optimization
 
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
@@ -599,8 +581,6 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-
-> If the dataset you want to use requires the execution of remote code, please set the following environment variable: `HF_DATASETS_TRUST_REMOTE_CODE=true`
 
 
 ## Text-Generation Pipeline
