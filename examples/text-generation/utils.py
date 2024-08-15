@@ -284,7 +284,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             if model.peft_type == "ADAPTION_PROMPT":
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
@@ -351,7 +351,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 
         model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
 
     return model, args.assistant_model
@@ -425,7 +425,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.quant_config:
         model = setup_quantization(model, args)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
@@ -636,6 +636,12 @@ def initialize_model(args, logger):
         if not args.parallel_strategy == "tp"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
+    if model.config.model_type == "gpt_bigcode" and args.torch_compile and args.use_flash_attention:
+        logger.warning_once(
+                f"{model.config.model_type} can't be running using use_flash_attention in torch compile now."
+            )
+        args.use_flash_attention = False
+
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 
