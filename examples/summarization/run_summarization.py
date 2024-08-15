@@ -28,6 +28,7 @@ from typing import Optional
 import datasets
 import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
+nltk.download('punkt_tab')  # Needed for ver 3.8.2
 import numpy as np
 import torch
 import transformers
