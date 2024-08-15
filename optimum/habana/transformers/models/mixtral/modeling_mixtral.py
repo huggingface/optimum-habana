@@ -597,6 +597,9 @@ class GaudiMixtralModel(MixtralModel):
                 else:
                     past_key_values_length = past_key_values[0][0].shape[2]
 
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             cache_position = torch.arange(
@@ -605,9 +608,6 @@ class GaudiMixtralModel(MixtralModel):
 
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
-
-        if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
 
         if self.config._attn_implementation == "flash_attention_2":
             # 2d mask is passed through the layers
