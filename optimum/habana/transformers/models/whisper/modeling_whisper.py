@@ -287,7 +287,9 @@ class GaudiWhisperDecoder(WhisperDecoder):
             )
 
         if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
+            # position_ids = cache_position.unsqueeze(0)  ####
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
 
         # embed positions
         if input_ids is not None:
@@ -303,9 +305,9 @@ class GaudiWhisperDecoder(WhisperDecoder):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
         causal_mask = self._update_causal_mask(
-            attention_mask,
+            attention_mask, #### tensor([[True, False, False
             inputs_embeds,
-            cache_position,
+            cache_position, #####
             past_key_values.self_attention_cache if past_key_values is not None else None,
             output_attentions,
         )
@@ -590,9 +592,14 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
     ):
         token_idx = kwargs.get("token_idx", None)
 
-        decoder_position_ids = None
-        if decoder_attention_mask is not None:
-            decoder_position_ids = (decoder_attention_mask.cumsum(-1) - 1).clamp(min=0)
+        # prepare the decoder_attention_mask
+        decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
+        # prepare the decoder_position_ids
+        decoder_position_ids = decoder_attention_mask.cumsum(-1) - 1
+
+        # decoder_position_ids = None
+        # if decoder_attention_mask is not None:
+        #     decoder_position_ids = (decoder_attention_mask.cumsum(-1) - 1).clamp(min=0)
 
         past_length = 0
         if past_key_values is not None:
