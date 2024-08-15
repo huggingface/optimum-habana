@@ -23,6 +23,12 @@ from transformers.models.whisper.modeling_whisper import (
     WhisperForConditionalGeneration
 )
 
+from transformers.utils import logging
+
+
+logger = logging.get_logger(__name__)
+
+
 class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
     def forward(
         self,
