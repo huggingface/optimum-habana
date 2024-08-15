@@ -2,7 +2,7 @@ datasets >= 2.4.0
 sentencepiece != 0.1.92
 protobuf
 rouge-score
-nltk == 3.8.1
+nltk
 py7zr
 torch >= 1.3
 evaluate
