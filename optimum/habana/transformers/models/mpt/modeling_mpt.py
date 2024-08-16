@@ -29,6 +29,12 @@ from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 logger = logging.get_logger(__name__)
 
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
+
 
 def gaudi_mpt_attention_forward(
     self,
@@ -37,12 +43,16 @@ def gaudi_mpt_attention_forward(
     past_key_value: Optional[Tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
 ):
     """
     Copied from MptAttention.forward: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
     The only differences are:
     - add new args token_idx
     - optimize KV cache
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
     """
 
     batch_size, seq_length = hidden_states.shape[:2]
@@ -79,8 +89,6 @@ def gaudi_mpt_attention_forward(
         past_key_value[0][:] = key_states[:]
         past_key_value[1][:] = value_states[:]
 
-    attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
-
     query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
 
     if position_bias is not None:
@@ -93,18 +101,36 @@ def gaudi_mpt_attention_forward(
 
         position_bias = position_bias[:, position_bias_query_index:, position_bias_key_index:]
 
-        attention_scores = attention_scores + position_bias
+    if use_flash_attention and FusedSDPA:
+        import habana_frameworks.torch.hpu as ht
 
-    if attention_mask is not None:
-        attention_scores = attention_scores.masked_fill(attention_mask, torch.finfo(query_states.dtype).min)
+        with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+            attn_output = FusedSDPA.apply(
+                query_states,
+                key_states,
+                value_states,
+                attention_mask * torch.finfo(query_states.dtype).min + position_bias.to(query_states.dtype),
+                0.0,
+                False,
+                None,
+            )
+        attn_weights = None
+    else:
+        attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
 
-    # (batch_size, n_heads, seq_length, key_length)
-    attn_weights = nn.functional.softmax(attention_scores.float(), dim=-1).to(value_states.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attn_dropout_p, training=self.training)
+        if position_bias is not None:
+            attention_scores = attention_scores + position_bias
+        if attention_mask is not None:
+            attention_scores = attention_scores.masked_fill(attention_mask, torch.finfo(query_states.dtype).min)
 
-    context_states = torch.matmul(attn_weights, value_states)
-    context_states = context_states.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_length, -1)
-    attn_output = self.out_proj(context_states)
+        # (batch_size, n_heads, seq_length, key_length)
+        attn_weights = nn.functional.softmax(attention_scores.float(), dim=-1).to(value_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attn_dropout_p, training=self.training)
+
+        attn_output = torch.matmul(attn_weights, value_states)
+
+    attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_length, -1)
+    attn_output = self.out_proj(attn_output)
 
     return attn_output, attn_weights, past_key_value
 
@@ -118,11 +144,15 @@ def gaudi_mpt_block_forward(
     use_cache: bool = False,
     output_attentions: bool = False,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
 ):
     """
     Copied from MptBlock.forward: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
     The only differences are:
     - add new args token_idx
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
     """
     # hidden_states: [batch_size, seq_length, hidden_size]
     # Layer norm at the beginning of the transformer layer.
@@ -137,6 +167,8 @@ def gaudi_mpt_block_forward(
         attention_mask=attention_mask,
         past_key_value=layer_past,
         token_idx=token_idx,
+        use_flash_attention=use_flash_attention,
+        flash_attention_recompute=flash_attention_recompute,
     )
 
     hidden_states = self.resid_attn_dropout(attn_outputs) + residual
@@ -171,11 +203,15 @@ class GaudiMptModel(MptModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         """
         Copied from MptModel.forward: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -244,6 +280,8 @@ class GaudiMptModel(MptModel):
                     use_cache,
                     output_attentions,
                     None,
+                    use_flash_attention,
+                    flash_attention_recompute,
                 )
             else:
                 outputs = block(
@@ -254,6 +292,8 @@ class GaudiMptModel(MptModel):
                     output_attentions=output_attentions,
                     position_bias=alibi,
                     token_idx=token_idx,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
                 )
 
             hidden_states = outputs[0]
@@ -335,6 +375,8 @@ class GaudiMptForCausalLM(MptForCausalLM):
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
             }
         )
         return model_inputs
@@ -351,11 +393,15 @@ class GaudiMptForCausalLM(MptForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         """
         Inherits from MptForCausalLM: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -369,6 +415,8 @@ class GaudiMptForCausalLM(MptForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
         hidden_states = transformer_outputs[0]
 
