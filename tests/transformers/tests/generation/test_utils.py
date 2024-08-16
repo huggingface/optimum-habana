@@ -83,6 +83,7 @@ class GenerationTesterMixin:
     model_tester = None
     all_generative_model_classes = ()
     input_name = "input_ids"
+    max_new_tokens = 3
 
     def _update_default_model_kwargs(self, model_kwargs):
         model_kwargs["limit_hpu_graphs"] = False
@@ -333,7 +334,6 @@ class GenerationTesterMixin:
             **logits_warper_kwargs,
             **model_kwargs,
         )
-
         return output_generate
 
     def _group_beam_search_generate(
@@ -457,7 +457,6 @@ class GenerationTesterMixin:
             output_generate = self._greedy_generate(
                 model=model, input_ids=input_ids, attention_mask=attention_mask, max_length=max_length
             )
-
             self.assertTrue(output_generate.shape[-1] == max_length)
 
     def test_greedy_generate_dict_outputs(self):
@@ -483,9 +482,7 @@ class GenerationTesterMixin:
                 # Retrocompatibility check
                 self.assertIsInstance(output_generate, GreedySearchEncoderDecoderOutput)
             else:
-                self.assertIsInstance(output_generate, GenerateDecoderOnlyOutput)
-                # Retrocompatibility check
-                self.assertIsInstance(output_generate, GreedySearchDecoderOnlyOutput)
+                self.assertTrue(output_generate.sequences.shape[-1] == self.max_new_tokens + input_ids.shape[-1])
 
             self.assertTrue(output_generate.sequences.shape[-1] == max_length)
             self._check_outputs(output_generate, input_ids, model.config)
@@ -909,7 +906,7 @@ class GenerationTesterMixin:
                 output_generate, input_ids, model.config, num_return_sequences=beam_kwargs["num_beams"]
             )
 
-    # TODO: @gante
+# TODO: @gante
     @is_flaky()
     def test_constrained_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
@@ -1080,7 +1077,6 @@ class GenerationTesterMixin:
                 output_attentions=True,
                 return_dict_in_generate=True,
             )
-
             self.assertTrue(output_generate.sequences.shape[-1] == max_length)
             self._check_outputs(output_generate, input_ids, model.config, use_cache=True)
 
@@ -1171,6 +1167,12 @@ class GenerationTesterMixin:
         # - assisted_decoding does not support `use_cache = False`
         # - assisted_decoding does not support `batch_size > 1`
 
+    # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
+    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
+    def test_assisted_decoding_sample(self):
+        # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
+        # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
+        # different shapes, see https://github.com/huggingface/transformers/issues/25420#issuecomment-1775317535).
         for model_class in self.all_generative_model_classes:
             if any(model_name in model_class.__name__.lower() for model_name in ["fsmt", "reformer"]):
                 self.skipTest("Won't fix: old model with different cache format")

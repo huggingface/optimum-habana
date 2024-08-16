@@ -29,12 +29,13 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.40.0, < 4.41.0",
+    "transformers >= 4.43.0, < 4.44.0",
     "optimum",
     "torch",
-    "accelerate < 0.28.0",
-    "diffusers >= 0.26.0, < 0.27.0",
-    "huggingface_hub < 0.23.0",
+    "accelerate >= 0.33.0, < 0.34.0",
+    "diffusers == 0.29.2",
+    "huggingface_hub >= 0.23.2",
+    "sentence-transformers[train] == 3.0.1",
 ]
 
 TESTS_REQUIRE = [
@@ -47,8 +48,10 @@ TESTS_REQUIRE = [
     "timm",
     "safetensors",
     "pytest < 8.0.0",
+    "scipy",
     "torchsde",
     "timm",
+    "peft",
 ]
 
 QUALITY_REQUIRES = [

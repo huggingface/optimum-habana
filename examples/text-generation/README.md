@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
 ```
 
 
@@ -120,6 +120,7 @@ Here are a few settings you may be interested in:
 - `--limit_hpu_graphs` to skip HPU Graph usage for first token to save memory
 - `--use_kv_cache` to use the [key/value cache](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationConfig.use_cache) to speed up generation
 - `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
+- `--top_k` and `--penalty_alpha` to generate new tokens doing contrastive search (greedy search is the default)
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
@@ -214,24 +215,6 @@ python run_generation.py \
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
 
-### Use PEFT models for generation
-
-You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
-
-For example:
-```bash
-python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
---use_hpu_graphs \
---use_kv_cache \
---batch_size 1 \
---bf16 \
---max_new_tokens 100 \
---prompt "Here is my prompt" \
---peft_model goliaro/llama-2-7b-lora-full
-```
-
-
 ### Using growing bucket optimization
 
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
@@ -258,6 +241,9 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 
 ### Running with torch.compile
+
+> [!NOTE]
+> For `GPTBigCodeForCausalLM` architecture models, such as [ibm-granite/granite-20b-code-instruct](https://huggingface.co/ibm-granite/granite-20b-code-instruct), performance may have degradation with `--use_flash_attention`. Please remove it from the command line.
 
 torch.compile is an experimental feature. It has not been validated for all models. To enable torch.compile, please
 set the following environment variables before running the command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`.
@@ -298,7 +284,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Intel Neural Compressor (INC), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -472,7 +458,7 @@ More information on usage of the unifier script can be found in fp8 Habana docs:
 ### CPU memory reduction on single card
 
 Some models can fit on HPU DRAM but can't fit on the CPU RAM.
-When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
+When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in INC. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
 Here is an example of using disk_offload in quantize command.
 Please follow the "Running FP8 models on single device" section first before running the cmd below.
@@ -495,6 +481,34 @@ python run_generation.py \
 --disk_offload \
 --use_flash_attention \
 --flash_attention_recompute
+```
+
+
+### Loading 4 Bit Checkpoints from Hugging Face
+
+You can load pre-quantized 4bit models with the argument `--load_quantized_model`.
+Currently, uint4 checkpoints and single device are supported.
+More information on enabling 4 bit inference in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
+
+Below is an example to load a model with 4bit checkpoints from Hugging Face.
+Please note that model name is denoted as `<model_path_in_hugging_face>`.
+Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
+`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+```bash
+SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
+python run_lm_eval.py \
+-o acc_load_uint4_model.txt \
+--model_name_or_path <model_path_in_hugging_face> \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--attn_softmax_bf16 \
+--bucket_size=128 \
+--bucket_internal \
+--load_quantized_model
 ```
 
 ### Using Habana Flash Attention
