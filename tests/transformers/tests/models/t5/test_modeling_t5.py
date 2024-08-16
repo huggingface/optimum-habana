@@ -49,7 +49,6 @@ if is_torch_available():
         T5Model,
         T5Tokenizer,
     )
-    from transformers.models.t5.modeling_t5 import T5_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 torch_device = "hpu"
@@ -816,9 +815,9 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in T5_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = T5Model.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "google-t5/t5-small"
+        model = T5Model.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     @unittest.skip("Test has a segmentation fault on torch 1.8.0")
     def test_export_to_onnx(self):
@@ -1422,7 +1421,10 @@ class T5ModelIntegrationTests(unittest.TestCase):
         translation = tok.decode(output[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
         self.assertEqual(translation, expected_translation)
 
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
     @slow
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_search_t5(self):
         article = (
             " New York (CNN)When Liana Barrientos was 23 years old, she got married in Westchester County, New York. A"

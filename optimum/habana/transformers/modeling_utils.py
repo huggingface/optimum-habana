@@ -47,6 +47,7 @@ from .models import (
     GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
@@ -54,6 +55,7 @@ from .models import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
     GaudiGPTNeoXForCausalLM,
+    GaudiGPTNeoXLayer,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -88,8 +90,10 @@ from .models import (
     GaudiQwen2Model,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
+    GaudiStarcoder2Attention,
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
+    GaudiStarcoder2Model,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -137,7 +141,6 @@ from .models import (
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
     gaudi_gpt_neox_attention_forward,
-    gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
     gaudi_invert_attention_mask,
@@ -175,9 +178,6 @@ from .models import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
-    gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_model_forward,
-    gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
@@ -210,9 +210,6 @@ def adapt_transformers_to_gaudi():
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
-
-    # Optimization tweak for Swin
-    transformers.models.swin.modeling_swin.SwinLayer.get_attn_mask = gaudi_swin_get_attn_mask
 
     # Optimization tweak for Wav2Vec2
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
@@ -254,12 +251,12 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_generated_length = GaudiGenerationMixin._prepare_generated_length
     transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
-    transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
+    transformers.generation.GenerationMixin._dola_decoding = GaudiGenerationMixin._dola_decoding
     transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
     transformers.generation.GenerationMixin._beam_search = GaudiGenerationMixin._beam_search
-    transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
+    transformers.generation.GenerationMixin._contrastive_search = GaudiGenerationMixin._contrastive_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
     transformers.generation.GenerationConfig = GaudiGenerationConfig
@@ -322,6 +319,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
+    transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel = GaudiGPT2DoubleHeadsModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block = GaudiGPT2Block
     models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
@@ -356,7 +354,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for gpt-neox generation on Gaudi
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
-    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer = GaudiGPTNeoXLayer
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXRotaryEmbedding._set_cos_sin_cache = (
         gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache
@@ -517,8 +515,8 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for starcoder2 on Gaudi
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM
-    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Model.forward = gaudi_starcoder2_model_forward
-    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Attention.forward = gaudi_starcoder2_attention_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Model = GaudiStarcoder2Model
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Attention = GaudiStarcoder2Attention
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2DecoderLayer = GaudiStarcoder2DecoderLayer
 
     # Optimization for qwen2 on Gaudi

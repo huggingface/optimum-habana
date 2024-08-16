@@ -41,11 +41,14 @@ from diffusers import (
     ControlNetModel,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
+    StableDiffusionXLPipeline,
+    StableVideoDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
     UNetSpatioTemporalConditionModel,
@@ -962,20 +965,21 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe_oh = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_hf = StableDiffusionXLPipeline(**components)
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images[0]
+        def _get_image_from_pipeline(pipeline, device=device):
+            pipeline.set_progress_bar_config(disable=None)
+            inputs = self.get_dummy_inputs(device)
+            image = pipeline(**inputs).images[0]
 
-        image_slice = image[-3:, -3:, -1]
+            self.assertEqual(image.shape, (64, 64, 3))
+            return image[-3:, -3:, -1]
 
-        self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.5552, 0.5569, 0.4725, 0.4348, 0.4994, 0.4632, 0.5142, 0.5012, 0.47])
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
 
-        # The threshold should be 1e-2 below but it started failing
-        # from Diffusers v0.24. However, generated images still look similar.
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+        self.assertLess((np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max()), 1e-2)
 
     def test_stable_diffusion_xl_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -991,7 +995,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image_slice = image[-3:, -3:, -1]
 
         self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.4675, 0.5173, 0.4611, 0.4067, 0.5250, 0.4674, 0.5446, 0.5094, 0.4791])
+        expected_slice = np.array([0.4539, 0.5119, 0.4521, 0.4395, 0.5495, 0.49344, 0.5761, 0.5147, 0.4943])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_xl_turbo_euler_ancestral(self):
@@ -999,19 +1003,24 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         components = self.get_dummy_components(timestep_spacing="trailing")
         gaudi_config = GaudiConfig(use_torch_autocast=False)
 
-        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe_oh = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_oh.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe_oh.scheduler.config)
+        sd_pipe_hf = StableDiffusionXLPipeline(**components)
+        sd_pipe_hf.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe_hf.scheduler.config)
 
-        sd_pipe.set_progress_bar_config(disable=None)
+        def _get_image_from_pipeline(pipeline, device=device):
+            pipeline.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images[0]
+            inputs = self.get_dummy_inputs(device)
+            image = pipeline(**inputs).images[0]
 
-        image_slice = image[-3:, -3:, -1]
+            self.assertEqual(image.shape, (64, 64, 3))
+            return image[-3:, -3:, -1]
 
-        self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.4675, 0.5173, 0.4611, 0.4067, 0.5250, 0.4674, 0.5446, 0.5094, 0.4791])
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
+
+        self.assertLess((np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max()), 1e-2)
 
     @parameterized.expand(["pil", "np", "latent"])
     def test_stable_diffusion_xl_output_types(self, output_type):
@@ -2433,26 +2442,30 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        for component in sd_pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
+        sd_pipe_oh = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_hf = StableVideoDiffusionPipeline(**components)
 
-        sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        def _get_image_from_pipeline(pipeline, device=device):
+            for component in pipeline.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
 
-        outputs = sd_pipe(
-            **self.get_dummy_inputs(device),
-        ).frames
-        image = outputs[0]
-        image_slice = image[0, -3:, -3:, -1]
+            pipeline.to(device)
+            pipeline.set_progress_bar_config(disable=None)
 
-        self.assertEqual(len(outputs), 1)
-        self.assertEqual(image.shape, (2, 3, 32, 32))
+            outputs = pipeline(
+                **self.get_dummy_inputs(device),
+            ).frames
+            image = outputs[0]
 
-        expected_slice = np.array([0.5910, 0.5797, 0.5521, 0.6628, 0.6212, 0.6422, 0.5681, 0.5232, 0.5343])
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(image.shape, (2, 3, 32, 32))
+            return image[0, -3:, -3:, -1]
 
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
+
+        self.assertLess(np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max(), 1e-2)
 
     @slow
     def test_stable_video_diffusion_no_throughput_regression_bf16(self):
@@ -4745,7 +4758,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
+        expected_slice = np.array([0.8279, 0.5673, 0.6088, 0.6156, 0.6923, 0.7347, 0.6547, 0.6108, 0.5198])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -4847,7 +4860,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.7045, 0.4838, 0.5454, 0.6270, 0.6168, 0.6717, 0.6484, 0.5681, 0.4922])
+        expected_slice = np.array([0.7540, 0.5231, 0.5833, 0.6217, 0.6339, 0.7067, 0.6507, 0.5672, 0.5030])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
