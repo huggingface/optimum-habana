@@ -5,6 +5,7 @@ on:
     inputs:
       pr-number:
         required: true
+        type: number
 
 jobs:
   post-comment:
