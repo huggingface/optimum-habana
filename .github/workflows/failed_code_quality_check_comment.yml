@@ -1,0 +1,17 @@
+name: Post comment in PR for failed code quality check
+
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        required: true
+
+jobs:
+  post-comment:
+    runs-on: ubuntu-latest
+    name: Post comment to run make style
+    steps:
+      - uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ inputs.pr-number }}
+          body: The code quality check failed, please run `make style`.
