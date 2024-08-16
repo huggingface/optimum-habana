@@ -63,6 +63,6 @@ python run_openclip_vqa.py \
 ```
 
 Models that have been validated:
-  - [BiomedCLIP-PubMedBERT_256-vit_base_patch16_224](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224)
+  - [microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224)
   - [laion/CLIP-ViT-g-14-laion2B-s12B-b42K](https://huggingface.co/laion/CLIP-ViT-g-14-laion2B-s12B-b42K)
   - [apple/DFN5B-CLIP-ViT-H-14](https://huggingface.co/apple/DFN5B-CLIP-ViT-H-14/tree/main)
