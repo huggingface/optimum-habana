@@ -459,7 +459,10 @@ def gaudi_BartDecoder_forward(
 
     # past_key_values_length
     past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-    tensor_past_key_values_length = token_idx - 1 if use_cache else torch.tensor(past_key_values_length)
+    if use_cache and token_idx is not None:
+        tensor_past_key_values_length = token_idx - 1
+    else:
+        tensor_past_key_values_length = torch.tensor(past_key_values_length)
 
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input) * self.embed_scale
