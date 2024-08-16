@@ -26,6 +26,7 @@ from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
+
 logger = logging.get_logger(__name__)
 
 try:
@@ -33,8 +34,6 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
-
-import habana_frameworks.torch.core as htcore
 
 
 def gaudi_mpt_attention_forward(
