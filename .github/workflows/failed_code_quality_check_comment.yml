@@ -8,7 +8,7 @@ on:
 
 jobs:
   - name: Post comment to run make style
-      uses: peter-evans/create-or-update-comment@v4
-      with:
-        issue-number: ${{ inputs.pr-number }}
-        body: The code quality check failed, please run `make style`.
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      issue-number: ${{ inputs.pr-number }}
+      body: The code quality check failed, please run `make style`.
