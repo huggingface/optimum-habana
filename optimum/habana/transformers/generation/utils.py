@@ -1274,14 +1274,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 if generation_config.do_sample
                 else None
             )
-
-            # 12. expand input_ids with `num_return_sequences` additional sequences per batch
-            input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids=input_ids,
-                expand_size=generation_config.num_return_sequences,
-                is_encoder_decoder=self.config.is_encoder_decoder,
-                **model_kwargs,
-            )
+            if generation_mode == GenerationMode.SAMPLE:
+                # 12. expand input_ids with `num_return_sequences` additional sequences per batch
+                input_ids, model_kwargs = self._expand_inputs_for_generation(
+                    input_ids=input_ids,
+                    expand_size=generation_config.num_return_sequences,
+                    is_encoder_decoder=self.config.is_encoder_decoder,
+                    **model_kwargs,
+                )
 
             # 13. run sample (it degenerates to greedy search when `generation_config.do_sample=False`)
             result = self._sample(
