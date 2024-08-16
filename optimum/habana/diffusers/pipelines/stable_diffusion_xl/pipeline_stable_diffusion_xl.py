@@ -651,6 +651,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             t1 = t0
 
             self._num_timesteps = len(timesteps)
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index()
 
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
@@ -687,8 +689,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
-
-            self._num_timesteps = len(timesteps)
 
             # 8.3 Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
