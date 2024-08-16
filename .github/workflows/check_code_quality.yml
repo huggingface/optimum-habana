@@ -36,8 +36,7 @@ jobs:
         ruff check . setup.py
         ruff format --check . setup.py
     - name: Post comment to run make style
-      if: failure()
-      uses: peter-evans/create-or-update-comment@v4
+      if: failure() && github.event_name == 'pull_request'
+      uses: ./.github/workflows/failed_code_quality_check_comment.yml
       with:
-        issue-number: ${{ github.event.number }}
-        body: The code quality check failed, please run `make style`.
+        pr-number: ${{ github.event.number }}
