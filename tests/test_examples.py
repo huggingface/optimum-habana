@@ -584,7 +584,6 @@ class ExampleTesterBase(TestCase):
                 "--use_habana",
                 "--throughput_warmup_steps 3",
                 "--save_strategy no",
-                "--trust_remote_code True",
             ]
 
         if "compile" in task:
