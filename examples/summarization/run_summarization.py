@@ -375,6 +375,12 @@ def main():
         token=model_args.token,
     )
 
+    if training_args.do_train and training_args.use_compiled_autograd:
+        from habana_frameworks.torch.dynamo.compile_backend.experimental import enable_compiled_autograd
+
+        enable_compiled_autograd()
+        torch._C._set_autograd_fallback_mode("nothing")
+
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
