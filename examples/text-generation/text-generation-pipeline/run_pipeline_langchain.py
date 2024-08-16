@@ -19,9 +19,8 @@ import logging
 import math
 import time
 
-from langchain.chains import LLMChain
-from langchain.llms import HuggingFacePipeline
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface.llms import HuggingFacePipeline
 from pipeline import GaudiTextGenerationPipeline
 from run_generation import setup_parser
 
@@ -42,7 +41,7 @@ def main():
     pipe = GaudiTextGenerationPipeline(args, logger, use_with_langchain=True, warmup_on_init=False)
 
     # Create LangChain object
-    llm = HuggingFacePipeline(pipeline=pipe)
+    hf = HuggingFacePipeline(pipeline=pipe)
 
     template = """Use the following pieces of context to answer the question at the end. If you don't know the answer,\
     just say that you don't know, don't try to make up an answer.
@@ -57,7 +56,7 @@ def main():
     Answer: """
 
     prompt = PromptTemplate(input_variables=["question"], template=template)
-    llm_chain = LLMChain(prompt=prompt, llm=llm)
+    chain = prompt | hf
 
     questions = [
         {"question": "Which libraries and model providers offer LLMs?"},
@@ -78,20 +77,18 @@ def main():
 
     logger.info("LangChain warmup (graph compilation)...")
     for _ in range(args.warmup):
-        # Use LangChain object
-        _ = llm_chain.generate(input_questions)
+        _ = chain.batch(input_questions)
     torch_hpu.synchronize()
 
     duration = 0
     for iteration in range(args.n_iterations):
         t0 = time.perf_counter()
-        # Use LangChain object
-        responses = llm_chain.generate(input_questions)
+        responses = chain.batch(input_questions)
         duration += time.perf_counter() - t0
 
-        for i, (question, answer) in enumerate(zip(input_questions, responses.generations)):
+        for i, (question, answer) in enumerate(zip(input_questions, responses)):
             print(f"Question[{iteration+1}][{i+1}]: {question['question']}")
-            print(f"Response[{iteration+1}][{i+1}]: {repr(answer[0].text)}\n")
+            print(f"Response[{iteration+1}][{i+1}]: {answer}\n")
 
     throughput = args.n_iterations * args.batch_size * args.max_new_tokens / duration
     print(f"Inference Duration (for {args.n_iterations} iterations): {duration} seconds")

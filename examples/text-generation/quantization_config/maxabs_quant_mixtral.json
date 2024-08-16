@@ -8,6 +8,5 @@
         "model.layers.1.block_sparse_moe.experts.(3|4).w2",
         "model.layers.[29-31].block_sparse_moe.experts.[0-7].w2"
     ]},
-    "dump_stats_path": "./hqt_output/measure",
-    "dump_stats_xlsx_path": "./hqt_output/measure/fp8stats.xlsx"
+    "dump_stats_path": "./hqt_output/measure"
 }

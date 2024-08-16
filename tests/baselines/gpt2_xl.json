@@ -27,7 +27,7 @@
                 "deepspeed": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 16,
-                    "perplexity": 13.0461,
+                    "perplexity": 13.23775,
                     "train_runtime": 190.696,
                     "train_samples_per_second": 89.877,
                     "extra_arguments": [

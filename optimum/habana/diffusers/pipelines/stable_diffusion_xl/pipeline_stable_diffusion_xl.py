@@ -93,7 +93,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             Whether to use HPU graphs or not.
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
-           Or a previously initialized config can be passed.
+            Or a previously initialized config can be passed.
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
@@ -712,6 +712,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 add_text_embeddings_batches = torch.roll(add_text_embeddings_batches, shifts=-1, dims=0)
                 add_time_ids_batch = add_time_ids_batches[0]
                 add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
+
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
+                    self.scheduler._init_step_index(timesteps[0])
 
                 for i in range(num_inference_steps):
                     if use_warmup_inference_steps and i == throughput_warmup_steps:

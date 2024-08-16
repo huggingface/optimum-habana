@@ -18,14 +18,14 @@ prev_quant_rank = 0
 if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
-        "bf16": [
+        "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, 130.0472971205316),
             ("gpt2-xl", 1, False, 281.8734689674413),
             ("EleutherAI/gpt-j-6b", 1, False, 160.5823842101192),
             ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
             ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
             ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
-            ("bigcode/starcoder", 1, False, 65.58632640700114),
+            ("bigcode/starcoder", 256, False, 4329.754794647058),
             ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
             ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
             ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
@@ -36,10 +36,12 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
             ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
-            ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
+            ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 488.82855464593257),
+            ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("state-spaces/mamba-130m-hf", 1536, False, 8600),
+            ("Deci/DeciLM-7B", 1, False, 120),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -51,18 +53,18 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, 7422.4),
             ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
             ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 12397.11410288204),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 5394.675714459493),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 919.8470890081497),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 2471.950758729518),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 17068.965283763682),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
-            ("meta-llama/Meta-Llama-3-70B-Instruct", 64),
-            ("facebook/opt-66b", 28.48069266504111),
+            ("bigscience/bloomz", 8, 1, 36.77314954096159),
+            ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
+            ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
+            ("facebook/opt-66b", 2, 1, 28.48069266504111),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -70,16 +72,22 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
+        "distributed_tp": [
+            ("meta-llama/Llama-2-7b-hf", 1345.2369318328463),
+        ],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 51.61471298016438),
+        ],
     }
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
-        "bf16": [
+        "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, 41.7555095197846),
             ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
+            ("EleutherAI/gpt-j-6b", 1, True, 156.2893125740893),
             ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
             ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
             ("bigcode/starcoder", 1, False, 15.945023767901013),
@@ -92,13 +100,18 @@ else:
             ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
+            ("state-spaces/mamba-130m-hf", 224, False, 794.542),
         ],
         "fp8": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 31.994268212011505),
+            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
+        "distributed_tp": [],
+        "contrastive_search": [
+            ("gpt2-xl", 1, False, 34.48141280163397),
+        ],
     }
 
 
@@ -114,6 +127,8 @@ def _test_text_generation(
     fp8: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
+    parallel_strategy: str = None,
+    contrastive_search: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -123,6 +138,11 @@ def _test_text_generation(
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
             "--use_deepspeed",
+            f"--world_size {world_size}",
+        ]
+    elif parallel_strategy == "tp":
+        command += [
+            f"{path_to_example_dir / 'gaudi_spawn.py'}",
             f"--world_size {world_size}",
         ]
 
@@ -137,14 +157,23 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if "falcon" in model_name.lower():
+    if "falcon" in model_name.lower() or "starcoder2" in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
 
-    if reuse_cache or torch_compile:
+    if "starcoder" in model_name.lower() and "starcoder2" not in model_name.lower():
+        command += ["--use_flash_attention"]
+
+    if "starcoder2" in model_name.lower():
+        command += ["--flash_attention_recompute"]
+
+    if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
         command += ["--reuse_cache"]
 
     if torch_compile:
         command += ["--torch_compile"]
+        if parallel_strategy == "tp":
+            command += ["--use_flash_attention"]
+            command += ["--flash_attention_recompute"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
@@ -155,6 +184,9 @@ def _test_text_generation(
     if not deepspeed:
         command.append("--bf16")
 
+    if contrastive_search:
+        command += ["--top_k 4", "--penalty_alpha 0.5"]
+
     if fp8:
         if "--trim_logits" not in command:
             command += ["--trim_logits"]
@@ -163,6 +195,11 @@ def _test_text_generation(
             command.insert(-2, "--flash_attention_recompute")
             command.insert(-2, "--bucket_size 128")
             command.insert(-2, "--bucket_internal")
+        if "Mistral" in model_name:
+            command.insert(-2, "--use_flash_attention")
+            command.insert(-2, "--flash_attention_recompute")
+            command.insert(-2, "--attn_softmax_bf16")
+            command.insert(-2, "--trim_logits")
         elif "falcon-180b" in model_name.lower():
             command.insert(-2, "--flash_attention_recompute")
 
@@ -185,6 +222,10 @@ def _test_text_generation(
         command += [
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
+        ]
+    if parallel_strategy is not None:
+        command += [
+            f"--parallel_strategy={parallel_strategy}",
         ]
 
     with TemporaryDirectory() as tmp_dir:
@@ -237,8 +278,8 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16_1x"])
+def test_text_generation_bf16_1x(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
@@ -270,10 +311,9 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])
-def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
-    world_size = 2 if "opt-66b" in model_name else 8
-    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)
+@pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["deepspeed"])
+def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
+    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
@@ -285,6 +325,28 @@ def test_text_generation_torch_compile(model_name: str, baseline: float, token: 
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
+def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
+    world_size = 8
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        batch_size=64,
+        max_input_tokens=128,
+        world_size=world_size,
+        torch_compile=True,
+        parallel_strategy="tp",
+    )
+
+
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["contrastive_search"])
+def test_text_generation_contrastive_search(
+    model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
+):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
 class TextGenPipeline(TestCase):

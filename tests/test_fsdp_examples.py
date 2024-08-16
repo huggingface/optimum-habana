@@ -104,7 +104,7 @@ def _test_fsdp(
             "--bf16 True ",
             "--gradient_accumulation_steps 2",
             "--save_strategy 'no'",
-            "--evaluation_strategy 'no'",
+            "--eval_strategy 'no'",
             "--learning_rate 0.0003",
             "--warmup_ratio 0.03",
             "--max_grad_norm 0.3",

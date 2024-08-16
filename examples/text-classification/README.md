@@ -51,7 +51,7 @@ python run_glue.py \
   --task_name mrpc \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 32 \
+  --per_device_train_batch_size 64 \
   --learning_rate 3e-5 \
   --num_train_epochs 3 \
   --max_seq_length 128 \
@@ -78,7 +78,7 @@ python ../gaudi_spawn.py \
     --task_name mrpc \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 3 \
@@ -106,7 +106,7 @@ python ../gaudi_spawn.py \
     --task_name mrpc \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 3 \
@@ -156,6 +156,7 @@ python run_glue.py \
   --do_eval \
   --max_seq_length 128 \
   --output_dir ./output/mrpc/ \
+  --per_device_eval_batch_size 8 \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
@@ -178,7 +179,7 @@ python ../gaudi_spawn.py \
     --task_name mrpc  \
     --do_train  \
     --do_eval \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 8  \
     --learning_rate 3e-5  \
     --num_train_epochs 3 \

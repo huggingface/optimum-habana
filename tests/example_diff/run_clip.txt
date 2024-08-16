@@ -25,11 +25,11 @@
 > 
 56,57c63,65
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.42.0.dev0")
+< check_min_version("4.45.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.40.0")
-> check_optimum_habana_min_version("1.11.0")
+> check_min_version("4.43.0")
+> check_optimum_habana_min_version("1.12.0")
 181a190,192
 >     mediapipe_dataloader: bool = field(
 >         default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
@@ -55,9 +55,9 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-419d438
+420d439
 <     image_transformations = torch.jit.script(image_transformations)
-466,467c485,493
+467,468c486,494
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         train_dataset.set_transform(transform_images)
 ---
@@ -70,7 +70,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             train_dataset.set_transform(transform_images)
-489,490c515,523
+490,491c516,524
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         eval_dataset.set_transform(transform_images)
 ---
@@ -83,7 +83,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             eval_dataset.set_transform(transform_images)
-513a547,555
+514a548,556
 >         if data_args.mediapipe_dataloader:
 >             test_dataset.image_mean = image_processor.image_mean
 >             test_dataset.image_std = image_processor.image_std
@@ -93,10 +93,10 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             test_dataset.set_transform(transform_images)
-516c558,559
+517c559,560
 <     trainer = Trainer(
 ---
 >     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
 >     trainer = trainer_cls(
-517a561
+518a562
 >         gaudi_config=gaudi_config,

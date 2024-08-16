@@ -1,0 +1,94 @@
+# Default values for examples.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  # -- Determines when the kubelet will pull the image to the worker nodes. Choose from: `IfNotPresent`, `Always`, or `Never`. If updates to the image have been made, use `Always` to ensure the newest image is used.
+  pullPolicy: IfNotPresent
+  # -- Repository and name of the docker image
+  repository: 
+  # -- Tag of the docker image
+  tag: 
+
+# -- Optional [image pull secret](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/) to pull from a private registry
+imagePullSecrets: []
+
+# -- Pod [annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) to attach metadata to the job
+podAnnotations: {}
+
+# -- Specify a pod security context to run as a non-root user
+podSecurityContext: {}
+  # runAsUser: 1000
+  # runAsGroup: 3000
+  # fsGroup: 2000
+
+securityContext:
+  # -- Run as privileged or unprivileged. Certain deployments may require running as privileged, check with your system admin.
+  privileged: false
+
+# -- The default 64MB of shared memory for docker containers can be insufficient when using more than one HPU. Setting hostIPC: true allows reusing the host's shared memory space inside the container.
+hostIPC: false
+
+# -- Optionally define a config map's data as container environment variables
+envFrom: []
+
+# -- Define environment variables to set in the container
+env:
+- name: LOGLEVEL
+  value: INFO
+
+secret:
+  # -- Hugging Face token encoded using base64.
+  encodedToken:
+  # -- If a token is provided, specify a mount path that will be used to set HF_TOKEN_PATH
+  secretMountPath: /tmp/hf_token
+
+storage:
+  # -- Name of the storage class to use for the persistent volume claim. To list the available storage classes use: `kubectl get storageclass`.
+  storageClassName: nfs-client
+  # -- [Access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) for the persistent volume.
+  accessModes:
+  - "ReadWriteMany"
+  # -- Storage [resources](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#resources)
+  resources:
+    requests:
+      storage: 30Gi
+  # -- Locaton where the PVC will be mounted in the pod
+  pvcMountPath: &pvcMountPath /tmp/pvc-mount
+  # -- A data access pod will be deployed when set to true. This allows accessing the data from the PVC after the worker pod has completed.
+  deployDataAccessPod: true
+
+resources:
+  limits:
+    # -- Specify the number of Gaudi card(s)
+    habana.ai/gaudi: &hpus 1
+    # -- Specify [CPU resource](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu) limits for the job
+    cpu: 16
+    # -- Specify [memory limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-memory) requests for the job
+    memory: 128Gi
+    # -- Specify hugepages-2Mi limit for the job
+    hugepages-2Mi: 4400Mi
+  requests:
+    # -- Specify the number of Gaudi card(s)
+    habana.ai/gaudi: *hpus
+    # -- Specify [CPU resource](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu) requests for the job
+    cpu: 16
+    # -- Specify [memory resource](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-memory) requests for the job
+    memory: 128Gi
+    # -- Specify hugepages-2Mi requests for the job
+    hugepages-2Mi: 4400Mi
+
+# Define the command to run in the container
+command:
+  - python
+  - /workspace/optimum-habana/examples/gaudi_spawn.py
+  - --help
+
+# -- Optionally specify a [node selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector) with labels the determine which node your worker pod will land on.
+nodeSelector: {}
+
+# -- Optionally specify [tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) to allow the worker pod to land on a node with a taint.
+tolerations: []
+
+# -- Optionally provide node [affinities](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to constrain which node your worker pod will be scheduled on.
+affinity: {}
