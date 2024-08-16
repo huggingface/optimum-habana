@@ -290,7 +290,6 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16_1x"])
 def test_text_generation_bf16_1x(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
@@ -324,26 +323,22 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
     world_size = 8
@@ -359,7 +354,6 @@ def test_text_generation_distributed_tp(model_name: str, baseline: float, token:
     )
 
 
-@pytest.mark.skip("Skipped for testing")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["contrastive_search"])
 def test_text_generation_contrastive_search(
     model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
@@ -368,7 +362,6 @@ def test_text_generation_contrastive_search(
 
 
 class TextGenPipeline(TestCase):
-    @pytest.mark.skip("Skipped for testing")
     def test_text_generation_pipeline_script(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -387,7 +380,6 @@ class TextGenPipeline(TestCase):
         # Ensure the run finished without any issue
         self.assertEqual(return_code, 0)
 
-    @pytest.mark.skip("Skipped for testing")
     def test_text_generation_pipeline_falcon(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
