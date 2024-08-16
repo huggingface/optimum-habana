@@ -597,7 +597,7 @@ class GenerationIntegrationTestsMixin:
 
         eos_token_id = 873
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
-        eos_tokens = set([eos_token_id, model.config.eos_token_id])
+        eos_tokens = set(eos_token_id, model.config.eos_token_id)
         # just a few tokens after expectation need to be in eos_token
         static_shape_correct_condition = expectation < len(generated_tokens[0]) and all(
             token in eos_tokens for token in generated_tokens[0][expectation:3]
@@ -642,7 +642,7 @@ class GenerationIntegrationTestsMixin:
 
         eos_token_id = 225
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
-        eos_tokens = set([eos_token_id, model.config.eos_token_id])
+        eos_tokens = set(eos_token_id, model.config.eos_token_id)
         # just a few tokens after expectation need to be in eos_token
         static_shape_correct_condition = expectation < len(generated_tokens[0]) and all(
             token in eos_tokens for token in generated_tokens[0][expectation:3]

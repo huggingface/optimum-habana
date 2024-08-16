@@ -75,8 +75,8 @@ if is_torch_available():
         StoppingCriteriaList,
     )
     from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator
-    from transformers.generation.utils import _speculative_sampling
     from transformers.generation.streamers import BaseStreamer
+    from transformers.generation.utils import _speculative_sampling
 
 
 class GenerationTesterMixin:
@@ -2537,7 +2537,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         stopping_criteria = StoppingCriteriaList()
         stopping_criteria.append(DummyCriteria())
 
-        last_tokens = set([bart_model.config.pad_token_id, bart_model.config.eos_token_id])
+        last_tokens = set(bart_model.config.pad_token_id, bart_model.config.eos_token_id)
 
         output = bart_model.generate(input_ids, stopping_criteria=stopping_criteria, max_length=22)
         # assert length is max_length
