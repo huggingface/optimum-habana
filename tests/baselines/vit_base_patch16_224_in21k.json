@@ -46,9 +46,9 @@
             "eval_batch_size": 64,
             "distribution": {
                 "single_card": {
-                    "learning_rate": 6e-5,
-                    "train_batch_size": 96,
-                    "eval_accuracy": 0.9813,
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 128,
+                    "eval_accuracy": 0.9689,
                     "train_runtime": 53.4501,
                     "train_samples_per_second": 931.955,
                     "extra_arguments": [
@@ -62,11 +62,11 @@
                     ]
                 },
                 "multi_card": {
-                    "learning_rate": 5e-4,
-                    "train_batch_size": 96,
-                    "eval_accuracy": 0.9775,
-                    "train_runtime": 22.8292,
-                    "train_samples_per_second": 7337.003,
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 128,
+                    "eval_accuracy": 0.9679,
+                    "train_runtime": 23.99,
+                    "train_samples_per_second": 6718.643,
                     "extra_arguments": [
                         "--remove_unused_columns False",
                         "--image_column_name img",

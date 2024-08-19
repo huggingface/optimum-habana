@@ -178,7 +178,6 @@ def patch_scoped_linear_all_reduce(model):
 
 def get_torch_compiled_model(model):
     if model.config.model_type in ["gpt_bigcode"]:
-        # For gpt_bigcode model_type, model.transformer is used instead of model.model
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
@@ -188,21 +187,41 @@ def get_torch_compiled_model(model):
 
 
 def setup_quantization(model, args):
-    from neural_compressor.torch.quantization import FP8Config, convert, prepare
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
 
-    config = FP8Config.from_json_file(args.quant_config)
-    if config.measure:
-        model = prepare(model, config)
-    elif config.quantize:
-        model = convert(model, config)
+        config = FP8Config.from_json_file(args.quant_config)
+        if config.measure:
+            model = prepare(model, config)
+        elif config.quantize:
+            model = convert(model, config)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
 
     return model
 
 
 def finalize_quantization(model):
-    from neural_compressor.torch.quantization import finalize_calibration
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import finalize_calibration
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
 
-    finalize_calibration(model)
+        finalize_calibration(model)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.finish_measurements(model)
 
 
 def setup_model(args, model_dtype, model_kwargs, logger):
@@ -234,7 +253,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
-    elif args.load_cp:
+    elif args.load_quantized_model:
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -251,11 +270,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             )
     if args.quant_config:
         model = setup_quantization(model, args)
-
-        if args.assistant_model is not None:
-            import habana_quantization_toolkit
-
-            habana_quantization_toolkit.quantize_model(assistant_model)
 
     model = model.eval().to(args.device)
     if args.assistant_model is not None:
@@ -274,6 +288,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
             model.base_model = wrap_in_hpu_graph(model.base_model)
+            if model.peft_type == "ADAPTION_PROMPT":
+                model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
         model = get_torch_compiled_model(model)
@@ -342,7 +358,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 
         model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
 
     return model, args.assistant_model
@@ -410,15 +426,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon", "qwen2"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
         model = setup_quantization(model, args)
-        if args.assistant_model is not None:
-            import habana_quantization_toolkit
-
-            habana_quantization_toolkit.prep_model(assistant_model)
 
     if args.torch_compile:
         model = get_torch_compiled_model(model)
@@ -474,6 +486,17 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        if model.peft_type == "ADAPTION_PROMPT":
+            from peft import tuners
+
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
+
         return model
 
 
@@ -544,6 +567,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
+    generation_config.top_k = args.top_k
+    generation_config.penalty_alpha = args.penalty_alpha
     generation_config.bad_words_ids = bad_words_ids
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
@@ -605,7 +630,8 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
-    if args.load_cp:
+
+    if args.load_quantized_model:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:
@@ -618,6 +644,7 @@ def initialize_model(args, logger):
         if not args.parallel_strategy == "tp"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
+
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 

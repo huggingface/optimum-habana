@@ -317,16 +317,16 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 1. Check inputs. Raise error if not correct
             self.check_inputs(
-                prompt,
-                image,
-                callback_steps,
-                negative_prompt,
-                prompt_embeds,
-                negative_prompt_embeds,
-                controlnet_conditioning_scale,
-                control_guidance_start,
-                control_guidance_end,
-                callback_on_step_end_tensor_inputs,
+                prompt=prompt,
+                image=image,
+                callback_steps=callback_steps,
+                negative_prompt=negative_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                controlnet_conditioning_scale=controlnet_conditioning_scale,
+                control_guidance_start=control_guidance_start,
+                control_guidance_end=control_guidance_end,
+                callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             )
 
             self._guidance_scale = guidance_scale

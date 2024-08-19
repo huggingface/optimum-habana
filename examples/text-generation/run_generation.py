@@ -126,6 +126,18 @@ def setup_parser(parser):
         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
     )
     parser.add_argument(
+        "--top_k",
+        default=None,
+        type=int,
+        help="Size of candidate set used for re-ranking in contrastive search. top_k > 1 enables contrastive search.",
+    )
+    parser.add_argument(
+        "--penalty_alpha",
+        default=None,
+        type=float,
+        help="Degeneration penalty for contrastive search. penalty_alpha > 0 enables contrastive search.",
+    )
+    parser.add_argument(
         "--trim_logits",
         action="store_true",
         help="Calculate logits only for the last token to save memory in the first step.",
@@ -303,7 +315,7 @@ def setup_parser(parser):
         "--ignore_eos",
         default=True,
         action=argparse.BooleanOptionalAction,
-        help="Whether to ignore eos, set False to disable it",
+        help="Whether to disable stopping with eos token when calling `generate`. --no-ignore_eos to disable it",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
@@ -321,15 +333,10 @@ def setup_parser(parser):
     parser.add_argument(
         "--trust_remote_code",
         action="store_true",
-        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+        help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
-        "--run_partial_dataset",
-        action="store_true",
-        help="Run the inference with dataset for specified --n_iterations(default:5)",
-    )
-    parser.add_argument(
-        "--load_cp",
+        "--load_quantized_model",
         action="store_true",
         help="Whether to load model from hugging face checkpoint.",
     )
@@ -339,6 +346,12 @@ def setup_parser(parser):
         choices=["tp", "none"],  # Add other strategies as needed
         default="none",
         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+    )
+
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
 
     args = parser.parse_args()
@@ -351,6 +364,9 @@ def setup_parser(parser):
 
     if args.flash_attention_fast_softmax is None:
         args.flash_attention_fast_softmax = args.use_flash_attention
+
+    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+        args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.gptq:
@@ -654,12 +670,12 @@ def main():
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
-            for _ in range(args.warmup):
+            for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print("Warming up", flush=True)
+                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -671,10 +687,10 @@ def main():
 
                 min_prompt_len = rounder(mn)
                 max_sentence_len = rounder(mx)
-                for _ in range(args.warmup):
+                for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print("Warming up for shape,", sz - 1, flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0

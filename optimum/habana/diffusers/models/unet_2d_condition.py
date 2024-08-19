@@ -3,14 +3,13 @@ from typing import Any, Dict, Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.utils.checkpoint
-from diffusers.models.unet_2d_condition import UNet2DConditionOutput
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.forward
 def gaudi_unet_2d_condition_model_forward(
     self,
     sample: torch.FloatTensor,
@@ -238,8 +237,8 @@ def gaudi_unet_2d_condition_model_forward(
             "T2I should not use down_block_additional_residuals",
             "1.3.0",
             "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
-                       and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
-                       for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
+            and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
+            for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
             standard_warn=False,
         )
         down_intrablock_additional_residuals = down_block_additional_residuals

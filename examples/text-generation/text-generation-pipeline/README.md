@@ -20,20 +20,15 @@ The text-generation pipeline can be used to perform text-generation by providing
 
 ## Requirements
 
-Update `PYTHONPATH` as follows.
-```bash
-export OPTIMUM_HABANA_PATH=/path/to/optimum-habana
-export PYTHONPATH=${PYTHONPATH}:${OPTIMUM_HABANA_PATH}/examples/text-generation
-```
-
 If you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
 ```
 
 If you would like to use the pipeline with LangChain classes, you can install LangChain as follows:
 ```bash
-pip install langchain==0.1.16
+pip install langchain==0.2.5
+pip install langchain-huggingface
 ```
 
 ## Usage
@@ -145,9 +140,10 @@ python run_pipeline_langchain.py \
     --use_hpu_graphs \
     --use_kv_cache \
     --batch_size 32 \
+    --max_input_tokens 200 \
     --max_new_tokens 1024 \
     --do_sample \
     --device=hpu
 ```
 
-> The pipeline class has been validated for LangChain version 0.1.16 and may not work with other versions of the package.
+> The pipeline class has been validated for LangChain version 0.2.5 and may not work with other versions of the package.

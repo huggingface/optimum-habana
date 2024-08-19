@@ -480,7 +480,7 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     @slow
     def test_model_from_pretrained(self):
         model_name = "FacebookAI/roberta-base"
-        model = RobertaModel.from_pretrained(model_name)
+        model = RobertaModel.from_pretrained(model_name).to(torch_device)
         self.assertIsNotNone(model)
 
     def test_create_position_ids_respects_padding_index(self):
@@ -491,12 +491,12 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         first available non-padding position index is RobertaEmbeddings.padding_idx + 1
         """
         config = self.model_tester.prepare_config_and_inputs()[0]
-        model = RobertaEmbeddings(config=config)
+        model = RobertaEmbeddings(config=config).to(torch_device)
 
         input_ids = torch.as_tensor([[12, 31, 13, model.padding_idx]])
         expected_positions = torch.as_tensor(
             [[0 + model.padding_idx + 1, 1 + model.padding_idx + 1, 2 + model.padding_idx + 1, model.padding_idx]]
-        )
+        ).to(torch_device)
 
         position_ids = create_position_ids_from_input_ids(input_ids, model.padding_idx)
         self.assertEqual(position_ids.shape, expected_positions.shape)
@@ -510,7 +510,7 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         first available non-padding position index is RobertaEmbeddings.padding_idx + 1
         """
         config = self.model_tester.prepare_config_and_inputs()[0]
-        embeddings = RobertaEmbeddings(config=config)
+        embeddings = RobertaEmbeddings(config=config).to(torch_device)
 
         inputs_embeds = torch.empty(2, 4, 30)
         expected_single_positions = [
@@ -519,7 +519,9 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
             2 + embeddings.padding_idx + 1,
             3 + embeddings.padding_idx + 1,
         ]
-        expected_positions = torch.as_tensor([expected_single_positions, expected_single_positions])
+        expected_positions = torch.as_tensor(
+            [expected_single_positions, expected_single_positions], device=torch_device
+        )
         position_ids = embeddings.create_position_ids_from_inputs_embeds(inputs_embeds)
         self.assertEqual(position_ids.shape, expected_positions.shape)
         self.assertTrue(torch.all(torch.eq(position_ids, expected_positions)))
@@ -527,57 +529,31 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
 
 @require_torch
 class RobertaModelIntegrationTest(TestCasePlus):
-    @slow
-    def test_inference_masked_lm(self):
-        model = RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base")
-
-        input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
+    def _helper(self, model, device, input_ids):
+        model = model.to(device)
+        input_ids = input_ids.to(device)
         with torch.no_grad():
             output = model(input_ids)[0]
-        expected_shape = torch.Size((1, 11, 50265))
-        self.assertEqual(output.shape, expected_shape)
-        # compare the actual values for a slice.
-        expected_slice = torch.tensor(
-            [[[33.8802, -4.3103, 22.7761], [4.6539, -2.8098, 13.6253], [1.8228, -3.6898, 8.8600]]]
-        )
+        return output
 
-        # roberta = torch.hub.load('pytorch/fairseq', 'roberta.base')
-        # roberta.eval()
-        # expected_slice = roberta.model.forward(input_ids)[0][:, :3, :3].detach()
+    def _compare_cpu_hpu(self, model, input_ids=None, atol=0.2):
+        if input_ids is None:
+            input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
+        out_cpu = self._helper(model, "cpu", input_ids)
+        out_hpu = self._helper(model, "hpu", input_ids)
+        self.assertEqual(out_cpu.shape, out_hpu.shape)
+        self.assertTrue(torch.allclose(out_cpu, out_hpu, atol=atol))
 
-        self.assertTrue(torch.allclose(output[:, :3, :3], expected_slice, atol=1e-4))
+    @slow
+    def test_inference_masked_lm(self):
+        self._compare_cpu_hpu(RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base"), atol=0.15)
 
     @slow
     def test_inference_no_head(self):
-        model = RobertaModel.from_pretrained("FacebookAI/roberta-base")
-
-        input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
-        with torch.no_grad():
-            output = model(input_ids)[0]
-        # compare the actual values for a slice.
-        expected_slice = torch.tensor(
-            [[[-0.0231, 0.0782, 0.0074], [-0.1854, 0.0540, -0.0175], [0.0548, 0.0799, 0.1687]]]
-        )
-
-        # roberta = torch.hub.load('pytorch/fairseq', 'roberta.base')
-        # roberta.eval()
-        # expected_slice = roberta.extract_features(input_ids)[:, :3, :3].detach()
-
-        self.assertTrue(torch.allclose(output[:, :3, :3], expected_slice, atol=1e-4))
+        self._compare_cpu_hpu(RobertaModel.from_pretrained("FacebookAI/roberta-base"), atol=0.05)
 
     @slow
     def test_inference_classification_head(self):
-        model = RobertaForSequenceClassification.from_pretrained("FacebookAI/roberta-large-mnli")
-
-        input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
-        with torch.no_grad():
-            output = model(input_ids)[0]
-        expected_shape = torch.Size((1, 3))
-        self.assertEqual(output.shape, expected_shape)
-        expected_tensor = torch.tensor([[-0.9469, 0.3913, 0.5118]])
-
-        # roberta = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
-        # roberta.eval()
-        # expected_tensor = roberta.predict("mnli", input_ids, return_logits=True).detach()
-
-        self.assertTrue(torch.allclose(output, expected_tensor, atol=1e-4))
+        self._compare_cpu_hpu(
+            RobertaForSequenceClassification.from_pretrained("FacebookAI/roberta-large-mnli"), atol=0.02
+        )

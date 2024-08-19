@@ -23,6 +23,11 @@ from .transformers import (
     GaudiTrainer,
     GaudiTrainingArguments,
 )
+from .sentence_transformers import (
+    SentenceTransformerGaudiTrainer,
+    SentenceTransformerGaudiTrainingArguments,
+)
+
 from .utils import check_synapse_version
 from .version import __version__
 

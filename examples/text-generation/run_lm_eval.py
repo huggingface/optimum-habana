@@ -29,6 +29,8 @@ import lm_eval.tasks
 import psutil
 import torch
 import torch.nn.functional as F
+
+# Local imports
 from run_generation import setup_parser
 from utils import finalize_quantization, initialize_model
 
@@ -36,7 +38,6 @@ from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 logger = logging.getLogger(__name__)
 
 
@@ -100,13 +101,22 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "falcon",
+            "phi",
+            "mixtral",
+            "qwen2",
+            "gptj",
+            "starcoder2",
+        ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {

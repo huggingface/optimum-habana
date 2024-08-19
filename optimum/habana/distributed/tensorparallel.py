@@ -15,7 +15,6 @@
 # This file has been modified from its original version.
 # The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
 
-
 import torch
 import torch._inductor.ir as ir
 import torch._inductor.lowering as lowering
@@ -23,7 +22,8 @@ import torch.distributed as dist
 from torch import nn
 
 
-# This needs to be fixed Issues can be tracked at - SW-192548
+# Workaround to overcome the accuracy/output correctnes issue in torch.compile all_reduce for batch sizes greater than 124.
+# This is a temporary fix and needs to be addressed properly in future updates.
 def disable_compiler(fn):
     if hasattr(torch, "compiler") and hasattr(torch.nn.Module, "compile"):
         return torch.compiler.disable(fn)
