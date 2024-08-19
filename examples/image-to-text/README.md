@@ -73,10 +73,12 @@ python3 run_pipeline.py \
 ```
 
 To run idefics2 inference, use the following command:
+```bash
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
     --use_hpu_graphs \
     --bf16
+```
 
 ### Inference with FP8
 
