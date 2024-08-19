@@ -105,13 +105,13 @@ def main():
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type == "llava":
+    if args.image_path is None and model_type in ["llava", "idefics2"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type == "llava":
+    if args.prompt is None and model_type in ["llava", "idefics2"]:
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
         args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
@@ -168,6 +168,20 @@ def main():
         habana_quantization_toolkit.prep_model(generator.model)
 
         htcore.hpu_initialize(generator.model)
+
+    # delete once pipeline integrate AutoProcessor as preprocess engine
+    if model_type in ["idefics2"]:
+        from transformers import AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+        from transformers.image_utils import load_image
+
+        def preprocess(self, image, prompt=None, timeout=None):
+            image = load_image(image, timeout=timeout)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            return model_inputs
+
+        generator.__class__.preprocess = preprocess
 
     # warm up
     for i in range(args.warmup):

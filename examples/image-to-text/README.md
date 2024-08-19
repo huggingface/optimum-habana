@@ -72,6 +72,12 @@ python3 run_pipeline.py \
     --bf16
 ```
 
+To run idefics2 inference, use the following command:
+python3 run_pipeline.py \
+    --model_name_or_path HuggingFaceM4/idefics2-8b \
+    --use_hpu_graphs \
+    --bf16
+
 ### Inference with FP8
 
 Inference for Llava-1.5-7b, Llava-1.5-13b, Llava-v1.6-mistral-7b and Llava-v1.6-vicuna-13b in FP8 precision are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
