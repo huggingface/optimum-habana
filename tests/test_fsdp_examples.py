@@ -84,6 +84,7 @@ def _test_fsdp(
     ]
 
     if model_name == "bert-base-uncased":
+        # Setting --save_strategy "no" to disable saving checkpoint during train which fails with error, checkpoint is saved by save_model()
         command += [
             "--dataset_name squad",
             "--max_seq_length 384",
@@ -91,6 +92,7 @@ def _test_fsdp(
             "--num_train_epochs 2.0",
             "--logging_steps 20",
             "--save_steps 5000",
+            "--save_strategy 'no'"
             "--seed 42",
             "--doc_stride 128",
             "--overwrite_output_dir",
