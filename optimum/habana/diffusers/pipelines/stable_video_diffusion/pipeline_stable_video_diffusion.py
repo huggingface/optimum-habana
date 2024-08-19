@@ -472,7 +472,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             # 10. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
             self._num_timesteps = len(timesteps)
             for j in self.progress_bar(range(num_batches)):
@@ -493,6 +493,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                 added_time_ids_batches = torch.roll(added_time_ids_batches, shifts=-1, dims=0)
 
                 for i in self.progress_bar(range(num_inference_steps)):
+                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1 += time.time() - t0_inf
 
@@ -533,6 +534,8 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
 
+                    logger.info(f"i {i}elapsed {time.time()-ts}")
+
                 if not output_type == "latent":
                     # cast back to fp16/bf16 if needed
                     if needs_upcasting:
@@ -552,7 +555,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

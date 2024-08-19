@@ -496,7 +496,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             for j in self.progress_bar(range(num_batches)):
@@ -513,6 +513,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
                 for i in range(len(timesteps)):
+                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -573,6 +574,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                         callback(step_idx, timestep, latents_batch)
 
                     hb_profiler.step()
+                    logger.info(f"i {i}elapsed {time.time()-ts}")
 
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
@@ -600,7 +602,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

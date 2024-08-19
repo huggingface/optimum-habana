@@ -396,7 +396,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
             t1 = t0
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
@@ -414,6 +414,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                 prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
 
                 for i in range(len(timesteps)):
+                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -473,6 +474,8 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents_batch)
                     hb_profiler.step()
+                    logger.info(f"i {i} elapsed {time.time()-ts}")
+                
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
                         t1, t1_inf, num_inference_steps, throughput_warmup_steps
@@ -487,6 +490,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                     self.htcore.mark_step()
 
             hb_profiler.stop()
+            logger.info(f"t1-t0 {t1-t0} num_samples {num_batches * batch_size if t1 == t0 or use_warmup_inference_steps else (num_batches - throughput_warmup_steps) * batch_size} ")
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
@@ -494,7 +498,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
