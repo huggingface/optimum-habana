@@ -96,6 +96,7 @@ from .gptj import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
 )
+from .idefics2 import GaudiIdefics2ForConditionalGeneration, GaudiIdefics2Model
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,

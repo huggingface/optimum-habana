@@ -1,0 +1,1 @@
+from .modeling_idefics2 import GaudiIdefics2ForConditionalGeneration, GaudiIdefics2Model

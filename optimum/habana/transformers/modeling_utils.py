@@ -56,6 +56,8 @@ from .models import (
     GaudiGPTJModel,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -379,6 +381,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
         GaudiLlavaNextForConditionalGeneration
     )
+
+    # Optimization for idefics2 on Gaudi
+    transformers.models.idefics2.modeling_idefics2.Idefics2ForConditionalGeneration = (
+        GaudiIdefics2ForConditionalGeneration
+    )
+    transformers.models.idefics2.modeling_idefics2.Idefics2Model = GaudiIdefics2Model
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
