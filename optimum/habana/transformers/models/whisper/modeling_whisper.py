@@ -46,7 +46,13 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        """Input shape: Batch x Time x Channel"""
+        """
+        Inherits from WhisperDecoderLayer: https://github.com/huggingface/transformers/blob/v4.44.0/src/transformers/models/whisper/modeling_whisper.py
+        The only differences are:
+        - add new args token_idx
+        - add static kv cache
+        - use token_idx instead of cache_position
+        """
         if output_attentions or layer_head_mask is not None:
             # TODO: Improve this warning with e.g. `model.config._attn_implementation = "manual"` once this is implemented.
             logger.warning_once(
@@ -102,7 +108,7 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
                 else:
                     # save all key/value_states to cache to be re-used for fast auto-regressive generation
                     cache_position = cache_position if not is_cross_attention else None
-                    # Change cache_position to token_idx
+                    # change cache_position to token_idx
                     key_states, value_states = past_key_value.update(
                         key_states, value_states, self.layer_idx, {"cache_position": token_idx}
                     )
@@ -166,6 +172,11 @@ class GaudiWhisperDecoderLayer(WhisperDecoderLayer):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """
+        Inherits from WhisperDecoderLayer: https://github.com/huggingface/transformers/blob/v4.44.0/src/transformers/models/whisper/modeling_whisper.py
+        The only differences are:
+        - add new args token_idx
+        """
         residual = hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
@@ -238,6 +249,11 @@ class GaudiWhisperDecoder(WhisperDecoder):
         cache_position=None,
         token_idx=None,
     ):
+        """
+        Inherits from WhisperDecoder: https://github.com/huggingface/transformers/blob/v4.44.0/src/transformers/models/whisper/modeling_whisper.py
+        The only differences are:
+        - add new args token_idx
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -418,6 +434,11 @@ class GaudiWhisperModel(WhisperModel):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], Seq2SeqModelOutput]:
+        """
+        Inherits from WhisperModel: https://github.com/huggingface/transformers/blob/v4.44.0/src/transformers/models/whisper/modeling_whisper.py
+        The only differences are:
+        - add new args token_idx
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -498,7 +519,7 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], Seq2SeqLMOutput]:
         """
-        Inherits from WhisperForConditionalGeneration
+        Inherits from WhisperForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.44.0/src/transformers/models/whisper/modeling_whisper.py
         The only differences are:
         - add new args token_idx
         """
@@ -596,23 +617,16 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
             forced_decoder_ids_length = 4
 
         # prepare the decoder_attention_mask
+        decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
+
+        # prepare the decoder_position_ids
         if token_idx <= forced_decoder_ids_length:
-            decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
-            # prepare the decoder_position_ids
             decoder_position_ids = decoder_attention_mask.cumsum(-1) - 1
         else:
-            decoder_attention_mask=(decoder_input_ids != self.config.pad_token_id).long()
-            decoder_position_ids=None
+            decoder_position_ids = None
 
         if token_idx >= forced_decoder_ids_length + 1:
             decoder_input_ids = torch.index_select(decoder_input_ids, 1, token_idx - 1)
-
-        if cache_position is None:
-            cache_position = torch.arange(
-                past_length, past_length + token_idx, device=decoder_input_ids.device
-            )
-        elif use_cache:
-            cache_position = cache_position[-decoder_input_ids.shape[1] :]
 
         return {
             "encoder_outputs": encoder_outputs,
