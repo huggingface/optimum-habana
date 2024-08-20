@@ -170,10 +170,16 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
-        return (
-            self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-            self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-        )
+        if self.attention_scaling == 1.0:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype),
+                self._sin_cached[:seq_len].to(dtype=x.dtype),
+            )
+        else:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+                self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+            )
 
 
 class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
@@ -977,7 +983,6 @@ class GaudiLlamaModel(LlamaModel):
         config.parallel_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
