@@ -1,4 +1,3 @@
-
 import copy
 import math
 import os
@@ -287,10 +286,7 @@ class GaudiWhisperDecoder(WhisperDecoder):
             )
 
         if position_ids is None:
-            # position_ids = cache_position.unsqueeze(0)  ####
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-
+            position_ids = (token_idx-1).unsqueeze(0)
         # embed positions
         if input_ids is not None:
             positions = self.embed_positions(
@@ -305,9 +301,9 @@ class GaudiWhisperDecoder(WhisperDecoder):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
         causal_mask = self._update_causal_mask(
-            attention_mask, #### tensor([[True, False, False
+            attention_mask,
             inputs_embeds,
-            cache_position, #####
+            cache_position,
             past_key_values.self_attention_cache if past_key_values is not None else None,
             output_attentions,
         )
@@ -592,35 +588,24 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
     ):
         token_idx = kwargs.get("token_idx", None)
 
+        # The first decoding iteration may have different length of force decoder ids
+        # due to shortform/longform input audio
+        # which may affect when the prefilling should begin
+        forced_decoder_ids_length = 3
+        if self.generation_config.no_timestamps_token_id in decoder_input_ids:
+            forced_decoder_ids_length = 4
+
         # prepare the decoder_attention_mask
-        decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
-        # prepare the decoder_position_ids
-        decoder_position_ids = decoder_attention_mask.cumsum(-1) - 1
+        if token_idx <= forced_decoder_ids_length:
+            decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
+            # prepare the decoder_position_ids
+            decoder_position_ids = decoder_attention_mask.cumsum(-1) - 1
+        else:
+            decoder_attention_mask=(decoder_input_ids != self.config.pad_token_id).long()
+            decoder_position_ids=None
 
-        # decoder_position_ids = None
-        # if decoder_attention_mask is not None:
-        #     decoder_position_ids = (decoder_attention_mask.cumsum(-1) - 1).clamp(min=0)
-
-        past_length = 0
-        if past_key_values is not None:
-            if isinstance(past_key_values, EncoderDecoderCache):
-                past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
-            else:
-                past_length = past_key_values[0][0].shape[2]
-
-            # Some generation methods already pass only the last input ID
-            if decoder_input_ids.shape[1] > past_length:
-                remove_prefix_length = past_length
-            else:
-                # Default to old behavior: keep only final ID
-                remove_prefix_length = decoder_input_ids.shape[1] - 1
-
-            decoder_input_ids = decoder_input_ids[:, remove_prefix_length:]
-
-            if decoder_position_ids is not None:
-                decoder_position_ids = decoder_position_ids[:, remove_prefix_length:]
-                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
-                decoder_position_ids = decoder_position_ids.clone(memory_format=torch.contiguous_format)
+        if token_idx >= forced_decoder_ids_length + 1:
+            decoder_input_ids = torch.index_select(decoder_input_ids, 1, token_idx - 1)
 
         if cache_position is None:
             cache_position = torch.arange(
@@ -628,36 +613,6 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
             )
         elif use_cache:
             cache_position = cache_position[-decoder_input_ids.shape[1] :]
-
-        # The `contiguous()` here is necessary to have a static stride during decoding. torchdynamo otherwise
-        # recompiles graphs as the stride of the inputs is a guard. Ref: https://github.com/huggingface/transformers/pull/29114
-        decoder_input_ids = decoder_input_ids.contiguous()
-
-        if (
-            isinstance(past_key_values, EncoderDecoderCache)
-            and (
-                isinstance(past_key_values.self_attention_cache, StaticCache)
-                or isinstance(past_key_values.cross_attention_cache, StaticCache)
-            )
-            and decoder_attention_mask is not None
-            and decoder_attention_mask.ndim == 2
-        ):
-            batch_size, sequence_length = decoder_input_ids.shape
-            device = decoder_input_ids.device
-
-            dtype = self.proj_out.weight.dtype
-            min_dtype = torch.finfo(dtype).min
-
-            decoder_attention_mask = _prepare_4d_causal_attention_mask_with_cache_position(
-                decoder_attention_mask,
-                sequence_length=sequence_length,
-                target_length=past_key_values.self_attention_cache.get_max_length(),
-                dtype=dtype,
-                device=device,
-                min_dtype=min_dtype,
-                cache_position=cache_position,
-                batch_size=batch_size,
-            )
 
         return {
             "encoder_outputs": encoder_outputs,
