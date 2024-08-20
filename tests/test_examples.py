@@ -899,3 +899,31 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
     DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingVeraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "vera"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingLnExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ln_tuning"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingIA3ExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ia3"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingAdaloraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "adalora"
+    DATASET_NAME = "tatsu-lab/alpaca"
