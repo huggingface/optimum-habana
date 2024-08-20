@@ -610,7 +610,13 @@ class GaudiMixtralModel(MixtralModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            past_seen_tokens = 0
+            if past_key_values is not None:
+                if isinstance(past_key_values, Cache):
+                    past_seen_tokens = past_key_values.get_seq_length()
+                else:
+                    past_seen_tokens = past_key_values[0][0].shape[2]
+
             cache_position = torch.arange(
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
