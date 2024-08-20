@@ -170,7 +170,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
-        if self.attention_scaling is None or self.attention_scaling == 1.0:
+        if self.attention_scaling == 1.0:
             return (
                 self._cos_cached[:seq_len].to(dtype=x.dtype),
                 self._sin_cached[:seq_len].to(dtype=x.dtype),
