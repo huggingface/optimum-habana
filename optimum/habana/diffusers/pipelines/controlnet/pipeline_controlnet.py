@@ -516,7 +516,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
                 for i in range(num_inference_steps):
-                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -608,8 +607,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                             callback(step_idx, t, latents_batch)
 
                     hb_profiler.step()
-
-                    logger.info(f"i {i}elapsed {time.time()-ts}")
 
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(

@@ -718,7 +718,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                     self.scheduler._init_step_index(timesteps[0])
 
                 for i in range(num_inference_steps):
-                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -793,7 +792,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                             callback(step_idx, timestep, latents)
 
                     hb_profiler.step()
-                    logger.info(f"i {i}elapsed {time.time()-ts}")
 
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(

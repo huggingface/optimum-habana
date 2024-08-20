@@ -414,7 +414,6 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                 prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
 
                 for i in range(len(timesteps)):
-                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -474,8 +473,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents_batch)
                     hb_profiler.step()
-                    logger.info(f"i {i} elapsed {time.time()-ts}")
-                
+
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
                         t1, t1_inf, num_inference_steps, throughput_warmup_steps
@@ -490,7 +488,6 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                     self.htcore.mark_step()
 
             hb_profiler.stop()
-            logger.info(f"t1-t0 {t1-t0} num_samples {num_batches * batch_size if t1 == t0 or use_warmup_inference_steps else (num_batches - throughput_warmup_steps) * batch_size} ")
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,

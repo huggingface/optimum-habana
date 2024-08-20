@@ -493,7 +493,6 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                 added_time_ids_batches = torch.roll(added_time_ids_batches, shifts=-1, dims=0)
 
                 for i in self.progress_bar(range(num_inference_steps)):
-                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1 += time.time() - t0_inf
 
@@ -533,8 +532,6 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                         callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
-
-                    logger.info(f"i {i}elapsed {time.time()-ts}")
 
                 if not output_type == "latent":
                     # cast back to fp16/bf16 if needed

@@ -559,7 +559,6 @@ class GaudiStableDiffusionXLImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
                 add_time_ids_batch = add_time_ids_batches[0]
                 add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
 
-
                 if hasattr(self.scheduler, "_init_step_index"):
                     # Reset scheduler step index for next batch
                     self.scheduler._init_step_index(timesteps[0])

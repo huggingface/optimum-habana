@@ -358,7 +358,6 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
                 for i in range(len(timesteps)):
-                    ts=time.time()
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -398,8 +397,6 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, timestep, latents_batch)
-
-                    logger.info(f"i {i}elapsed {time.time()-ts}")
 
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
