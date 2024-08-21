@@ -288,24 +288,19 @@ class ModuleFusedSDPA(torch.nn.Module):
         valid_sequence_lengths,
         padding_side="left",
     ):
-        from habana_frameworks.torch.hpex.experimental.transformer_engine import FusedAttention as FusedAttentionTE
-
-        if isinstance(self._hpu_kernel_fsdpa, FusedAttentionTE):
-            return self._hpu_kernel_fsdpa(query, key, value, attn_mask, is_causal, softmax_mode)
-        else:
-            return self._hpu_kernel_fsdpa.apply(
-                query,
-                key,
-                value,
-                attn_mask,
-                dropout_p,
-                is_causal,
-                scale,
-                softmax_mode,
-                recompute_mode,
-                valid_sequence_lengths,
-                padding_side,
-            )
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
 
 
 class Matmul(torch.nn.Module):

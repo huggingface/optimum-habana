@@ -79,15 +79,35 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
             setattr(model, name, new_module)
         elif isinstance(module, ModuleFusedSDPA) and module.flash_attention_fp8 and to_transformer_engine:
             from habana_frameworks.torch.hpex.experimental.transformer_engine import (
-                FusedAttention as te_FusedAttention,
+                FusedAttention as TE_FusedAttention,
             )
 
-            module._hpu_kernel_fsdpa = te_FusedAttention(
-                scale=module.scale,
-                attention_dropout=module.attention_dropout,
-                enable_recompute=module.enable_recompute,
-            )
-            setattr(model, name, module)
+            class TE_ModuleFusedSDPA(torch.nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self._hpu_kernel_fsdpa = TE_FusedAttention(
+                        scale=module.scale,
+                        attention_dropout=module.attention_dropout,
+                        enable_recompute=module.enable_recompute,
+                    )
+
+                def forward(
+                    self,
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    softmax_mode,
+                    recompute_mode,
+                    valid_sequence_lengths,
+                    padding_side="left",
+                ):
+                    return self._hpu_kernel_fsdpa(query, key, value, attn_mask, is_causal, softmax_mode)
+
+            setattr(model, name, TE_ModuleFusedSDPA())
         else:
             _convert_model(module, to_transformer_engine=to_transformer_engine, _convert_linear=_convert_linear)
 
