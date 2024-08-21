@@ -182,6 +182,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
 --bf16 \
---use_flash_attention
+--use_flash_attention \
 --flash_attention_recompute
 ```
