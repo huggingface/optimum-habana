@@ -71,6 +71,13 @@ from .gemma import (
     GaudiGemmaMLP,
     GaudiGemmaModel,
 )
+from .gemma2 import (
+    GaudiGemma2DecoderLayer,
+    GaudiGemma2ForCausalLM,
+    GaudiGemma2Attention,
+    GaudiGemma2Model,
+    GaudiGemma2MLP,
+)
 from .gpt2 import (
     GaudiGPT2Attention,
     GaudiGPT2Block,
