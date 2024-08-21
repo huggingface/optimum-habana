@@ -9,6 +9,15 @@ from accelerate.utils.versions import is_torch_version
 
 
 def extract_model_from_parallel(model, keep_fp32_wrapper: bool = True, recursive: bool = False):
+    """
+    Adapted from: https://github.com/huggingface/accelerate/blob/v0.33.0/src/accelerate/utils/other.py#L56
+
+    Changes:
+    - add a `distributed_model` variable to keep track of the distributed wrapper
+      and not lose it when setting it back at the end (for compiled models)
+
+    See https://github.com/huggingface/optimum-habana/pull/1281 for more information.
+    """
     options = (torch.nn.parallel.DistributedDataParallel, torch.nn.DataParallel)
 
     is_compiled = is_compiled_module(model)
