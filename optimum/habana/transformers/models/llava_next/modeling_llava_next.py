@@ -61,6 +61,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new args flash_attention_recompute
         - Moved the process of merging images into inputs_embeds into prepare_inputs_for_generation
         """
 

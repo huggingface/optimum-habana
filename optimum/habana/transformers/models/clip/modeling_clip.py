@@ -84,6 +84,7 @@ class GaudiCLIPAttention(CLIPAttention):
         Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention to enable FusedSDPA
+        - add new args flash_attention_recompute
         """
         bsz, tgt_len, embed_dim = hidden_states.size()
         attn_weights_reshaped = None
@@ -184,6 +185,7 @@ class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
         Copied from CLIPEncoderLayer.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention
+        - add new args flash_attention_recompute
         """
         residual = hidden_states
 
@@ -227,6 +229,7 @@ class GaudiCLIPEncoder(CLIPEncoder):
         Copied from CLIPEncoder.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention
+        - add new args flash_attention_recompute
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -288,6 +291,7 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         Copied from CLIPVisionTransformer.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention
+        - add new args flash_attention_recompute
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -339,6 +343,7 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         Copied from CLIPVisionModel.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention
+        - add new args flash_attention_recompute
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
