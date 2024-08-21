@@ -97,6 +97,7 @@ def gaudi_gemma_attention_forward(
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.scaling
 
     if attention_mask is not None:  # no matter the length, we just slice it
+        attention_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + attention_mask
 
     # upcast attention to fp32
@@ -196,7 +197,6 @@ def gaudi_gemma_model_forward(
     Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
     The only differences are:
     - add new args token_idx
-    - replace _update_causal_mask with _gaudi_prepare_4d_causal_attention_mask
     """
 
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -210,12 +210,6 @@ def gaudi_gemma_model_forward(
         raise ValueError(
             "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
         )
-    elif input_ids is not None:
-        batch_size, seq_length = input_ids.shape[:2]
-    elif inputs_embeds is not None:
-        batch_size, seq_length = inputs_embeds.shape[:2]
-    else:
-        raise ValueError("You have to specify either input_ids or inputs_embeds")
 
     if self.gradient_checkpointing and self.training and use_cache:
         logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.")
@@ -239,9 +233,8 @@ def gaudi_gemma_model_forward(
     if position_ids is None:
         position_ids = cache_position.unsqueeze(0)
 
-    # 4d mask is passed through the layers, not use self._update_causal_mask
-    causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-        attention_mask, (batch_size, seq_length), inputs_embeds, past_seen_tokens
+    causal_mask = self._update_causal_mask(
+        attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
     )
 
     # embed positions
