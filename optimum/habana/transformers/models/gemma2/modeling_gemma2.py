@@ -17,7 +17,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch Gemma model."""
+"""PyTorch Gemma2 model."""
 
 from typing import List, Optional, Tuple, Union
 
@@ -400,7 +400,9 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+
         hidden_states = self.input_layernorm(hidden_states)
+
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states,
             attention_mask,
@@ -480,6 +482,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     
     def post_attn_pre_mlp(self, hidden_states, residual):
         hidden_states = self.self_attn.post_attn_forward(hidden_states)
+        hidden_states = self.post_attention_layernorm(hidden_states)
 
         if self.training:
             hidden_states = hidden_states + residual
@@ -488,13 +491,14 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             residual.add_(hidden_states)
             hidden_states = residual
 
-        hidden_states = self.post_attention_layernorm(hidden_states)
-
+        residual = hidden_states
+        hidden_states = self.pre_feedforward_layernorm(hidden_states)
         hidden_states = self.mlp.pre_mlp_forward(hidden_states)
         return hidden_states, residual
 
     def post_mlp(self, hidden_states, residual):
         hidden_states = self.mlp.post_mlp_forward(hidden_states)
+        hidden_states = self.post_feedforward_layernorm(hidden_states)
 
         if self.training:
             hidden_states = hidden_states + residual
