@@ -23,10 +23,7 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
-import apply_customized_rope_module
 import habana_frameworks.torch.core as htcore
-import KVCache
-import Matmul
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
