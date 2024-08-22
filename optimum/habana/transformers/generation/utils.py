@@ -2032,8 +2032,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
-            hb_profer.step()
-
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -2041,6 +2039,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2366,7 +2365,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -2374,6 +2372,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -3628,7 +3627,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -3636,6 +3634,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
             if this_peer_finished and not synced_gpus:
                 break
