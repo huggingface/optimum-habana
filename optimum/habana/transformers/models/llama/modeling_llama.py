@@ -4,6 +4,9 @@ import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import apply_customized_rope_module
+import KVCache
+import Matmul
 import torch
 import torch.nn.functional as F
 from torch.distributed.distributed_c10d import ProcessGroup
@@ -1265,3 +1268,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             }
         )
         return model_inputs
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+    if q.device.type == "hpu" and has_fused_rope:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
+    else:
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

@@ -25,7 +25,9 @@ import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import apply_customized_rope_module
 import habana_frameworks.torch.core as htcore
+import KVCache
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -54,6 +56,7 @@ from ..llama.modeling_llama import (
 )
 from .configuration_mixtral import MixtralConfig
 
+
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
 except ImportError:
@@ -67,6 +70,12 @@ except ImportError:
     FusedSDPA = None
 
 try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+try:
     from habana_frameworks.torch.hpu import sdp_kernel
 
     SDPContext = True
@@ -75,6 +84,11 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
+def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
 def gaudi_mixtral_rmsnorm_forward(self, hidden_states):
     """

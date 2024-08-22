@@ -23,7 +23,10 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
+import apply_customized_rope_module
 import habana_frameworks.torch.core as htcore
+import KVCache
+import Matmul
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -867,3 +870,9 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             }
         )
         return model_inputs
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

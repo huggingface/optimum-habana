@@ -2,6 +2,7 @@ import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import apply_customized_rope_module
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -21,11 +22,18 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
+
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused sdpa kernel ")
     FusedSDPA = None
+
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
 
 logger = logging.get_logger(__name__)
 
@@ -518,3 +526,9 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             }
         )
         return model_inputs
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

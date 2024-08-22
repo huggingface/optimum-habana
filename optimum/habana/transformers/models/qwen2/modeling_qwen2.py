@@ -21,6 +21,9 @@ import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import apply_customized_rope_module
+import KVCache
+import Matmul
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
@@ -41,6 +44,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
+
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
 except ImportError:
@@ -53,6 +57,11 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
 
 import habana_frameworks.torch.core as htcore
 
@@ -875,3 +884,9 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             }
         )
         return model_inputs
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
