@@ -377,7 +377,7 @@ python3 run_lora_clm.py \
     --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --warmup_ratio  0.03 \
@@ -410,7 +410,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --max_grad_norm  0.3 \
@@ -445,7 +445,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 3 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --warmup_ratio  0.03 \
@@ -480,7 +480,7 @@ LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 	--num_train_epochs 3 \
 	--per_device_train_batch_size 16 \
 	--gradient_accumulation_steps 1 \
-	--evaluation_strategy "no" \
+	--eval_strategy "no" \
 	--save_strategy "no" \
 	--learning_rate 3e-4 \
 	--warmup_ratio 0.03 \
@@ -518,7 +518,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --logging_steps 1 \
@@ -547,7 +547,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -589,7 +589,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --per_device_train_batch_size 10 \
   --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --eval_delay 2 \
   --save_strategy no \
   --learning_rate 0.0018 \
@@ -641,7 +641,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --fsdp_config fsdp_config.json \
   --fsdp auto_wrap \
   --num_train_epochs 2 \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --per_device_eval_batch_size 1 \
   --eval_delay 2 \
   --do_eval \
@@ -668,7 +668,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -788,7 +788,7 @@ python3 ../text-generation/run_generation.py \
     --use_kv_cache \
     --batch_size 1 \
     --use_hpu_graphs \
-    --ignore_eos \
+    --no-ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
 

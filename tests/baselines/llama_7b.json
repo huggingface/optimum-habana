@@ -13,7 +13,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio 0.03",
                         "--lr_scheduler_type constant",
@@ -74,7 +74,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio 0.03",
                         "--lr_scheduler_type constant",
@@ -110,7 +110,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -145,7 +145,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -179,7 +179,7 @@
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -218,7 +218,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -255,7 +255,7 @@
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",
@@ -450,7 +450,7 @@
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",
                         "--lr_scheduler_type constant",

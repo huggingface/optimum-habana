@@ -39,7 +39,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.11.0")
+check_optimum_habana_min_version("1.13.0")
 
 
 logger = logging.getLogger(__name__)
@@ -65,11 +65,10 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
         type=str,
         help="Name of scheduler",
     )
-
     parser.add_argument(
         "--timestep_spacing",
         default="linspace",

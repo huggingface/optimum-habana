@@ -22,7 +22,8 @@
                         "--dataloader_num_workers 1",
                         "--ignore_mismatched_sizes=True",
                         "--use_hpu_graphs_for_training",
-                        "--use_hpu_graphs_for_inference"
+                        "--use_hpu_graphs_for_inference",
+                        "--trust_remote_code True"
                     ]
                 }
             }

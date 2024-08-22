@@ -32,8 +32,8 @@ adapt_transformers_to_gaudi()
 class GaudiSeq2seqTrainerTester(TestCasePlus):
     @require_torch
     def test_finetune_t5(self):
-        train_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="train[:1%]")
-        val_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="validation[:1%]")
+        train_dataset = datasets.load_dataset("abisee/cnn_dailymail", "3.0.0", split="train[:1%]")
+        val_dataset = datasets.load_dataset("abisee/cnn_dailymail", "3.0.0", split="validation[:1%]")
 
         train_dataset = train_dataset.select(range(32))
         val_dataset = val_dataset.select(range(16))
@@ -51,6 +51,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             use_habana=True,
             use_lazy_mode=True,
             use_hpu_graphs_for_inference=True,
+            report_to="none",
         )
 
         model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
@@ -145,6 +146,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             generation_config=gen_config,
             use_habana=True,
             use_lazy_mode=True,
+            report_to="none",
         )
         with self.assertRaises(ValueError) as exc:
             _ = GaudiSeq2SeqTrainer(

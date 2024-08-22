@@ -199,8 +199,9 @@ def gaudi_gpt_bigcode_attention_forward(
     if layer_past is not None:
         past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
         if token_idx is not None:
-            key = past_key.index_add_(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
-            value = past_value.index_add_(1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1))
+            # Using out of place version of index_add_() to ensure the intermediate tensors are not lost when HPU graphs are enabled.
+            key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
+            value = past_value.index_add(1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1))
         else:
             key = torch.cat((past_key, key), dim=-2)
             value = torch.cat((past_value, value), dim=-2)
@@ -252,6 +253,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py

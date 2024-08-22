@@ -20,10 +20,10 @@
 >         return ()
 > 
 51c58,59
-< check_min_version("4.44.0.dev0")
+< check_min_version("4.45.0.dev0")
 ---
-> check_min_version("4.40.0")
-> check_optimum_habana_min_version("1.11.0")
+> check_min_version("4.43.0")
+> check_optimum_habana_min_version("1.13.0")
 230a239,242
 >     label_features_max_length: int = field(
 >         default=None,

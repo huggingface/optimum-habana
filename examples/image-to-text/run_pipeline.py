@@ -89,7 +89,7 @@ def main():
     parser.add_argument(
         "--ignore_eos",
         action="store_true",
-        help="Whether to ignore eos, set False to disable it.",
+        help="Whether to disable stopping with eos token when calling `generate`.",
     )
     parser.add_argument(
         "--use_flash_attention",
