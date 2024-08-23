@@ -35,6 +35,8 @@ def extract_model_from_parallel(model, keep_fp32_wrapper: bool = True, recursive
 
         options += (FSDP,)
 
+    # Keep track of the distributed wrapper
+    # TODO: to revisit as lines 44 to 71 are now useless
     distributed_model = model
     while isinstance(model, options):
         model = model.module
