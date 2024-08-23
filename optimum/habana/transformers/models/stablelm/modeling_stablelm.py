@@ -475,7 +475,7 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
         model_inputs.update(
             {
                 "position_ids": position_ids,
-                "cache_position": cache_position,
+                "cache_position": None,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
