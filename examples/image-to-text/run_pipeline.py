@@ -19,11 +19,12 @@ import logging
 import os
 import time
 from pathlib import Path
+from contextlib import nullcontext
 
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, pipeline
+from transformers import AutoConfig, LlavaNextProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -96,7 +97,16 @@ def main():
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
-
+    parser.add_argument(
+        "--use_kv_cache",
+        action="store_true",
+        help="Whether to use the key/value cache for decoding. It should speed up generation."
+    )
+    parser.add_argument(
+        "--profiling",
+        action="store_true",
+        help="enable profiling"
+    )
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -114,9 +124,18 @@ def main():
     if args.prompt is None and model_type == "llava":
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
-        args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
-        if args.model_name_or_path in ["llava-hf/llava-v1.6-vicuna-13b-hf", "llava-hf/llava-v1.6-vicuna-7b-hf"]:
-            args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
+        processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+        conversation = [{
+            "role": "user",
+            "content": [
+                    {"type": "text", "text": "What is shown in this image?"},
+                    {"type": "image"},
+            ],
+        }]
+        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+
+        if args.model_name_or_path in ["llava-hf/llava-v1.6-34b-hf",]:
+            args.prompt = "<|im_start|>system\nAnswer the questions.<|im_end|><|im_start|>user\n<image>\nWhat is shown in this image?<|im_end|><|im_start|>assistant\n"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -143,6 +162,17 @@ def main():
         import habana_frameworks.torch.core as htcore
 
         htcore.hpu_set_env()
+    if args.profiling or os.getenv("PROFILING", "N").upper() in [
+            "1", "Y", "ON", "YES", "TRUE"]:
+        args.profiling = True
+        import habana_frameworks.torch.core as htcore
+        activities = [torch.profiler.ProfilerActivity.CPU]
+        activities.append(torch.profiler.ProfilerActivity.HPU)
+        pctx = torch.profiler.profile(
+            schedule=torch.profiler.schedule(
+                wait=0, warmup=3, active=1, repeat=1),
+            with_stack=True, activities=activities,
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('logs'))
 
     generator = pipeline(
         "image-to-text",
@@ -152,6 +182,7 @@ def main():
     )
     generate_kwargs = {
         "lazy_mode": True,
+        "use_cache": args.use_kv_cache,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
@@ -177,8 +208,12 @@ def main():
         habana_quantization_toolkit.finish_measurements(generator.model)
 
     start = time.perf_counter()
-    for i in range(args.n_iterations):
-        result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+    with (pctx if args.profiling else nullcontext()) as profiler:
+        for i in range(args.n_iterations):
+            result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+            if args.profiling:
+                torch.hpu.synchronize()
+                profiler.step()
     end = time.perf_counter()
     duration = end - start
 
@@ -191,9 +226,8 @@ def main():
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
-    logger.info(
-        f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
-    )
+    logger.info(f"result = {result}")
+    logger.info(f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second")
 
     # Store results if necessary
     if args.output_dir is not None:
