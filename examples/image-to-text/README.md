@@ -165,7 +165,8 @@ python3 run_pipeline.py \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
     --bf16 \
-    --use_flash_attention
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 
@@ -176,7 +177,8 @@ python3 run_pipeline.py \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
     --bf16 \
-    --use_flash_attention
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 
@@ -188,7 +190,9 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
---bf16 --use_flash_attention
+--bf16 \
+--use_flash_attention \
+--flash_attention_recompute
 ```
 
 Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b:
@@ -197,5 +201,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
---bf16 --use_flash_attention
+--bf16 \
+--use_flash_attention \
+--flash_attention_recompute
 ```

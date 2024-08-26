@@ -98,6 +98,11 @@ def main():
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+    parser.add_argument(
         "--use_kv_cache",
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation."
@@ -107,6 +112,7 @@ def main():
         action="store_true",
         help="enable profiling"
     )
+    
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -187,6 +193,7 @@ def main():
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
+        "flash_attention_recompute": args.flash_attention_recompute,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
