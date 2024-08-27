@@ -1226,6 +1226,74 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
+    def test_stable_diffusion_xl_inference_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
+        )
+
+        with tempfile.TemporaryDirectory() as run_dir:
+            cmd_line = f"""
+                python3
+                {path_to_script}
+                --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
+                --num_images_per_prompt 1
+                --num_inference_steps 30
+                --batch_size 1
+                --image_save_dir {run_dir}
+                --use_habana
+                --gaudi_config Habana/stable-diffusion
+                --bf16
+                """.split()
+            cmd_line.append("--prompts")
+            cmd_line.append("Sailing ship painting by Van Gogh")
+            print(cmd_line)
+
+            # Run textual inversion
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+    _sdxl_inferece_throughput_data = (("ddim", 0.301), ("euler_discrete", 0.301))
+
+    @parameterized.expand(_sdxl_inferece_throughput_data)
+    def test_stable_diffusion_xl_generation_throughput(self, scheduler, baseline):
+        def _sdxl_generation(self, scheduler: str, baseline: float):
+            kwargs = {"timestep_spacing": "linspace"}
+            if scheduler == "euler_discrete":
+                scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+                )
+            elif scheduler == "ddim":
+                scheduler = GaudiDDIMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+                )
+
+            kwargs = {
+                "scheduler": scheduler,
+                "use_habana": True,
+                "use_hpu_graphs": True,
+                "gaudi_config": "Habana/stable-diffusion",
+            }
+            pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                **kwargs,
+            )
+            num_images_per_prompt = 10
+            res = {}
+            outputs = pipeline(
+                prompt="Sailing ship painting by Van Gogh",
+                num_images_per_prompt=num_images_per_prompt,
+                batch_size=1,
+                num_inference_steps=30,
+                **res,
+            )
+            self.assertGreaterEqual(outputs.throughput, 0.95 * baseline)
+
+        _sdxl_generation(self, scheduler, baseline)
+
 
 class GaudiStableDiffusion3PipelineTester(TestCase):
     """
