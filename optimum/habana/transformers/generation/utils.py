@@ -801,6 +801,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 synced_gpus = False
 
+
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
         self._validate_model_class()
         tokenizer = kwargs.pop("tokenizer", None)  # Pull this out first, we only use it for stopping criteria
@@ -831,6 +832,8 @@ class GaudiGenerationMixin(GenerationMixin):
         inputs_tensor, model_input_name, model_kwargs = self._prepare_model_inputs(
             inputs, generation_config.bos_token_id, model_kwargs
         )
+        inputs_tensor_ORIG = inputs_tensor
+        attention_mask_ORIG = model_kwargs["attention_mask"]
         batch_size = inputs_tensor.shape[0]
 
         device = inputs_tensor.device
@@ -963,6 +966,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
+
 
         if generation_config.token_healing:
             input_ids = self.heal_tokens(input_ids, tokenizer)
@@ -1298,6 +1302,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
                 profiling_record_shapes=profiling_record_shapes,
+                inputs_tensor_ORIG=inputs_tensor_ORIG,
+                attention_mask_ORIG=attention_mask_ORIG,
                 **model_kwargs,
             )
 
@@ -2114,6 +2120,8 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
         profiling_record_shapes: Optional[bool] = False,
+        inputs_tensor_ORIG=None,
+        attention_mask_ORIG=None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2235,7 +2243,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            model_inputs = self.prepare_inputs_for_generation(input_ids, inputs_tensor_ORIG, attention_mask_ORIG, **model_kwargs)
 
             # prepare variable output controls (note: some models won't accept all output controls)
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
