@@ -112,7 +112,7 @@ def main():
         action="store_true",
         help="enable profiling"
     )
-    
+
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -130,18 +130,18 @@ def main():
     if args.prompt is None and model_type == "llava":
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
-        processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-        conversation = [{
-            "role": "user",
-            "content": [
-                    {"type": "text", "text": "What is shown in this image?"},
-                    {"type": "image"},
-            ],
-        }]
-        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-
         if args.model_name_or_path in ["llava-hf/llava-v1.6-34b-hf",]:
             args.prompt = "<|im_start|>system\nAnswer the questions.<|im_end|><|im_start|>user\n<image>\nWhat is shown in this image?<|im_end|><|im_start|>assistant\n"
+        else:
+            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+            conversation = [{
+                "role": "user",
+                "content": [
+                        {"type": "text", "text": "What is shown in this image?"},
+                        {"type": "image"},
+                ],
+            }]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
