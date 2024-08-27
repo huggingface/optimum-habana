@@ -50,7 +50,7 @@ PT_HPU_LAZY_MODE=0 python run_qa.py \
   --dataset_name squad \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 24 \
+  --per_device_train_batch_size 32 \
   --per_device_eval_batch_size 8 \
   --learning_rate 3e-5 \
   --num_train_epochs 2 \
@@ -78,7 +78,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --dataset_name squad \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 24 \
+    --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 2 \
@@ -106,7 +106,7 @@ python ../gaudi_spawn.py \
     --dataset_name squad \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 24 \
+    --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 2 \
@@ -211,8 +211,8 @@ python run_qa.py \
 | RoBERTa large              | 3e-5 | 2 | 12 | 8 |
 | ALBERT large (single-card) | 5e-5 | 2 | 32 | 4 |
 | ALBERT large (multi-card)  | 6e-5 | 2 | 32 | 4 |
-| ALBERT XXL (single-card)   | 5e-6 | 2 | 12 | 2 |
-| ALBERT XXL (multi-card)    | 5e-5 | 2 | 12 | 2 |
+| ALBERT XXL (single-card)   | 5e-6 | 2 | 16 | 2 |
+| ALBERT XXL (multi-card)    | 5e-5 | 2 | 16 | 2 |
 | DistilBERT                 | 5e-5 | 3 | 8  | 8 |
 | meta-llama/Llama-2-13b-chat-hf (multi-card) | 3e-5 | 2 | 8 | 8 |
 | FlagAlpha/Llama2-Chinese-13b-Chat (multi-card) | 3e-5 | 2 | 8 | 8 |

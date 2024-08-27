@@ -30,11 +30,11 @@
 > 
 47,48c48,50
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.42.0.dev0")
+< check_min_version("4.45.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.40.0")
-> check_optimum_habana_min_version("1.11.0")
+> check_min_version("4.43.0")
+> check_optimum_habana_min_version("1.13.0")
 174,176d175
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
@@ -76,13 +76,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-302a296,298
+304a298,300
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-307a304
+309a306
 > 
-313c310,316
+315c312,318
 <         inputs = feature_extractor(subsampled_wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -92,7 +92,7 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-322c325,331
+324c327,333
 <         inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -102,15 +102,15 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-368,369c377,378
+370,371c379,380
 <     # freeze the convolutional waveform encoder
 <     if model_args.freeze_feature_encoder:
 ---
 >     # freeze the convolutional waveform encoder if supported by model
 >     if hasattr(model, "freeze_feature_encoder") and model_args.freeze_feature_encoder:
-389c398
+391c400
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-390a400
+392a402
 >         gaudi_config=gaudi_config,

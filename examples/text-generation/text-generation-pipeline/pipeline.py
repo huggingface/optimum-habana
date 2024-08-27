@@ -1,11 +1,19 @@
+import os
+import sys
+
 import torch
 from transformers import TextGenerationPipeline
-from utils import initialize_model
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
     def __init__(self, args, logger, use_with_langchain=False, warmup_on_init=True):
-        self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
+        from utils import initialize_model
+
+        self.model, _, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
         self.task = "text-generation"
         self.device = args.device

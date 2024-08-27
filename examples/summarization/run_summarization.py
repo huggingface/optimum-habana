@@ -65,8 +65,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.40.0")
-check_optimum_habana_min_version("1.11.0")
+check_min_version("4.43.0")
+check_optimum_habana_min_version("1.13.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -79,6 +79,8 @@ except (LookupError, OSError):
         )
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
+
+nltk.download("punkt_tab")  # Needed for version 3.8.2
 
 # A list of all multilingual tokenizer which require lang attribute.
 MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast]
@@ -124,9 +126,9 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
-                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
-                "execute code present on the Hub on your local machine."
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
             )
         },
     )
@@ -428,6 +430,7 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
     else:
         data_files = {}
@@ -764,6 +767,9 @@ def main():
     else:
         training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
+        if data_args.num_beams == 1:
+            training_args.generation_config.length_penalty = None
+            training_args.generation_config.early_stopping = False
         training_args.generation_config.num_beams = data_args.num_beams
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams

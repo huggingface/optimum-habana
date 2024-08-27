@@ -86,6 +86,22 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+    parser.add_argument(
+        "--ignore_eos",
+        action="store_true",
+        help="Whether to disable stopping with eos token when calling `generate`.",
+    )
+    parser.add_argument(
+        "--use_flash_attention",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -104,7 +120,7 @@ def main():
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
         args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
-        if args.model_name_or_path == "llava-hf/llava-v1.6-vicuna-13b-hf":
+        if args.model_name_or_path in ["llava-hf/llava-v1.6-vicuna-13b-hf", "llava-hf/llava-v1.6-vicuna-7b-hf"]:
             args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
 
     image_paths = args.image_path
@@ -143,7 +159,9 @@ def main():
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
-        "ignore_eos": True,
+        "ignore_eos": args.ignore_eos,
+        "use_flash_attention": args.use_flash_attention,
+        "flash_attention_recompute": args.flash_attention_recompute,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -160,7 +178,6 @@ def main():
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-
     torch.hpu.synchronize()
     if args.quant_config:
         habana_quantization_toolkit.finish_measurements(generator.model)
@@ -171,7 +188,14 @@ def main():
     end = time.perf_counter()
     duration = end - start
 
-    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+    # Let's calculate the number of generated tokens
+    n_input_tokens = len(generator.tokenizer(args.prompt).input_ids) if args.prompt is not None else 0
+    n_output_tokens = 0
+    for sequence in result:
+        # We have to subtract the number of input tokens as they are part of the returned sequence
+        n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+
+    total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
     logger.info(
         f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"

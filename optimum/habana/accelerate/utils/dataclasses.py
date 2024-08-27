@@ -14,13 +14,14 @@
 # limitations under the License.
 
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 
 import torch
 from accelerate.utils import FullyShardedDataParallelPlugin
 from accelerate.utils.constants import FSDP_BACKWARD_PREFETCH
-from accelerate.utils.dataclasses import BaseEnum, TorchDynamoPlugin
+from accelerate.utils.dataclasses import BaseEnum, KwargsHandler, TorchDynamoPlugin
 from accelerate.utils.environment import str_to_bool
 
 
@@ -46,7 +47,7 @@ class GaudiDistributedType(str, Enum):
 
 class GaudiDynamoBackend(str, BaseEnum):
     """
-    Represents a dynamo backend (see https://github.com/pytorch/torchdynamo).
+    Represents a dynamo backend (see https://pytorch.org/docs/stable/torch.compiler.html).
 
     Values:
 
@@ -141,6 +142,57 @@ class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
         self.forward_prefetch = str_to_bool(os.environ.get(prefix + "FORWARD_PREFETCH", "False")) == 1
         self.activation_checkpointing = str_to_bool(os.environ.get(prefix + "ACTIVATION_CHECKPOINTING", "False")) == 1
 
+        if str_to_bool(os.environ.get("FSDP_CPU_RAM_EFFICIENT_LOADING", "False")) == 1 and not self.sync_module_states:
+            warnings.warn(
+                "sync_module_states cannot be False since efficient cpu ram loading enabled. "
+                "Setting sync_module_states to True."
+            )
+            self.sync_module_states = True
+
         if self.sync_module_states:
-            device = torch.device("hpu")
+            device = torch.device("hpu", torch.hpu.current_device())
             self.param_init_fn = lambda x: x.to_empty(device=device, recurse=False)
+
+
+@dataclass
+class GaudiFP8RecipeKwargs(KwargsHandler):
+    """
+    Use this object in your [`Accelerator`] to customize the initialization of the recipe for FP8 mixed precision training with `transformer-engine`.
+
+    Adapted from: https://github.com/huggingface/accelerate/blob/v0.27.2/src/accelerate/utils/dataclasses.py#L180
+
+    Args:
+        margin (`int`, *optional*, defaults to 0):
+            The margin to use for the scaling factor computation.
+        interval (`int`, *optional*, defaults to 16):
+            The interval to use for how often the scaling factor is recomputed.
+        fp8_format (`str`, *optional*, defaults to "HYBRID"):
+            The format to use for the FP8 recipe. Must be one of `E5M2` or `HYBRID`.
+        amax_history_len (`int`, *optional*, defaults to 1):
+            The length of the history to use for the scaling factor computation
+        amax_compute_algo (`str`, *optional*, defaults to "most_recent"):
+            The algorithm to use for the scaling factor computation. Must be one of `max` or `most_recent`.
+        reduce_amax (`bool`, *optional*, defaults to "False"):
+            By default, if `torch.distributed` is initialized, the `amax` value for FP8
+            tensors is reduced across the `fp8_group` (specified in the `fp8_autocast`
+            call). This keeps the amaxes and scaling factors synced across the given
+            distributed group. If set to `False`, this reduction is skipped and every
+            HPU maintains local amaxes and scaling factors. To ensure results are
+            numerically identical across checkpointing boundaries in this case, all
+            ranks must checkpoint in order to store the local tensors.
+    """
+
+    margin: int = 0
+    interval: int = 16
+    fp8_format: str = "HYBRID"
+    amax_compute_algo: str = "most_recent"
+    amax_history_len: int = 1
+    reduce_amax: bool = False
+
+    def __post_init__(self):
+        self.fp8_format = self.fp8_format.upper()
+        assert self.fp8_format in ("E5M2", "HYBRID"), "Only E5M2 and HYBRID FP8 formats are currently supported."
+        assert self.amax_compute_algo in (
+            "max",
+            "most_recent",
+        ), "Only max and most_recent `amax_compute_algo` modes are currently supported."
