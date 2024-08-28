@@ -464,19 +464,50 @@ def main():
                 )
 
                 if args.unet_adapter_name_or_path is not None:
-                    from peft import PeftModel
+                    from peft import PeftModel, tuners
+                    from peft.utils import PeftType
+
+                    from optimum.habana.peft.layer import GaudiBoftGetDeltaWeight
+
+                    tuners.boft.layer.Linear.get_delta_weight = GaudiBoftGetDeltaWeight
+                    tuners.boft.layer.Conv2d.get_delta_weight = GaudiBoftGetDeltaWeight
+                    tuners.boft.layer._FBD_CUDA = False
 
                     pipeline.unet = PeftModel.from_pretrained(pipeline.unet, args.unet_adapter_name_or_path)
-                    pipeline.unet = pipeline.unet.merge_and_unload()
+                    if pipeline.unet.peft_type in [PeftType.OFT, PeftType.BOFT]:
+                        # WA torch.inverse issue in Synapse AI 1.17 for oft and boft
+                        if args.bf16:
+                            pipeline.unet = pipeline.unet.to(torch.float32)
+                        pipeline.unet = pipeline.unet.merge_and_unload()
+                        if args.bf16:
+                            pipeline.unet = pipeline.unet.to(torch.bfloat16)
+                    else:
+                        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16):
+                            pipeline.unet = pipeline.unet.merge_and_unload()
 
                 if args.text_encoder_adapter_name_or_path is not None:
-                    from peft import PeftModel
+                    from peft import PeftModel, tuners
+                    from peft.utils import PeftType
+
+                    from optimum.habana.peft.layer import GaudiBoftGetDeltaWeight
+
+                    tuners.boft.layer.Linear.get_delta_weight = GaudiBoftGetDeltaWeight
+                    tuners.boft.layer.Conv2d.get_delta_weight = GaudiBoftGetDeltaWeight
+                    tuners.boft.layer._FBD_CUDA = False
 
                     pipeline.text_encoder = PeftModel.from_pretrained(
                         pipeline.text_encoder, args.text_encoder_adapter_name_or_path
                     )
-                    pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
-
+                    if pipeline.text_encoder.peft_type in [PeftType.OFT, PeftType.BOFT]:
+                        # WA torch.inverse issue in Synapse AI 1.17 for oft and boft
+                        if args.bf16:
+                            pipeline.text_encoder = pipeline.text_encoder.to(torch.float32)
+                        pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
+                        if args.bf16:
+                            pipeline.text_encoder = pipeline.text_encoder.to(torch.bfloat16)
+                    else:
+                        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16):
+                            pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
             else:
                 # SD LDM3D use-case
                 from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline

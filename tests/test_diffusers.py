@@ -2221,6 +2221,9 @@ class DreamBooth(TestCase):
             if train_text_encoder:
                 test_args.append("--train_text_encoder")
             test_args.append(extra_config)
+            if "boft" in extra_config:
+                extra_args = "--unet_block_size 1 --te_block_size 1"
+                test_args.extend(extra_args.split())
             p = subprocess.Popen(test_args)
             return_code = p.wait()
 
@@ -2276,6 +2279,14 @@ class DreamBooth(TestCase):
     @slow
     def test_dreambooth_oft_with_text_encoder(self):
         self._test_dreambooth("oft", train_text_encoder=True)
+
+    @slow
+    def test_dreambooth_boft(self):
+        self._test_dreambooth("boft")
+
+    @slow
+    def test_dreambooth_boft_with_text_encoder(self):
+        self._test_dreambooth("boft", train_text_encoder=True)
 
 
 class DreamBoothLoRASDXL(TestCase):

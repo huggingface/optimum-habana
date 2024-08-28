@@ -353,7 +353,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
   lora --unet_r 8 --unet_alpha 8
 
 ```
-Similar command could be applied to loha, lokr, oft.
+Similar command could be applied to loha, lokr, oft, boft.
 You could check each adapter specific args by "--help", like you could use following command to check oft specific args.
 
 ```bash
@@ -361,7 +361,7 @@ python3 train_dreambooth.py oft --help
 
 ```
 
-**___Note: oft could not work with hpu graphs mode. since "torch.inverse" need to fallback to cpu.
+**___Note: boft/oft could not work with hpu graphs mode. since "torch.inverse" "torch.linalg.solve" need to fallback to cpu.
 there's error like "cpu fallback is not supported during hpu graph capturing"___**
 
 
