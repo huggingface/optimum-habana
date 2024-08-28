@@ -29,7 +29,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.43.0, < 4.44.0",
+    "transformers @ git+https://github.com/huggingface/transformers.git",
     "optimum",
     "torch",
     "accelerate >= 0.33.0, < 0.34.0",

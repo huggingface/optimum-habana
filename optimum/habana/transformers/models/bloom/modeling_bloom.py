@@ -23,6 +23,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
@@ -124,16 +125,17 @@ def gaudi_bloom_attention_forward(
     residual: torch.Tensor,
     alibi: torch.Tensor,
     attention_mask: torch.Tensor,
-    layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    layer_past: Optional[Cache] = None,
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
+    batch_size, q_length, _ = hidden_states.shape
     fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
-
-    # 3 x [batch_size, seq_length, num_heads, head_dim]
-    (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+    # 3 x [batch_size, num_heads, seq_length, head_dim]
+    query_layer, key_layer, value_layer = self._reshape(fused_qkv)
 
     batch_size, q_length, _, _ = query_layer.shape
 
@@ -225,10 +227,11 @@ def gaudi_bloom_block_forward(
     hidden_states: torch.Tensor,
     alibi: torch.Tensor,
     attention_mask: torch.Tensor,
-    layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    layer_past: Optional[Cache] = None,
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     # hidden_states: [batch_size, seq_length, hidden_size]
@@ -252,6 +255,7 @@ def gaudi_bloom_block_forward(
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 
@@ -326,7 +330,7 @@ def gaudi_bloom_convert_to_bloom_cache(
 def gaudi_bloom_model_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.LongTensor] = None,
@@ -334,6 +338,7 @@ def gaudi_bloom_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     **deprecated_arguments,
 ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
@@ -429,6 +434,7 @@ def gaudi_bloom_model_forward(
                 head_mask[i],
                 use_cache,
                 output_attentions,
+                cache_position,
                 None,
             )
         else:
@@ -440,6 +446,7 @@ def gaudi_bloom_model_forward(
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 alibi=alibi,
+                cache_position=cache_position,
                 token_idx=token_idx,
             )
 
@@ -477,10 +484,12 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
 
     def prepare_inputs_for_generation(
         self,
-        input_ids: torch.LongTensor,
-        past_key_values: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        use_cache=True,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
@@ -499,12 +508,13 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
         model_inputs.update(
             {
+                "cache_position": cache_position,
                 "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
             }
@@ -514,7 +524,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
@@ -523,6 +533,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **deprecated_arguments,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
@@ -554,6 +565,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
         hidden_states = transformer_outputs[0]

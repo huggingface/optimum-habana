@@ -2,6 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXAttention,
@@ -29,9 +30,11 @@ def gaudi_gpt_neox_attention_forward(
     attention_mask: torch.FloatTensor,
     position_ids: torch.LongTensor,
     head_mask: Optional[torch.FloatTensor] = None,
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
+    layer_past: Optional[Cache] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
+    padding_mask: Optional[torch.Tensor] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -103,14 +106,14 @@ def gaudi_gpt_neox_attention_forward(
 
 
 class GaudiGPTNeoXLayer(GPTNeoXLayer):
-    def __init__(self, config):
+    def __init__(self, config, layer_idx):
         super(GPTNeoXLayer, self).__init__()
         self.use_parallel_residual = config.use_parallel_residual
         self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_attention_dropout = torch.nn.Dropout(config.hidden_dropout)
         self.post_mlp_dropout = torch.nn.Dropout(config.hidden_dropout)
-        self.attention = GPTNeoXAttention(config)
+        self.attention = GPTNeoXAttention(config, layer_idx)
         self.mlp = GPTNeoXMLP(config)
 
     def forward(
@@ -120,8 +123,9 @@ class GaudiGPTNeoXLayer(GPTNeoXLayer):
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ):
         """
@@ -137,6 +141,7 @@ class GaudiGPTNeoXLayer(GPTNeoXLayer):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
         attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
@@ -173,11 +178,12 @@ def gaudi_gpt_neox_model_forward(
     position_ids: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
@@ -260,6 +266,7 @@ def gaudi_gpt_neox_model_forward(
                 use_cache,
                 None,
                 output_attentions,
+                cache_position,
                 None,
             )
         else:
@@ -271,6 +278,7 @@ def gaudi_gpt_neox_model_forward(
                 layer_past=layer_past,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                cache_position=cache_position,
                 token_idx=token_idx,
             )
         hidden_states = outputs[0]
@@ -322,12 +330,13 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -343,6 +352,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
 
@@ -372,7 +382,16 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
     ):
         input_shape = input_ids.shape
 
@@ -392,7 +411,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
                 input_ids = input_ids[:, remove_prefix_length:]
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -402,6 +420,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
@@ -411,13 +431,15 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
         model_inputs.update(
             {
-                "attention_mask": attention_mask,
-                "past_key_values": past_key_values,
                 "position_ids": position_ids,
-                "use_cache": kwargs.get("use_cache"),
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
                 "token_idx": token_idx,
             }
         )
