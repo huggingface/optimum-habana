@@ -562,7 +562,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        if use_flash_attention and FusedSDPA:
+        if use_flash_attention and FusedSDPA is not None:
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
