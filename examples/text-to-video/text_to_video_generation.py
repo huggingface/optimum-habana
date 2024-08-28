@@ -158,7 +158,7 @@ def main():
     if args.width > 0 and args.height > 0:
         kwargs_call["width"] = args.width
         kwargs_call["height"] = args.height
-        kwargs_call["num_frames"] = args.num_frames
+    kwargs_call["num_frames"] = args.num_frames
 
     gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
     if args.dtype == "autocast_bf16":
