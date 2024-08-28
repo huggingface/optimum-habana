@@ -16,7 +16,7 @@ limitations under the License.
 
 # Text to Video Examples
 
-This directory contains a script that showcases how to use the `GaudiTextToVideoSDPipeline` to run text to video generation tasks on HPUs.
+This directory contains a script that showcases how to use the `GaudiTextToVideoSDPipeline` to run text-to-video generation tasks on HPUs.
 
 ## Requirements
 

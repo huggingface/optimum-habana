@@ -17,10 +17,10 @@ from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from diffusers.models import AutoencoderKL, UNet3DConditionModel
-from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import TextToVideoSDPipeline, tensor2vid
+from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import TextToVideoSDPipeline
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.outputs import BaseOutput
@@ -428,7 +428,10 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
             # 9. Post processing
             videos = []
             for video_tensor in outputs:
-                video_batch = tensor2vid(video_tensor, self.image_processor, output_type)
+                if output_type == "latent":
+                    videos.extend(list(video_tensor))
+                    continue
+                video_batch = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
                 if output_type == "pil" and isinstance(video_batch, list):
                     videos += video_batch
@@ -442,9 +445,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                         videos = video_batch
                     else:
                         videos = torch.cat((videos, video_batch), 0)
-
-            if output_type == "latent":
-                return GaudiTextToVideoSDPipelineOutput(videos=videos)
 
             # Offload all models
             self.maybe_free_model_hooks()
