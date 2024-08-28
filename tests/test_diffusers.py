@@ -1247,7 +1247,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 """.split()
             cmd_line.append("--prompts")
             cmd_line.append("Sailing ship painting by Van Gogh")
-            print(cmd_line)
 
             # Run textual inversion
             p = subprocess.Popen(cmd_line)
