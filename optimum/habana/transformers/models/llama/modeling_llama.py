@@ -1235,28 +1235,62 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
+        model_kwargs = None,
+        #attention_mask: Optional[torch.Tensor] = None,
+        #position_ids: Optional[torch.LongTensor] = None,
+        #past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        #inputs_embeds: Optional[torch.FloatTensor] = None,
+        #labels: Optional[torch.LongTensor] = None,
+        #use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        token_idx: Optional[torch.Tensor] = None,
-        trim_logits: Optional[bool] = False,
-        attn_softmax_bf16: Optional[bool] = False,
-        reuse_cache: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
-        flash_attention_causal_mask: Optional[bool] = False,
-        flash_attention_fast_softmax: Optional[bool] = False,
-        cache_idx: int = None,
-        lazy_mode: Optional[bool] = True,
-        num_virtual_tokens: int = None,
+        #cache_position: Optional[torch.LongTensor] = None,
+        #token_idx: Optional[torch.Tensor] = None,
+        #trim_logits: Optional[bool] = False,
+        #attn_softmax_bf16: Optional[bool] = False,
+        #reuse_cache: Optional[bool] = False,
+        #use_flash_attention: Optional[bool] = False,
+        #flash_attention_recompute: Optional[bool] = False,
+        #flash_attention_causal_mask: Optional[bool] = False,
+        #flash_attention_fast_softmax: Optional[bool] = False,
+        #cache_idx: int = None,
+        #lazy_mode: Optional[bool] = True,
+        #num_virtual_tokens: int = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+
+
+        model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+        model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
+        model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
+
+        inputs_embeds = None
+        labels = None
+        output_attentions = None
+        output_hidden_states = None
+
+        input_ids=model_inputs["input_ids"]
+        position_ids=model_inputs["position_ids"]
+        cache_position=model_inputs["cache_position"]
+        past_key_values=model_inputs["past_key_values"]
+        use_cache=model_inputs["use_cache"]
+        attention_mask=model_inputs["attention_mask"]
+        token_idx=model_inputs["token_idx"]
+        trim_logits=model_inputs["trim_logits"]
+        attn_softmax_bf16=model_inputs["attn_softmax_bf16"]
+        reuse_cache=model_inputs["reuse_cache"]
+        use_flash_attention=model_inputs["use_flash_attention"]
+        flash_attention_recompute=model_inputs["flash_attention_recompute"]
+        flash_attention_causal_mask=model_inputs["flash_attention_causal_mask"]
+        flash_attention_fast_softmax=model_inputs["flash_attention_fast_softmax"]
+        cache_idx=model_inputs["cache_idx"]
+        lazy_mode=model_inputs["lazy_mode"]
+        num_virtual_tokens=model_inputs["num_virtual_tokens"]
+
+        hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+        #breakpoint()
+        
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1322,13 +1356,15 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
 
-        return CausalLMOutputWithPast(
+        
+        x = CausalLMOutputWithPast(
             loss=loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+        return x
 
     def prepare_inputs_for_generation(
         self,

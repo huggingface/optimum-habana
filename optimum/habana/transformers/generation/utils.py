@@ -2223,7 +2223,9 @@ class GaudiGenerationMixin(GenerationMixin):
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
+        cnt = -1
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
+            cnt += 1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -2235,19 +2237,24 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            #model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # prepare variable output controls (note: some models won't accept all output controls)
-            model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
-            model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
+            #model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
+            #model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
+            #breakpoint()
+
             # forward pass to get next token
             outputs = self(
-                **model_inputs,
+                #**model_inputs,
+                input_ids,
+                model_kwargs,
+                output_attentions=output_attentions, output_hidden_states=output_hidden_states,                
                 return_dict=True,
-                **hpu_graphs_kwargs,
+                #**hpu_graphs_kwargs,
             )
 
             if synced_gpus and this_peer_finished:
@@ -2381,7 +2388,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                if cnt==0:#outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
