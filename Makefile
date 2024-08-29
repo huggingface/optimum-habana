@@ -80,7 +80,7 @@ slow_tests_custom_file_input: test_installs
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
-	python -m pip install peft==0.10.0
+	python -m pip install peft==0.12.0
 	python -m pytest tests/test_peft_inference.py
 	python -m pytest tests/test_pipeline.py
 
@@ -96,7 +96,7 @@ slow_tests_deepspeed: test_installs
 slow_tests_diffusers: test_installs
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
-	python -m pip install peft==0.7.0
+	python -m pip install peft==0.12.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation"
