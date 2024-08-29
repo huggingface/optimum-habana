@@ -2217,11 +2217,18 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         pipe = GaudiStableDiffusionDepth2ImgPipeline.from_pretrained(
             model_name, gaudi_config=gaudi_config, scheduler=scheduler, use_habana=True, use_hpu_graphs=True
         )
+        image = Image.open(
+            requests.get(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png",
+                stream=True,
+            ).raw
+        )
+        prompt = "A fancy meal with soup and pancakes"
 
         start_time = time.time()
         outputs = pipe(
-            prompt="A painting of a squirrel eating a burger",
-            image=self.get_dummy_image((1, 3, 256, 256)),
+            prompt=prompt,
+            image=image,
             generator=torch.Generator("cpu").manual_seed(0),
             num_inference_steps=50,
             output_type="np",
@@ -2229,9 +2236,12 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         end_time = time.time()
         latency = end_time - start_time
         images = outputs.images
+        clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
+        target_score = 22.76
 
         assert len(images) == 1
-        assert images[0].shape == (256, 256, 3)
+        assert images[0].shape == (512, 512, 3)
+        assert clip_score > target_score
 
         assert latency < 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16
 
