@@ -41,33 +41,7 @@ class GaudiTextToVideoSDPipelineOutput(BaseOutput):
 class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py#L84
-    -
-
-    Pipeline for text-to-video generation.
-
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
-    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
-
-    The pipeline also inherits the following loading methods:
-        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
-
-    Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
-        unet ([`UNet3DConditionModel`]):
-            A [`UNet3DConditionModel`] to denoise the encoded video latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded video latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-
-    model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
         self,
@@ -274,10 +248,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                 If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-        if self.use_hpu_graphs:
-            logger.warning(
-                "HPU Graphs are not enabled due to a known issue. Deferring to Lazy mode. Performance will be suboptimal."
-            )
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 0. Default height and width to unet
             height = height or self.unet.config.sample_size * self.vae_scale_factor

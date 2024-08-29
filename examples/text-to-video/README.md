@@ -31,7 +31,8 @@ pip install -r requirements.txt
 ```bash
 python3 text_to_video_generation.py \
     --model_name_or_path ali-vilab/text-to-video-ms-1.7b \
-    --text "An astronaut riding a horse" \
+    --prompts "An astronaut riding a horse" \
+    --use_habana \
     --use_hpu_graphs \
     --dtype bf16
 ```
