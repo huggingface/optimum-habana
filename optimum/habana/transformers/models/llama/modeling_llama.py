@@ -957,6 +957,80 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         return hidden_states
 
 
+class PrepInp(torch.nn.Module):
+    def __init__(self):
+        super(PrepInp, self).__init__()
+    def forward(
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
+    ):
+        reuse_cache = kwargs.get("reuse_cache")
+        bucket_internal = kwargs.get("bucket_internal")
+        if past_key_values is not None:
+            if token_idx is not None:
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            else:
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
+        elif (reuse_cache or bucket_internal) and token_idx is not None:
+            # KV cache is pre allocated with reuse cache or will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
+
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                if token_idx is not None:
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                else:
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
+
+        # keep cache_position implementation as None for HPU
+        cache_position = None
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids.contiguous()}
+
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
+                "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "reuse_cache": reuse_cache,
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
+                "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
+                "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
+            }
+        )
+        return model_inputs
+
 class GaudiLlamaModel(LlamaModel):
     """
     Copied from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L909
@@ -984,7 +1058,7 @@ class GaudiLlamaModel(LlamaModel):
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
-
+        
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1221,7 +1295,12 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
     def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
         config.parallel_strategy = parallel_strategy
+        
         super().__init__(config)
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+        self.prep_inp = PrepInp().to('hpu')
+        self.prep_inp = wrap_in_hpu_graph(self.prep_inp)
+        #breakpoint()
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)

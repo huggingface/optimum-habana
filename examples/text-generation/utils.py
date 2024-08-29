@@ -270,7 +270,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-
         from optimum.habana.transformers.trainer import _is_peft_model
 
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":

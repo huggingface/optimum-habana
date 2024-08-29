@@ -145,6 +145,14 @@ def get_final_stopping_criteria(x):
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
 
+'''
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            prep_inp = PrepInp().to('hpu')
+            prep_inp = wrap_in_hpu_graph(prep_inp)
+'''
+
+
+
 class GaudiGenerationMixin(GenerationMixin):
     """
     This class enables to perform fast generation in lazy mode and with HPU graphs.
@@ -1284,6 +1292,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # 13. run sample (it degenerates to greedy search when `generation_config.do_sample=False`)
+
             result = self._sample(
                 input_ids,
                 logits_processor=prepared_logits_processor,
@@ -2223,6 +2232,9 @@ class GaudiGenerationMixin(GenerationMixin):
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
+        
+        
+        
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -2235,7 +2247,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            #model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            model_inputs = self.prep_inp(input_ids, **model_kwargs)
 
             # prepare variable output controls (note: some models won't accept all output controls)
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
