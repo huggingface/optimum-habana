@@ -20,7 +20,10 @@ import PIL.Image
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines import StableDiffusionImg2ImgPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import (
+    StableDiffusionImg2ImgPipeline,
+    retrieve_latents,
+)
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate
@@ -33,19 +36,6 @@ from ..pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
-
-
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 def retrieve_timesteps(
@@ -102,25 +92,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L161
     Changes:
         1. Use CPU to generate random tensor
-
-    Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`~transformers.CLIPTextModel`]):
-            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer ([`~transformers.CLIPTokenizer`]):
-            A `CLIPTokenizer` to tokenize text.
-        unet ([`UNet2DConditionModel`]):
-            A `UNet2DConditionModel` to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
-        feature_extractor ([`~transformers.CLIPImageProcessor`]):
-            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
     def __init__(
