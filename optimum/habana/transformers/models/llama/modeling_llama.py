@@ -963,6 +963,8 @@ class PrepInp(torch.nn.Module):
     def forward(
         self,
         input_ids,
+        inputs_tensor_ORIG,
+        attention_mask_ORIG,
         past_key_values=None,
         attention_mask=None,
         inputs_embeds=None,
@@ -987,8 +989,8 @@ class PrepInp(torch.nn.Module):
         elif (reuse_cache or bucket_internal) and token_idx is not None:
             # KV cache is pre allocated with reuse cache or will be padded with bucket internal
             # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
-            input_ids = input_ids[:, :token_idx]
-            attention_mask = attention_mask[:, :token_idx]
+            input_ids = inputs_tensor_ORIG#input_ids[:, :token_idx]
+            attention_mask = attention_mask_ORIG#attention_mask[:, :token_idx]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
@@ -1412,6 +1414,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def prepare_inputs_for_generation(
         self,
         input_ids,
+        inputs_tensor_ORIG,
+        attention_mask_ORIG,
         past_key_values=None,
         attention_mask=None,
         inputs_embeds=None,
@@ -1423,6 +1427,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     ):
         reuse_cache = kwargs.get("reuse_cache")
         bucket_internal = kwargs.get("bucket_internal")
+        #breakpoint()
         if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
@@ -1436,8 +1441,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         elif (reuse_cache or bucket_internal) and token_idx is not None:
             # KV cache is pre allocated with reuse cache or will be padded with bucket internal
             # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
-            input_ids = input_ids[:, :token_idx]
-            attention_mask = attention_mask[:, :token_idx]
+            #breakpoint()
+            input_ids = inputs_tensor_ORIG#  input_ids[:, :token_idx]
+            attention_mask = attention_mask_ORIG#attention_mask[:, :token_idx]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
