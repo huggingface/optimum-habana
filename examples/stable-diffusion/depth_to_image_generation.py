@@ -15,8 +15,10 @@
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
+import requests
 import torch
 from diffusers.schedulers.scheduling_pndm import PNDMScheduler
 from PIL import Image
@@ -81,8 +83,8 @@ def main():
     parser.add_argument(
         "--base_image",
         type=str,
-        default=None,
-        help=("Path to inpaint base image"),
+        required=True,
+        help=("Path or URL to inpaint base image"),
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -239,8 +241,10 @@ def main():
     }
 
     kwargs_call.update(kwargs_common)
-    if args.base_image is not None:
+    if os.path.exists(args.base_image):
         kwargs_call["image"] = Image.open(args.base_image)
+    else:
+        kwargs_call["image"] = Image.open(requests.get(args.base_image, stream=True).raw)
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 

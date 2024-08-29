@@ -528,10 +528,10 @@ Here is how to generate a depth2img-guided image generation using HPU graphs wit
 python depth_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-2-depth" \
     --prompts "two tigers" \
-    --base_image "img.png" \
+    --base_image "http://images.cocodataset.org/val2017/000000039769.jpg" \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
-    --use_hpu_graphs
+    --use_hpu_graphs \
     --bf16
 ```
 
