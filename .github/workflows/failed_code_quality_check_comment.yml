@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure'
     name: Post comment to run make style
+    permissions:
+      pull-requests: write
     steps:
       - name: Download artifact
         uses: dawidd6/action-download-artifact@v6
