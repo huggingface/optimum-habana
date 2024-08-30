@@ -12,9 +12,29 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure'
     name: Post comment to run make style
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download artifact
+        uses: actions/github-script@v3.1.0
         with:
-          name: pr-number
+          script: |
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "pr-number"
+            })[0];
+            var download = await github.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{steps.setup-env.outputs.current_work_dir}}/pr-number.zip', Buffer.from(download.data));
+      - run: unzip pr-number.zip
+      - name: Display structure of downloaded files
+        run: ls -l
       - name: Get PR number
         id: github-context
         run: |
