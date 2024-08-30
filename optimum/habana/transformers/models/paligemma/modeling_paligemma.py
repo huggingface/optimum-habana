@@ -18,11 +18,11 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss
-from transformers.cache_utils import Cache, DynamicCache
+from torch import nn
+from transformers.cache_utils import Cache
 from transformers.models.paligemma.modeling_paligemma import (
+    PaliGemmaCausalLMOutputWithPast,
     PaliGemmaForConditionalGeneration,
-    PaliGemmaCausalLMOutputWithPast
 )
 from transformers.utils import logging
 

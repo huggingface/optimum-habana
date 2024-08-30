@@ -105,7 +105,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "stablelm",
     "mamba",
     "deci",
-    "paligemma"
+    "paligemma",
 ]
 
 
