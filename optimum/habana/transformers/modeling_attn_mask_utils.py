@@ -92,6 +92,8 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
                 sliding_window=self.sliding_window,
             )
 
+            # just create a bool tensor with shape [bsz, 1, tgt_seq_len, src_seq_len]
+            # OOM problem can be prevent by using bool tensor
             bsz, src_len = attention_mask_2d.size()
             tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
             bool_mask = (attention_mask_2d != 1.0)
