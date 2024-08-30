@@ -12,10 +12,11 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure'
     name: Post comment to run make style
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v6
         with:
           name: pr-number
-          run-id: ${{github.event.workflow_run.id }}
+          run_id: ${{github.event.workflow_run.id }}
       - name: Get PR number
         id: github-context
         run: |
