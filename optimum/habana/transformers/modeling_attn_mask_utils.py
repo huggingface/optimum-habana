@@ -61,6 +61,49 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
 
         return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
 
+    def to_4d(
+        self,
+        attention_mask_2d: torch.Tensor,
+        query_length: int,
+        dtype: torch.dtype,
+        key_value_length: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        Converts 2D attention mask to 4D attention mask by expanding mask to (bsz, head_dim=1, query_length,
+        key_value_length) shape and by adding a large negative bias to not-attended positions. If attention_mask is
+        causal, a causal mask will be added.
+        """
+        input_shape = (attention_mask_2d.shape[0], query_length)
+        device = attention_mask_2d.device
+
+        # create causal mask
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        if (input_shape[-1] > 1 or self.sliding_window is not None) and self.is_causal:
+            if key_value_length is None:
+                raise ValueError(
+                    "This attention mask converter is causal. Make sure to pass `key_value_length` to correctly create a causal mask."
+                )
+            past_key_values_length = key_value_length - query_length
+            causal_4d_mask = self._make_causal_mask(
+                input_shape,
+                dtype,
+                device=device,
+                past_key_values_length=past_key_values_length,
+                sliding_window=self.sliding_window,
+            )
+
+            bsz, src_len = attention_mask_2d.size()
+            tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
+            bool_mask = (attention_mask_2d != 1.0)
+            expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
+
+            return result.masked_fill(expanded_attn_mask, torch.finfo(dtype).min)
+        elif self.sliding_window is not None:
+            raise NotImplementedError("Sliding window is currently only implemented for causal masking")
+
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        return self._expand_mask(attention_mask_2d, dtype, tgt_len=input_shape[-1]).to(device)
+
 
 def _gaudi_prepare_4d_causal_attention_mask(
     attention_mask: Optional[torch.Tensor],
