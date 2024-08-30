@@ -103,7 +103,6 @@ from .gptj import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
 )
-from .paligemma import GaudiPaliGemmaForConditionalGeneration
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
@@ -160,6 +159,7 @@ from .opt import (
     gaudi_opt_model_forward,
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
+from .paligemma import GaudiPaliGemmaForConditionalGeneration
 from .persimmon import (
     GaudiPersimmonAttention,
     GaudiPersimmonDecoderLayer,

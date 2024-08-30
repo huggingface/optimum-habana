@@ -158,7 +158,9 @@ def main():
     if args.image_path is None and model_type == "llava":
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
-        args.image_path = ["https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"]
+        args.image_path = [
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
+        ]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
