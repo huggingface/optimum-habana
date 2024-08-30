@@ -58,6 +58,7 @@ from .models import (
     GaudiGPTJModel,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiPaliGemmaForConditionalGeneration,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -383,6 +384,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
     transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
         GaudiLlavaNextForConditionalGeneration
+    )
+
+    # Optimization for paligemma on Gaudi
+    transformers.models.paligemma.modeling_paligemma.PaliGemmaForConditionalGeneration = (
+        GaudiPaliGemmaForConditionalGeneration
     )
 
     # Optimization for Clip on Gaudi

@@ -96,6 +96,7 @@ from .gptj import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
 )
+from .paligemma import GaudiPaliGemmaForConditionalGeneration
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
