@@ -99,7 +99,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
             bool_mask = (attention_mask_2d != 1.0)
             expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
 
-            return result.masked_fill(expanded_attn_mask, torch.finfo(dtype).min)
+            return causal_4d_mask.masked_fill(expanded_attn_mask, torch.finfo(dtype).min)
         elif self.sliding_window is not None:
             raise NotImplementedError("Sliding window is currently only implemented for causal masking")
 
