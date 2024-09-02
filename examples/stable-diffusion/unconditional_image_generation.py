@@ -19,8 +19,13 @@ except ImportError:
         return ()
 
 
+<<<<<<< HEAD
 check_min_version("4.45.0.dev0")
 check_optimum_habana_min_version("1.10.4")
+=======
+check_min_version("4.43.0")
+check_optimum_habana_min_version("1.14.0.dev0")
+>>>>>>> main
 
 # Setup logging
 logging.basicConfig(
