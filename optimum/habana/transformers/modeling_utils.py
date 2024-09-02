@@ -55,6 +55,7 @@ from .models import (
     GaudiGemma2DecoderLayer,
     GaudiGemma2Model,
     GaudiGemma2ForCausalLM,
+    GaudiGemma2RotaryEmbedding,
     GaudiGPT2Attention,
     GaudiGPT2Block,
     GaudiGPT2DoubleHeadsModel,
@@ -480,6 +481,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gemma2.modeling_gemma2.Gemma2Attention = GaudiGemma2Attention
     transformers.models.gemma2.modeling_gemma2.Gemma2DecoderLayer = GaudiGemma2DecoderLayer
     transformers.models.gemma2.modeling_gemma2.Gemma2Model = GaudiGemma2Model
+    transformers.models.gemma2.modeling_gemma2.Gemma2RotaryEmbedding = GaudiGemma2RotaryEmbedding
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
