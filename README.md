@@ -72,6 +72,18 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 git clone https://github.com/huggingface/optimum-habana
 ```
 
+### Option 3: Use the `transformers_future` branch to have the latest changes from Transformers
+
+The `transformers_future` branch is regularly updated with the latest changes from the main branches of Optimum Habana and Transformers. This enables you to try out new Transformers features that have not been merged into the main branch yet.
+
+> [!WARNING]
+> The `transformers_future` branch may have some regressions or bugs and may be less stable than the main branch.
+
+```bash
+pip install git+https://github.com/huggingface/optimum-habana.git@transformers_future
+git clone -b transformers_future https://github.com/huggingface/optimum-habana
+```
+
 ## Install dependencies
 
 To use DeepSpeed on HPUs, you also need to run the following command:
