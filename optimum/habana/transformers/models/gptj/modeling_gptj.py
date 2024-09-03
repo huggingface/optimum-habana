@@ -4,6 +4,7 @@ import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gptj.configuration_gptj import GPTJConfig
 from transformers.models.gptj.modeling_gptj import (
@@ -16,7 +17,6 @@ from transformers.models.gptj.modeling_gptj import (
     create_sinusoidal_positions,
     logger,
 )
-from transfroemrs.cache_utils import Cache
 
 
 class Matmul(nn.Module):

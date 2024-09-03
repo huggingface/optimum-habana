@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.codegen.modeling_codegen import (
     CodeGenAttention,
@@ -10,7 +11,6 @@ from transformers.models.codegen.modeling_codegen import (
     apply_rotary_pos_emb,
     logger,
 )
-from transfromers.cache_utils import Cache
 
 
 class GaudiCodeGenAttention(CodeGenAttention):
