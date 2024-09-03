@@ -1,1 +1,1 @@
-https://github.com/polisettyvarma/lm-evaluation-harness/archive/3cdc8daadad9f4559ae6cdfae96f1d83d6b3c1f4.zip
+https://github.com/EleutherAI/lm-evaluation-harness/archive/0bf683b4e6a9df359b3156ba9ba8d62bdd47e0c0.zip

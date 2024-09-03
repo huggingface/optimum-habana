@@ -1264,6 +1264,12 @@ class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
             model.load_adapter("eng")
             model.load_adapter("eng", use_safetensors=False)
 
+            # we will load adapter_weights directly while model.load_adapter fails
+            state_dict = torch.load(pt_filepath)
+            state_dict = {k: v.to(adapter_weights[k]) for k, v in state_dict.items()}
+            model.load_state_dict(state_dict, strict=False)
+
+
             with self.assertRaises(OSError):
                 model.load_adapter("eng", use_safetensors=True)
 
@@ -1879,7 +1885,7 @@ class Wav2Vec2ModelIntegrationTest(unittest.TestCase):
         )
         processor = Wav2Vec2ProcessorWithLM.from_pretrained("patrickvonplaten/wav2vec2-large-xlsr-53-spanish-with-lm")
 
-        input_values = processor(resampled__audio, return_tensors="pt").input_values
+        input_values = processor(resampled_audio, return_tensors="pt").input_values
 
         with torch.no_grad():
             logits = model(input_values.to(torch_device)).logits

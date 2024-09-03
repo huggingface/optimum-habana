@@ -58,7 +58,6 @@ if is_torch_available():
         T5Model,
         T5Tokenizer,
     )
-    from transformers.models.t5.modeling_t5 import T5_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 torch_device = "hpu"
@@ -1535,7 +1534,10 @@ class T5ModelIntegrationTests(unittest.TestCase):
         translation = tok.decode(output[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
         self.assertEqual(translation, expected_translation)
 
+    # contrastive search is not supported and expected to fail
+    # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
     @slow
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
     def test_contrastive_search_t5(self):
         article = (
             " New York (CNN)When Liana Barrientos was 23 years old, she got married in Westchester County, New York. A"

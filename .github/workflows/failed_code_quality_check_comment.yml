@@ -1,0 +1,36 @@
+name: Post comment in PR for failed code quality check
+
+on:
+  workflow_run:
+    workflows: ["Check code quality"]
+    types:
+      - completed
+
+jobs:
+  post-comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure'
+    name: Post comment to run make style
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: pr-number
+          run_id: ${{github.event.workflow_run.id }}
+      - name: Get PR number
+        id: github-context
+        run: |
+          content_pr_number=$(cat ./pr_number)
+          if [[ $content_pr_number =~ ^[0-9]+$ ]]; then
+            echo "pr_number=$content_pr_number" >> $GITHUB_OUTPUT
+            rm -rf ./pr_number
+          else
+            echo "Encountered an invalid PR number"
+            exit 1
+          fi
+      - uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ steps.github-context.outputs.pr_number }}
+          body: The code quality check failed, please run `make style`.
