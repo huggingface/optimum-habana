@@ -227,10 +227,10 @@ from .wav2vec2 import (
     gaudi_wav2vec2forctc_forward,
 )
 from .whisper import (
-    GaudiWhisperSdpaAttention,
-    GaudiWhisperDecoderLayer,
-    GaudiWhisperDecoder,
-    GaudiWhisperModel,
-    GaudiWhisperForConditionalGeneration,
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
 )

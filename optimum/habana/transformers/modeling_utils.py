@@ -28,6 +28,7 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
     GaudiBloomForCausalLM,
@@ -96,12 +97,11 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
-    GaudiWhisperForConditionalGeneration,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
-    GAUDI_WHISPER_ATTENTION_CLASSES,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,

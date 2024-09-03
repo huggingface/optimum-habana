@@ -1,38 +1,45 @@
-import copy
-import math
-import os
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
-from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache, StaticCache
+from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
     Seq2SeqLMOutput,
     Seq2SeqModelOutput,
-    SequenceClassifierOutput,
 )
-
 from transformers.models.whisper.modeling_whisper import (
     WhisperAttention,
-    WhisperFlashAttention2,
-    WhisperSdpaAttention,
-    WhisperDecoderLayer,
     WhisperDecoder,
+    WhisperDecoderLayer,
+    WhisperFlashAttention2,
+    WhisperForConditionalGeneration,
     WhisperModel,
-    WhisperForConditionalGeneration
+    WhisperSdpaAttention,
 )
-
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
 
+# Copied from transformers.models.bart.modeling_bart.shift_tokens_right
+def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
+    """
+    Shift input ids one token to the right.
+    """
+    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+    shifted_input_ids[:, 1:] = input_ids[:, :-1].clone()
+    shifted_input_ids[:, 0] = decoder_start_token_id
+
+    if pad_token_id is None:
+        raise ValueError("self.model.config.pad_token_id has to be defined.")
+    # replace possible -100 values in labels by `pad_token_id`
+    shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
+
+    return shifted_input_ids
 
 class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
     def forward(
@@ -301,7 +308,7 @@ class GaudiWhisperDecoder(WhisperDecoder):
                 past_key_values_length, past_key_values_length + input_shape[1], device=inputs_embeds.device
             )
 
-        if position_ids is None:
+        if position_ids is None and token_idx:
             position_ids = (token_idx-1).unsqueeze(0)
         # embed positions
         if input_ids is not None:
@@ -620,12 +627,12 @@ class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
         decoder_attention_mask = (decoder_input_ids != self.config.pad_token_id).long()
 
         # prepare the decoder_position_ids
-        if token_idx <= forced_decoder_ids_length:
+        if token_idx and token_idx <= forced_decoder_ids_length:
             decoder_position_ids = decoder_attention_mask.cumsum(-1) - 1
         else:
             decoder_position_ids = None
 
-        if token_idx >= forced_decoder_ids_length + 1:
+        if token_idx and token_idx >= forced_decoder_ids_length + 1:
             decoder_input_ids = torch.index_select(decoder_input_ids, 1, token_idx - 1)
 
         return {

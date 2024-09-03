@@ -1,8 +1,8 @@
 from .modeling_whisper import (
-    GaudiWhisperSdpaAttention,
-    GaudiWhisperDecoderLayer,
+    GAUDI_WHISPER_ATTENTION_CLASSES,
     GaudiWhisperDecoder,
-    GaudiWhisperModel,
+    GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
-    GAUDI_WHISPER_ATTENTION_CLASSES
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
 )
