@@ -237,8 +237,8 @@ python ../gaudi_spawn.py \
 ```
 
 
-### Training in torch.compile mode 
-RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,  
+### Training in torch.compile mode
+RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,
 a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`.
 b) Run the above commands with `--model_name_or_path roberta-large`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
 
@@ -377,7 +377,7 @@ python3 run_lora_clm.py \
     --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --warmup_ratio  0.03 \
@@ -410,7 +410,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --max_grad_norm  0.3 \
@@ -445,7 +445,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 3 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --warmup_ratio  0.03 \
@@ -480,7 +480,7 @@ LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 	--num_train_epochs 3 \
 	--per_device_train_batch_size 16 \
 	--gradient_accumulation_steps 1 \
-	--evaluation_strategy "no" \
+	--eval_strategy "no" \
 	--save_strategy "no" \
 	--learning_rate 3e-4 \
 	--warmup_ratio 0.03 \
@@ -518,7 +518,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --logging_steps 1 \
@@ -547,7 +547,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -589,7 +589,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --per_device_train_batch_size 10 \
   --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --eval_delay 2 \
   --save_strategy no \
   --learning_rate 0.0018 \
@@ -641,7 +641,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --fsdp_config fsdp_config.json \
   --fsdp auto_wrap \
   --num_train_epochs 2 \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --per_device_eval_batch_size 1 \
   --eval_delay 2 \
   --do_eval \
@@ -668,7 +668,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -788,11 +788,57 @@ python3 ../text-generation/run_generation.py \
     --use_kv_cache \
     --batch_size 1 \
     --use_hpu_graphs \
-    --ignore_eos \
+    --no-ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
 
 ```
+### Multitask Prompt/Poly seq2seq tuning
+
+To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
+Here is a multi-device command example for [google/flan-t5-base](https://huggingface.co/google/flan-t5-base):
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
+    --model_name_or_path google/flan-t5-base \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 3 \
+    --output_dir out_multi_peft \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "steps" \
+    --eval_steps 500 \
+    --save_strategy "no" \
+    --learning_rate 1e-4  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --bf16
+```
+
+To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
+Here is a multi-device command example for [google/flan-t5-xl](https://huggingface.co/google/flan-t5-xl):
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
+    --model_name_or_path google/flan-t5-xl \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 1 \
+    --output_dir out_poly \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "epoch" \
+    --logging_strategy "epoch" \
+    --save_strategy "no" \
+    --learning_rate 5e-5  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 4 \
+    --bf16 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training
+```
+
 
 ## Streaming
 

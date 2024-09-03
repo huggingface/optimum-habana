@@ -52,9 +52,6 @@ def gaudi_BertModel_forward(
     # past_key_values_length
     past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
-    if attention_mask is None:
-        attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
-
     if token_type_ids is None:
         if hasattr(self.embeddings, "token_type_ids"):
             buffered_token_type_ids = self.embeddings.token_type_ids[:, :seq_length]
@@ -63,10 +60,21 @@ def gaudi_BertModel_forward(
         else:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
+    embedding_output = self.embeddings(
+        input_ids=input_ids,
+        position_ids=position_ids,
+        token_type_ids=token_type_ids,
+        inputs_embeds=inputs_embeds,
+        past_key_values_length=past_key_values_length,
+    )
+
+    if attention_mask is None:
+        attention_mask = torch.ones((batch_size, seq_length + past_key_values_length), device=device)
+
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
     dtype = torch.hpu.get_autocast_hpu_dtype() if torch.hpu.is_autocast_hpu_enabled() else self.dtype
-    extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, dtype=dtype)
+    extended_attention_mask = self.get_extended_attention_mask(attention_mask, input_shape, dtype=dtype)
 
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -86,13 +94,6 @@ def gaudi_BertModel_forward(
     # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
     head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
-    embedding_output = self.embeddings(
-        input_ids=input_ids,
-        position_ids=position_ids,
-        token_type_ids=token_type_ids,
-        inputs_embeds=inputs_embeds,
-        past_key_values_length=past_key_values_length,
-    )
     encoder_outputs = self.encoder(
         embedding_output,
         attention_mask=extended_attention_mask,

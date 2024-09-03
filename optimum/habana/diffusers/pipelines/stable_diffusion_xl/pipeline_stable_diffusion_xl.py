@@ -713,6 +713,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 add_time_ids_batch = add_time_ids_batches[0]
                 add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
 
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
+                    self.scheduler._init_step_index(timesteps[0])
+
                 for i in range(num_inference_steps):
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()

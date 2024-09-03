@@ -20,7 +20,7 @@
 < from accelerate import PartialState
 < from accelerate.utils import set_seed
 ---
-> from utils import adjust_batch, count_hpu_graphs, initialize_model
+> from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 28,50c33
 < from transformers import (
 <     AutoTokenizer,
@@ -47,7 +47,7 @@
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
 > from optimum.habana.utils import get_hpu_memory_stats
-60,282d42
+60,188d42
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -177,7 +177,7 @@
 < 
 <     return num_layer, num_head, num_embedding_size_per_head
 < 
-< 
+190,285c44,46
 < def generate_past_key_values(model, batch_size, seq_len):
 <     num_block_layers, num_attention_heads, num_embedding_size_per_head = sparse_model_config(model.config)
 <     if model.config.model_type == "bloom":
@@ -271,7 +271,7 @@
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
 < 
-284,285c44,46
+< 
 < def main():
 <     parser = argparse.ArgumentParser()
 ---
@@ -335,24 +335,36 @@
 <     parser.add_argument("--length", type=int, default=20)
 <     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 < 
-306,309c95,97
+306c95,113
 <         "--temperature",
-<         type=float,
-<         default=1.0,
-<         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
 >         "--do_sample",
 >         action="store_true",
 >         help="Whether to use sampling for generation.",
-312c100,233
-<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
----
+>     )
+>     parser.add_argument(
 >         "--num_beams",
 >         default=1,
 >         type=int,
 >         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
 >     )
 >     parser.add_argument(
+>         "--top_k",
+>         default=None,
+>         type=int,
+>         help="Size of candidate set used for re-ranking in contrastive search. top_k > 1 enables contrastive search.",
+>     )
+>     parser.add_argument(
+>         "--penalty_alpha",
+>         default=None,
+308,309c115
+<         default=1.0,
+<         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
+---
+>         help="Degeneration penalty for contrastive search. penalty_alpha > 0 enables contrastive search.",
+312c118,245
+<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
+---
 >         "--trim_logits",
 >         action="store_true",
 >         help="Calculate logits only for the last token to save memory in the first step.",
@@ -481,32 +493,25 @@
 >         "--reduce_recompile",
 >         action="store_true",
 >         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
-314,319d234
+314,319d246
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
 <     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
 <     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-321d235
+321d247
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-323c237
+323c249,269
 <         "--use_cpu",
 ---
 >         "--use_flash_attention",
-325c239
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
-327d240
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-329c242
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--flash_attention_recompute",
-331c244,295
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         action="store_true",
 >         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
 >     )
 >     parser.add_argument(
@@ -521,19 +526,28 @@
 >     )
 >     parser.add_argument(
 >         "--book_source",
->         action="store_true",
+325c271
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
 >         help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
->     )
->     parser.add_argument(
+327d272
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+329c274
+<         "--fp16",
+---
 >         "--torch_compile",
->         action="store_true",
+331c276
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
 >         help="Whether to use torch compiled model or not.",
->     )
+333c278,314
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+---
 >     parser.add_argument(
 >         "--ignore_eos",
 >         default=True,
 >         action=argparse.BooleanOptionalAction,
->         help="Whether to ignore eos, set False to disable it",
+>         help="Whether to disable stopping with eos token when calling `generate`. --no-ignore_eos to disable it",
 >     )
 >     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
 >     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
@@ -554,31 +568,36 @@
 >         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
 >     )
 >     parser.add_argument(
+>         "--load_quantized_model",
+>         action="store_true",
+>         help="Whether to load model from hugging face checkpoint.",
+>     )
+>     parser.add_argument(
 >         "--parallel_strategy",
 >         type=str,
 >         choices=["tp", "none"],  # Add other strategies as needed
 >         default="none",
 >         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
-333,334d296
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
-<     args = parser.parse_args()
-336,337c298
+>     )
+> 
+336,337c317,318
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
 ---
->     args = parser.parse_args()
-339c300,301
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
----
 >     if args.torch_compile:
 >         args.use_hpu_graphs = False
-341,342c303,304
-<     if args.seed is not None:
-<         set_seed(args.seed)
+339c320,321
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if not args.use_hpu_graphs:
 >         args.limit_hpu_graphs = False
-344,371c306,311
+341,342c323,324
+<     if args.seed is not None:
+<         set_seed(args.seed)
+---
+>     if args.use_flash_attention and not args.flash_attention_fast_softmax:
+>         args.flash_attention_fast_softmax = True
+344,371c326,331
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -614,12 +633,12 @@
 >             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
 >         )
 >     return args
-373,376d312
+373,376d332
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
 <             tokenizer_kwargs = {}
-378,384c314,317
+378,384c334,337
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -632,12 +651,12 @@
 >     parser = argparse.ArgumentParser()
 >     args = setup_parser(parser)
 >     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
-386,387c319,514
+386,387c339,534
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
 >     use_lazy_mode = True
->     if args.torch_compile and model.config.model_type == "llama":
+>     if args.torch_compile:
 >         use_lazy_mode = False
 > 
 >     import habana_frameworks.torch.hpu as torch_hpu
@@ -832,7 +851,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-389c516,533
+389c536,553
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -853,7 +872,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-391,397c535,542
+391,397c555,562
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -870,7 +889,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-399,437c544,564
+399,437c564,584
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -932,7 +951,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-438a566,648
+438a586,668
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -1016,7 +1035,7 @@
 > 
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-440,441c650,668
+440,441c670,686
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
@@ -1034,12 +1053,10 @@
 >             print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >     if args.quant_config:
->         import habana_quantization_toolkit
-> 
->         habana_quantization_toolkit.finish_measurements(model)
+>         finalize_quantization(model)
 >     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
 >         import shutil
-443c670
+443c688
 <     return generated_sequences
 ---
 >         shutil.rmtree(args.const_serialization_path)
