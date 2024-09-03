@@ -15,7 +15,6 @@
 ###############################################################################
 # Copyright (C) 2022-2023 Habana Labs, Ltd. an Intel Company
 ###############################################################################
-import os
 from typing import Optional, Tuple, Union
 
 import torch
@@ -49,14 +48,13 @@ class Softmax(nn.Module):
         super().__init__()
 
     def forward(self, x, dim=None, invAttnHead=None):
-        return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
+        return torch.nn.functional.softmax(x, dim)
 
 
 class GaudiMptAttention(MptAttention):
     def __init__(self, config: MptConfig):
         super().__init__(config)
 
-        self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
         self.softmax = Softmax()
 
     def forward(
@@ -133,6 +131,7 @@ class GaudiMptAttention(MptAttention):
                     False,
                     None,
                 )
+
             attn_weights = None
         else:
             attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
@@ -143,10 +142,7 @@ class GaudiMptAttention(MptAttention):
                 attention_scores = attention_scores.masked_fill(attention_mask, torch.finfo(query_states.dtype).min)
 
             # (batch_size, n_heads, seq_length, key_length)
-            if self.is_fp8:
-                attn_weights = self.softmax(attention_scores.bfloat16(), dim=-1)
-            else:
-                attn_weights = nn.functional.softmax(attention_scores.float(), dim=-1).to(value_states.dtype)
+            attn_weights = self.softmax(attention_scores.bfloat16(), dim=-1)
             attn_weights = nn.functional.dropout(attn_weights, p=self.attn_dropout_p, training=self.training)
 
             attn_output = torch.matmul(attn_weights, value_states)
