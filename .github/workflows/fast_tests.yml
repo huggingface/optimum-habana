@@ -38,8 +38,6 @@ jobs:
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
-    needs:
-      - transformers # required to wait for the previous tests to finish
     runs-on:
       group: aws-dl1-24xlarge
     steps:

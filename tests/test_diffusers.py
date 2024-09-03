@@ -24,6 +24,7 @@ import random
 import re
 import subprocess
 import tempfile
+import time
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Union
@@ -41,13 +42,17 @@ from diffusers import (
     ControlNetModel,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
+    StableDiffusionXLPipeline,
+    StableVideoDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
+    UNet3DConditionModel,
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
 )
@@ -98,6 +103,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
+    GaudiTextToVideoSDPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -116,6 +122,7 @@ if IS_GAUDI2:
     CONTROLNET_RUNTIME = 537.4276602957398
     INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
+    TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
 else:
@@ -129,6 +136,7 @@ else:
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
+    TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 1000  # TODO: Get Gaudi 1 benchmark numbers
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -962,18 +970,21 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe_oh = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_hf = StableDiffusionXLPipeline(**components)
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images[0]
+        def _get_image_from_pipeline(pipeline, device=device):
+            pipeline.set_progress_bar_config(disable=None)
+            inputs = self.get_dummy_inputs(device)
+            image = pipeline(**inputs).images[0]
 
-        image_slice = image[-3:, -3:, -1]
+            self.assertEqual(image.shape, (64, 64, 3))
+            return image[-3:, -3:, -1]
 
-        self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.5388, 0.5451, 0.4694, 0.4582, 0.5252, 0.4832, 0.5288, 0.5034, 0.4766])
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
 
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        self.assertLess((np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max()), 1e-2)
 
     def test_stable_diffusion_xl_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -997,19 +1008,24 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         components = self.get_dummy_components(timestep_spacing="trailing")
         gaudi_config = GaudiConfig(use_torch_autocast=False)
 
-        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe_oh = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_oh.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe_oh.scheduler.config)
+        sd_pipe_hf = StableDiffusionXLPipeline(**components)
+        sd_pipe_hf.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe_hf.scheduler.config)
 
-        sd_pipe.set_progress_bar_config(disable=None)
+        def _get_image_from_pipeline(pipeline, device=device):
+            pipeline.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images[0]
+            inputs = self.get_dummy_inputs(device)
+            image = pipeline(**inputs).images[0]
 
-        image_slice = image[-3:, -3:, -1]
+            self.assertEqual(image.shape, (64, 64, 3))
+            return image[-3:, -3:, -1]
 
-        self.assertEqual(image.shape, (64, 64, 3))
-        expected_slice = np.array([0.4539, 0.5119, 0.4521, 0.4395, 0.5495, 0.49344, 0.5761, 0.5147, 0.4943])
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
+
+        self.assertLess((np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max()), 1e-2)
 
     @parameterized.expand(["pil", "np", "latent"])
     def test_stable_diffusion_xl_output_types(self, output_type):
@@ -2226,33 +2242,43 @@ class DreamBooth(TestCase):
                 if train_text_encoder:
                     self.assertTrue(os.path.isfile(os.path.join(tmpdir, "text_encoder", "adapter_model.safetensors")))
 
+    @slow
     def test_dreambooth_full(self):
         self._test_dreambooth("full")
 
+    @slow
     def test_dreambooth_full_with_text_encoder(self):
         self._test_dreambooth("full", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lora(self):
         self._test_dreambooth("lora")
 
+    @slow
     def test_dreambooth_lora_with_text_encoder(self):
         self._test_dreambooth("lora", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lokr(self):
         self._test_dreambooth("lokr")
 
+    @slow
     def test_dreambooth_lokr_with_text_encoder(self):
         self._test_dreambooth("lokr", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_loha(self):
         self._test_dreambooth("loha")
 
+    @slow
     def test_dreambooth_loha_with_text_encoder(self):
         self._test_dreambooth("loha", train_text_encoder=True)
 
+    @slow
     def test_dreambooth_oft(self):
         self._test_dreambooth("oft")
 
+    @slow
     def test_dreambooth_oft_with_text_encoder(self):
         self._test_dreambooth("oft", train_text_encoder=True)
 
@@ -2316,9 +2342,11 @@ class DreamBoothLoRASDXL(TestCase):
                 starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_unet)
 
+    @slow
     def test_dreambooth_lora_sdxl_with_text_encoder(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=True)
 
+    @slow
     def test_dreambooth_lora_sdxl(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=False)
 
@@ -2419,26 +2447,30 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        for component in sd_pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
+        sd_pipe_oh = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe_hf = StableVideoDiffusionPipeline(**components)
 
-        sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        def _get_image_from_pipeline(pipeline, device=device):
+            for component in pipeline.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
 
-        outputs = sd_pipe(
-            **self.get_dummy_inputs(device),
-        ).frames
-        image = outputs[0]
-        image_slice = image[0, -3:, -3:, -1]
+            pipeline.to(device)
+            pipeline.set_progress_bar_config(disable=None)
 
-        self.assertEqual(len(outputs), 1)
-        self.assertEqual(image.shape, (2, 3, 32, 32))
+            outputs = pipeline(
+                **self.get_dummy_inputs(device),
+            ).frames
+            image = outputs[0]
 
-        expected_slice = np.array([0.6208, 0.5780, 0.5447, 0.6462, 0.6285, 0.6288, 0.5334, 0.5287, 0.5165])
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(image.shape, (2, 3, 32, 32))
+            return image[0, -3:, -3:, -1]
 
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
+
+        self.assertLess(np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max(), 1e-2)
 
     @slow
     def test_stable_video_diffusion_no_throughput_regression_bf16(self):
@@ -2980,6 +3012,128 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         )
 
         self.assertGreaterEqual(outputs.throughput, 0.95 * DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT)
+
+
+class GaudiTextToVideoSDPipelineTester(TestCase):
+    """
+    Tests the TextToVideoSDPipeline for Gaudi.
+    Adapted from https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/text_to_video_synthesis/test_text_to_video.py
+    """
+
+    def get_dummy_components(self):
+        set_seed(0)
+        unet = UNet3DConditionModel(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
+            cross_attention_dim=4,
+            attention_head_dim=4,
+            norm_num_groups=2,
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            interpolation_type="linear",
+            num_train_timesteps=1000,
+            prediction_type="v_prediction",
+            sigma_max=700.0,
+            sigma_min=0.002,
+            steps_offset=1,
+            timestep_spacing="leading",
+            timestep_type="continuous",
+            trained_betas=None,
+            use_karras_sigmas=True,
+        )
+        set_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=(8,),
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownEncoderBlock2D",),
+            up_block_types=("UpDecoderBlock2D",),
+            latent_channels=4,
+            sample_size=32,
+            norm_num_groups=2,
+        )
+        set_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=4,
+            intermediate_size=16,
+            layer_norm_eps=1e-05,
+            num_attention_heads=2,
+            num_hidden_layers=2,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_text_to_video_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        sd_pipe = GaudiTextToVideoSDPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        video = sd_pipe(**inputs).videos[0]
+        image_slice = video[0][-3:, -3:, -1]
+
+        assert video[0].shape == (32, 32, 3)
+        expected_slice = np.array(
+            [0.32823694, 0.5277065, 0.5257378, 0.51532686, 0.62792695, 0.5966803, 0.55225205, 0.6153607, 0.60387087]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_video_diffusion_no_latency_regression_bf16(self):
+        model_name = "ali-vilab/text-to-video-ms-1.7b"
+        pipeline = GaudiTextToVideoSDPipeline.from_pretrained(
+            model_name,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
+        )
+        set_seed(42)
+        start_time = time.time()
+        prompt = "Spiderman is surfing"
+        outputs = pipeline(prompt, num_inference_steps=50, output_type="pil")
+        latency = time.time() - start_time
+        assert len(outputs.videos[0]) == 16
+
+        assert latency < 1.05 * TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE
 
 
 """
@@ -4296,6 +4450,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
 
         return sdi_pipe
 
+    @slow
     def test_stable_diffusion_inpaint_pipeline(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -4338,6 +4493,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
         # np.abs(expected_image - image).max() = 0.31966144
         assert np.abs(expected_image - image).max() < 0.4
 
+    @slow
     def test_stable_diffusion_inpaint_pipeline_bf16(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"

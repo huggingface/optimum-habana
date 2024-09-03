@@ -68,12 +68,12 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0")
+check_min_version("0.29.0")
 
 logger = get_logger(__name__)
 

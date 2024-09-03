@@ -56,7 +56,8 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -173,7 +174,8 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 
