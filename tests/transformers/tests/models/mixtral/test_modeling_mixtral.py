@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,14 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Mixtral model. """
-
+"""Testing suite for the PyTorch Mixtral model."""
 
 import tempfile
 import unittest
 
 import pytest
-
 from transformers import MixtralConfig, is_torch_available
 from transformers.testing_utils import (
     is_flaky,
@@ -29,7 +26,6 @@ from transformers.testing_utils import (
     require_torch_gpu,
     require_torch_sdpa,
     slow,
-    torch_device,
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -44,7 +40,6 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import MixtralForCausalLM, MixtralForSequenceClassification, MixtralModel
 
 
@@ -608,4 +603,3 @@ class MixtralIntegrationTest(unittest.TestCase):
             atol=1e-3,
             rtol=1e-3,
         )
-

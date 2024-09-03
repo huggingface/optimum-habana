@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Wav2Vec2 model. """
+"""Testing suite for the PyTorch Wav2Vec2 model."""
 
 import gc
 import math
@@ -25,7 +25,6 @@ import unittest
 
 import numpy as np
 from datasets import load_dataset
-
 from transformers import Wav2Vec2Config, is_torch_available
 from transformers.testing_utils import (
     CaptureLogger,
@@ -39,7 +38,6 @@ from transformers.testing_utils import (
     require_torchaudio,
     run_test_in_subprocess,
     slow,
-    torch_device,
 )
 from transformers.utils import is_torch_fx_available
 
@@ -58,7 +56,6 @@ from ...test_modeling_common import (
 if is_torch_available():
     import torch
     from safetensors.torch import save_file as safe_save_file
-
     from transformers import (
         Wav2Vec2FeatureExtractor,
         Wav2Vec2ForAudioFrameClassification,
@@ -85,7 +82,6 @@ if is_torchaudio_available():
 
 if is_pyctcdecode_available():
     import pyctcdecode.decoder
-
     from transformers import Wav2Vec2ProcessorWithLM
     from transformers.models.wav2vec2_with_lm import processing_wav2vec2_with_lm
 
@@ -95,6 +91,7 @@ if is_torch_fx_available():
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
+
 
 def _test_wav2vec2_with_lm_invalid_pool(in_queue, out_queue, timeout):
     error = None
@@ -1268,7 +1265,6 @@ class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
             state_dict = torch.load(pt_filepath)
             state_dict = {k: v.to(adapter_weights[k]) for k, v in state_dict.items()}
             model.load_state_dict(state_dict, strict=False)
-
 
             with self.assertRaises(OSError):
                 model.load_adapter("eng", use_safetensors=True)

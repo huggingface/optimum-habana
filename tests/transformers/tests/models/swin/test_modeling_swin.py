@@ -12,14 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Swin model. """
+"""Testing suite for the PyTorch Swin model."""
 
 import collections
 import inspect
 import unittest
 
 from transformers import SwinConfig
-from transformers.testing_utils import require_torch, require_vision, slow, torch_device
+from transformers.testing_utils import require_torch, require_vision, slow
 from transformers.utils import cached_property, is_torch_available, is_vision_available
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -34,13 +34,11 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from torch import nn
-
     from transformers import SwinBackbone, SwinForImageClassification, SwinForMaskedImageModeling, SwinModel
 
 
 if is_vision_available():
     from PIL import Image
-
     from transformers import AutoImageProcessor
 
 

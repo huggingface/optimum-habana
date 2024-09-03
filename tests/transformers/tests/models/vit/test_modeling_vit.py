@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,8 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch ViT model. """
-
+"""Testing suite for the PyTorch ViT model."""
 
 import inspect
 import unittest
@@ -27,7 +25,6 @@ from transformers.testing_utils import (
     require_torch_fp16,
     require_vision,
     slow,
-    torch_device,
 )
 from transformers.utils import cached_property, is_torch_available, is_vision_available
 
@@ -40,13 +37,11 @@ from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor
 if is_torch_available():
     import torch
     from torch import nn
-
     from transformers import ViTForImageClassification, ViTForMaskedImageModeling, ViTModel
 
 
 if is_vision_available():
     from PIL import Image
-
     from transformers import ViTImageProcessor
 
 torch_device = "hpu"
@@ -337,4 +332,3 @@ class ViTModelIntegrationTest(unittest.TestCase):
         # forward pass to make sure inference works in fp16
         with torch.no_grad():
             _ = model(pixel_values)
-

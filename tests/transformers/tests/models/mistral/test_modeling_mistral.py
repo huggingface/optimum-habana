@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2023 Mistral AI and The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,15 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Mistral model. """
-
+"""Testing suite for the PyTorch Mistral model."""
 
 import gc
 import tempfile
 import unittest
 
 import pytest
-
 from transformers import AutoTokenizer, MistralConfig, is_torch_available, set_seed
 from transformers.testing_utils import (
     backend_empty_cache,
@@ -32,7 +29,6 @@ from transformers.testing_utils import (
     require_torch_gpu,
     require_torch_sdpa,
     slow,
-    torch_device,
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -47,7 +43,6 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         MistralForCausalLM,
         MistralForSequenceClassification,
@@ -631,4 +626,3 @@ class MistralIntegrationTest(unittest.TestCase):
         del model
         backend_empty_cache(torch_device)
         gc.collect()
-

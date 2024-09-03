@@ -22,14 +22,12 @@ import unittest
 
 from transformers import T5Config, is_torch_available
 from transformers.models.auto.modeling_auto import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES
-from transformers.testing_utils import require_sentencepiece, require_tokenizers, require_torch, slow
 from transformers.testing_utils import (
     require_accelerate,
     require_sentencepiece,
     require_tokenizers,
     require_torch,
     slow,
-    torch_device,
 )
 from transformers.utils import cached_property, is_torch_fx_available
 
@@ -46,7 +44,6 @@ if is_torch_fx_available():
 
 if is_torch_available():
     import torch
-
     from transformers import (
         AutoTokenizer,
         ByT5Tokenizer,
@@ -1537,7 +1534,7 @@ class T5ModelIntegrationTests(unittest.TestCase):
     # contrastive search is not supported and expected to fail
     # In earlier versions it was passing because it was going down default implementation, and it just happened to pass
     @slow
-    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)
+    @pytest.mark.xfail(reason="contrastive search is not implemented", raises=NotImplementedError)  # noqa: F821
     def test_contrastive_search_t5(self):
         article = (
             " New York (CNN)When Liana Barrientos was 23 years old, she got married in Westchester County, New York. A"

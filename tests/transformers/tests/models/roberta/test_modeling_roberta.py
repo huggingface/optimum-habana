@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -18,7 +17,7 @@
 import unittest
 
 from transformers import RobertaConfig, is_torch_available
-from transformers.testing_utils import TestCasePlus, require_torch, slow, torch_device
+from transformers.testing_utils import TestCasePlus, require_torch, slow
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -32,7 +31,6 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         RobertaForCausalLM,
         RobertaForMaskedLM,
@@ -531,12 +529,6 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
 
 @require_torch
 class RobertaModelIntegrationTest(TestCasePlus):
-
-    @slow
-    def test_inference_masked_lm(self):
-        model = RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base")
-        input_ids = torch.tensor([[0, 31414, 232, 328, 740, 1140, 12695, 69, 46078, 1588, 2]])
-
     def _helper(self, model, device, input_ids):
         model = model.to(device)
         input_ids = input_ids.to(device)
@@ -554,7 +546,7 @@ class RobertaModelIntegrationTest(TestCasePlus):
 
     @slow
     def test_inference_masked_lm(self):
-        self._compare_cpu_hpu(RobertaForMaskedLM.from_pretrained("roberta-base"), atol=0.15)
+        self._compare_cpu_hpu(RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base"), atol=0.15)
 
     @slow
     def test_inference_no_head(self):
@@ -590,4 +582,3 @@ class RobertaModelIntegrationTest(TestCasePlus):
         # expected_tensor = roberta.predict("mnli", input_ids, return_logits=True).detach()
 
         self.assertTrue(torch.allclose(output, expected_tensor, atol=1e-4))
-
