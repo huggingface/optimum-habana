@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,17 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Falcon model. """
+"""Testing suite for the PyTorch Falcon model."""
 
 import tempfile
 import unittest
 
-from transformers import AutoTokenizer, FalconConfig, is_torch_available
-from transformers.testing_utils import require_torch, slow
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from parameterized import parameterized
-
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -37,20 +31,20 @@ from transformers.testing_utils import (
     require_torch,
     require_torch_sdpa,
     slow,
-    torch_device,
 )
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         FalconForCausalLM,
         FalconForQuestionAnswering,
@@ -679,4 +673,3 @@ class FalconLanguageGenerationTest(unittest.TestCase):
             falcon_output_sdpa = falcon(input_ids)[0]
 
         self.assertTrue(torch.allclose(falcon_output_eager, falcon_output_sdpa, atol=1e-3))
-

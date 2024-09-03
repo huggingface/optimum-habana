@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2021 The HuggingFace Team. All rights reserved.
 #
@@ -19,7 +18,6 @@ import datetime
 import unittest
 
 import pytest
-
 from transformers import BitsAndBytesConfig, GPTJConfig, is_torch_available
 from transformers.testing_utils import (
     require_bitsandbytes,
@@ -28,20 +26,20 @@ from transformers.testing_utils import (
     require_torch_gpu,
     slow,
     tooslow,
-    torch_device,
 )
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         AutoTokenizer,
         GPTJForCausalLM,
@@ -532,7 +530,6 @@ class GPTJModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         model = GPTJModel.from_pretrained(model_name, revision="float16", torch_dtype=torch.float16)
         self.assertIsNotNone(model)
 
-
     @require_flash_attn
     @require_torch_gpu
     @require_bitsandbytes
@@ -570,7 +567,6 @@ class GPTJModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         output_fa_2 = tokenizer.batch_decode(output_fa_2)
 
         self.assertListEqual(expected_outputs, output_fa_2)
-
 
 
 @require_torch
@@ -702,4 +698,3 @@ class GPTJModelLanguageGenerationTest(unittest.TestCase):
                 "help answer some of the most challenging questions we face as a society—"
             ],
         )
-

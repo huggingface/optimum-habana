@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,15 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch GPTNeoX model. """
+"""Testing suite for the PyTorch GPTNeoX model."""
 
-import tempfile
 import unittest
 
 from parameterized import parameterized
-
 from transformers import AutoTokenizer, GPTNeoXConfig, is_torch_available, set_seed
-from transformers.testing_utils import require_torch, slow, torch_device
+from transformers.testing_utils import require_torch, slow
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -38,7 +35,6 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         GPTNeoXForCausalLM,
         GPTNeoXForQuestionAnswering,
@@ -439,4 +435,3 @@ class GPTNeoXLanguageGenerationTest(unittest.TestCase):
         input_ids = torch.as_tensor(input_ids)[None].to(torch_device)
         outputs = model(input_ids)["logits"][:, -1][0, :30]
         self.assertTrue(torch.allclose(EXPECTED_LOGITS, outputs, atol=1e-5))
-

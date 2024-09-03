@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -13,8 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch CLIP model. """
-
+"""Testing suite for the PyTorch CLIP model."""
 
 import inspect
 import os
@@ -23,7 +21,6 @@ import unittest
 
 import numpy as np
 import requests
-
 import transformers
 from transformers import CLIPConfig, CLIPTextConfig, CLIPVisionConfig
 from transformers.testing_utils import (
@@ -32,9 +29,10 @@ from transformers.testing_utils import (
     require_torch,
     require_vision,
     slow,
-    torch_device,
 )
 from transformers.utils import is_torch_available, is_vision_available
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
@@ -44,7 +42,7 @@ from ...test_modeling_common import (
     ids_tensor,
     random_attention_mask,
 )
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
@@ -53,7 +51,6 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from torch import nn
-
     from transformers import (
         CLIPForImageClassification,
         CLIPModel,
@@ -66,13 +63,11 @@ if is_torch_available():
 
 if is_vision_available():
     from PIL import Image
-
     from transformers import CLIPProcessor
 
 
 if is_flax_available():
     import jax.numpy as jnp
-
     from transformers.modeling_flax_pytorch_utils import (
         convert_pytorch_state_dict_to_flax,
         load_flax_weights_in_pytorch_model,
@@ -846,4 +841,3 @@ class CLIPModelIntegrationTest(unittest.TestCase):
         expected_logits = torch.tensor([[24.5701, 19.3049]], device=torch_device)
 
         self.assertTrue(torch.allclose(outputs.logits_per_image, expected_logits, atol=1e-3))
-

@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-
 from transformers import (
     BridgeTowerConfig,
     BridgeTowerTextConfig,

@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -21,15 +20,12 @@ import math
 import unittest
 
 import pytest
-
 from transformers import GPT2Config, is_torch_available
 from transformers.testing_utils import (
-    backend_empty_cache,
     require_flash_attn,
     require_torch,
     require_torch_gpu,
     slow,
-    torch_device,
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -37,7 +33,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 
@@ -47,7 +43,6 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         GPT2DoubleHeadsModel,
         GPT2ForQuestionAnswering,
@@ -916,4 +911,3 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
 
         self.assertListEqual(output_native, output_fa_2)
         self.assertListEqual(output_native, expected_output)
-
