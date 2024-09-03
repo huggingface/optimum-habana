@@ -57,8 +57,8 @@ def main():
     )
     parser.add_argument(
         "--src_image_path",
-        default=None,
         type=str,
+        required=True,
         help="Path to source image",
     )
     # Pipeline arguments
