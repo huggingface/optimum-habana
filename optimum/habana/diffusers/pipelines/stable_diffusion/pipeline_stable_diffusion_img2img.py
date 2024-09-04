@@ -14,8 +14,10 @@
 # limitations under the License.
 
 import inspect
+from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import PIL.Image
 import torch
 from diffusers.image_processor import PipelineImageInput
@@ -132,6 +134,51 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         )
         self.to(self._device)
 
+    # Copied from ./pipeline_stable_diffusion.py
+    @classmethod
+    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds):
+        # Use torch.split to generate num_batches batches of size batch_size
+        latents_batches = list(torch.split(latents, batch_size))
+        prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
+
+        # If the last batch has less samples than batch_size, pad it with dummy samples
+        num_dummy_samples = 0
+        if latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+            # Pad latents_batches
+            sequence_to_stack = (latents_batches[-1],) + tuple(
+                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            latents_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad prompt_embeds_batches
+            sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
+                torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad negative_prompt_embeds_batches if necessary
+            if negative_prompt_embeds is not None:
+                sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+
+        # Stack batches in the same tensor
+        latents_batches = torch.stack(latents_batches)
+        if negative_prompt_embeds is not None:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (negative_prompt_embeds_batch, prompt_embeds_batch) in enumerate(
+                zip(negative_prompt_embeds_batches, prompt_embeds_batches[:])
+            ):
+                prompt_embeds_batches[i] = torch.cat([negative_prompt_embeds_batch, prompt_embeds_batch])
+
+        prompt_embeds_batches = torch.stack(prompt_embeds_batches)
+
+        return latents_batches, prompt_embeds_batches, num_dummy_samples
+
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -207,6 +254,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
+        batch_size: int = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -253,6 +301,8 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
+            batch_size (`int`, *optional*, defaults to 1):
+                The number of images in a batch.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -331,12 +381,18 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
 
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
-                batch_size = 1
+                num_prompts = 1
             elif prompt is not None and isinstance(prompt, list):
-                batch_size = len(prompt)
+                num_prompts = len(prompt)
             else:
-                batch_size = prompt_embeds.shape[0]
-
+                num_prompts = prompt_embeds.shape[0]
+            num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
+            logger.info(
+                f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
+                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+            )
+            if num_batches < 3:
+                logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
             device = self._execution_device
 
             # 3. Encode input prompt
@@ -354,11 +410,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                 lora_scale=text_encoder_lora_scale,
                 clip_skip=self.clip_skip,
             )
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            if self.do_classifier_free_guidance:
-                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
             if ip_adapter_image is not None:
                 image_embeds = self.prepare_ip_adapter_image_embeds(
@@ -370,8 +421,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
 
             # 5. set timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-            timesteps = timesteps.to(device)  # HPU Patch
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
             # 6. Prepare latent variables
@@ -401,10 +450,28 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
 
-            # 8. Denoising loop
+            # 8. Split into batches (HPU-specific step)
+            latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
+                batch_size,
+                latents,
+                prompt_embeds,
+                negative_prompt_embeds,
+            )
+
+            outputs = {
+                "images": [],
+                "has_nsfw_concept": [],
+            }
+
+            # 9. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for j in self.progress_bar(range(num_batches)):
+                latents_batch = latents_batches[0]
+                latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+                text_embeddings_batch = text_embeddings_batches[0]
+                text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+
                 for i in range(num_inference_steps):  # HPU Patch
                     t = timesteps[0]  # HPU Patch
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)  # HPU Patch
@@ -413,14 +480,16 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                         continue
 
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
                         latent_model_input,
                         t,
-                        encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states=text_embeddings_batch,
                         timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,
                         added_cond_kwargs=added_cond_kwargs,
@@ -432,7 +501,9 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                    latents_batch = self.scheduler.step(
+                        noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
 
                     # HPU Patch
                     if not self.use_hpu_graphs:
@@ -444,41 +515,74 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                        latents_batch = callback_outputs.pop("latents", latents_batch)
+                        text_embeddings_batch = callback_outputs.pop("prompt_embeds", text_embeddings_batch)
+                        # negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
 
-            if not output_type == "latent":
-                image = self.vae.decode(
-                    latents / self.vae.config.scaling_factor, return_dict=False, generator=generator
-                )[0]
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+                if not output_type == "latent":
+                    image = self.vae.decode(
+                        latents_batch / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                    )[0]
+                else:
+                    image = latents_batch
 
-            else:
-                image = latents
-                has_nsfw_concept = None
 
-            if has_nsfw_concept is None:
-                do_denormalize = [True] * image.shape[0]
-            else:
-                do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+                outputs["images"].append(image)
 
-            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+            # Remove dummy generations if needed
+            if num_dummy_samples > 0:
+                outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
+
+            # Process generated images
+            for i, image in enumerate(outputs["images"][:]):
+                if i == 0:
+                    outputs["images"].clear()
+
+                if output_type == "latent":
+                    has_nsfw_concept = None
+                else:
+                    image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
+                if has_nsfw_concept is None:
+                    do_denormalize = [True] * image.shape[0]
+                else:
+                    do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+                image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+                if output_type == "pil" and isinstance(image, list):
+                    outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
+                else:
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
+
+                if has_nsfw_concept is not None:
+                    outputs["has_nsfw_concept"] += has_nsfw_concept
+                else:
+                    outputs["has_nsfw_concept"] = None
 
             # Offload all models
             self.maybe_free_model_hooks()
 
             if not return_dict:
-                return (image, has_nsfw_concept)
+                return (outputs["images"], outputs["has_nsfw_concept"])
 
-            return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+            return StableDiffusionPipelineOutput(
+                images=outputs["images"], nsfw_content_detected=outputs["has_nsfw_concept"]
+            )
 
     @torch.no_grad()
     def unet_hpu(
