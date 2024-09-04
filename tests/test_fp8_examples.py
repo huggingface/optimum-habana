@@ -71,7 +71,7 @@ def _test_fp8_train(
     if model_name == "mistralai/Mistral-7B-Instruct-v0.2":
         command += [
             "--num_train_epochs 3",
-            "--evaluation_strategy no",
+            "--eval_strategy no",
             "--save_strategy no",
             "--learning_rate 4e-4",
             "--warmup_ratio 0.03",

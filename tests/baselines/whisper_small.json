@@ -26,7 +26,8 @@
                         "--predict_with_generate",
                         "--use_hpu_graphs_for_inference",
                         "--label_features_max_length 128",
-                        "--pipelining_fwd_bwd True"
+                        "--pipelining_fwd_bwd True",
+                        "--trust_remote_code True"
                     ]
                 }
             }
@@ -58,7 +59,8 @@
                         "--dataloader_num_workers 8",
                         "--predict_with_generate",
                         "--use_hpu_graphs_for_inference",
-                        "--label_features_max_length 128"
+                        "--label_features_max_length 128",
+                        "--trust_remote_code True"
                     ]
                 }
             }

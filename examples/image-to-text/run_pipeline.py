@@ -89,12 +89,17 @@ def main():
     parser.add_argument(
         "--ignore_eos",
         action="store_true",
-        help="Whether to ignore eos, set False to disable it.",
+        help="Whether to disable stopping with eos token when calling `generate`.",
     )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
 
     args = parser.parse_args()
@@ -156,6 +161,7 @@ def main():
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
+        "flash_attention_recompute": args.flash_attention_recompute,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph

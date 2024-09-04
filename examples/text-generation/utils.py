@@ -177,8 +177,51 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+    if model.config.model_type in ["gpt_bigcode"]:
+        model.transformer = torch.compile(
+            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
+        )
+    else:
+        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
+
+
+def setup_quantization(model, args):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        config = FP8Config.from_json_file(args.quant_config)
+        if config.measure:
+            model = prepare(model, config)
+        elif config.quantize:
+            model = convert(model, config)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
+
+    return model
+
+
+def finalize_quantization(model):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import finalize_calibration
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        finalize_calibration(model)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.finish_measurements(model)
 
 
 def setup_model(args, model_dtype, model_kwargs, logger):
@@ -203,6 +246,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
+    elif args.load_quantized_model:
+        from neural_compressor.torch.quantization import load
+
+        model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -215,11 +262,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
             )
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
-        if args.assistant_model is not None:
-            habana_quantization_toolkit.quantize_model(assistant_model)
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
     if args.assistant_model is not None:
@@ -241,11 +284,77 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             if model.peft_type == "ADAPTION_PROMPT":
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
     return model, assistant_model
+
+
+def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir):
+    from typing import Any, MutableMapping
+
+    from optimum.habana.distributed import serialization
+    from optimum.habana.distributed.strategy import TensorParallelStrategy
+
+    logger.info("Multi-device run.")
+
+    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
+    assert args.assistant_model is None, "Assistant model must be None"
+
+    from torch import distributed as dist
+
+    if args.device == "hpu":
+        dist.init_process_group(backend="hccl")
+    else:
+        assert False, "Supports TP only on HPU"
+
+    torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+    logger.info("Creating Model")
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    model_kwargs = {}
+    model_kwargs["parallel_strategy"] = TensorParallelStrategy()
+    model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype, **model_kwargs)
+
+    initial_device = torch.device("cpu")
+    source = "hf"
+    checkpoint_sharding = None
+    lazy_sd: MutableMapping[str, Any] = {}
+    logger.info("Loading Checkpoints")
+    lazy_sd = serialization.load_state_dict(
+        cache_dir,
+        source=source,
+        distributed_strategy=args.parallel_strategy,
+        checkpoint_sharding=None,
+        initial_device=initial_device,
+        rank=args.global_rank,
+        world_size=args.world_size,
+    )
+    architecture = "llama"
+    if len(lazy_sd):
+        serialization.load_state_dict_into_model(
+            model,
+            lazy_sd,
+            architecture,
+            source,
+            args.parallel_strategy,
+            checkpoint_sharding,
+            initial_device,
+            args.local_rank,
+            args.world_size,
+        )
+
+    model = model.eval().to(args.device)
+
+    if args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+        model = wrap_in_hpu_graph(model)
+
+    if args.torch_compile:
+        model = get_torch_compiled_model(model)
+
+    return model, args.assistant_model
 
 
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
@@ -310,17 +419,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon", "qwen2"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
-        import habana_quantization_toolkit
+        model = setup_quantization(model, args)
 
-        habana_quantization_toolkit.prep_model(model)
-        if args.assistant_model is not None:
-            habana_quantization_toolkit.prep_model(assistant_model)
-
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
@@ -455,6 +560,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
+    generation_config.top_k = args.top_k
+    generation_config.penalty_alpha = args.penalty_alpha
     generation_config.bad_words_ids = bad_words_ids
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
@@ -500,7 +607,7 @@ def initialize_model(args, logger):
     setup_env(args)
     setup_device(args)
     set_seed(args.seed)
-    get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
+    cache_dir = get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
@@ -515,6 +622,10 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
+
+    if args.load_quantized_model:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+
     if args.trust_remote_code:
         logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")
 
@@ -522,7 +633,10 @@ def initialize_model(args, logger):
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
+        if not args.parallel_strategy == "tp"
+        else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
+
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 

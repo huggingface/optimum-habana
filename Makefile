@@ -62,6 +62,21 @@ fast_test_videomae:
 	python -m pip install .[tests]
 	python -m pytest tests/test_video_mae.py
 
+# Run unit and integration tests related to Image segmentation
+fast_tests_object_detection:
+	python -m pip install .[tests]
+	python -m pytest tests/test_object_detection.py
+
+# Run integration tests related to table transformers
+fast_tests_table_transformers:
+	python -m pip install .[tests]
+	python -m pytest tests/test_table_transformer.py
+
+# Run non-performance regressions
+slow_tests_custom_file_input: test_installs
+	python -m pip install -r examples/language-modeling/requirements.txt
+	python -m pytest tests/test_custom_file_input.py
+
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
@@ -75,7 +90,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -88,7 +103,7 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests
@@ -150,13 +165,13 @@ clean:
 	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
 	find . -name checkpoints.json -type f -delete
+	find . -name hpu_profile -type d -exec rm -r {} +
 	rm -rf regression/
 	rm -rf tmp_trainer/
 	rm -rf test/
 	rm -rf build/
 	rm -rf dist/
 	rm -rf optimum_habana.egg-info/
-	rm -rf hpu_profile/
 
 test_installs:
 	python -m pip install .[tests]

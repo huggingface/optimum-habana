@@ -19,7 +19,7 @@ The following example is for the supervised Lora finetune with Qwen2 model for c
         --output_dir ./model_qwen \
         --num_train_epochs 1 \
         --per_device_train_batch_size 16 \
-        --evaluation_strategy "no" \
+        --eval_strategy "no" \
         --save_strategy "no" \
         --learning_rate 3e-4 \
         --warmup_ratio  0.03 \
@@ -244,10 +244,10 @@ python run_generation.py \
 
 ### Training
 The following example is for fine-tuning stable diffusion using Denoising Diffusion Policy Optimization
-([DDPO](https://huggingface.co/docs/trl/en/ddpo_trainer)). The implementation supports LoRA and 
+([DDPO](https://huggingface.co/docs/trl/en/ddpo_trainer)). The implementation supports LoRA and
 non-LoRA-based training. LoRA based training is faster and less finicky to converge than non-LoRA
-based training. Recommendations for non-Lora based training (described [here](https://huggingface.co/blog/trl-ddpo)) 
-are setting the learning rate relatively low (e.g., 1e-5) and disabling mixed precision training. 
+based training. Recommendations for non-Lora based training (described [here](https://huggingface.co/blog/trl-ddpo))
+are setting the learning rate relatively low (e.g., 1e-5) and disabling mixed precision training.
 HPU graphs are enabled by default for better performance.
 
 There are two main steps to the DDPO training process:
@@ -272,7 +272,7 @@ python ddpo.py \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
   --push_to_hub False
 ```
-   
+
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
 ```python
 import torch

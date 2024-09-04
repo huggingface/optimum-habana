@@ -11,14 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from diffusers import EulerDiscreteScheduler
 from diffusers.configuration_utils import register_to_config
-from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteSchedulerOutput
+from diffusers.utils.torch_utils import randn_tensor
 
 from optimum.utils import logging
 
@@ -104,6 +104,7 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
 
         self._initial_timestep = None
         self.reset_timestep_dependent_params()
+        self.hpu_opt = False
 
     def reset_timestep_dependent_params(self):
         self.are_timestep_dependent_params_set = False
@@ -160,7 +161,13 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
                 A scaled input sample.
         """
 
-        sigma, _ = self.get_params(timestep)
+        if self.hpu_opt:
+            if self.step_index is None:
+                self._init_step_index(timestep)
+            self.sigmas = self.sigmas.to(sample.dtype)
+            sigma = self.sigmas[self.step_index]
+        else:
+            sigma, _ = self.get_params(timestep)
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
         return sample
@@ -224,19 +231,33 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
+        if self.hpu_opt and self.step_index is None:
+            self._init_step_index(timestep)
+
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
 
-        sigma, sigma_next = self.get_params(timestep)
+        if self.hpu_opt:
+            sigma = self.sigmas[self.step_index]
+        else:
+            sigma, sigma_next = self.get_params(timestep)
 
-        gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
+        if self.hpu_opt and sigma.device.type == "hpu":
+            gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1)
+        else:
+            gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
-        device = model_output.device
+        if self.hpu_opt:
+            noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+            )
+        else:
+            device = model_output.device
 
-        # torch.randn is broken on HPU so running it on CPU
-        noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator)
-        if device.type == "hpu":
-            noise = noise.to(device)
+            # torch.randn is broken on HPU so running it on CPU
+            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator)
+            if device.type == "hpu":
+                noise = noise.to(device)
 
         eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)
@@ -262,7 +283,10 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
 
-        dt = sigma_next - sigma_hat
+        if self.hpu_opt:
+            dt = self.sigmas[self.step_index + 1] - sigma_hat
+        else:
+            dt = sigma_next - sigma_hat
 
         prev_sample = sample + derivative * dt
 
@@ -271,7 +295,8 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
 
         # upon completion increase step index by one
         self._step_index += 1
-        self.roll_params()
+        if not self.hpu_opt:
+            self.roll_params()
 
         if not return_dict:
             return (prev_sample,)
