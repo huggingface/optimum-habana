@@ -72,6 +72,14 @@ python3 run_pipeline.py \
     --bf16
 ```
 
+To run paligemma inference, use the following command:
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path google/paligemma-3b-mix-224 \
+    --use_hpu_graphs \
+    --bf16
+```
+
 ### Inference with FP8
 
 Inference for Llava-1.5-7b, Llava-1.5-13b, Llava-v1.6-mistral-7b and Llava-v1.6-vicuna-13b in FP8 precision are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
