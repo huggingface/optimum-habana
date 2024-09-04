@@ -25,6 +25,7 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 # Copied from transformers.models.bart.modeling_bart.shift_tokens_right
 def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
     """
@@ -40,6 +41,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
     shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
     return shifted_input_ids
+
 
 class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
     def forward(
@@ -156,6 +158,7 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
 
         return attn_output, None, past_key_value
 
+
 # Now only support the default GaudiWhisperSdpaAttention
 GAUDI_WHISPER_ATTENTION_CLASSES = {
     "eager": WhisperAttention,
@@ -238,6 +241,7 @@ class GaudiWhisperDecoderLayer(WhisperDecoderLayer):
 
         return outputs
 
+
 class GaudiWhisperDecoder(WhisperDecoder):
     def forward(
         self,
@@ -309,7 +313,7 @@ class GaudiWhisperDecoder(WhisperDecoder):
             )
 
         if position_ids is None and token_idx:
-            position_ids = (token_idx-1).unsqueeze(0)
+            position_ids = (token_idx - 1).unsqueeze(0)
         # embed positions
         if input_ids is not None:
             positions = self.embed_positions(
@@ -502,6 +506,7 @@ class GaudiWhisperModel(WhisperModel):
             encoder_hidden_states=encoder_outputs.hidden_states,
             encoder_attentions=encoder_outputs.attentions,
         )
+
 
 class GaudiWhisperForConditionalGeneration(WhisperForConditionalGeneration):
     def forward(
