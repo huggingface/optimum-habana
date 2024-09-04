@@ -77,8 +77,8 @@ except (LookupError, OSError):
         raise LookupError(
             "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
         )
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
+    #with FileLock(".lock") as lock:
+    nltk.download("punkt", quiet=True)
 
 nltk.download("punkt_tab")  # Needed for version 3.8.2
 
