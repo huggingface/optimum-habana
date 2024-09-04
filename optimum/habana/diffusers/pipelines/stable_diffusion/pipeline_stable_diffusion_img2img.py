@@ -532,7 +532,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                 else:
                     image = latents_batch
 
-
                 outputs["images"].append(image)
 
             # Remove dummy generations if needed
