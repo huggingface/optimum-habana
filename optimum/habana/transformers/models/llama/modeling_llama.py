@@ -1401,6 +1401,17 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
         return model_inputs
 
+    # _reorder_cache has been removed from Transformer 4.43.0.
+    # Copied from previous version of Transformer 4.42.4
+    @staticmethod
+    def _reorder_cache(past_key_values, beam_idx):
+        reordered_past = ()
+        for layer_past in past_key_values:
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
+            )
+        return reordered_past
+
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and has_fused_rope:
