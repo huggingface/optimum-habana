@@ -83,8 +83,16 @@ python3 run_pipeline.py \
     --bf16
 ```
 
-To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
+To run google/paligemma-3b-mix-224 inference, use the following command:
 
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path google/paligemma-3b-mix-224 \
+    --use_hpu_graphs \
+    --bf16
+```
+
+To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
