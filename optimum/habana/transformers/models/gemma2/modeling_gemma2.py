@@ -329,6 +329,7 @@ class GaudiGemma2Attention(Gemma2Attention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -364,7 +365,7 @@ class GaudiGemma2Attention(Gemma2Attention):
                 else:
                     kv_seq_len += past_key_value[0].shape[-2]
             else:
-                if reuse_cache:
+                if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
@@ -402,11 +403,13 @@ class GaudiGemma2Attention(Gemma2Attention):
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
 
+            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
                     attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None, "None"
                     )
             else:
                 # first token
@@ -423,7 +426,7 @@ class GaudiGemma2Attention(Gemma2Attention):
                             htcore.mark_step()
                         else:
                             attn_output = FusedSDPA.apply(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None
+                                query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                             )
 
         else:
@@ -460,6 +463,11 @@ class GaudiGemma2Attention(Gemma2Attention):
 
         if not output_attentions:
             attn_weights = None
+
+        if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
+            # Return only past key value shapes and not the tensors during decode phase (q len is 1)
+            # to avoid making past key values as persistent output tensors of HPU graphs.
+            past_key_value = (past_key_value[0].shape, past_key_value[1].shape)
 
         return attn_output, attn_weights, past_key_value
 
@@ -517,25 +525,27 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
 
         hidden_states = self.input_layernorm(hidden_states)
 
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
-            use_flash_attention,
-            flash_attention_recompute,
-            flash_attention_causal_mask,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
         )
         return hidden_states, attn_weights, present_key_value
@@ -555,6 +565,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -578,6 +589,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
         )
 
@@ -658,6 +670,7 @@ class GaudiGemma2Model(Gemma2Model):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
@@ -781,6 +794,8 @@ class GaudiGemma2Model(Gemma2Model):
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
+                    flash_attention_fast_softmax,
+                    None
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -797,6 +812,7 @@ class GaudiGemma2Model(Gemma2Model):
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
                     flash_attention_causal_mask=flash_attention_causal_mask,
+                    flash_attention_fast_softmax=flash_attention_fast_softmax,
                     cache_idx=cache_idx,
                 )
 
@@ -858,6 +874,15 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -883,11 +908,28 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            cache_idx=cache_idx,
+            lazy_mode=lazy_mode,
         )
 
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
+
         logits = self.lm_head(hidden_states)
         logits = logits.float()
+
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
@@ -933,6 +975,9 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
         """
 
+        reuse_cache = kwargs.get("reuse_cache")
+        bucket_internal = kwargs.get("bucket_internal")
+
         token_idx = kwargs.get("token_idx", None)
 
         if past_key_values is not None:
@@ -946,6 +991,11 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             else:
                 # past_length += token_idx
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+        elif (reuse_cache or bucket_internal) and token_idx is not None:
+            # KV cache is pre allocated with reuse cache or will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
@@ -978,6 +1028,15 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "reuse_cache": reuse_cache,
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
+                "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
             }
         )
         return model_inputs
