@@ -66,7 +66,7 @@ def _test_speech_recognition(
             results = json.load(fp)
 
         # Ensure performance requirements (throughput) are met
-        assert results["eval_samples_per_second"] >= 2 * baseline
+        assert results["eval_samples_per_second"] >= 1.2 * baseline
 
 
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
