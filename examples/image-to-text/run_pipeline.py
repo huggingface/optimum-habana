@@ -19,14 +19,19 @@ import logging
 import os
 import time
 from pathlib import Path
-
+import tempfile
 import PIL.Image
 import requests
 import torch
 from transformers import AutoConfig, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
+from optimum.habana.checkpoint_utils import (
+    get_repo_root,
+    model_on_meta,
+    write_checkpoints_json,
+    get_ds_injection_policy,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -149,12 +154,66 @@ def main():
 
         htcore.hpu_set_env()
 
-    generator = pipeline(
-        "image-to-text",
-        model=args.model_name_or_path,
-        torch_dtype=model_dtype,
-        device="hpu",
-    )
+    world_size = int(os.getenv("WORLD_SIZE", "1"))
+    rank = int(os.getenv("RANK", "0"))
+
+    if world_size > 1:
+        import deepspeed
+        from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+
+        world_size, rank, local_rank = initialize_distributed_hpu()
+
+        # Initialize process(es) for DeepSpeed
+        deepspeed.init_distributed(dist_backend="hccl")
+        logger.info(
+            "DeepSpeed is enabled. world_size {} rank {} local_rank {}".format(world_size, rank, local_rank)
+        )
+        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        load_to_meta = model_on_meta(config)
+
+        if load_to_meta:
+            # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
+            with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+                generator = pipeline(
+                    "image-to-text",
+                    model=args.model_name_or_path,
+                    torch_dtype=model_dtype,
+                    device="hpu",
+                )
+
+        else:
+            get_repo_root(args.model_name_or_path, local_rank=os.getenv("LOCAL_RANK"))
+            # TODO: revisit placement on CPU when auto-injection is possible
+            with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+                generator = pipeline(
+                    "image-to-text",
+                    model=args.model_name_or_path,
+                    torch_dtype=model_dtype,
+                    device="hpu",
+                )
+        # Initialize the model
+        ds_inference_kwargs = {"dtype": model_dtype}
+        ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+        ds_inference_kwargs["enable_cuda_graph"] = False
+        ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(generator.model.language_model.config)
+
+        if load_to_meta:
+            # model loaded to meta is managed differently
+            checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
+            write_checkpoints_json(args.model_name_or_path, local_rank, checkpoints_json)
+            ds_inference_kwargs["checkpoint"] = checkpoints_json.name
+
+        model = deepspeed.init_inference(generator.model, **ds_inference_kwargs)
+        generator.model = model.module
+
+    else:
+        generator = pipeline(
+            "image-to-text",
+            model=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
+
     generate_kwargs = {
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
