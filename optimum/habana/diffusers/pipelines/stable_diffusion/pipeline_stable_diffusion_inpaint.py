@@ -68,7 +68,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -335,7 +335,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         >>> mask_image = download_image(mask_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-2-inpainting", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

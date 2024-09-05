@@ -625,7 +625,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ]
         num_images_per_prompt = 11
         batch_size = 4
-        model_name = "runwayml/stable-diffusion-v1-5"
+        model_name = "CompVis/stable-diffusion-v1-4"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
@@ -824,7 +824,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     "--world_size",
                     "8",
                     f"{path_to_script}",
-                    "--pretrained_model_name_or_path runwayml/stable-diffusion-v1-5",
+                    "--pretrained_model_name_or_path CompVis/stable-diffusion-v1-4",
                     f"--train_data_dir {data_dir}",
                     '--learnable_property "object"',
                     '--placeholder_token "<cat-toy>"',
@@ -2122,7 +2122,7 @@ class TrainControlNet(TestCase):
                     --use_mpi
                     --world_size 8
                     {path_to_script}
-                    --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
+                    --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
                     --dataset_name fusing/fill50k
                     --resolution 512
                     --train_batch_size 4
@@ -2136,6 +2136,7 @@ class TrainControlNet(TestCase):
                     --bf16
                     --num_train_epochs 1
                     --output_dir {tmpdir}
+                    --trust_remote_code
                 """.split()
 
             # Run train_controlnet.y
@@ -2154,7 +2155,7 @@ class TrainControlNet(TestCase):
             # Assess generated image
             controlnet = ControlNetModel.from_pretrained(tmpdir, torch_dtype=torch.bfloat16)
             pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
-                "runwayml/stable-diffusion-v1-5",
+                "CompVis/stable-diffusion-v1-4",
                 controlnet=controlnet,
                 torch_dtype=torch.bfloat16,
                 use_habana=True,
@@ -2958,7 +2959,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             test_args = f"""
                 python3
                 {path_to_script}
-                --model_name_or_path runwayml/stable-diffusion-v1-5
+                --model_name_or_path CompVis/stable-diffusion-v1-4
                 --num_images_per_prompt 20
                 --batch_size 4
                 --image_save_dir /tmp/stable_diffusion_images
@@ -2980,7 +2981,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
     def test_deterministic_image_generation_no_throughput_regression_bf16(self):
         kwargs = {"timestep_spacing": "linspace"}
         scheduler = GaudiDDIMScheduler.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", **kwargs, subfolder="scheduler"
+            "CompVis/stable-diffusion-v1-4", **kwargs, subfolder="scheduler"
         )
 
         kwargs = {
@@ -2991,7 +2992,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         }
 
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "CompVis/stable-diffusion-v1-4",
             **kwargs,
         )
 
@@ -4649,7 +4650,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
         ]
         num_images_per_prompt = 10
         num_inference_steps = 10
-        model_name = "runwayml/stable-diffusion-inpainting"
+        model_name = "stabilityai/stable-diffusion-2-inpainting"
 
         init_kwargs = {
             "use_habana": True,

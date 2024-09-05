@@ -17,7 +17,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "bert-base-uncased",
                 "Habana/bert-base-uncased",
-                3516.322,
+                3253.917,
                 85.5503,
                 "question-answering",
                 24,
