@@ -479,6 +479,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                 active=profiling_steps,
                 record_shapes=False,
             )
+            hb_profiler.start()
 
             # 9. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
