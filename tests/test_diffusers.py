@@ -81,6 +81,9 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionConfig,
     CLIPVisionModelWithProjection,
+    DPTConfig,
+    DPTFeatureExtractor,
+    DPTForDepthEstimation,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
@@ -93,6 +96,7 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
+    GaudiStableDiffusionDepth2ImgPipeline,
     GaudiStableDiffusionImageVariationPipeline,
     GaudiStableDiffusionInpaintPipeline,
     GaudiStableDiffusionInstructPix2PixPipeline,
@@ -125,6 +129,7 @@ if IS_GAUDI2:
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
+    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 28.13371205329895
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -137,6 +142,7 @@ else:
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 1000  # TODO: Get Gaudi 1 benchmark numbers
+    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 200  # TODO: Get Gaudi 1 Throughput
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -1996,6 +2002,248 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
+
+class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
+    """
+    Tests for depth to image generation
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=5,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+        )
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        backbone_config = {
+            "global_padding": "same",
+            "layer_type": "bottleneck",
+            "depths": [3, 4, 9],
+            "out_features": ["stage1", "stage2", "stage3"],
+            "embedding_dynamic_padding": True,
+            "hidden_sizes": [96, 192, 384, 768],
+            "num_groups": 2,
+        }
+        depth_estimator_config = DPTConfig(
+            image_size=32,
+            patch_size=16,
+            num_channels=3,
+            hidden_size=32,
+            num_hidden_layers=4,
+            backbone_out_indices=(0, 1, 2, 3),
+            num_attention_heads=4,
+            intermediate_size=37,
+            hidden_act="gelu",
+            hidden_dropout_prob=0.1,
+            attention_probs_dropout_prob=0.1,
+            is_decoder=False,
+            initializer_range=0.02,
+            is_hybrid=True,
+            backbone_config=backbone_config,
+            backbone_featmap_shape=[1, 384, 24, 24],
+        )
+        depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
+        feature_extractor = DPTFeatureExtractor.from_pretrained(
+            "hf-internal-testing/tiny-random-DPTForDepthEstimation"
+        )
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "depth_estimator": depth_estimator,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def get_dummy_image(self, shape=(1, 3, 32, 32), seed=0):
+        image = floats_tensor(shape, rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize(shape[-2:])
+        return image
+
+    def test_depth2img_pipeline_default(self):
+        components = self.get_dummy_components()
+        inputs = self.get_dummy_inputs("cpu")
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(**inputs)
+        image = outputs.images[0]
+        image = np.array(image)
+        image_slice = image[-3:, -3:, -1]
+        expected_slice = np.array(
+            [0.42007083, 0.44642246, 0.44746736, 0.4038852, 0.560547, 0.5513845, 0.5325784, 0.5170926, 0.46997207]
+        )
+
+        assert image.shape == (32, 32, 3)
+        assert np.allclose(image_slice.flatten(), expected_slice)
+
+    def test_depth2img_pipeline_batch(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt=["A painting of a squirrel eating a burger", "A painting of a squirrel eating a burger"],
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 2
+        assert images[-1].shape == (32, 32, 3)
+
+    def test_depth2img_pipeline_bf16(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt="A painting of a squirrel eating a burger",
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 1
+        assert images[0].shape == (32, 32, 3)
+
+    def test_depth2img_pipeline_hpu_graphs(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt="A painting of a squirrel eating a burger",
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 1
+        assert images[0].shape == (32, 32, 3)
+
+    @slow
+    def test_depth2img_pipeline_latency_bf16(self):
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+        model_name = "stabilityai/stable-diffusion-2-depth"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline.from_pretrained(
+            model_name, gaudi_config=gaudi_config, scheduler=scheduler, use_habana=True, use_hpu_graphs=True
+        )
+        image = Image.open(
+            requests.get(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png",
+                stream=True,
+            ).raw
+        )
+        prompt = "A fancy meal with soup and pancakes"
+
+        start_time = time.time()
+        outputs = pipe(
+            prompt=prompt,
+            image=image,
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=50,
+            output_type="np",
+        )
+        end_time = time.time()
+        latency = end_time - start_time
+        images = outputs.images
+        clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
+        target_score = 22.76
+
+        assert len(images) == 1
+        assert images[0].shape == (512, 512, 3)
+        assert clip_score > target_score
+
+        assert latency < 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16
 
 
 class TrainTextToImage(TestCase):
