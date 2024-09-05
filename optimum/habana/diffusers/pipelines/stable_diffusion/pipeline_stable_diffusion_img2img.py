@@ -483,9 +483,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
 
             # 9. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
-            use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps < num_inference_steps
-            )
+            use_warmup_inference_steps = num_batches < throughput_warmup_steps < num_inference_steps
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
             for j in self.progress_bar(range(num_batches)):
