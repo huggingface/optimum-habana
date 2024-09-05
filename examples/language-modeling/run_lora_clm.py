@@ -265,7 +265,7 @@ class DataArguments:
     )
     chat_prompt: bool = field(
         default=False,
-        metadata={"help": "Whether to have a chat style prompt"},
+        metadata={"help": "Whether to have a chat style prompt."},
     )
     save_last_ckpt: bool = field(
         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
