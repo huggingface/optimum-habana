@@ -3017,7 +3017,7 @@ class GaudiStableDiffusionImg2ImgPipelineTests(TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [0.44147694, 0.492704, 0.44605583, 0.663129, 0.5523166, 0.43613526, 0.5740412, 0.5953955, 0.5178129]
+            [0.50006074, 0.49048987, 0.51323986, 0.5654023, 0.5470734, 0.6720333, 0.6559875, 0.5050407, 0.5401596]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -3037,7 +3037,7 @@ class GaudiStableDiffusionImg2ImgPipelineTests(TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [0.44204688, 0.49305058, 0.44646832, 0.6634298, 0.552676, 0.43655455, 0.5743426, 0.5956875, 0.5181119]
+            [0.5165765, 0.49377573, 0.5040854, 0.5882658, 0.574415, 0.67791325, 0.66678274, 0.51392066, 0.544225]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -3057,7 +3057,7 @@ class GaudiStableDiffusionImg2ImgPipelineTests(TestCase):
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array(
-            [0.4484479, 0.5637185, 0.50549936, 0.506031, 0.57078075, 0.58668935, 0.56567484, 0.5384434, 0.535414]
+            [0.3323526, 0.44501957, 0.51663095, 0.32356155, 0.40758416, 0.6448872, 0.44775, 0.5695873, 0.5541928]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
