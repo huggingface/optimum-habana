@@ -98,6 +98,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
     GaudiStableDiffusionImageVariationPipeline,
+    GaudiStableDiffusionImg2ImgPipeline,
     GaudiStableDiffusionInpaintPipeline,
     GaudiStableDiffusionInstructPix2PixPipeline,
     GaudiStableDiffusionLDM3DPipeline,
@@ -2922,6 +2923,144 @@ class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
         expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
 
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-3)
+
+
+class GaudiStableDiffusionImg2ImgPipelineTests(TestCase):
+    """
+    Tests the class StableDiffusionImg2ImgPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py
+    """
+
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            time_cond_proj_dim=time_cond_proj_dim,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        scheduler = PNDMScheduler(skip_prk_steps=True, steps_offset=1)
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+            "image_encoder": None,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": GaudiConfig(use_torch_autocast=False),
+        }
+        return components
+
+    def get_dummy_tiny_autoencoder(self):
+        return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_stable_diffusion_img2img_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.50006074, 0.49048987, 0.51323986, 0.5654023, 0.5470734, 0.6720333, 0.6559875, 0.5050407, 0.5401596]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_img2img_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.5165765, 0.49377573, 0.5040854, 0.5882658, 0.574415, 0.67791325, 0.66678274, 0.51392066, 0.544225]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_img2img_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        image = sd_pipe(**inputs).images
+        image_slice = image[-1, -3:, -3:, -1]
+
+        assert image.shape == (2, 32, 32, 3)
+        expected_slice = np.array(
+            [0.3323526, 0.44501957, 0.51663095, 0.32356155, 0.40758416, 0.6448872, 0.44775, 0.5695873, 0.5541928]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
 class GaudiStableDiffusionImageVariationPipelineTests(TestCase):

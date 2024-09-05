@@ -57,8 +57,8 @@ def main():
     )
     parser.add_argument(
         "--src_image_path",
-        default=None,
         type=str,
+        required=True,
         help="Path to source image",
     )
     # Pipeline arguments
@@ -230,6 +230,8 @@ def main():
         from optimum.habana.diffusers import GaudiStableDiffusionImageVariationPipeline as Img2ImgPipeline
 
         kwargs["revision"] = "v2.0"
+    else:
+        from optimum.habana.diffusers import GaudiStableDiffusionImg2ImgPipeline as Img2ImgPipeline
 
     if "image-variations" in args.model_name_or_path:
         im = PIL.Image.open(requests.get(args.src_image_path, stream=True).raw)
