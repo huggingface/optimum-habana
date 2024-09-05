@@ -190,6 +190,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    context_parallel_size: Optional[int] = field(
+        default=1,
+        metadata={"help": ("Determines how many ranks are divided into context parallel group.")},
+    )
+
     throughput_warmup_steps: Optional[int] = field(
         default=0,
         metadata={
@@ -917,6 +922,7 @@ class GaudiTrainingArguments(TrainingArguments):
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

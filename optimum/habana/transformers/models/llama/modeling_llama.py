@@ -20,6 +20,8 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
+from optimum.habana import parallel_state
+
 from .... import distributed
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ....distributed.tensorparallel import (
@@ -118,7 +120,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
                 self.rope_type = "default"
             self.max_seq_len_cached = config.max_position_embeddings
             # Truncate the cached max sequence length to 8k to limit cached register buffer size
-            if config.max_position_embeddings > 8192 and self.rope_type == "llama3":
+            if not self.training and config.max_position_embeddings > 8192 and self.rope_type == "llama3":
                 self.max_seq_len_cached = 8192
             self.original_max_seq_len = config.max_position_embeddings
 
@@ -443,6 +445,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
             self.head_dim = config.hidden_size // self.num_heads
@@ -469,6 +472,14 @@ class GaudiLlamaAttention(LlamaAttention):
             if FusedSDPA
             else None
         )
+        # https://github.com/microsoft/DeepSpeed/issues/4359
+        # for all2all comm, Distributed Attention cares about sequence (s) and number of heads (h) dimensions. In HPU, they are at 1 and 2 indices
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            from deepspeed.sequence.layer import DistributedAttention
+
+            self.fused_scaled_dot_product_attention = DistributedAttention(
+                self.fused_scaled_dot_product_attention, parallel_state.get_sequence_parallel_group(), 1, 2
+            )
 
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
@@ -610,8 +621,22 @@ class GaudiLlamaAttention(LlamaAttention):
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         # else:
         # cos, sin = position_embeddings
+        seq_len = kv_seq_len
+        if parallel_state.sequence_parallel_is_initialized():
+            seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=seq_len)
+        # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
+        # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
+            position_ids = torch.arange(
+                kv_seq_len * parallel_state.get_sequence_parallel_rank(),
+                kv_seq_len * (parallel_state.get_sequence_parallel_rank() + 1),
+                dtype=torch.long,
+                device=query_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0)
+
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
