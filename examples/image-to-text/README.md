@@ -187,3 +187,70 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --use_hpu_graphs \
 --bf16 --use_flash_attention
 ```
+## LORA Finetune
+
+To run LoRA finetuning, you can use `run_image2text_lora_finetune.py`.
+Here are single-/multi-device command examples for HuggingFaceM4/idefics2-8b.
+
+```bash
+python3 run_image2text_lora_finetune.py \
+    --model_name_or_path HuggingFaceM4/idefics2-8b \
+    --dataset_name nielsr/docvqa_1200_examples \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 8 \
+    --weight_decay 0.01 \
+    --logging_steps 25 \
+    --eval_strategy epoch \
+    --save_strategy "no" \
+    --learning_rate 1e-4 \
+    --warmup_steps  50 \
+    --lr_scheduler_type "constant" \
+    --input_column_names 'image' 'query' \
+    --output_column_names 'answers' \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --lora_rank=8 \
+    --lora_alpha=8 \
+    --lora_dropout=0.1 \
+    --low_cpu_mem_usage True \
+    --lora_target_modules '.*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$'
+```
+
+```bash
+python3 ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_image2text_lora_finetune.py \
+    --model_name_or_path HuggingFaceM4/idefics2-8b \
+    --dataset_name nielsr/docvqa_1200_examples \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 8 \
+    --weight_decay 0.01 \
+    --logging_steps 25 \
+    --eval_strategy epoch \
+    --save_strategy "no" \
+    --learning_rate 1e-4 \
+    --warmup_steps  50 \
+    --lr_scheduler_type "constant" \
+    --input_column_names 'image' 'query' \
+    --output_column_names 'answers' \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --lora_rank=8 \
+    --lora_alpha=8 \
+    --lora_dropout=0.1 \
+    --low_cpu_mem_usage True \
+    --lora_target_modules '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
+```
