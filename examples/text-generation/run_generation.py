@@ -317,7 +317,7 @@ def setup_parser(parser):
         "--conversation_input",
         default=None,
         type=str,
-        help="Optional JSON input file containing chat template for tokenizer.",
+        help="Optional JSON input file containing conversation input.",
     )
     args = parser.parse_args()
 
@@ -390,6 +390,14 @@ def main():
                 1342,  # Pride and Prejudice
             ]
             input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
+        elif args.conversation_input and hasattr(tokenizer, "chat_template"):
+            with open(args.conversation_input, "r") as fh:
+                messages = json.load(fh)
+                try:
+                    input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
+                except Exception as e:
+                    logger.error(f"Error applying chat template to tokenizer: {e}")
+                    sys.exit()
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -402,15 +410,6 @@ def main():
                 "Peace is the only way",
             ]
 
-        # Apply input as conversation if tokenizer has a chat template
-        if args.conversation_input and hasattr(tokenizer, "chat_template"):
-            with open(args.conversation_input, "r") as fh:
-                messages = json.load(fh)
-                try:
-                    input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
-                except Exception as e:
-                    logger.error(f"Error applying chat template to tokenizer: {e}")
-                    sys.exit()
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
