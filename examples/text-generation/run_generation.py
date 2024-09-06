@@ -405,11 +405,7 @@ def main():
         # Apply input as conversation if tokenizer has a chat template
         if args.conversation_input and hasattr(tokenizer, "chat_template"):
             with open(args.conversation_input, "r") as fh:
-                try:
-                    messages = json.load(fh)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error loading {args.conversation_input}: {e}")
-                    sys.exit()
+                messages = json.load(fh)
                 try:
                     input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
                 except Exception as e:
