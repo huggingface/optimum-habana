@@ -153,7 +153,7 @@ You can generate images from prompts using Stable Diffusion on Intel Gaudi using
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "runwayml/stable-diffusion-v1-5"
+model_name = "CompVis/stable-diffusion-v1-4"
 
 - scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 + scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")

@@ -28,7 +28,7 @@ Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stabili
 Here is how to generate images with one prompt:
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 28 \
     --batch_size 7 \
@@ -49,7 +49,7 @@ python text_to_image_generation.py \
 Here is how to generate images with several prompts:
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 32 \
     --batch_size 8 \
@@ -65,7 +65,7 @@ Here is how to generate images with two prompts on two HPUs:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
@@ -290,7 +290,7 @@ python text_to_image_generation.py \
 
 > For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
- 
+
 ## ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
@@ -300,7 +300,7 @@ Here is how to generate images conditioned by canny edge model:
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -317,7 +317,7 @@ Here is how to generate images conditioned by canny edge model and with multiple
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -335,7 +335,7 @@ Here is how to generate images conditioned by canny edge model and with two prom
 pip install -r requirements.txt
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -353,7 +353,7 @@ Here is how to generate images conditioned by open pose model:
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
     --prompts "Chef in the kitchen" \
     --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
@@ -394,7 +394,7 @@ please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffuse
 ### Stable Diffusion Inpainting
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path  runwayml/stable-diffusion-inpainting \
+    --model_name_or_path  stabilityai/stable-diffusion-2-inpainting \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \

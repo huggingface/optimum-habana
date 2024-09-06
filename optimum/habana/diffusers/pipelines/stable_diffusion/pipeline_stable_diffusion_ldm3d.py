@@ -70,7 +70,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
