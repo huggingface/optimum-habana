@@ -149,4 +149,9 @@ def get_ds_injection_policy(config):
 
             policy = {LlamaDecoderLayer: ("self_attn.o_proj", "mlp.down_proj")}
 
+        if model_type == "mistral":
+            from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+
+            policy = {MistralDecoderLayer: ("self_attn.o_proj", "mlp.down_proj")}
+
     return policy

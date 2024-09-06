@@ -24,6 +24,7 @@ import random
 import re
 import subprocess
 import tempfile
+import time
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Union
@@ -51,6 +52,7 @@ from diffusers import (
     StableVideoDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
+    UNet3DConditionModel,
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
 )
@@ -79,6 +81,9 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionConfig,
     CLIPVisionModelWithProjection,
+    DPTConfig,
+    DPTFeatureExtractor,
+    DPTForDepthEstimation,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
@@ -91,7 +96,9 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
+    GaudiStableDiffusionDepth2ImgPipeline,
     GaudiStableDiffusionImageVariationPipeline,
+    GaudiStableDiffusionImg2ImgPipeline,
     GaudiStableDiffusionInpaintPipeline,
     GaudiStableDiffusionInstructPix2PixPipeline,
     GaudiStableDiffusionLDM3DPipeline,
@@ -101,6 +108,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
+    GaudiTextToVideoSDPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -119,8 +127,10 @@ if IS_GAUDI2:
     CONTROLNET_RUNTIME = 537.4276602957398
     INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
+    TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
+    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 28.13371205329895
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -132,6 +142,8 @@ else:
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
+    TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 1000  # TODO: Get Gaudi 1 benchmark numbers
+    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 200  # TODO: Get Gaudi 1 Throughput
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -1993,6 +2005,248 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
 
+class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
+    """
+    Tests for depth to image generation
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=5,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+        )
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        backbone_config = {
+            "global_padding": "same",
+            "layer_type": "bottleneck",
+            "depths": [3, 4, 9],
+            "out_features": ["stage1", "stage2", "stage3"],
+            "embedding_dynamic_padding": True,
+            "hidden_sizes": [96, 192, 384, 768],
+            "num_groups": 2,
+        }
+        depth_estimator_config = DPTConfig(
+            image_size=32,
+            patch_size=16,
+            num_channels=3,
+            hidden_size=32,
+            num_hidden_layers=4,
+            backbone_out_indices=(0, 1, 2, 3),
+            num_attention_heads=4,
+            intermediate_size=37,
+            hidden_act="gelu",
+            hidden_dropout_prob=0.1,
+            attention_probs_dropout_prob=0.1,
+            is_decoder=False,
+            initializer_range=0.02,
+            is_hybrid=True,
+            backbone_config=backbone_config,
+            backbone_featmap_shape=[1, 384, 24, 24],
+        )
+        depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
+        feature_extractor = DPTFeatureExtractor.from_pretrained(
+            "hf-internal-testing/tiny-random-DPTForDepthEstimation"
+        )
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "depth_estimator": depth_estimator,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def get_dummy_image(self, shape=(1, 3, 32, 32), seed=0):
+        image = floats_tensor(shape, rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize(shape[-2:])
+        return image
+
+    def test_depth2img_pipeline_default(self):
+        components = self.get_dummy_components()
+        inputs = self.get_dummy_inputs("cpu")
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(**inputs)
+        image = outputs.images[0]
+        image = np.array(image)
+        image_slice = image[-3:, -3:, -1]
+        expected_slice = np.array(
+            [0.42007083, 0.44642246, 0.44746736, 0.4038852, 0.560547, 0.5513845, 0.5325784, 0.5170926, 0.46997207]
+        )
+
+        assert image.shape == (32, 32, 3)
+        assert np.allclose(image_slice.flatten(), expected_slice)
+
+    def test_depth2img_pipeline_batch(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt=["A painting of a squirrel eating a burger", "A painting of a squirrel eating a burger"],
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 2
+        assert images[-1].shape == (32, 32, 3)
+
+    def test_depth2img_pipeline_bf16(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt="A painting of a squirrel eating a burger",
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 1
+        assert images[0].shape == (32, 32, 3)
+
+    def test_depth2img_pipeline_hpu_graphs(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline(
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        outputs = pipe(
+            prompt="A painting of a squirrel eating a burger",
+            image=self.get_dummy_image(),
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=2,
+            output_type="np",
+        )
+        images = outputs.images
+
+        assert len(images) == 1
+        assert images[0].shape == (32, 32, 3)
+
+    @slow
+    def test_depth2img_pipeline_latency_bf16(self):
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+        model_name = "stabilityai/stable-diffusion-2-depth"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipe = GaudiStableDiffusionDepth2ImgPipeline.from_pretrained(
+            model_name, gaudi_config=gaudi_config, scheduler=scheduler, use_habana=True, use_hpu_graphs=True
+        )
+        image = Image.open(
+            requests.get(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png",
+                stream=True,
+            ).raw
+        )
+        prompt = "A fancy meal with soup and pancakes"
+
+        start_time = time.time()
+        outputs = pipe(
+            prompt=prompt,
+            image=image,
+            generator=torch.Generator("cpu").manual_seed(0),
+            num_inference_steps=50,
+            output_type="np",
+        )
+        end_time = time.time()
+        latency = end_time - start_time
+        images = outputs.images
+        clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
+        target_score = 22.76
+
+        assert len(images) == 1
+        assert images[0].shape == (512, 512, 3)
+        assert clip_score > target_score
+
+        assert latency < 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16
+
+
 class TrainTextToImage(TestCase):
     """
     Tests the Stable Diffusion text_to_image Training for Gaudi.
@@ -2671,6 +2925,144 @@ class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-3)
 
 
+class GaudiStableDiffusionImg2ImgPipelineTests(TestCase):
+    """
+    Tests the class StableDiffusionImg2ImgPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py
+    """
+
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            time_cond_proj_dim=time_cond_proj_dim,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        scheduler = PNDMScheduler(skip_prk_steps=True, steps_offset=1)
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+            "image_encoder": None,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": GaudiConfig(use_torch_autocast=False),
+        }
+        return components
+
+    def get_dummy_tiny_autoencoder(self):
+        return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_stable_diffusion_img2img_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.50006074, 0.49048987, 0.51323986, 0.5654023, 0.5470734, 0.6720333, 0.6559875, 0.5050407, 0.5401596]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_img2img_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.5165765, 0.49377573, 0.5040854, 0.5882658, 0.574415, 0.67791325, 0.66678274, 0.51392066, 0.544225]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_img2img_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        image = sd_pipe(**inputs).images
+        image_slice = image[-1, -3:, -3:, -1]
+
+        assert image.shape == (2, 32, 32, 3)
+        expected_slice = np.array(
+            [0.3323526, 0.44501957, 0.51663095, 0.32356155, 0.40758416, 0.6448872, 0.44775, 0.5695873, 0.5541928]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+
 class GaudiStableDiffusionImageVariationPipelineTests(TestCase):
     """
     Tests the class StableDiffusionImageVariationPipeline for Gaudi.
@@ -3007,6 +3399,128 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         )
 
         self.assertGreaterEqual(outputs.throughput, 0.95 * DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT)
+
+
+class GaudiTextToVideoSDPipelineTester(TestCase):
+    """
+    Tests the TextToVideoSDPipeline for Gaudi.
+    Adapted from https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/text_to_video_synthesis/test_text_to_video.py
+    """
+
+    def get_dummy_components(self):
+        set_seed(0)
+        unet = UNet3DConditionModel(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
+            cross_attention_dim=4,
+            attention_head_dim=4,
+            norm_num_groups=2,
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            interpolation_type="linear",
+            num_train_timesteps=1000,
+            prediction_type="v_prediction",
+            sigma_max=700.0,
+            sigma_min=0.002,
+            steps_offset=1,
+            timestep_spacing="leading",
+            timestep_type="continuous",
+            trained_betas=None,
+            use_karras_sigmas=True,
+        )
+        set_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=(8,),
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownEncoderBlock2D",),
+            up_block_types=("UpDecoderBlock2D",),
+            latent_channels=4,
+            sample_size=32,
+            norm_num_groups=2,
+        )
+        set_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=4,
+            intermediate_size=16,
+            layer_norm_eps=1e-05,
+            num_attention_heads=2,
+            num_hidden_layers=2,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_text_to_video_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        sd_pipe = GaudiTextToVideoSDPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        video = sd_pipe(**inputs).videos[0]
+        image_slice = video[0][-3:, -3:, -1]
+
+        assert video[0].shape == (32, 32, 3)
+        expected_slice = np.array(
+            [0.32823694, 0.5277065, 0.5257378, 0.51532686, 0.62792695, 0.5966803, 0.55225205, 0.6153607, 0.60387087]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_video_diffusion_no_latency_regression_bf16(self):
+        model_name = "ali-vilab/text-to-video-ms-1.7b"
+        pipeline = GaudiTextToVideoSDPipeline.from_pretrained(
+            model_name,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
+        )
+        set_seed(42)
+        start_time = time.time()
+        prompt = "Spiderman is surfing"
+        outputs = pipeline(prompt, num_inference_steps=50, output_type="pil")
+        latency = time.time() - start_time
+        assert len(outputs.videos[0]) == 16
+
+        assert latency < 1.05 * TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE
 
 
 """

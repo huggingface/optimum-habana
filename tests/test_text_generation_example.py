@@ -57,7 +57,11 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
-            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 40.94),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, 3428.65),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, 1147.50),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
@@ -200,6 +204,9 @@ def _test_text_generation(
             command.insert(-2, "--flash_attention_recompute")
             command.insert(-2, "--attn_softmax_bf16")
             command.insert(-2, "--trim_logits")
+        if "Mixtral" in model_name:
+            command.insert(-2, "--bucket_size 128")
+            command.insert(-2, "--bucket_internal")
         elif "falcon-180b" in model_name.lower():
             command.insert(-2, "--flash_attention_recompute")
 
@@ -254,9 +261,14 @@ def _test_text_generation(
                         e.args = (f"The following command failed:\n{' '.join(measure_command[:-2])}",)
                     raise
 
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
-            )
+            if "Mixtral" in model_name:
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant_mixtral.json"
+                )
+            else:
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+                )
 
         command = [x for y in command for x in re.split(pattern, y) if x]
         print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
