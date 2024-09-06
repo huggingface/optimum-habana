@@ -26,6 +26,7 @@ def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "t
     B, C, H, W = x.shape
 
     # FFT
+    # Moving to CPU as torch.fft operations are not supported on HPU
     x = x.to(device="cpu", dtype=torch.float32)
     x_freq = fftn(x, dim=(-2, -1))
     x_freq = fftshift(x_freq, dim=(-2, -1))
