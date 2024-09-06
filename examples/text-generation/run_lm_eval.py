@@ -199,7 +199,8 @@ def main():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
-    results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+    with torch.no_grad():
+        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 

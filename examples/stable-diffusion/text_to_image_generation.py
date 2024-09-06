@@ -50,7 +50,7 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="runwayml/stable-diffusion-v1-5",
+        default="CompVis/stable-diffusion-v1-4",
         type=str,
         help="Path to pre-trained model",
     )
@@ -481,7 +481,7 @@ def main():
                 # SD LDM3D use-case
                 from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
 
-                if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+                if args.model_name_or_path == "CompVis/stable-diffusion-v1-4":
                     args.model_name_or_path = "Intel/ldm3d-4c"
                 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
                     args.model_name_or_path,

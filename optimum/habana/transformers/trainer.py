@@ -677,7 +677,7 @@ class GaudiTrainer(Trainer):
         if args.gradient_checkpointing:
             import transformers.modeling_utils
 
-            if args.deepspeed:
+            if args.deepspeed and args.use_lazy_mode:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
 
                 # HACK because outputs should always be tuples
