@@ -795,7 +795,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
-        num_logits_to_keep=0,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -843,6 +843,9 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
@@ -850,7 +853,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
-                "num_logits_to_keep": num_logits_to_keep,
                 "token_idx": token_idx,
                 "reuse_cache": kwargs.get("reuse_cache"),
                 "trim_logits": kwargs.get("trim_logits"),

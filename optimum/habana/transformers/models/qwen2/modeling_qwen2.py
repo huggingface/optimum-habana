@@ -862,7 +862,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
-        num_logits_to_keep=0,
+        num_logits_to_keep=None,
         token_idx=None,
         **kwargs,
     ):
@@ -906,6 +906,9 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                 "input_ids": input_ids.clone(memory_format=torch.contiguous_format)
             }  # `contiguous()` needed for compilation use cases
 
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids.contiguous(),
@@ -913,7 +916,6 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
-                "num_logits_to_keep": num_logits_to_keep,
                 "token_idx": token_idx,
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),

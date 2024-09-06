@@ -841,7 +841,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits=False,
         position_ids=None,
         use_cache=True,
-        num_logits_to_keep=0,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         reuse_cache = kwargs.get("reuse_cache")
@@ -879,6 +879,9 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
@@ -887,7 +890,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "output_router_logits": output_router_logits,
-                "num_logits_to_keep": num_logits_to_keep,
                 "token_idx": token_idx,
                 "reuse_cache": reuse_cache,
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),

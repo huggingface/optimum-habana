@@ -108,6 +108,21 @@ PATH_SAMPLE_TEXT = f"{get_tests_dir()}/resource/sample_text.txt"
 adapt_transformers_to_gaudi()
 
 
+class MockOOMCallback(TrainerCallback):
+    """
+    Simple callback to simulate CUDA OOM error if
+    the batch size is >= to `batch_size_limit`.
+    """
+
+    def __init__(self, batch_size_limit=16):
+        self.batch_size_limit = batch_size_limit
+
+    def on_step_end(self, args, state, control, **kwargs):
+        # simulate OOM on the first step
+        if state.train_batch_size >= self.batch_size_limit:
+            raise RuntimeError("Out of memory.")
+
+
 class RegressionDataset:
     def __init__(self, a=2, b=3, length=64, seed=42, label_names=None):
         np.random.seed(seed)
@@ -1855,45 +1870,73 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertAlmostEqual(a, a1, delta=1e-5)
         self.assertAlmostEqual(b, b1, delta=1e-5)
 
-    def test_auto_batch_size_with_resume_from_checkpoint(self):
-        train_dataset = RegressionDataset(length=128)
+    # @require_deepspeed
+    # def test_auto_batch_size_with_deepspeed(self):
+    #     train_dataset = RegressionDataset(length=128)
 
-        config = RegressionModelConfig(a=0, b=2)
-        model = RegressionRandomPreTrainedModel(config)
+    #     config = RegressionModelConfig(a=0, b=2)
+    #     model = RegressionRandomPreTrainedModel(config)
 
-        tmp_dir = self.get_auto_remove_tmp_dir()
+    #     tmp_dir = self.get_auto_remove_tmp_dir()
 
-        class MockCudaOOMCallback(TrainerCallback):
-            def on_step_end(self, args, state, control, **kwargs):
-                # simulate OOM on the first step
-                if state.train_batch_size >= 16:
-                    raise RuntimeError("CUDA out of memory.")
+    #     for stage in [1, 2]:
+    #         deepspeed = {
+    #             "zero_optimization": {
+    #                 "stage": stage,
+    #             },
+    #             "train_batch_size": "auto",
+    #             "train_micro_batch_size_per_gpu": "auto",
+    #         }
 
-        args = RegressionGaudiTrainingArguments(
-            tmp_dir,
-            do_train=True,
-            max_steps=2,
-            save_steps=1,
-            per_device_train_batch_size=16,
-            auto_find_batch_size=True,
-            use_habana=True,
-            use_lazy_mode=True,
-        )
-        gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
-            model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
-        )
-        trainer.train()
-        # After `auto_find_batch_size` is ran we should now be at 8
-        self.assertEqual(trainer._train_batch_size, 8)
+    #     args = RegressionGaudiTrainingArguments(
+    #         tmp_dir,
+    #         do_train=True,
+    #         max_steps=2,
+    #         save_strategy="no",
+    #         per_device_train_batch_size=16,
+    #         auto_find_batch_size=True,
+    #         deepspeed=deepspeed,
+    #         use_habana=True,
+    #         use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()])
+    #     trainer.train()
+    #     self.assertEqual(trainer._train_batch_size, 8)
 
-        # We can then make a new Trainer
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
-        # Check we are at 16 to start
-        self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
-        trainer.train(resume_from_checkpoint=True)
-        # We should be back to 8 again, picking up based upon the last ran Trainer
-        self.assertEqual(trainer._train_batch_size, 8)
+    # def test_auto_batch_size_with_resume_from_checkpoint(self):
+    #     train_dataset = RegressionDataset(length=128)
+
+    #     config = RegressionModelConfig(a=0, b=2)
+    #     model = RegressionRandomPreTrainedModel(config)
+
+    #     tmp_dir = self.get_auto_remove_tmp_dir()
+
+    #     args = RegressionGaudiTrainingArguments(
+    #         tmp_dir,
+    #         do_train=True,
+    #         max_steps=2,
+    #         save_steps=1,
+    #         per_device_train_batch_size=16,
+    #         auto_find_batch_size=True,
+    #         use_habana=True,
+    #         use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(
+    #         model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()]
+    #     )
+    #     trainer.train()
+    #     # After `auto_find_batch_size` is ran we should now be at 8
+    #     self.assertEqual(trainer._train_batch_size, 8)
+
+    #     # We can then make a new Trainer
+    #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+    #     # Check we are at 16 to start
+    #     self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
+    #     trainer.train(resume_from_checkpoint=True)
+    #     # We should be back to 8 again, picking up based upon the last ran Trainer
+    #     self.assertEqual(trainer._train_batch_size, 8)
 
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):

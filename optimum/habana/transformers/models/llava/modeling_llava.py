@@ -121,6 +121,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         image_offset: Optional[int] = None,
         tokens_pos: Optional[torch.LongTensor] = None,
@@ -188,6 +189,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
                 token_idx=token_idx + image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
@@ -239,6 +241,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         pixel_values=None,
         attention_mask=None,
         cache_position=None,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -310,6 +313,10 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             model_inputs = {"input_ids": input_ids}
         use_flash_attention = kwargs.get("use_flash_attention", False)
         flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
