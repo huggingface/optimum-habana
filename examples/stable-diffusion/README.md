@@ -520,6 +520,21 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+### Depth to Image Generation
+
+Here is how to generate a depth2img-guided image generation using HPU graphs with BF16:
+
+```bash
+python depth_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-2-depth" \
+    --prompts "two tigers" \
+    --base_image "http://images.cocodataset.org/val2017/000000039769.jpg" \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --bf16
+```
+
 ## Unconditional Image Generation Example
 
 Here is how to perform unconditional-image-generation on Gaudi/HPU.
