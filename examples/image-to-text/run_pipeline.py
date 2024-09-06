@@ -24,7 +24,7 @@ from contextlib import nullcontext
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, pipeline
+from transformers import AutoConfig, LlavaProcessor, LlavaNextProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -107,11 +107,6 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation."
     )
-    parser.add_argument(
-        "--profiling",
-        action="store_true",
-        help="enable profiling"
-    )
 
     args = parser.parse_args()
 
@@ -127,21 +122,18 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type == "llava":
-        args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
-    elif args.prompt is None and model_type == "llava_next":
-        if args.model_name_or_path in ["llava-hf/llava-v1.6-34b-hf",]:
-            args.prompt = "<|im_start|>system\nAnswer the questions.<|im_end|><|im_start|>user\n<image>\nWhat is shown in this image?<|im_end|><|im_start|>assistant\n"
-        else:
+    if args.prompt is None:
+        if model_type == "llava":
+            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
+        elif model_type == "llava_next":
             processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-            conversation = [{
-                "role": "user",
-                "content": [
-                        {"type": "text", "text": "What is shown in this image?"},
-                        {"type": "image"},
-                ],
-            }]
-            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+        conversation = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What is shown in this image?"},
+                {"type": "image"},
+            ]}]
+        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -168,17 +160,6 @@ def main():
         import habana_frameworks.torch.core as htcore
 
         htcore.hpu_set_env()
-    if args.profiling or os.getenv("PROFILING", "N").upper() in [
-            "1", "Y", "ON", "YES", "TRUE"]:
-        args.profiling = True
-        import habana_frameworks.torch.core as htcore
-        activities = [torch.profiler.ProfilerActivity.CPU]
-        activities.append(torch.profiler.ProfilerActivity.HPU)
-        pctx = torch.profiler.profile(
-            schedule=torch.profiler.schedule(
-                wait=0, warmup=3, active=1, repeat=1),
-            with_stack=True, activities=activities,
-            on_trace_ready=torch.profiler.tensorboard_trace_handler('logs'))
 
     generator = pipeline(
         "image-to-text",
@@ -215,12 +196,8 @@ def main():
         habana_quantization_toolkit.finish_measurements(generator.model)
 
     start = time.perf_counter()
-    with (pctx if args.profiling else nullcontext()) as profiler:
-        for i in range(args.n_iterations):
-            result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-            if args.profiling:
-                torch.hpu.synchronize()
-                profiler.step()
+    for i in range(args.n_iterations):
+        result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     end = time.perf_counter()
     duration = end - start
 
