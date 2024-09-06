@@ -49,6 +49,7 @@ except ImportError:
     def check_optimum_habana_min_version(*a, **b):
         return ()
 
+
 os.environ["WANDB_DISABLED"] = "true"
 
 logger = logging.getLogger(__name__)
@@ -62,9 +63,11 @@ def normalized_levenshtein(s1, s2):
     distance = Levenshtein.distance(s1, s2)
     return distance / max(len_s1, len_s2)
 
+
 def similarity_score(a_ij, o_q_i, tau=0.5):
     nl = normalized_levenshtein(a_ij, o_q_i)
     return 1 - nl if nl < tau else 0
+
 
 def average_normalized_levenshtein_similarity(ground_truth, predicted_answers):
     assert len(ground_truth) == len(predicted_answers), "Length of ground_truth and predicted_answers must match."
@@ -156,9 +159,8 @@ class ModelArguments:
             )
         },
     )
-    do_image_splitting: bool = field(
-        default=False, metadata={"help": "Whether to do image split during finetune."}
-    )
+    do_image_splitting: bool = field(default=False, metadata={"help": "Whether to do image split during finetune."})
+
 
 @dataclass
 class DataArguments:
@@ -254,6 +256,7 @@ class FinetuneArguments:
         metadata={"help": "Target modules for the LoRA/AdaLoRA method."},
     )
 
+
 class MyDataCollator:
     def __init__(self, processor):
         self.processor = processor
@@ -265,7 +268,7 @@ class MyDataCollator:
         texts = []
         images = []
         keys = list(examples[0].keys())
-        if not all(key in ["image","query","answers"] for key in keys):
+        if not all(key in ["image", "query", "answers"] for key in keys):
             raise ValueError("Unsupported dataset format")
         for example in examples:
             image = example["image"]
@@ -277,15 +280,10 @@ class MyDataCollator:
                     "content": [
                         {"type": "text", "text": "Answer briefly."},
                         {"type": "image"},
-                        {"type": "text", "text": question}
-                    ]
+                        {"type": "text", "text": question},
+                    ],
                 },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": answer}
-                    ]
-                }
+                {"role": "assistant", "content": [{"type": "text", "text": answer}]},
             ]
             text = self.processor.apply_chat_template(messages, add_generation_prompt=False)
             texts.append(text.strip())
@@ -303,11 +301,12 @@ class MyDataCollator:
 
 def eval(processor, model, eval_dataset, eval_batch_size):
     from tqdm import tqdm
+
     answers_unique = []
     generated_texts_unique = []
 
     for i in tqdm(range(0, len(eval_dataset), eval_batch_size)):
-        examples = eval_dataset[i: i + eval_batch_size]
+        examples = eval_dataset[i : i + eval_batch_size]
         answers_unique.extend(examples["answers"])
         images = [[im] for im in examples["image"]]
         texts = []
@@ -318,8 +317,8 @@ def eval(processor, model, eval_dataset, eval_batch_size):
                     "content": [
                         {"type": "text", "text": "Answer briefly."},
                         {"type": "image"},
-                        {"type": "text", "text": q["en"]}
-                    ]
+                        {"type": "text", "text": q["en"]},
+                    ],
                 }
             ]
             text = processor.apply_chat_template(messages, add_generation_prompt=True)
@@ -327,11 +326,14 @@ def eval(processor, model, eval_dataset, eval_batch_size):
         inputs = processor(text=texts, images=images, return_tensors="pt", padding=True)
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
         generated_ids = model.generate(**inputs, max_new_tokens=64)
-        generated_texts = processor.batch_decode(generated_ids[:, inputs["input_ids"].size(1):], skip_special_tokens=True)
+        generated_texts = processor.batch_decode(
+            generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
+        )
         generated_texts_unique.extend(generated_texts)
     generated_texts_unique = [g.strip().strip(".") for g in generated_texts_unique]
     anls = average_normalized_levenshtein_similarity(
-            ground_truth=answers_unique, predicted_answers=generated_texts_unique,
+        ground_truth=answers_unique,
+        predicted_answers=generated_texts_unique,
     )
     return anls
 
@@ -409,24 +411,38 @@ def main():
     model.print_trainable_parameters()
 
     train_dataset = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-            trust_remote_code=model_args.trust_remote_code,
-            split="train")
+        data_args.dataset_name,
+        data_args.dataset_config_name,
+        cache_dir=model_args.cache_dir,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
+        split="train",
+    )
 
-    train_dataset = train_dataset.remove_columns([col for col in train_dataset.column_names if col not in (data_args.input_column_names + data_args.output_column_names)])
+    train_dataset = train_dataset.remove_columns(
+        [
+            col
+            for col in train_dataset.column_names
+            if col not in (data_args.input_column_names + data_args.output_column_names)
+        ]
+    )
 
     eval_dataset = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-            trust_remote_code=model_args.trust_remote_code,
-            split="test")
+        data_args.dataset_name,
+        data_args.dataset_config_name,
+        cache_dir=model_args.cache_dir,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
+        split="test",
+    )
 
-    eval_dataset = eval_dataset.remove_columns([col for col in eval_dataset.column_names if col not in (data_args.input_column_names + data_args.output_column_names)])
+    eval_dataset = eval_dataset.remove_columns(
+        [
+            col
+            for col in eval_dataset.column_names
+            if col not in (data_args.input_column_names + data_args.output_column_names)
+        ]
+    )
 
     data_collator = MyDataCollator(processor)
 
@@ -463,19 +479,26 @@ def main():
                 "content": [
                     {"type": "text", "text": "Answer briefly."},
                     {"type": "image"},
-                    {"type": "text", "text": query["en"]}
-                ]
+                    {"type": "text", "text": query["en"]},
+                ],
             }
         ]
-        processor.tokenizer.padding_side = 'left'
+        processor.tokenizer.padding_side = "left"
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = processor(text=[text.strip()], images=[image], return_tensors="pt", padding=True)
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
         generated_ids = model.generate(**inputs, max_new_tokens=64)
-        generated_texts = processor.batch_decode(generated_ids[:, inputs["input_ids"].size(1):], skip_special_tokens=True)
+        generated_texts = processor.batch_decode(
+            generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
+        )
         logger.info(f"generated: {generated_texts}")
         if training_args.do_eval:
-            anls = eval(processor=processor,model=model,eval_dataset=eval_dataset,eval_batch_size=training_args.per_device_eval_batch_size)
+            anls = eval(
+                processor=processor,
+                model=model,
+                eval_dataset=eval_dataset,
+                eval_batch_size=training_args.per_device_eval_batch_size,
+            )
             logger.info(f"anls = {anls}")
             if training_args.output_dir is not None:
                 metrics = {"accuracy": anls}
