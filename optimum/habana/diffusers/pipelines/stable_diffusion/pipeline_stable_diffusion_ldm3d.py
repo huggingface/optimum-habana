@@ -341,7 +341,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             for j in self.progress_bar(range(num_batches)):
@@ -420,7 +420,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

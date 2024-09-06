@@ -31,7 +31,9 @@ from typing import Callable, Union
 from unittest import TestCase, skipIf, skipUnless
 
 import diffusers
+import habana_frameworks.torch.hpu as hthpu
 import numpy as np
+import pytest
 import requests
 import safetensors
 import torch
@@ -810,6 +812,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
     @slow
+    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
     def test_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2347,6 +2350,7 @@ class TrainControlNet(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
+    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
