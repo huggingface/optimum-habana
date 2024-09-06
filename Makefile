@@ -115,11 +115,6 @@ slow_tests_openclip_vqa_example: test_installs
 	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
 	python -m pytest tests/test_openclip_vqa.py
 
-# Run speech recognition non-regression tests
-slow_tests_speech_recognition_example: test_installs
-	python -m pytest tests/test_speech_recognition_example.py -v -s --token $(TOKEN)
-
-
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
