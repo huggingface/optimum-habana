@@ -507,9 +507,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
     ):
         if past_key_values is not None:
             if token_idx is not None:
-                idx = token_idx - 1
-                if "inputs_embeds_offset" in kwargs:
-                    idx = idx + kwargs["inputs_embeds_offset"]
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]

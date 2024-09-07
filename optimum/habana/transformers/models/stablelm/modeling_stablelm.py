@@ -454,9 +454,7 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
                 ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
-                idx = token_idx - 1
-                if "inputs_embeds_offset" in kwargs:
-                    idx = idx + kwargs["inputs_embeds_offset"]
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
 
         if attention_mask is not None and position_ids is None:

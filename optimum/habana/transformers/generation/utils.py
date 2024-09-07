@@ -140,10 +140,7 @@ def get_final_stopping_criteria(x):
     if isinstance(x, bool):
         return x
     elif torch.is_tensor(x):
-        if x.dim() > 0:
-            return all(x)
-        else:
-            return x
+        return x.all() if x.dim() > 0 else x
     else:
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
@@ -1672,10 +1669,7 @@ class GaudiGenerationMixin(GenerationMixin):
         top_k_ids = None
         if token_idx is not None:
             # Update cur_len in case of static shapes
-            if "inputs_embeds_offset" in model_kwargs:
-                cur_len = (token_idx + model_kwargs["inputs_embeds_offset"]).item()
-            else:
-                cur_len = token_idx.item()
+            cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
@@ -1791,11 +1785,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         pad_amount = input_ids.shape[-1] - top_k_ids.shape[-1]
                         top_k_ids = torch.nn.functional.pad(top_k_ids, (0, pad_amount), value=pad_token_id)
 
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"] - 1
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx - 1
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0) - 1
                 top_k_probs, top_k_prob_ids = torch.topk(next_probs, dim=-1, k=top_k)
                 top_k_ids[:, :, idx] = top_k_prob_ids
             else:
@@ -1923,13 +1913,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # the degeneration penalty; (4) logits for selecting next top-k candidates; (5) selected tokens scores
             # (model confidence minus degeneration penalty); (6) decoder hidden_states
             top_k_indices = torch.arange(len(top_k_ids), device=input_ids.device)
-
             if token_idx is not None:
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"] - 1
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx - 1
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0) - 1
                 next_tokens = top_k_ids[top_k_indices, selected_idx, idx]
             else:
                 next_tokens = top_k_ids[top_k_indices, selected_idx]
@@ -2022,11 +2007,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # update generated ids, model inputs, and length for next step
             if token_idx is not None:
                 # Use token_idx-1 since token index is incremented twice in first iteration
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"] - 1
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx - 1
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids.index_copy_(1, idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens)
             else:
                 input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
@@ -2266,10 +2247,7 @@ class GaudiGenerationMixin(GenerationMixin):
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
             # Update cur_len in case of static shapes
-            if "inputs_embeds_offset" in model_kwargs:
-                cur_len = (token_idx + model_kwargs["inputs_embeds_offset"]).item()
-            else:
-                cur_len = token_idx.item()
+            cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
@@ -2371,11 +2349,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens.to(input_ids.dtype)
 
             if token_idx is not None:
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"]
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0)
                 input_ids.index_copy_(1, idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens)
             else:
                 input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
@@ -2569,10 +2543,7 @@ class GaudiGenerationMixin(GenerationMixin):
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
             # Update cur_len in case of static shapes
-            if "inputs_embeds_offset" in model_kwargs:
-                cur_len = (token_idx + model_kwargs["inputs_embeds_offset"]).item()
-            else:
-                cur_len = token_idx.item()
+            cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
 
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
@@ -2788,11 +2759,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )  # (batch_size * num_beams, vocab_size)
 
             if token_idx is not None:
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"]
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0)
                 next_token_scores_processed = logits_processor(input_ids[:, :idx], next_token_scores)
             else:
                 next_token_scores_processed = logits_processor(input_ids, next_token_scores)
@@ -2900,11 +2867,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 0, beam_idx)
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"]
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx
-                )
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0)
                 input_ids.index_copy_(
                     1, idx, beam_next_tokens.unsqueeze(-1) if beam_next_tokens.dim() == 1 else beam_next_tokens
                 )
@@ -3164,10 +3127,7 @@ class GaudiGenerationMixin(GenerationMixin):
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
             # Update cur_len in case of static shapes
-            if "inputs_embeds_offset" in model_kwargs:
-                cur_len = (token_idx + model_kwargs["inputs_embeds_offset"]).item()
-            else:
-                cur_len = token_idx.item()
+            cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
 
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
@@ -3310,12 +3270,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if token_idx is not None:
                 input_ids = input_ids[beam_idx, :]
-                idx = (
-                    token_idx + model_kwargs["inputs_embeds_offset"]
-                    if "inputs_embeds_offset" in model_kwargs
-                    else token_idx
-                )
-
+                idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0)
                 input_ids.index_copy_(
                     1, idx, beam_next_tokens.unsqueeze(-1) if beam_next_tokens.dim() == 1 else beam_next_tokens
                 )
@@ -3519,10 +3474,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if token_idx is not None:
                 # Update cur_len in case of static shapes
-                if "inputs_embeds_offset" in model_kwargs:
-                    cur_len = (token_idx + model_kwargs["inputs_embeds_offset"]).item()
-                else:
-                    cur_len = token_idx.item()
+                cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
             else:
                 cur_len = input_ids.shape[-1]
 
