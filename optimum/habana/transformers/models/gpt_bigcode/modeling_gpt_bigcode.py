@@ -21,7 +21,16 @@ import habana_frameworks.torch.core as htcore
 
 
 def gaudi_flash_attn_v1(
-    query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_causal, scale, softmax_mode, q_block_size
+    query_layer,
+    key_layer,
+    value_layer,
+    attention_mask,
+    dropout_rate,
+    is_causal,
+    scale,
+    softmax_mode,
+    enable_recompute,
+    q_block_size,
 ):
     """
     Gaudi version of Flash Attention V1 to support long sequence at prompt phase
@@ -42,7 +51,7 @@ def gaudi_flash_attn_v1(
         row_q = query_layer[:, :, s:e, :]
         row_mask = attention_mask[:, :, s:e, :]
         attn_output_partial = FusedSDPA.apply(
-            row_q, key_layer, value_layer, row_mask, dropout_rate, is_causal, scale, softmax_mode
+            row_q, key_layer, value_layer, row_mask, dropout_rate, is_causal, scale, softmax_mode, enable_recompute
         )
         row_o_list.append(attn_output_partial)
     attn_output = torch.cat(row_o_list, dim=-2)
@@ -106,33 +115,32 @@ def apply_FusedSDPA(
     else:
         use_causal_mask = self.is_causal and attention_mask is None and query_length > 1
 
-    import habana_frameworks.torch.hpu as ht
-
-    with ht.sdp_kernel(enable_recompute=enable_recompute):
-        if query_length > 8192:
-            sdpa_result = gaudi_flash_attn_v1(
-                query,
-                key,
-                value,
-                attention_mask,
-                self.attn_pdrop if self.training else 0.0,
-                use_causal_mask,
-                scale,
-                "fast" if flash_attention_fast_softmax else "None",
-                4096,
-            )
-            htcore.mark_step()
-        else:
-            sdpa_result = FusedSDPA.apply(
-                query,
-                key,
-                value,
-                attention_mask,
-                self.attn_pdrop if self.training else 0.0,
-                use_causal_mask,
-                scale,
-                "fast" if flash_attention_fast_softmax else "None",
-            )
+    if query_length > 8192:
+        sdpa_result = gaudi_flash_attn_v1(
+            query,
+            key,
+            value,
+            attention_mask,
+            self.attn_pdrop if self.training else 0.0,
+            use_causal_mask,
+            scale,
+            "fast" if flash_attention_fast_softmax else "None",
+            enable_recompute,
+            4096,
+        )
+        htcore.mark_step()
+    else:
+        sdpa_result = FusedSDPA.apply(
+            query,
+            key,
+            value,
+            attention_mask,
+            self.attn_pdrop if self.training else 0.0,
+            use_causal_mask,
+            scale,
+            "fast" if flash_attention_fast_softmax else "None",
+            enable_recompute,
+        )
 
     if self.multi_query:
         # (batch_size, num_heads, seq_len, head_dim) --> (batch_size, seq_len, num_heads, head_dim)
@@ -199,8 +207,9 @@ def gaudi_gpt_bigcode_attention_forward(
     if layer_past is not None:
         past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
         if token_idx is not None:
-            key = past_key.index_add_(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
-            value = past_value.index_add_(1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1))
+            # Using out of place version of index_add_() to ensure the intermediate tensors are not lost when HPU graphs are enabled.
+            key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
+            value = past_value.index_add(1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1))
         else:
             key = torch.cat((past_key, key), dim=-2)
             value = torch.cat((past_value, value), dim=-2)
@@ -252,6 +261,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py

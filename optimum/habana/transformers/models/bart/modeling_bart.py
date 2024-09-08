@@ -342,7 +342,7 @@ def gaudi_BartEncoder_forward(
         raise ValueError("You have to specify either input_ids or inputs_embeds")
 
     if inputs_embeds is None:
-        inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
+        inputs_embeds = self.embed_tokens(input_ids)
 
     embed_pos = self.embed_positions(input)
     import habana_frameworks.torch.core as htcore
@@ -461,7 +461,7 @@ def gaudi_BartDecoder_forward(
     tensor_past_key_values_length = token_idx - 1 if use_cache else torch.tensor(past_key_values_length)
 
     if inputs_embeds is None:
-        inputs_embeds = self.embed_tokens(input) * self.embed_scale
+        inputs_embeds = self.embed_tokens(input)
 
     if self._use_sdpa and not output_attentions and cross_attn_head_mask is None:
         # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on

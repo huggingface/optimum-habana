@@ -268,7 +268,7 @@ def gaudi_SeamlessM4TDecoder_forward(
     past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
     if inputs_embeds is None:
-        inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
+        inputs_embeds = self.embed_tokens(input_ids)
 
     attention_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask, input_shape, inputs_embeds, past_key_values_length

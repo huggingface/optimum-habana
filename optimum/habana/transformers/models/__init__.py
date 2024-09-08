@@ -45,6 +45,10 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .decilm import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
+)
 from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
@@ -66,7 +70,13 @@ from .gemma import (
     gaudi_gemma_attention_forward,
     gaudi_gemma_model_forward,
 )
-from .gpt2 import GaudiGPT2Attention, GaudiGPT2Block, GaudiGPT2LMHeadModel, gaudi_gpt2_forward
+from .gpt2 import (
+    GaudiGPT2Attention,
+    GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
+    GaudiGPT2LMHeadModel,
+    gaudi_gpt2_forward,
+)
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,
     gaudi_gpt_bigcode_attention_forward,
@@ -75,8 +85,8 @@ from .gpt_bigcode import (
 )
 from .gpt_neox import (
     GaudiGPTNeoXForCausalLM,
+    GaudiGPTNeoXLayer,
     gaudi_gpt_neox_attention_forward,
-    gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
@@ -84,7 +94,7 @@ from .gptj import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_model_forward,
+    GaudiGPTJModel,
 )
 from .llama import (
     GaudiLlamaAttention,
@@ -187,12 +197,11 @@ from .stablelm import (
     gaudi_stablelm_model_forward,
 )
 from .starcoder2 import (
+    GaudiStarcoder2Attention,
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
-    gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_model_forward,
+    GaudiStarcoder2Model,
 )
-from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,

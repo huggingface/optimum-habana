@@ -33,7 +33,7 @@ Finally, you will need to specify a [Gaudi configuration](https://huggingface.co
 ```python
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
-model_name = "runwayml/stable-diffusion-v1-5"
+model_name = "CompVis/stable-diffusion-v1-4"
 
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
@@ -166,7 +166,7 @@ Here is how to do it:
 import torch
 
 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "CompVis/stable-diffusion-v1-4",
     scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,

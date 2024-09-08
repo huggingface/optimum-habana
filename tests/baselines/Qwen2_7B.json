@@ -16,7 +16,7 @@
                         "--packing True",
                         "--gradient_accumulation_steps 8",
                         "--gradient_checkpointing True",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--throughput_warmup_steps 5",
                         "--warmup_ratio  0.03",
@@ -44,8 +44,8 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 2,
-                    "train_runtime": 360,
-                    "train_samples_per_second": 8.5,
+                    "train_runtime": 423.995,
+                    "train_samples_per_second": 7.342,
                     "extra_arguments": [
                         "--bf16 True",
                         "--subset ''",
@@ -53,7 +53,7 @@
                         "--packing True",
                         "--gradient_accumulation_steps 8",
                         "--gradient_checkpointing True",
-                        "--evaluation_strategy no",
+                        "--eval_strategy no",
                         "--save_strategy no",
                         "--throughput_warmup_steps 5",
                         "--warmup_ratio  0.03",
