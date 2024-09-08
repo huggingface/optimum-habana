@@ -56,7 +56,6 @@ except ImportError:
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
-import habana_frameworks.torch.hpu as ht
 
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
