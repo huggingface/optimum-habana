@@ -1,6 +1,5 @@
 import copy
 import math
-import warnings
 import os
 from typing import List, Optional, Tuple, Union
 
@@ -57,6 +56,7 @@ except ImportError:
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
+import habana_frameworks.torch.hpu as ht
 
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
@@ -645,7 +645,6 @@ class GaudiLlamaAttention(LlamaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
-            import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
