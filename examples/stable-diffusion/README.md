@@ -636,7 +636,7 @@ please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffuse
 
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "A squirrel eating a burger" \
     --num_images_per_prompt 4 \
     --batch_size 4 \
