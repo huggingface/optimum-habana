@@ -135,9 +135,9 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
-    if args.global_rank == 0 and not args.torch_compile:
-        os.environ.setdefault("GRAPH_VISUALIZATION", "true")
-        shutil.rmtree(".graph_dumps", ignore_errors=True)
+    if args.pt2e_quant:
+        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "1")
+        os.environ.setdefault("USE_FX_GRAPH_FREEZING", "1")
 
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
