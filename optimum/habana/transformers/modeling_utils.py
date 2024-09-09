@@ -263,6 +263,9 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._contrastive_search = GaudiGenerationMixin._contrastive_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
+    transformers.generation.GenerationMixin._prepare_cache_for_generation = (
+        GaudiGenerationMixin._prepare_cache_for_generation
+    )
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
