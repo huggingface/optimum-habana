@@ -197,7 +197,7 @@ def setup_quantization(model, args):
     config = FP8Config.from_json_file(args.quant_config)
     if config.measure:
         model = prepare(model, config)
-    if config.quantize or args.assistant_model is not None:
+    if config.quantize:
         model = convert(model, config)
 
     return model
