@@ -153,6 +153,10 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -582,9 +586,6 @@ def adapt_transformers_to_gaudi():
         gaudi_owlvitclasspredictionhead_forward
     )
 
-    # Optimization for DETR model on Gaudi
-    transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
-
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
 
@@ -607,7 +608,14 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
     # Optimization for DETR model on Gaudi
     transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
     transformers.models.detr.modeling_detr.DetrHungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
+    transformers.models.detr.modeling_detr.DetrLoss.get_targets_without_no_objects = (
+        gaudi_DetrLoss_get_targets_without_no_objects
+    )
     transformers.models.detr.modeling_detr.DetrLoss.loss_labels = gaudi_DetrLoss_loss_labels
+    transformers.models.detr.modeling_detr.DetrLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
+    transformers.models.detr.modeling_detr.DetrLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
+    transformers.models.detr.modeling_detr.DetrLoss.forward = gaudi_DetrLoss_forward
