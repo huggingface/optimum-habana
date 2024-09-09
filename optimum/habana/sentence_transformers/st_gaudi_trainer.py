@@ -46,6 +46,8 @@ from transformers.trainer import TRAINING_ARGS_NAME
 from transformers.trainer_utils import EvalLoopOutput
 from transformers.training_args import ParallelMode
 
+from optimum.habana.transformers.trainer import _is_peft_model
+
 from ..transformers import GaudiConfig, GaudiTrainer
 from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
 
@@ -224,7 +226,11 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if self.args.use_hpu_graphs_for_training:
             import habana_frameworks.torch as ht
 
-            ht.hpu.ModuleCacher()(model=model, allow_unused_input=True, inplace=True)
+            if _is_peft_model(model):
+                base_model = model.get_base_model()
+                ht.hpu.ModuleCacher()(model=base_model, allow_unused_input=True, inplace=True)
+            else:
+                ht.hpu.ModuleCacher()(model=model, allow_unused_input=True, inplace=True)
 
         return model
 

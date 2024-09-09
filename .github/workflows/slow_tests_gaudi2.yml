@@ -63,7 +63,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest \
-            /bin/bash pip install huggingface_hub && huggingface-cli --token ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }} && tests/ci/slow_tests_deepspeed.sh
+            pip install huggingface_hub && huggingface-cli login --token ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }} && /bin/bash tests/ci/slow_tests_deepspeed.sh
   fsdp:
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}
