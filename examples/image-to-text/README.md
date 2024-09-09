@@ -204,9 +204,9 @@ python3 run_image2text_lora_finetune.py \
     --gradient_accumulation_steps 8 \
     --weight_decay 0.01 \
     --logging_steps 25 \
-    --eval_strategy epoch \
+    --eval_strategy "no" \
     --save_strategy "no" \
-    --learning_rate 1e-4 \
+    --learning_rate 5e-5 \
     --warmup_steps  50 \
     --lr_scheduler_type "constant" \
     --input_column_names 'image' 'query' \
@@ -219,6 +219,8 @@ python3 run_image2text_lora_finetune.py \
     --lora_rank=8 \
     --lora_alpha=8 \
     --lora_dropout=0.1 \
+    --max_seq_length=512 \
+    --use_hpu_graphs_for_inference \
     --low_cpu_mem_usage True \
     --lora_target_modules '.*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$'
 ```
@@ -236,9 +238,9 @@ python3 ../gaudi_spawn.py \
     --gradient_accumulation_steps 8 \
     --weight_decay 0.01 \
     --logging_steps 25 \
-    --eval_strategy epoch \
+    --eval_strategy "no" \
     --save_strategy "no" \
-    --learning_rate 1e-4 \
+    --learning_rate 5e-5 \
     --warmup_steps  50 \
     --lr_scheduler_type "constant" \
     --input_column_names 'image' 'query' \
@@ -251,6 +253,8 @@ python3 ../gaudi_spawn.py \
     --lora_rank=8 \
     --lora_alpha=8 \
     --lora_dropout=0.1 \
+    --max_seq_length=512 \
+    --use_hpu_graphs_for_inference \
     --low_cpu_mem_usage True \
     --lora_target_modules '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```

@@ -47,12 +47,10 @@ class GaudiIdefics2Model(Idefics2Model):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, Idefics2BaseModelOutputWithPast]:
         """
         Inherits from Idefics2Model::forward https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L1303
         The only differences are:
-        - add new args token_idx
         - ignoring new Cache path for HPU
         - unfold is not supported in HPU, fallback to cpu
         """
@@ -157,15 +155,17 @@ class GaudiIdefics2Model(Idefics2Model):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            token_idx=token_idx,
         )
 
         if return_legacy_cache and use_cache:
-            outputs.past_key_values = (
-                outputs.past_key_values.to_legacy_cache()
-                if isinstance(outputs.past_key_values, Cache)
-                else outputs.past_key_values
-            )
+            if return_dict:
+                outputs.past_key_values = (
+                    outputs.past_key_values.to_legacy_cache()
+                    if isinstance(outputs.past_key_values, Cache)
+                    else outputs.past_key_values
+                )
+            else:
+                outputs[1] = outputs[1].to_legacy_cache() if isinstance(outputs[1], Cache) else outputs[1]
 
         if not return_dict:
             return tuple(v for v in [*outputs, image_hidden_states] if v is not None)
@@ -177,6 +177,24 @@ class GaudiIdefics2Model(Idefics2Model):
             attentions=outputs.attentions,
             image_hidden_states=image_hidden_states,
         )
+
+    def inputs_merger(
+        self,
+        input_ids: torch.LongTensor,
+        inputs_embeds: Optional[torch.Tensor],
+        image_hidden_states: Optional[torch.Tensor],
+    ):
+        """
+        Inherits from Idefics2Model::inputs_merger https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L1268
+        The only differences are:
+        - replace `==` with torch.where to fix the issue in hpu graph
+        """
+        num_images, _, vision_hidden_size = image_hidden_states.shape
+        special_image_token_mask = torch.where(input_ids == self.image_token_id)
+        new_inputs_embeds = inputs_embeds.clone()
+        reshaped_image_hidden_states = image_hidden_states.view(-1, vision_hidden_size)
+        new_inputs_embeds[special_image_token_mask] = reshaped_image_hidden_states
+        return new_inputs_embeds
 
 
 class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
@@ -202,61 +220,122 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         The only differences are:
         - add new args token_idx
         """
-
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            pixel_values=pixel_values,
-            pixel_attention_mask=pixel_attention_mask,
-            image_hidden_states=image_hidden_states,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-            token_idx=token_idx,
-        )
-
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-        logits = logits.float()
-
-        loss = None
-        if labels is not None:
-            labels = labels.to(logits.device)
-            # Shift so that tokens < n predict n
-            if attention_mask is not None:
-                shift_attention_mask = attention_mask[..., 1:].to(logits.device)
-                shift_logits = logits[..., :-1, :][shift_attention_mask != 0].contiguous()
-                shift_labels = labels[..., 1:][shift_attention_mask != 0].contiguous()
+        if token_idx is not None:
+            output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+            output_hidden_states = (
+                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            )
+            return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+            # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+            if input_ids is not None:
+                batch_size, seq_length = input_ids.shape
+            elif inputs_embeds is not None:
+                batch_size, seq_length, _ = inputs_embeds.shape
             else:
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+                raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
+            past_seen_tokens = 0
+            return_legacy_cache = True
+            use_new_cache = False  # Ignoring new Cache path for HPU
+            if use_cache and use_new_cache:
+                if not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
+                    return_legacy_cache = True
+                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                past_seen_tokens = past_key_values.get_seq_length()
+            else:
+                if past_key_values is not None:
+                    past_seen_tokens = past_key_values[0][0].shape[2]
+            if inputs_embeds is not None and input_ids is None and past_seen_tokens == 0:
+                raise ValueError(
+                    "When first calling the model, if input_embeds are passed, input_ids should not be None."
+                )
 
-        return Idefics2CausalLMOutputWithPast(
-            loss=loss,
-            logits=logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-            image_hidden_states=outputs.image_hidden_states,
-        )
+            if inputs_embeds is None:
+                inputs_embeds = self.model.text_model.get_input_embeddings()(input_ids)
+
+            # START VISUAL INPUTS INTEGRATION
+            if pixel_values is not None and image_hidden_states is not None:
+                raise ValueError("You cannot specify both pixel_values and image_hidden_states at the same time")
+            elif image_hidden_states is not None:
+                image_hidden_states = image_hidden_states.to(dtype=self.dtype, device=input_ids.device)
+
+            if past_seen_tokens == 0 and inputs_embeds is not None and image_hidden_states is not None:
+                # When we generate, we don't want to replace the potential image_token_id that we generated by images
+                # that simply don't exist
+                inputs_embeds = self.model.inputs_merger(
+                    input_ids=input_ids,
+                    inputs_embeds=inputs_embeds,
+                    image_hidden_states=image_hidden_states,
+                )
+
+            outputs = self.model.text_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+                token_idx=token_idx,
+            )
+
+            if return_legacy_cache and use_cache:
+                if return_dict:
+                    outputs.past_key_values = (
+                        outputs.past_key_values.to_legacy_cache()
+                        if isinstance(outputs.past_key_values, Cache)
+                        else outputs.past_key_values
+                    )
+                else:
+                    outputs[1] = outputs[1].to_legacy_cache() if isinstance(outputs[1], Cache) else outputs[1]
+
+            hidden_states = outputs[0]
+            logits = self.lm_head(hidden_states)
+            logits = logits.float()
+
+            loss = None
+            if labels is not None:
+                labels = labels.to(logits.device)
+                # Shift so that tokens < n predict n
+                if attention_mask is not None:
+                    shift_attention_mask = attention_mask[..., 1:].to(logits.device)
+                    shift_logits = logits[..., :-1, :][shift_attention_mask != 0].contiguous()
+                    shift_labels = labels[..., 1:][shift_attention_mask != 0].contiguous()
+                else:
+                    shift_logits = logits[..., :-1, :].contiguous()
+                    shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+            if not return_dict:
+                output = (logits,) + outputs[1:]
+                return (loss,) + output if loss is not None else output
+
+            return Idefics2CausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+                image_hidden_states=image_hidden_states,
+            )
+        else:
+            return super().forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                pixel_attention_mask=pixel_attention_mask,
+                image_hidden_states=image_hidden_states,
+                labels=labels,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
 
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
@@ -325,6 +404,49 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         else:
             pixel_values = kwargs.get("pixel_values", None)
             pixel_attention_mask = kwargs.get("pixel_attention_mask", None)
+
+        if token_idx is not None and pixel_values is not None:
+            batch_size, num_images, num_channels, height, width = pixel_values.shape
+            pixel_values = pixel_values.to(dtype=self.dtype)  # fp16 compatibility
+            pixel_values = pixel_values.view(batch_size * num_images, *pixel_values.shape[2:])
+
+            # Remove padding images - padding images are full 0.
+            nb_values_per_image = pixel_values.shape[1:].numel()
+            real_images_inds = (pixel_values == 0.0).sum(dim=(-1, -2, -3)) != nb_values_per_image
+            pixel_values = pixel_values[real_images_inds].contiguous()
+
+            # Handle the vision attention mask
+            if pixel_attention_mask is None:
+                pixel_attention_mask = torch.ones(
+                    size=(pixel_values.size(0), pixel_values.size(2), pixel_values.size(3)),
+                    dtype=torch.bool,
+                    device=pixel_values.device,
+                )
+            else:
+                # Remove padding images from the mask/pP p
+                pixel_attention_mask = pixel_attention_mask.view(
+                    batch_size * num_images, *pixel_attention_mask.shape[2:]
+                )
+                pixel_attention_mask = pixel_attention_mask[real_images_inds].contiguous()
+
+            patch_size = self.config.vision_config.patch_size
+            patches_subgrid = pixel_attention_mask.cpu().unfold(dimension=1, size=patch_size, step=patch_size)
+            patches_subgrid = patches_subgrid.cpu().unfold(dimension=2, size=patch_size, step=patch_size)
+            patch_attention_mask = (patches_subgrid.sum(dim=(-1, -2)) > 0).bool()
+
+            # Get sequence from the vision encoder
+            image_hidden_states = self.model.vision_model(
+                pixel_values=pixel_values,
+                patch_attention_mask=patch_attention_mask,
+            ).last_hidden_state
+
+            # Modality projection & resampling
+            image_hidden_states = self.model.connector(
+                image_hidden_states, attention_mask=patch_attention_mask.view(pixel_values.size(0), -1)
+            )
+            pixel_values = None
+            pixel_attention_mask = None
+
         model_inputs.update(
             {
                 "position_ids": position_ids,

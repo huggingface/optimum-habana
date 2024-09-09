@@ -14,12 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-poly tuning script for sequence-to-sequence modeling
+lora fine tuning script for image-to-text case
 Adapted from the following sources:
 https://colab.research.google.com/drive/1rm3AGquGEYXfeeizE40bbDtcWh5S4Nlq?usp=sharing
 """
 
-import json
 import logging
 import os
 import random
@@ -29,6 +28,7 @@ from typing import List, Optional
 
 import Levenshtein
 import torch
+import transformers
 from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 from transformers import (
@@ -187,13 +187,6 @@ class DataArguments:
         default=False,
         metadata={"help": "Overwrite the cached preprocessed datasets or not."},
     )
-    pad_to_max_length: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to pad all samples to `max_seq_length`. "
-            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
-        },
-    )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -258,11 +251,12 @@ class FinetuneArguments:
 
 
 class MyDataCollator:
-    def __init__(self, processor):
+    def __init__(self, processor, max_seq_length):
         self.processor = processor
         self.image_token_id = processor.tokenizer.additional_special_tokens_ids[
             processor.tokenizer.additional_special_tokens.index("<image>")
         ]
+        self.max_seq_length = max_seq_length
 
     def __call__(self, examples):
         texts = []
@@ -289,7 +283,14 @@ class MyDataCollator:
             texts.append(text.strip())
             images.append([image])
 
-        batch = self.processor(text=texts, images=images, return_tensors="pt", padding=True)
+        batch = self.processor(
+            text=texts,
+            images=images,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=self.max_seq_length,
+        )
 
         labels = batch["input_ids"].clone()
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
@@ -299,14 +300,14 @@ class MyDataCollator:
         return batch
 
 
-def eval(processor, model, eval_dataset, eval_batch_size):
+def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, max_seq_length):
     from tqdm import tqdm
 
     answers_unique = []
     generated_texts_unique = []
 
-    for i in tqdm(range(0, len(eval_dataset), eval_batch_size)):
-        examples = eval_dataset[i : i + eval_batch_size]
+    for i in tqdm(range(0, len(dataset), batch_size)):
+        examples = dataset[i : i + batch_size]
         answers_unique.extend(examples["answers"])
         images = [[im] for im in examples["image"]]
         texts = []
@@ -323,9 +324,18 @@ def eval(processor, model, eval_dataset, eval_batch_size):
             ]
             text = processor.apply_chat_template(messages, add_generation_prompt=True)
             texts.append(text.strip())
-        inputs = processor(text=texts, images=images, return_tensors="pt", padding=True)
+        inputs = processor(
+            text=texts,
+            images=images,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=max_seq_length,
+        )
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
-        generated_ids = model.generate(**inputs, max_new_tokens=64)
+        generated_ids = model.generate(
+            **inputs, max_new_tokens=64, ignore_eos=False, lazy_mode=use_lazy_mode, hpu_graphs=use_hpu_graphs
+        )
         generated_texts = processor.batch_decode(
             generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
         )
@@ -361,6 +371,11 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
+
+    if is_main_process(training_args.local_rank):
+        transformers.utils.logging.set_verbosity_info()
+        transformers.utils.logging.enable_default_handler()
+        transformers.utils.logging.enable_explicit_format()
 
     processor = AutoProcessor.from_pretrained(
         model_args.model_name_or_path,
@@ -444,7 +459,7 @@ def main():
         ]
     )
 
-    data_collator = MyDataCollator(processor)
+    data_collator = MyDataCollator(processor, max_seq_length=data_args.max_seq_length)
 
     gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True
@@ -460,10 +475,15 @@ def main():
     )
 
     if training_args.do_train:
-        trainer.train()
+        train_result = trainer.train()
         trainer.save_model()
+        metrics = train_result.metrics
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
 
     if is_main_process(training_args.local_rank):
+        processor.tokenizer.padding_side = "left"
+
         example = eval_dataset[15]
         model.eval()
         model = model.merge_and_unload()
@@ -485,25 +505,44 @@ def main():
         ]
         processor.tokenizer.padding_side = "left"
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
-        inputs = processor(text=[text.strip()], images=[image], return_tensors="pt", padding=True)
+        inputs = processor(
+            text=[text.strip()],
+            images=[image],
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=data_args.max_seq_length,
+        )
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
-        generated_ids = model.generate(**inputs, max_new_tokens=64)
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=64,
+            ignore_eos=False,
+            lazy_mode=training_args.use_lazy_mode,
+            hpu_graphs=training_args.use_hpu_graphs_for_inference,
+        )
         generated_texts = processor.batch_decode(
             generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
         )
         logger.info(f"generated: {generated_texts}")
         if training_args.do_eval:
+            if training_args.use_hpu_graphs_for_inference:
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                model = wrap_in_hpu_graph(model)
+
             anls = eval(
                 processor=processor,
                 model=model,
-                eval_dataset=eval_dataset,
-                eval_batch_size=training_args.per_device_eval_batch_size,
+                dataset=eval_dataset,
+                batch_size=training_args.per_device_eval_batch_size,
+                use_lazy_mode=training_args.use_lazy_mode,
+                use_hpu_graphs=training_args.use_hpu_graphs_for_inference,
+                max_seq_length=data_args.max_seq_length,
             )
-            logger.info(f"anls = {anls}")
-            if training_args.output_dir is not None:
-                metrics = {"accuracy": anls}
-                with open(f"{training_args.output_dir}/accuracy_metrics.json", mode="w") as file:
-                    json.dump(metrics, file)
+            eval_metrics = {"eval_accuracy": anls}
+            trainer.log_metrics("eval", eval_metrics)
+            trainer.save_metrics("eval", eval_metrics)
 
 
 if __name__ == "__main__":

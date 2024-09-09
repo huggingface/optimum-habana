@@ -61,6 +61,7 @@ MODELS_TO_TEST_MAPPING = {
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
     "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
     "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen")],
+    "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
