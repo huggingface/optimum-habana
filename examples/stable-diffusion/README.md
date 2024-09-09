@@ -616,7 +616,6 @@ Here is how to run the example of prompt weighting. For more details,
 please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts).
 
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "a red cat playing with a ball+++" "a red cat playing with a ball---" \
