@@ -1,10 +1,8 @@
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.xglm.modeling_xglm import XGLMForCausalLM
 from transformers.utils import logging
