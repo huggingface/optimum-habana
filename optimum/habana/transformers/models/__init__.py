@@ -226,3 +226,9 @@ from .wav2vec2 import (
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
 )
+from .xglm import (
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
+    GaudiXGLMForCausalLM,
+)
