@@ -215,24 +215,6 @@ python run_generation.py \
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
 
-### Use PEFT models for generation
-
-You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
-
-For example:
-```bash
-python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
---use_hpu_graphs \
---use_kv_cache \
---batch_size 1 \
---bf16 \
---max_new_tokens 100 \
---prompt "Here is my prompt" \
---peft_model goliaro/llama-2-7b-lora-full
-```
-
-
 ### Using growing bucket optimization
 
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
@@ -259,6 +241,9 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 
 ### Running with torch.compile
+
+> [!NOTE]
+> For `GPTBigCodeForCausalLM` architecture models, such as [ibm-granite/granite-20b-code-instruct](https://huggingface.co/ibm-granite/granite-20b-code-instruct), performance may have degradation with `--use_flash_attention`. Please remove it from the command line.
 
 torch.compile is an experimental feature. It has not been validated for all models. To enable torch.compile, please
 set the following environment variables before running the command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`.
@@ -299,7 +284,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Intel Neural Compressor (INC), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -599,8 +584,6 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-
-> If the dataset you want to use requires the execution of remote code, please set the following environment variable: `HF_DATASETS_TRUST_REMOTE_CODE=true`
 
 
 ## Text-Generation Pipeline

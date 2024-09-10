@@ -60,7 +60,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 
 
 @dataclass
@@ -263,6 +263,10 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to have a SQL style prompt"},
     )
+    chat_prompt: bool = field(
+        default=False,
+        metadata={"help": "Whether to have a chat style prompt."},
+    )
     save_last_ckpt: bool = field(
         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
     )
@@ -396,6 +400,25 @@ def create_prompts(examples):
             PROMPT_DICT["prompt_with_input"] if example.get("input", "") != "" else PROMPT_DICT["prompt_without_input"]
         )
         source = prompt_template.format_map(example)
+        prompts["source"].append(source)
+        prompts["target"].append(example["output"])
+    return prompts
+
+
+def create_chat_prompts(examples, tokenizer):
+    prompts = {}
+    prompts["source"] = []
+    prompts["target"] = []
+    for example in examples:
+        prompt = [
+            {
+                "role": "user",
+                "content": "Answer the below Query based on the Content given below. #### Query: {instruction} #### Content: {input}".format_map(
+                    example
+                ),
+            },
+        ]
+        source = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         prompts["source"].append(source)
         prompts["target"].append(example["output"])
     return prompts
@@ -624,11 +647,12 @@ def main():
                     data_args.output_column_name, "answer" if data_args.sql_prompt else "output"
                 )
 
-            prompts = (
-                create_prompts(raw_datasets[key])
-                if not data_args.sql_prompt
-                else create_sql_prompts(raw_datasets[key])
-            )
+            if data_args.chat_prompt:
+                prompts = create_chat_prompts(raw_datasets[key], tokenizer)
+            elif data_args.sql_prompt:
+                prompts = create_sql_prompts(raw_datasets[key])
+            else:
+                prompts = create_prompts(raw_datasets[key])
             columns_to_be_removed = list(raw_datasets[key].features.keys())
             raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
             raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
@@ -676,12 +700,15 @@ def main():
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    def tokenize(prompt, add_eos_token=True):
+    def tokenize(prompt, add_eos_token=True, add_bos_token=True):
+        add_eos_token_o = tokenizer.add_eos_token
+        add_bos_token_o = tokenizer.add_bos_token
         if not data_args.dataset_concatenation:
-            add_eos_token = False
+            tokenizer.add_eos_token = add_eos_token
             padding = "max_length"
         else:
             padding = False
+        tokenizer.add_bos_token = add_bos_token
         results = tokenizer(
             prompt,
             truncation=True,
@@ -689,6 +716,9 @@ def main():
             padding=padding,
             return_tensors=None,
         )
+        # restore original value
+        tokenizer.add_eos_token = add_eos_token_o
+        tokenizer.add_bos_token = add_bos_token_o
         for i in range(len(results["input_ids"])):
             if (
                 results["input_ids"][i][-1] != tokenizer.eos_token_id
@@ -708,12 +738,12 @@ def main():
             raise ValueError(f"Unsupported dataset format, number of keys {keys} !=2")
 
         st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
-
-        examples_tokenized = tokenize(st)
+        add_bos_token = False if data_args.chat_prompt else True
+        examples_tokenized = tokenize(st, add_bos_token=add_bos_token)
         input_ids = examples_tokenized["input_ids"]
         labels = examples_tokenized["labels"]
         if not finetune_args.train_on_inputs:
-            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False)
+            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False, add_bos_token=add_bos_token)
             for label, source_len in zip(labels, sources_tokenized["input_id_len"]):
                 label[:source_len] = [IGNORE_INDEX] * source_len
         return {
@@ -785,6 +815,9 @@ def main():
             # by preprocess_logits_for_metrics but we need to shift the labels
             labels = labels[:, 1:].reshape(-1)
             preds = preds[:, :-1].reshape(-1)
+            mask = labels != -100
+            labels = labels[mask]
+            preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
     # Data collator

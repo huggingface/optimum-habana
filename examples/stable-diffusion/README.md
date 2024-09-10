@@ -28,7 +28,7 @@ Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stabili
 Here is how to generate images with one prompt:
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 28 \
     --batch_size 7 \
@@ -49,7 +49,7 @@ python text_to_image_generation.py \
 Here is how to generate images with several prompts:
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 32 \
     --batch_size 8 \
@@ -65,7 +65,7 @@ Here is how to generate images with two prompts on two HPUs:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
@@ -96,7 +96,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --bf16
 ```
 
 > There are two different checkpoints for Stable Diffusion 2:
@@ -123,7 +124,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d
+    --ldm3d \
+    --bf16
 ```
 Here is how to generate images and depth maps with two prompts on two HPUs:
 ```bash
@@ -246,7 +248,7 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16 \
     --num_inference_steps 1 \
-    --guidance_scale 0.0 \
+    --guidance_scale 1.000001 \
     --timestep_spacing trailing
 ```
 
@@ -254,7 +256,7 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-> Please note: there is a regression with "--guidance_scale 0.0" for the latest release.
+> Note: there is a regression with "--guidance_scale 0.0" in current release which will be addressed in later releases. Setting `--guidance_scale` to a value larger than 1 resolves the regression.
 
 ### Stable Diffusion 3 (SD3)
 
@@ -288,7 +290,7 @@ python text_to_image_generation.py \
 
 > For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
- 
+
 ## ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
@@ -298,7 +300,7 @@ Here is how to generate images conditioned by canny edge model:
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -315,7 +317,7 @@ Here is how to generate images conditioned by canny edge model and with multiple
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -333,7 +335,7 @@ Here is how to generate images conditioned by canny edge model and with two prom
 pip install -r requirements.txt
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
@@ -351,7 +353,7 @@ Here is how to generate images conditioned by open pose model:
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
     --prompts "Chef in the kitchen" \
     --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
@@ -380,7 +382,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --bf16
 ```
 
 ## Inpainting
@@ -391,7 +394,7 @@ please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffuse
 ### Stable Diffusion Inpainting
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path  runwayml/stable-diffusion-inpainting \
+    --model_name_or_path  stabilityai/stable-diffusion-2-inpainting \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
@@ -401,7 +404,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/inpaiting_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
 ### Stable Diffusion XL Inpainting
@@ -418,7 +422,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/xl_inpaiting_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
 ## Image-to-image Generation
@@ -512,6 +517,21 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+### Depth to Image Generation
+
+Here is how to generate a depth2img-guided image generation using HPU graphs with BF16:
+
+```bash
+python depth_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-2-depth" \
+    --prompts "two tigers" \
+    --base_image "http://images.cocodataset.org/val2017/000000039769.jpg" \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
     --bf16
 ```
 

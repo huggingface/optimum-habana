@@ -170,10 +170,16 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
-        return (
-            self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-            self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-        )
+        if self.attention_scaling == 1.0:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype),
+                self._sin_cached[:seq_len].to(dtype=x.dtype),
+            )
+        else:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+                self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+            )
 
 
 class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
@@ -345,8 +351,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         super().__init__()
         self._hpu_kernel_fsdpa = fusedSDPA
 
-    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
-        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+    def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode)
 
 
 class Matmul(torch.nn.Module):
@@ -611,7 +617,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        if use_flash_attention and FusedSDPA:
+        if use_flash_attention and FusedSDPA is not None:
             import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
@@ -977,7 +983,6 @@ class GaudiLlamaModel(LlamaModel):
         config.parallel_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing

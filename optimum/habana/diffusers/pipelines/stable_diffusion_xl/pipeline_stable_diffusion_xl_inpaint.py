@@ -752,7 +752,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
             t1 = t0
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             for j in self.progress_bar(range(num_batches)):
@@ -782,8 +782,8 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                     image_latents_batch = image_latents_batches[0]
                     image_latents_batches = torch.roll(image_latents_batches, shifts=-1, dims=0)
 
-                # If use the diffuser's scheduler of non-Gaudi version, the timesteps need to reset every batch in order to avoid index overflow of timesteps.
-                if j > 0 and "Gaudi" not in self.scheduler.__class__.__name__:
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
                     self.scheduler._init_step_index(timesteps[0])
 
                 for i, _ in enumerate(timesteps):
@@ -920,7 +920,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
