@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 from typing import Optional, Tuple, Union
 
 import torch
@@ -44,9 +45,21 @@ def _gaudi_wav2vec2_compute_mask_indices(
     min_masks: int = 0,
 ) -> torch.Tensor:
     """
-    Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L135
-    The only differences are (1) that the processing is performed with PyTorch on HPUs (Numpy is used in Transformers), (2) epsilon is generated on HPU instead of CPU, (3) check
-    to ensure indices are not larger than sequence length is re-written to avoid host sync.
+    Computes random mask spans for a given shape. Used to implement [SpecAugment: A Simple Data Augmentation Method for
+    ASR](https://arxiv.org/abs/1904.08779). Note that this method is not optimized to run on TPU and should be run on
+    CPU as part of the preprocessing during training.
+
+    Args:
+        shape: The shape for which to compute masks. This should be of a tuple of size 2 where
+               the first element is the batch size and the second element is the length of the axis to span.
+        mask_prob:  The percentage of the whole axis (between 0 and 1) which will be masked. The number of
+                    independently generated mask spans of length `mask_length` is computed by
+                    `mask_prob*shape[1]/mask_length`. Note that due to overlaps, `mask_prob` is an upper bound and the
+                    actual percentage will be smaller.
+        mask_length: size of the mask
+        min_masks: minimum number of masked spans
+        attention_mask: A (right-padded) attention mask which independently shortens the feature axis of
+                        each batch dimension.
     """
     batch_size, sequence_length = shape
 
@@ -60,7 +73,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
         )
 
     # epsilon is used for probabilistic rounding
-    epsilon = torch.rand([], device="hpu")
+    epsilon = torch.rand(1).item()
 
     def compute_num_masked_span(input_length):
         """Given input length, compute how many spans should be masked"""
@@ -98,19 +111,9 @@ def _gaudi_wav2vec2_compute_mask_indices(
         num_masked_span = compute_num_masked_span(input_length)
 
         # get random indices to mask
-        """
-        Original code:
-        spec_aug_mask_idx = np.random.choice(
-            np.arange(input_length - (mask_length - 1)), num_masked_span, replace=False
+        spec_aug_mask_idx = torch.tensor(
+            random.sample(range(input_length - (mask_length - 1)), num_masked_span), dtype=torch.int32
         )
-        When (input_length - (mask_length - 1) < 0), then num_masked_span=0
-        and we get: spec_aug_mask_idx=array([], dtype=int64)
-        However torch rewrite fails, because torch.randperm expects positive number
-        This causes a unit test to fail:
-        RUN_SLOW=true  GAUDI2_CI=1 python -m pytest tests/transformers/tests/models/wav2vec2/test_modeling_wav2vec2.py -v -s -k test_compute_mask_indices_short_audio
-        """
-        spec_aug_mask_idx = torch.randperm(input_length - (mask_length - 1), device="hpu")[:num_masked_span]
-
         # pick first sampled index that will serve as a dummy index to pad vector
         # to ensure same dimension for all batches due to probabilistic rounding
         # Picking first sample just pads those vectors twice.
@@ -125,13 +128,12 @@ def _gaudi_wav2vec2_compute_mask_indices(
         spec_aug_mask_idx = torch.cat(
             [
                 spec_aug_mask_idx,
-                torch.ones(max_num_masked_span - num_masked_span, dtype=torch.int32, device="hpu") * dummy_mask_idx,
+                torch.ones(max_num_masked_span - num_masked_span, dtype=torch.int32) * dummy_mask_idx,
             ]
         )
         spec_aug_mask_idxs.append(spec_aug_mask_idx.to(dtype=torch.long))
 
-    spec_aug_mask_idxs = torch.vstack(spec_aug_mask_idxs)
-
+    spec_aug_mask_idxs = torch.vstack(spec_aug_mask_idxs).to("hpu")
     # expand masked indices to masked spans
     spec_aug_mask_idxs = torch.broadcast_to(
         spec_aug_mask_idxs[:, :, None], (batch_size, max_num_masked_span, mask_length)
@@ -240,7 +242,7 @@ def gaudi_wav2vec2_encoder_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-        dropout_probability = torch.rand([], device="hpu")
+        dropout_probability = torch.rand([])
 
         skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
         if not skip_the_layer or deepspeed_zero3_is_enabled:
