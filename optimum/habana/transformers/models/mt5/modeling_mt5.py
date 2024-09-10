@@ -33,7 +33,8 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
+
     
     has_fused_rms_norm = True
 except ImportError:
