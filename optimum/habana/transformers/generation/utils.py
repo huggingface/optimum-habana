@@ -3129,7 +3129,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False
 
-        decoder_prompt_len = input_ids.shape[-1]  # record the prompt length of decoder
+        # record the prompt length of decoder
+        if token_idx is not None:
+            decoder_prompt_len = cur_len
+        else:
+            decoder_prompt_len = input_ids.shape[-1]
 
         hb_profer = HabanaProfile(
             warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
