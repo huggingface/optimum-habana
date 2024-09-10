@@ -42,8 +42,6 @@ from ...test_modeling_common import (
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
-
-
 if is_torch_available():
     import torch
     from transformers import (
@@ -52,7 +50,6 @@ if is_torch_available():
         BridgeTowerForMaskedLM,
         BridgeTowerModel,
     )
-
 if is_vision_available():
     from PIL import Image
     from transformers import BridgeTowerProcessor
@@ -90,9 +87,7 @@ class BridgeTowerTextModelTester:
     def prepare_config_and_inputs(self):
         input_ids = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
         attention_mask = random_attention_mask([self.batch_size, self.seq_length])
-
         config = self.get_config()
-
         return config, input_ids, attention_mask
 
     def get_config(self):
@@ -139,7 +134,6 @@ class BridgeTowerImageModelTester:
         pixel_values = floats_tensor([self.batch_size, self.num_channels, self.image_size, self.image_size])
         pixel_mask = random_attention_mask([self.batch_size, self.image_size, self.image_size])
         config = self.get_config()
-
         return config, pixel_values, pixel_mask
 
     def get_config(self):
@@ -179,22 +173,18 @@ class BridgeTowerModelTester:
             text_kwargs = {}
         if vision_kwargs is None:
             vision_kwargs = {}
-
         self.parent = parent
         self.text_model_tester = BridgeTowerTextModelTester(parent, **text_kwargs)
         self.vision_model_tester = BridgeTowerImageModelTester(parent, **vision_kwargs)
-
         self.share_cross_modal_transformer_layers = share_cross_modal_transformer_layers
         self.share_link_tower_layers = share_link_tower_layers
         self.link_tower_type = link_tower_type
         self.init_layernorm_from_vision_encoder = init_layernorm_from_vision_encoder
         self.contrastive_hidden_size = contrastive_hidden_size
         self.logit_scale_init_value = logit_scale_init_value
-
         self.batch_size = 1
         self.expected_num_hidden_layers = 8
         self.is_training = False
-
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
@@ -203,9 +193,7 @@ class BridgeTowerModelTester:
     def prepare_config_and_inputs(self):
         text_config, input_ids, attention_mask = self.text_model_tester.prepare_config_and_inputs()
         vision_config, pixel_values, pixel_mask = self.vision_model_tester.prepare_config_and_inputs()
-
         config = self.get_config()
-
         return (config, input_ids, attention_mask, pixel_values, pixel_mask)
 
     def get_config(self):
@@ -259,13 +247,11 @@ class BridgeTowerModelTester:
         pixel_mask,
     ):
         bridgetower_itm_output_last_dimension = 2
-
         model = BridgeTowerForImageAndTextRetrieval(config)
         model.to(torch_device)
         model.eval()
         result = model(input_ids, attention_mask=attention_mask, pixel_values=pixel_values, pixel_mask=pixel_mask)
         result = model(input_ids, attention_mask=attention_mask, pixel_values=pixel_values)
-
         self.parent.assertEqual(result.logits.shape, (self.batch_size, bridgetower_itm_output_last_dimension))
 
     def create_and_check_for_masked_language_modeling(
@@ -281,7 +267,6 @@ class BridgeTowerModelTester:
         model.eval()
         result = model(input_ids, attention_mask=attention_mask, pixel_values=pixel_values, pixel_mask=pixel_mask)
         result = model(input_ids, attention_mask=attention_mask, pixel_values=pixel_values)
-
         self.parent.assertEqual(
             result.logits.shape,
             (self.batch_size, self.text_model_tester.seq_length, self.text_model_tester.vocab_size),
@@ -312,7 +297,6 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
         else ()
     )
     pipeline_model_mapping = {"feature-extraction": BridgeTowerModel} if is_torch_available() else {}
-
     is_training = False
     test_headmasking = False
     test_pruning = False
@@ -375,18 +359,15 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
             model.eval()
             with torch.no_grad():
                 outputs = model(**input_dict)
-
             out_2 = self.extract_output(outputs, model_class.__name__)
             out_2 = out_2.cpu().numpy()
             out_2[np.isnan(out_2)] = 0
-
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.save_pretrained(tmpdirname)
                 model = model_class.from_pretrained(tmpdirname)
                 model.to(torch_device)
                 with torch.no_grad():
                     after_outputs = model(**input_dict)
-
                 # Make sure we don't have nans
                 out_1 = self.extract_output(after_outputs, model_class.__name__)
                 out_1 = out_1.cpu().numpy()
@@ -400,23 +381,18 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
             model = model_class(config)
             model.to(torch_device)
             model.eval()
-
             with torch.no_grad():
                 outputs = model(**self._prepare_for_class(inputs_dict, model_class))
-
             hidden_states_text, hidden_states_vision, hidden_states_cross = (
                 outputs.encoder_hidden_states if config.is_encoder_decoder else outputs.hidden_states
             )
-
             expected_num_layers = self.model_tester.expected_num_hidden_layers
             self.assertEqual(
                 sum((len(hidden_states_text), len(hidden_states_vision), len(hidden_states_cross))),
                 expected_num_layers,
             )
-
             seq_length = self.model_tester.text_model_tester.seq_length
             num_image_features = self.model_tester.vision_model_tester.num_image_features
-
             self.assertListEqual(
                 list(hidden_states_text[0].shape[-2:]),
                 [seq_length, self.model_tester.text_model_tester.hidden_size],
@@ -435,11 +411,9 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
             )
 
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
-
         for model_class in self.all_model_classes:
             inputs_dict["output_hidden_states"] = True
             check_hidden_states_output(inputs_dict, config, model_class)
-
             # check that output_hidden_states also work using config
             del inputs_dict["output_hidden_states"]
             config.output_hidden_states = True
@@ -450,37 +424,27 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.output_hidden_states = True
         config.output_attentions = self.has_attentions
-
         # no need to test all models as different heads yield the same functionality
         model_class = self.all_model_classes[0]
         model = model_class(config)
         model.to(torch_device)
-
         inputs = self._prepare_for_class(inputs_dict, model_class)
-
         outputs = model(**inputs)
-
         output = outputs[0]
-
         # Encoder-/Decoder-only models
         hidden_states = outputs.hidden_states[0][0]
         hidden_states.retain_grad()
-
         if self.has_attentions:
             attentions = outputs.attentions[0][0]
             attentions.retain_grad()
-
         output.flatten()[0].backward(retain_graph=True)
-
         self.assertIsNotNone(hidden_states.grad)
-
         if self.has_attentions:
             self.assertIsNotNone(attentions.grad)
 
     # override as the `logit_scale` parameter initilization is different for BRIDGE TOWER
     def test_initialization(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
-
         configs_no_init = _config_zero_init(config)
         for model_class in self.all_model_classes:
             model = model_class(config=configs_no_init)
@@ -501,11 +465,15 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
                         )
 
     @unittest.skip(reason="""Bridge Tower does not have input/output embeddings. So this test is not applicable.""")
-    def test_model_common_attributes(self):
+    def test_model_get_set_embeddings(self):
         pass
 
     @unittest.skip(reason="""Bridge Tower does not have input/output embeddings. Thus this test is not applicable.""")
     def test_inputs_embeds(self):
+        pass
+
+    @unittest.skip(reason="Bridge Tower does not use inputs_embeds")
+    def test_inputs_embeds_matches_input_ids(self):
         pass
 
 
@@ -536,16 +504,13 @@ class BridgeTowerModelIntegrationTest(unittest.TestCase):
         image = prepare_img()
         text = "a bunch of cats laying on a tower."
         inputs = processor(image, text, return_tensors="pt").to(torch_device)
-
         # forward pass
         with torch.no_grad():
             outputs = model(**inputs)
-
         # verify the logits
         expected_shape = torch.Size([1, 2])
         self.assertEqual(outputs.logits.shape, expected_shape)
         self.assertTrue(outputs.logits[0, 1].item() > outputs.logits[0, 0].item())
-
         # verify loss
         inputs["labels"] = torch.ones(1, dtype=torch.long, device=torch_device)
         inputs = inputs.to(torch_device)
@@ -561,19 +526,15 @@ class BridgeTowerModelIntegrationTest(unittest.TestCase):
         image = prepare_img()
         text = "a bunch of <mask> laying on a tower."
         inputs = processor(image, text, return_tensors="pt").to(torch_device)
-
         # forward pass
         with torch.no_grad():
             outputs = model(**inputs)
-
         # verify the logits
         expected_shape = torch.Size([1, 11, 50265])
         self.assertEqual(outputs.logits.shape, expected_shape)
-
         # verify predicted word
         predicted_id = outputs.logits.argmax(dim=-1).squeeze(0).tolist()[4]
         self.assertTrue(processor.decode([predicted_id]) == " cats")
-
         # verify loss
         inputs["labels"] = inputs["input_ids"].clone()
         inputs = inputs.to(torch_device)
@@ -593,7 +554,6 @@ class BridgeTowerModelIntegrationTest(unittest.TestCase):
         inputs = processor(image, text, padding=True, return_tensors="pt").to(torch_device)
         with torch.no_grad():
             outputs = model(**inputs, output_hidden_states=True, return_loss=True)
-
         # verify the logits
         expected_shape = torch.Size([1, 3, 512])
         self.assertEqual(outputs.logits.shape, expected_shape)
