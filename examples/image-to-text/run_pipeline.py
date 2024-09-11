@@ -51,9 +51,11 @@ def setup_quantization(model, args):
         elif config.quantize:
             model = convert(model, config)
     else:
+        import habana_frameworks.torch.core as htcore
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.prep_model(model)
+        htcore.hpu_initialize(model)
 
     return model
 
