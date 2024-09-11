@@ -82,6 +82,9 @@ device = torch.device("hpu")
 test_protein = "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLEFIAIIYGNTLQSILAIVRAMTTLNIQYGDSARQDDARKLMHMADTIEEGTMPKEMSDIIQRLWKDSGIQACFERASEYQLNDSAGYYLSDLERLVTPGYVPTEQDVLRSRVKTTGIIETQFSFKDLNFRMFDVGGQRSERKKWIHCFEGVTCIIFIAALSAYDMVLVEDDEVNRMHESLHLFNSICNHRYFATTSIVLFLNKKDVFFEKIKKAHLSICFPDYDGPNTYEDAGNYIKVQFLELNMRRDVKEIYSHMTCATDTQNVKFVFDAVTDIIIKENLKDCGLF"  # len = 350
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1")
+# Set _supports_param_buffer_assignment to False since facebook/esmfold_v1's encoder weights are float16.
+# Without this fix, we will have the weights loaded with float16 on gaudi2,gaudi3 and runtime error on gaudi1
+EsmForProteinFolding._supports_param_buffer_assignment = False
 model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", low_cpu_mem_usage=False)
 model = model.to(device)
 
