@@ -36,6 +36,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def setup_quantization(model, args):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        config = FP8Config.from_json_file(args.quant_config)
+        if config.measure:
+            model = prepare(model, config)
+        elif config.quantize:
+            model = convert(model, config)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
+
+    return model
+
+
+def finalize_quantization(model):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import finalize_calibration
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        finalize_calibration(model)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.finish_measurements(model)
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -169,18 +207,14 @@ def main():
         generator.model = wrap_in_hpu_graph(generator.model)
 
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(generator.model)
-
-        htcore.hpu_initialize(generator.model)
+        generator.model = setup_quantization(generator.model, args)
 
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
     if args.quant_config:
-        habana_quantization_toolkit.finish_measurements(generator.model)
+        finalize_quantization(generator.model)
 
     start = time.perf_counter()
     for i in range(args.n_iterations):
