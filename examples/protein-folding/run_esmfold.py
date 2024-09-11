@@ -83,9 +83,10 @@ test_protein = "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLE
 
 tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1")
 # Set _supports_param_buffer_assignment to False since facebook/esmfold_v1's encoder weights are float16.
-# Without this fix, we will get the weights to be loaded with float16 on gaudi2,gaudi3 and runtime error on gaudi1
+# Without this fix, we will have the weights loaded with float16 on gaudi2,gaudi3 and runtime error on gaudi1
 EsmForProteinFolding._supports_param_buffer_assignment = False
-model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", low_cpu_mem_usage=False)
+#model = EsmForProteinFolding.from_pretrained("facebook/esmfold_v1", low_cpu_mem_usage=False)
+model = EsmForProteinFolding.from_pretrained("/root/tf/models--facebook--esmfold_v1/snapshots/75a3841ee059df2bf4d56688166c8fb459ddd97a/", low_cpu_mem_usage=False)
 model = model.to(device)
 
 # Uncomment this line if you're folding longer (over 600 or so) sequences
