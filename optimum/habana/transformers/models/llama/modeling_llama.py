@@ -653,7 +653,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        kv_cache_on_host = (key_states.device == "cpu" and value_states.device == "cpu")
+        kv_cache_on_host = (key_states.device == torch.device("cpu") and value_states.device == torch.device("cpu"))
         # CPU SDPA fot next token
         if kv_cache_on_host and q_len == 1 and not self.training:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
@@ -668,12 +668,12 @@ class GaudiLlamaAttention(LlamaAttention):
                                                         dropout_p=0.0,
                                                         is_causal=False,
                                                         scale=self.norm_factor)
-            attn_output = attn_output.to("hpu")
+            attn_output = attn_output.to("hpu", non_blocking=True)
 
         else:
             if kv_cache_on_host:
-                key_states = key_states.to("hpu")
-                value_states = value_states.to("hpu")
+                key_states = key_states.to("hpu", non_blocking=True)
+                value_states = value_states.to("hpu", non_blocking=True)
             if use_flash_attention and FusedSDPA is not None:
                 import habana_frameworks.torch.hpu as ht
 
