@@ -127,6 +127,7 @@ from .models import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
     gaudi_check_and_enable_sdpa,
+    gaudi_check_support_param_buffer_assignment,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
@@ -561,3 +562,5 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
+    transformers.modeling_utils.check_support_param_buffer_assignment = gaudi_check_support_param_buffer_assignment

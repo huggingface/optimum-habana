@@ -133,6 +133,7 @@ from .mixtral import (
 )
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
+    gaudi_check_support_param_buffer_assignment,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
