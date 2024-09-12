@@ -19,12 +19,11 @@ import logging
 import os
 import time
 from pathlib import Path
-from contextlib import nullcontext
 
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaProcessor, LlavaNextProcessor, pipeline
+from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -105,7 +104,7 @@ def main():
     parser.add_argument(
         "--use_kv_cache",
         action="store_true",
-        help="Whether to use the key/value cache for decoding. It should speed up generation."
+        help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
 
     args = parser.parse_args()
@@ -127,12 +126,15 @@ def main():
             processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
         elif model_type == "llava_next":
             processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-        conversation = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "What is shown in this image?"},
-                {"type": "image"},
-            ]}]
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is shown in this image?"},
+                    {"type": "image"},
+                ],
+            }
+        ]
         args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
@@ -211,7 +213,9 @@ def main():
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
     logger.info(f"result = {result}")
-    logger.info(f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second")
+    logger.info(
+        f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+    )
 
     # Store results if necessary
     if args.output_dir is not None:
