@@ -19,5 +19,5 @@
 from .st_gaudi_trainer import SentenceTransformerGaudiTrainer
 from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
 from .st_gaudi_encoder import st_gaudi_encode
-from .st_gaudi_transformer_tokenize import st_gaudi_transformer_tokenize
+from .st_gaudi_transformer_tokenize import st_gaudi_transformer_tokenize, st_gaudi_transformer_save
 from .st_gaudi_data_collator import st_gaudi_data_collator_call
