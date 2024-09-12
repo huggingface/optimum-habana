@@ -18,19 +18,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-PyTorch MiniCPM model. Copied from https://huggingface.co/openbmb/MiniCPM3-4B/tree/75f9f1097d9d66d11f37fff49210bf940455f8ac
+PyTorch MiniCPM model. Copied from https://huggingface.co/openbmb/MiniCPM3-4B/tree/6fcf8b4e629d01a435b96e898899e0b6d9bddb7a
 """
 
 import math
 import warnings
-from typing import List, Optional, Tuple, Union, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import (
@@ -49,14 +49,14 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS, is_torch_greater_or
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_2_available,
     is_flash_attn_greater_or_equal_2_10,
     logging,
     replace_return_docstrings,
 )
 from transformers.utils.import_utils import is_torch_fx_available
+
 from .configuration_minicpm import MiniCPM3Config
-import re
+
 
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -1189,6 +1189,8 @@ class MiniCPM3Model(MiniCPM3PreTrainedModel):
                     use_cache=use_cache,
                 )
 
+            htcore.mark_step()
+
             hidden_states = layer_outputs[0]
 
             if use_cache:
@@ -1286,6 +1288,8 @@ class MiniCPM3ForCausalLM(MiniCPM3PreTrainedModel):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
+
+        print("Causal LM Forward")
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states

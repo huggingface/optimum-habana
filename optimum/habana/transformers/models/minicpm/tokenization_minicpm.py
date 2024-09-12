@@ -13,7 +13,6 @@ from datamodel_code_generator.format import PythonVersion
 from datamodel_code_generator.model import get_data_model_types
 from datamodel_code_generator.parser.jsonschema import JsonSchemaParser
 from jsonschema import Draft202012Validator, exceptions, validate
-
 from transformers import LlamaTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.utils import TensorType
@@ -428,4 +427,3 @@ def resolve_ast_by_type(value):
     else:
         raise Exception(f"Unsupported AST type: {type(value)}")
     return output
-

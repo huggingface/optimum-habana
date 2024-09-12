@@ -141,6 +141,7 @@ from .mistral import (
     MistralConfig,
     gaudi_mistral_rmsnorm_forward,
 )
+from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM, MiniCPMTokenizer
 from .mixtral import (
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
