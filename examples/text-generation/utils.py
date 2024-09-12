@@ -560,7 +560,11 @@ def setup_tokenizer(args, model, assistant_model):
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        model.generation_config.pad_token_id = (
+            model.generation_config.eos_token_id
+            if isinstance(model.generation_config.eos_token_id, int)
+            else model.generation_config.eos_token_id[-1]
+        )  # Hack for eos_token_id configuration as a list
         if assistant_model is not None:
             assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id
 
