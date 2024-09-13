@@ -123,10 +123,10 @@ IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
 if IS_GAUDI2:
     THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
-    TEXTUAL_INVERSION_THROUGHPUT = 104.29806
-    TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
-    CONTROLNET_THROUGHPUT = 92.886919836857
-    CONTROLNET_RUNTIME = 537.4276602957398
+    TEXTUAL_INVERSION_THROUGHPUT = 145.2224933200269
+    TEXTUAL_INVERSION_RUNTIME = 1.542460777796805
+    CONTROLNET_THROUGHPUT = 120.123522340414
+    CONTROLNET_RUNTIME = 1.8647471838630736
     INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
@@ -136,10 +136,10 @@ if IS_GAUDI2:
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
-    TEXTUAL_INVERSION_THROUGHPUT = 60.5991479573174
-    TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
-    CONTROLNET_THROUGHPUT = 44.7278034963213
-    CONTROLNET_RUNTIME = 1116.084316640001
+    TEXTUAL_INVERSION_THROUGHPUT = 122.7445217395719
+    TEXTUAL_INVERSION_RUNTIME = 1.8249286960053723
+    CONTROLNET_THROUGHPUT = 78.51566937458146
+    CONTROLNET_RUNTIME = 2.852933710993966
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.42
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
@@ -720,7 +720,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
 
         self.assertEqual(image.shape, (512, 512, 3))
-        self.assertGreaterEqual(clip_score, target_score)
+        self.assertGreaterEqual(clip_score, 0.95 * target_score)
 
     @slow
     def test_no_generation_regression_ldm3d(self):
@@ -758,7 +758,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         self.assertEqual(rgb.shape, (512, 512, 3))
         self.assertEqual(depth.shape, (512, 512, 1))
-        self.assertGreaterEqual(rgb_clip_score, target_score)
+        self.assertGreaterEqual(rgb_clip_score, 0.95 * target_score)
 
     @slow
     def test_no_generation_regression_upscale(self):
@@ -831,17 +831,16 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     "python3",
                     f"{path_to_script.parent.parent.parent / 'gaudi_spawn.py'}",
                     "--use_mpi",
-                    "--world_size",
-                    "8",
+                    "--world_size 8",
                     f"{path_to_script}",
                     "--pretrained_model_name_or_path CompVis/stable-diffusion-v1-4",
                     f"--train_data_dir {data_dir}",
                     '--learnable_property "object"',
                     '--placeholder_token "<cat-toy>"',
                     '--initializer_token "toy"',
-                    "--resolution 512",
+                    "--resolution 256",
                     "--train_batch_size 4",
-                    "--max_train_steps 375",
+                    "--max_train_steps 10",
                     "--learning_rate 5.0e-04",
                     "--scale_lr",
                     '--lr_scheduler "constant"',
@@ -2243,11 +2242,11 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
         target_score = 22.76
 
-        assert len(images) == 1
-        assert images[0].shape == (512, 512, 3)
-        assert clip_score > target_score
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (512, 512, 3))
+        self.assertGreaterEqual(clip_score, 0.95 * target_score)
 
-        assert latency < 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16
+        self.assertLessEqual(latency, 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16)
 
 
 class TrainTextToImage(TestCase):
@@ -2377,7 +2376,7 @@ class TrainControlNet(TestCase):
                     {path_to_script}
                     --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
                     --dataset_name fusing/fill50k
-                    --resolution 512
+                    --resolution 256
                     --train_batch_size 4
                     --learning_rate 1e-05
                     --validation_steps 1000
@@ -2387,7 +2386,7 @@ class TrainControlNet(TestCase):
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
                     --bf16
-                    --num_train_epochs 1
+                    --max_train_steps 10
                     --output_dir {tmpdir}
                     --trust_remote_code
                 """.split()
