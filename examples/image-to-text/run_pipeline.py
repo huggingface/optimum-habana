@@ -33,6 +33,7 @@ from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
 )
 
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
@@ -160,6 +161,7 @@ def main():
     if world_size > 1:
         import deepspeed
         from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
         world_size, rank, local_rank = initialize_distributed_hpu()
 
