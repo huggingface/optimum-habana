@@ -33,6 +33,17 @@ For multi-card training you can use the script of [gaudi_spawn.py](https://githu
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_stsbenchmark.py bert-base-uncased
 ```
 
+## Multi-card Training with intfloat/e5-mistral-7b-instruct (Using Deepspeed Zero2/3)
+
+Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We need use the zero2/zero3 stage (model parallel) of deepspeed to reduce the memory requirement.
+
+We have tested that at least 4 hpu memories can satisfy the training of this model as below (Deepspeed Zero2). 
+
+```bash
+python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_stsbenchmark_deepspeed_zero2.py intfloat/e5-mistral-7b-instruct
+```
+In the command we need setup the lazy mode with the learning rate of 1e-7 and also deepspeed config of "ds_config.json". You need change the stage to 3 (Deepspeed Zero3) in "ds_config.json" if you want to reduce memory further. 
+
 ## Training data
 
 Here is a simplified version of our training data:
