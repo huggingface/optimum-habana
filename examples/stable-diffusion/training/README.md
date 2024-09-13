@@ -319,10 +319,10 @@ Prior-preservation is used to avoid overfitting and language-drift. Refer to the
 According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time.
 
 ### PEFT model finetune
-We provide example for dreambooth to use lora/lokr/loha/oft to finetune unet or text encoder.
+We provide example for dreambooth to use `lora`, `lokr`, `loha`, `oft` and `boft` to finetune unet or text encoder.
 
-**___Note: When using peft method we can use a much higher learning rate compared to vanilla dreambooth. Here we
-use *1e-4* instead of the usual *5e-6*.___**
+> [!NOTE]
+> When using peft method we can use a much higher learning rate compared to vanilla dreambooth. Here we use *1e-4* instead of the usual *5e-6*.
 
 Launch the multi-card training using:
 ```bash
@@ -355,19 +355,18 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
   lora --unet_r 8 --unet_alpha 8
 
 ```
-Similar command could be applied to loha, lokr, oft, boft.
+Similar command could be applied to `loha`, `lokr`, `oft` or `boft`.
 You could check each adapter specific args by "--help", like you could use following command to check oft specific args.
 
 ```bash
-python3 train_dreambooth.py oft --help
+python train_dreambooth.py oft --help
 
 ```
 
-**___Note: boft/oft could not work with hpu graphs mode. since "torch.inverse" "torch.linalg.solve" need to fallback to cpu.
-there's error like "cpu fallback is not supported during hpu graph capturing"___**
+> [!NOTE]
+> `boft` and `oft` do not work with hpu graphs mode since `torch.inverse` `torch.linalg.solve` need to fallback to cpu. Pls. remove `--use_hpu_graphs_for_training` and `--use_hpu_graphs_for_inference` to avoid `cpu fallback is not supported during hpu graph capturing` error.
 
-
-You could use text_to_image_generation.py to generate picture using the peft adapter like
+You could use `text_to_image_generation.py` script to generate picture using the peft adapter:
 
 ```bash
 python ../text_to_image_generation.py \
@@ -384,8 +383,8 @@ python ../text_to_image_generation.py \
 ```
 
 ### DreamBooth training example for Stable Diffusion XL
-You could use the dog images as example as well.
-You can launch training using:
+You could use the dog images as example for training:
+
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
@@ -415,7 +414,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.
 
 ```
 
-You could use text_to_image_generation.py to generate picture using the peft adapter like
+Then, you could use `text_to_image_generation.py` to generate picture using the peft adapter:
 
 ```bash
 python ../text_to_image_generation.py \
