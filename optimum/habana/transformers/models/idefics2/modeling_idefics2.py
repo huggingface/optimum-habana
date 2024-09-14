@@ -25,11 +25,50 @@ from transformers.models.idefics2.modeling_idefics2 import (
     Idefics2CausalLMOutputWithPast,
     Idefics2ForConditionalGeneration,
     Idefics2Model,
+    Idefics2VisionEmbeddings,
 )
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
+
+
+class GaudiIdefics2VisionEmbeddings(Idefics2VisionEmbeddings):
+    def forward(self, pixel_values: torch.FloatTensor, patch_attention_mask: torch.BoolTensor) -> torch.Tensor:
+        """
+        Inherits from Idefics2VisionEmbeddings::forward https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L159
+        The only differences are:
+        - add int() in nb_patches_h. nb_patches_w to avoid overflow in torch.arange. sometimes return shape is nb_patches_h/nb_patch_w + 1
+        - delete to("cpu") of p_attn_mask
+        """
+
+        batch_size, _, max_im_h, max_im_w = pixel_values.shape
+
+        patch_embeds = self.patch_embedding(pixel_values)
+        embeddings = patch_embeds.flatten(2).transpose(1, 2)
+
+        max_nb_patches_h, max_nb_patches_w = max_im_h // self.patch_size, max_im_w // self.patch_size
+        boundaries = torch.arange(1 / self.num_patches_per_side, 1.0, 1 / self.num_patches_per_side)
+        position_ids = torch.full(
+            size=(batch_size, max_nb_patches_h * max_nb_patches_w),
+            fill_value=0,
+            device=self.position_embedding.weight.device,
+        )
+
+        for batch_idx, p_attn_mask in enumerate(patch_attention_mask):
+            nb_patches_h = int(p_attn_mask[:, 0].sum())
+            nb_patches_w = int(p_attn_mask[0].sum())
+
+            fractional_coords_h = torch.arange(0, 1 - 1e-6, 1 / nb_patches_h)
+            fractional_coords_w = torch.arange(0, 1 - 1e-6, 1 / nb_patches_w)
+
+            bucket_coords_h = torch.bucketize(fractional_coords_h, boundaries, right=True)
+            bucket_coords_w = torch.bucketize(fractional_coords_w, boundaries, right=True)
+
+            pos_ids = (bucket_coords_h[:, None] * self.num_patches_per_side + bucket_coords_w).flatten()
+            position_ids[batch_idx][p_attn_mask.view(-1)] = pos_ids.to(self.position_embedding.weight.device)
+        embeddings = embeddings + self.position_embedding(position_ids)
+        return embeddings
 
 
 class GaudiIdefics2Model(Idefics2Model):
@@ -52,7 +91,7 @@ class GaudiIdefics2Model(Idefics2Model):
         Inherits from Idefics2Model::forward https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L1303
         The only differences are:
         - ignoring new Cache path for HPU
-        - unfold is not supported in HPU, fallback to cpu
+        - unfold is not supported in HPU, replace with conv2d
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -120,9 +159,13 @@ class GaudiIdefics2Model(Idefics2Model):
                 pixel_attention_mask = pixel_attention_mask[real_images_inds].contiguous()
 
             patch_size = self.config.vision_config.patch_size
-            patches_subgrid = pixel_attention_mask.cpu().unfold(dimension=1, size=patch_size, step=patch_size)
-            patches_subgrid = patches_subgrid.cpu().unfold(dimension=2, size=patch_size, step=patch_size)
-            patch_attention_mask = (patches_subgrid.sum(dim=(-1, -2)) > 0).bool()
+            conv_kernel = torch.ones(
+                [1, 1, patch_size, patch_size], dtype=pixel_values.dtype, device=pixel_values.device
+            )
+            patches_subgrid = torch.nn.functional.conv2d(
+                pixel_attention_mask.unsqueeze(1).to(conv_kernel.dtype), conv_kernel, stride=patch_size
+            ).squeeze(1)
+            patch_attention_mask = torch.eq(patches_subgrid, (patch_size * patch_size))
 
             # Get sequence from the vision encoder
             image_hidden_states = self.vision_model(
@@ -345,6 +388,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         The only differences are:
         - add new args token_idx
         - add None "Cache" past_key_values support
+        - move vision_model to prepare_input_for_generation
         """
         past_length = 0
         token_idx = kwargs.get("token_idx", None)
@@ -430,9 +474,13 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
                 pixel_attention_mask = pixel_attention_mask[real_images_inds].contiguous()
 
             patch_size = self.config.vision_config.patch_size
-            patches_subgrid = pixel_attention_mask.cpu().unfold(dimension=1, size=patch_size, step=patch_size)
-            patches_subgrid = patches_subgrid.cpu().unfold(dimension=2, size=patch_size, step=patch_size)
-            patch_attention_mask = (patches_subgrid.sum(dim=(-1, -2)) > 0).bool()
+            conv_kernel = torch.ones(
+                [1, 1, patch_size, patch_size], dtype=pixel_values.dtype, device=pixel_values.device
+            )
+            patches_subgrid = torch.nn.functional.conv2d(
+                pixel_attention_mask.unsqueeze(1).to(conv_kernel.dtype), conv_kernel, stride=patch_size
+            ).squeeze(1)
+            patch_attention_mask = torch.eq(patches_subgrid, (patch_size * patch_size))
 
             # Get sequence from the vision encoder
             image_hidden_states = self.model.vision_model(

@@ -382,7 +382,7 @@ def main():
         do_image_splitting=model_args.do_image_splitting,
         padding_side="right",
     )
-
+    setattr(processor.image_processor, "pad_to_longest_edge", True)
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
@@ -503,7 +503,6 @@ def main():
                 ],
             }
         ]
-        processor.tokenizer.padding_side = "left"
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = processor(
             text=[text.strip()],
