@@ -4,6 +4,8 @@ Given two sentences (premise and hypothesis), the task of Natural Language Infer
 
 The paper in [Conneau et al.](https://arxiv.org/abs/1705.02364) shows that NLI data can be quite useful when training Sentence Embedding methods. In [Sentence-BERT-Paper](https://arxiv.org/abs/1908.10084) NLI as a first fine-tuning step for sentence embedding methods has been used.
 
+# General Models
+
 ## Single-card Training
 
 To pre-train on the NLI task:
@@ -46,7 +48,18 @@ For multi-card training you can use the script of [gaudi_spawn.py](https://githu
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_nli.py bert-base-uncased
 ```
 
-## Multi-card Training with intfloat/e5-mistral-7b-instruct (Using Deepspeed Zero2/3)
+
+# intfloat/e5-mistral-7b-instruct Model
+
+## Single-card Training with LoRA+gradient_checkpointing
+
+Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We can use LoRA + gradient_checkpointing to reduce the memory requirement for one hpu card. 
+
+```bash
+python training_nli_lora.py intfloat/e5-mistral-7b-instruct
+```
+
+## Multi-card Training with Deepspeed Zero2/3
 
 Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We need use the zero2/zero3 stage (model parallel) of deepspeed to reduce the memory requirement.
 

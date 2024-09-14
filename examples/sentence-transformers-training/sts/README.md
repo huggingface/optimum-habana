@@ -5,6 +5,8 @@ Semantic Textual Similarity (STS) assigns a score on the similarity of two texts
 - **[training_stsbenchmark.py](training_stsbenchmark.py)** - This example shows how to create a SentenceTransformer model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
 - **[training_stsbenchmark_continue_training.py](training_stsbenchmark_continue_training.py)** - This example shows how to continue training on STS data for a previously created & trained SentenceTransformer model (e.g. [`all-mpnet-base-v2`](https://huggingface.co/sentence-transformers/all-mpnet-base-v2)).
 
+# General Models
+
 ## Single-card Training
 
 To fine tune on the STS task:
@@ -33,7 +35,18 @@ For multi-card training you can use the script of [gaudi_spawn.py](https://githu
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_stsbenchmark.py bert-base-uncased
 ```
 
-## Multi-card Training with intfloat/e5-mistral-7b-instruct (Using Deepspeed Zero2/3)
+
+# intfloat/e5-mistral-7b-instruct Model
+
+## Single-card Training with LoRA+gradient_checkpointing
+
+Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We can use LoRA + gradient_checkpointing to reduce the memory requirement for one hpu card. 
+
+```bash
+python training_stsbenchmark_lora.py intfloat/e5-mistral-7b-instruct
+```
+
+## Multi-card Training with Deepspeed Zero2/3
 
 Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We need use the zero2/zero3 stage (model parallel) of deepspeed to reduce the memory requirement.
 
