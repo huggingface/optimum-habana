@@ -40,7 +40,7 @@ HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world
 
 ## Single-card Training with LoRA+gradient_checkpointing
 
-Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We can use LoRA + gradient_checkpointing to reduce the memory requirement for one hpu card. 
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can utilize LoRA and gradient checkpointing techniques to reduce the memory requirements, making it feasible to train the model on a single HPU.
 
 ```bash
 python training_stsbenchmark_lora.py intfloat/e5-mistral-7b-instruct
