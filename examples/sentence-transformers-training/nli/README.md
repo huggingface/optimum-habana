@@ -63,7 +63,7 @@ python training_nli_lora.py intfloat/e5-mistral-7b-instruct
 
 Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can use the Zero2/Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
 
-We have tested that at least 4 hpu memories can satisfy the training of this model as below (Deepspeed Zero2).
+Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero2.
 
 ```bash
 python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_nli_deepspeed_zero2.py intfloat/e5-mistral-7b-instruct
