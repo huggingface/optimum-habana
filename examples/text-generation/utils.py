@@ -410,6 +410,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+    ds_inference_kwargs["keep_module_on_host"] = True
     if load_to_meta:
         ds_inference_kwargs["checkpoint"] = checkpoints_json.name
 
