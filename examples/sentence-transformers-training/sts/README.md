@@ -55,7 +55,8 @@ Our tests have shown that training this model requires at least four HPUs when u
 ```bash
 python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_stsbenchmark_deepspeed_zero2.py intfloat/e5-mistral-7b-instruct
 ```
-In the command we need setup the lazy mode with the learning rate of 1e-7 and also deepspeed config of "ds_config.json". You need change the stage to 3 (Deepspeed Zero3) in "ds_config.json" if you want to reduce memory further. 
+
+In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. To further reduce memory usage, change the stage to 3 (DeepSpeed Zero3) in the `ds_config.json` file.
 
 ## Training data
 
