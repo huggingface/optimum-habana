@@ -61,7 +61,7 @@ python training_nli_lora.py intfloat/e5-mistral-7b-instruct
 
 ## Multi-card Training with Deepspeed Zero2/3
 
-Due to the pretraining for intfloat/e5-mistral-7b-instruct needs around 130G memory so one hpu memory (98G) can not afford the training for this model. We need use the zero2/zero3 stage (model parallel) of deepspeed to reduce the memory requirement.
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can use the Zero2/Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
 
 We have tested that at least 4 hpu memories can satisfy the training of this model as below (Deepspeed Zero2).
 
