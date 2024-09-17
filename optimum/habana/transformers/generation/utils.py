@@ -2033,8 +2033,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
-            hb_profer.step()
-
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -2042,6 +2040,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2196,7 +2195,8 @@ class GaudiGenerationMixin(GenerationMixin):
         # keep track of which sequences are already finished
         batch_size, cur_len = input_ids.shape
         this_peer_finished = False
-        unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
+        if not ignore_eos:
+            unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
         model_kwargs = self._get_initial_cache_position(input_ids, model_kwargs)
 
         bucket_size = model_kwargs.get("bucket_size", -1)
@@ -2271,9 +2271,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
-                # Clone is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration
-                # (the clone itself is always small)
-                next_token_logits = outputs.logits[:, -1, :].clone()
+                next_token_logits = outputs.logits[:, -1, :]
                 if token_idx is not None and self.config.is_encoder_decoder:
                     # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
@@ -2367,7 +2365,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -2375,6 +2372,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -3132,7 +3130,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False
 
-        decoder_prompt_len = input_ids.shape[-1]  # record the prompt length of decoder
+        # record the prompt length of decoder
+        if token_idx is not None:
+            decoder_prompt_len = cur_len
+        else:
+            decoder_prompt_len = input_ids.shape[-1]
 
         hb_profer = HabanaProfile(
             warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
@@ -3629,7 +3631,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -3637,6 +3638,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+            hb_profer.step()
 
             if this_peer_finished and not synced_gpus:
                 break

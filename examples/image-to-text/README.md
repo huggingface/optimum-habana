@@ -28,6 +28,8 @@ Models that have been validated:
   - [llava-hf/llava-v1.6-mistral-7b-hf](https://huggingface.co/llava-hf/llava-v1.6-mistral-7b-hf)
   - [llava-hf/llava-v1.6-vicuna-7b-hf](https://huggingface.co/llava-hf/llava-v1.6-vicuna-7b-hf)
   - [llava-hf/llava-v1.6-vicuna-13b-hf](https://huggingface.co/llava-hf/llava-v1.6-vicuna-13b-hf)
+  - [llava-hf/llava-v1.6-34b-hf](https://huggingface.co/llava-hf/llava-v1.6-34b-hf)
+  - [llava-hf/llama3-llava-next-8b-hf](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf)
   - [HuggingFaceM4/idefics2-8b](https://huggingface.co/HuggingFaceM4/idefics2-8b)
 
 ### Inference with BF16
@@ -73,7 +75,26 @@ python3 run_pipeline.py \
     --bf16
 ```
 
+To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
+
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-v1.6-34b-hf \
+    --use_hpu_graphs \
+    --bf16
+```
+
+To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
+
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
+    --use_hpu_graphs \
+    --bf16
+```
+
 To run idefics2 inference, use the following command:
+
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
@@ -82,8 +103,7 @@ python3 run_pipeline.py \
 ```
 
 ### Inference with FP8
-
-Inference for Llava-1.5-7b, Llava-1.5-13b, Llava-v1.6-mistral-7b and Llava-v1.6-vicuna-13b in FP8 precision are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Inference for Llava-1.5-7b, Llava-1.5-13b, Llava-v1.6-mistral-7b and Llava-v1.6-vicuna-13b in FP8 precision are enabled using  [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling FP8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -154,7 +174,8 @@ python3 run_pipeline.py \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
     --bf16 \
-    --use_flash_attention
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 
@@ -165,7 +186,8 @@ python3 run_pipeline.py \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
     --bf16 \
-    --use_flash_attention
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 
@@ -177,7 +199,9 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
---bf16 --use_flash_attention
+--bf16 \
+--use_flash_attention \
+--flash_attention_recompute
 ```
 
 Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b:
@@ -186,7 +210,9 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
---bf16 --use_flash_attention
+--bf16 \
+--use_flash_attention \
+--flash_attention_recompute
 ```
 ## LORA Finetune
 

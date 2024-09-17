@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import accelerate
 import transformers
 import transformers.utils.fx
 
+from ..accelerate.utils import extract_model_from_parallel
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
@@ -205,6 +207,9 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+    accelerate.utils.extract_model_from_parallel = extract_model_from_parallel
+    accelerate.utils.other.extract_model_from_parallel = extract_model_from_parallel
+    accelerate.accelerator.extract_model_from_parallel = extract_model_from_parallel
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []

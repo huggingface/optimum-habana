@@ -165,13 +165,13 @@ clean:
 	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
 	find . -name checkpoints.json -type f -delete
+	find . -name hpu_profile -type d -exec rm -r {} +
 	rm -rf regression/
 	rm -rf tmp_trainer/
 	rm -rf test/
 	rm -rf build/
 	rm -rf dist/
 	rm -rf optimum_habana.egg-info/
-	rm -rf hpu_profile/
 
 test_installs:
 	python -m pip install .[tests]

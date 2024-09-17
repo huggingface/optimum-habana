@@ -174,7 +174,8 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 
