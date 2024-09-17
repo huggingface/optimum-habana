@@ -570,8 +570,8 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True, add_bos_token=True):
-        add_eos_token_o = tokenizer.add_eos_token
-        add_bos_token_o = tokenizer.add_bos_token
+        add_eos_token_o = tokenizer._eos_token
+        add_bos_token_o = tokenizer._bos_token
         if not data_args.dataset_concatenation:
             tokenizer.add_eos_token = add_eos_token
             padding = "max_length"
