@@ -24,6 +24,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
+from unsloth.chat_templates import get_chat_template
 
 import datasets
 import evaluate
@@ -368,14 +369,6 @@ class FinetuneArguments:
         default=10,
         metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
     )
-
-
-def get_chat_template(tokenizer, mapping, chat_template):
-    tokenizer.chat_template = chat_template
-    tokenizer.default_chat_template = chat_template
-    tokenizer.use_default_system_prompt = False
-    tokenizer.add_special_tokens({"additional_special_tokens": list(mapping.values())})
-    return tokenizer
 
 
 def apply_template(examples, tokenizer):
