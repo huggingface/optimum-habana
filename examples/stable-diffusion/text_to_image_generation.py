@@ -272,6 +272,12 @@ def main():
         help="Enable deterministic generation using CPU Generator",
     )
     parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        type=str,
+        help="Quantization mode 'measure', 'quantize' or 'disable'",
+    )
+    parser.add_argument(
         "--use_compel",
         action="store_true",
         help="Use compel for prompt weighting",
@@ -410,7 +416,10 @@ def main():
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
 
+    kwargs_call["quant_mode"] = args.quant_mode
+
     # Instantiate a Stable Diffusion pipeline class
+    import habana_frameworks.torch.core as htcore
     if sdxl:
         # SDXL pipelines
         if controlnet:
