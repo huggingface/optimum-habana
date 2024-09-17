@@ -370,69 +370,18 @@ class FinetuneArguments:
     )
 
 
-PROMPT_DICT = {
-    "prompt_with_input": (
-        "Below is an instruction that describes a task, paired with an input that provides further context. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
-    ),
-    "prompt_without_input": (
-        "Below is an instruction that describes a task. "
-        "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\n{instruction}\n\n### Response:"
-    ),
-}
-
-SQL_PROMPT = (
-    "You are a text-to-SQL model. Your job is to answer questions about a database. "
-    "You are given a question and a context regarding one or more tables in the database.\n\n"
-    "You must output the SQL query that answers the question. The SQL query must be between [SQL] and [/SQL] tags.\n\n"
-    "### Question: \n{question}\n\n### Context: \n{context}\n\n### Response:"
-)
+def get_chat_template(tokenizer, mapping, chat_template):
+    tokenizer.chat_template = chat_template
+    tokenizer.default_chat_template = chat_template
+    tokenizer.use_default_system_prompt = False
+    tokenizer.add_special_tokens({"additional_special_tokens": list(mapping.values())})
+    return tokenizer
 
 
-def create_prompts(examples):
-    prompts = {}
-    prompts["source"] = []
-    prompts["target"] = []
-    for example in examples:
-        prompt_template = (
-            PROMPT_DICT["prompt_with_input"] if example.get("input", "") != "" else PROMPT_DICT["prompt_without_input"]
-        )
-        source = prompt_template.format_map(example)
-        prompts["source"].append(source)
-        prompts["target"].append(example["output"])
-    return prompts
-
-
-def create_chat_prompts(examples, tokenizer):
-    prompts = {}
-    prompts["source"] = []
-    prompts["target"] = []
-    for example in examples:
-        prompt = [
-            {
-                "role": "user",
-                "content": "Answer the below Query based on the Content given below. #### Query: {instruction} #### Content: {input}".format_map(
-                    example
-                ),
-            },
-        ]
-        source = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-        prompts["source"].append(source)
-        prompts["target"].append(example["output"])
-    return prompts
-
-
-def create_sql_prompts(examples):
-    prompts = {}
-    prompts["source"] = []
-    prompts["target"] = []
-    for example in examples:
-        source = SQL_PROMPT.format_map(example)
-        prompts["source"].append(source)
-        prompts["target"].append(example["answer"])
-    return prompts
+def apply_template(examples):
+    messages = examples["conversations"]
+    text = [tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=False) for message in messages]
+    return {"text": text}
 
 
 def main():
@@ -516,15 +465,13 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files, this script will use the column called 'text' or the first column if no column called
-    # 'text' is found. You can easily tweak this behavior (see below).
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
+    tokenizer = get_chat_template(
+        tokenizer,
+        mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+        chat_template="chatml",
+    )
+
+    # Get the datasets
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
@@ -580,83 +527,7 @@ def main():
             token=model_args.token,
             **dataset_args,
         )
-
-        # If no validation data is there, validation_split_percentage will be used to divide the dataset.
-        if "validation" not in raw_datasets.keys() and training_args.do_eval:
-            if not data_args.validation_split_percentage:
-                raise ValueError(
-                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
-                )
-            raw_datasets["validation"] = load_dataset(
-                extension,
-                data_files=data_files,
-                split=f"train[:{data_args.validation_split_percentage}%]",
-                cache_dir=model_args.cache_dir,
-                token=model_args.token,
-                **dataset_args,
-            )
-            raw_datasets["train"] = load_dataset(
-                extension,
-                data_files=data_files,
-                split=f"train[{data_args.validation_split_percentage}%:]",
-                cache_dir=model_args.cache_dir,
-                token=model_args.token,
-                **dataset_args,
-            )
-    single_column_dataset = False
-    # For named dataset (timdettmers/openassistant-guanaco) or custom dataset with a single column "text"
-    if (
-        training_args.do_train
-        and raw_datasets["train"].num_columns == 1
-        or training_args.do_eval
-        and raw_datasets["validation"].num_columns == 1
-    ):
-        single_column_dataset = True
-        raw_datasets = raw_datasets.map(
-            lambda x: {
-                "input": "",
-                "output": x["text"],
-            }
-        )
-        if training_args.do_train:
-            # Remove unused columns.
-            raw_datasets = raw_datasets.remove_columns(
-                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
-            )
-
-        if training_args.do_eval:
-            # Remove unused columns.
-            raw_datasets = raw_datasets.remove_columns(
-                [col for col in raw_datasets.column_names["validation"] if col not in ["input", "output"]]
-            )
-    else:
-        # Preprocessing the datasets.
-        for key in raw_datasets:
-            if data_args.instruction_column_name:
-                raw_datasets[key] = raw_datasets[key].rename_column(
-                    data_args.instruction_column_name, "question" if data_args.sql_prompt else "instruction"
-                )
-
-            if data_args.input_column_name:
-                raw_datasets[key] = raw_datasets[key].rename_column(
-                    data_args.input_column_name, "context" if data_args.sql_prompt else "input"
-                )
-
-            if data_args.output_column_name:
-                raw_datasets[key] = raw_datasets[key].rename_column(
-                    data_args.output_column_name, "answer" if data_args.sql_prompt else "output"
-                )
-
-            if data_args.chat_prompt:
-                prompts = create_chat_prompts(raw_datasets[key], tokenizer)
-            elif data_args.sql_prompt:
-                prompts = create_sql_prompts(raw_datasets[key])
-            else:
-                prompts = create_prompts(raw_datasets[key])
-            columns_to_be_removed = list(raw_datasets[key].features.keys())
-            raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
-            raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
-            raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
+        raw_datasets = raw_datasets.map(apply_template, batched=True)
 
     # Load model
     if model_args.model_name_or_path:
@@ -733,19 +604,9 @@ def main():
         return results
 
     def preprocess_function(examples):
-        keys = list(examples.data.keys())
-        if len(keys) != 2:
-            raise ValueError(f"Unsupported dataset format, number of keys {keys} !=2")
-
-        st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
-        add_bos_token = False if data_args.chat_prompt else True
-        examples_tokenized = tokenize(st, add_bos_token=add_bos_token)
+        examples_tokenized = tokenize(examples["text"], add_bos_token=False)
         input_ids = examples_tokenized["input_ids"]
         labels = examples_tokenized["labels"]
-        if not finetune_args.train_on_inputs:
-            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False, add_bos_token=add_bos_token)
-            for label, source_len in zip(labels, sources_tokenized["input_id_len"]):
-                label[:source_len] = [IGNORE_INDEX] * source_len
         return {
             "input_ids": input_ids,
             "labels": labels,
@@ -759,33 +620,6 @@ def main():
             load_from_cache_file=not data_args.overwrite_cache,
         )
 
-    if data_args.dataset_concatenation:
-
-        def concatenate_data(dataset, max_seq_length):
-            concatenated_dataset = {}
-            for column in dataset.features:
-                concatenated_data = [item for sample in dataset[column] for item in sample]
-                reshaped_data = [
-                    concatenated_data[i * max_seq_length : (i + 1) * max_seq_length]
-                    for i in range(len(concatenated_data) // max_seq_length)
-                ]
-                concatenated_dataset[column] = reshaped_data
-            return datasets.Dataset.from_dict(concatenated_dataset)
-
-        if single_column_dataset:
-            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
-            if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
-        else:
-            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
-            if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
-                    ["prompt_sources", "prompt_targets"]
-                )
-        if training_args.do_train:
-            tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
-        if training_args.do_eval:
-            tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
