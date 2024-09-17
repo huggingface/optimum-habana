@@ -36,14 +36,14 @@ HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world
 ```
 
 
-# intfloat/e5-mistral-7b-instruct Model
+# Large Models (intfloat/e5-mistral-7b-instruct Model)
 
 ## Single-card Training with LoRA+gradient_checkpointing
 
 Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can utilize LoRA and gradient checkpointing techniques to reduce the memory requirements, making it feasible to train the model on a single HPU.
 
 ```bash
-python training_stsbenchmark_lora.py intfloat/e5-mistral-7b-instruct
+python training_stsbenchmark.py intfloat/e5-mistral-7b-instruct --peft --lora_target_modules "q_proj" "k_proj" "v_proj"
 ```
 
 ## Multi-card Training with Deepspeed Zero2/3
@@ -53,12 +53,12 @@ Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 1
 Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero2.
 
 ```bash
-python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_stsbenchmark_deepspeed_zero2.py intfloat/e5-mistral-7b-instruct
+python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_stsbenchmark.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
 ```
 
 In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. To further reduce memory usage, change the stage to 3 (DeepSpeed Zero3) in the `ds_config.json` file.
 
-## Training data
+# Training data
 
 Here is a simplified version of our training data:
 
@@ -95,7 +95,7 @@ train_dataset = load_dataset("sentence-transformers/stsb", split="train")
 # })
 ```
 
-## Loss Function
+# Loss Function
 
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_Siamese_Network.png" alt="SBERT Siamese Network Architecture" width="250"/>
 
