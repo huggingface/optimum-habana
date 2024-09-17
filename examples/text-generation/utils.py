@@ -557,14 +557,17 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
+    # HACK: MiniCPM3 has multiple eos_tokens and does not specify padding token. Set both to second one.
+    if model.config.model_type == "minicpm3":
+        tokenizer.pad_token = tokenizer.eos_token
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
+        model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
+
+
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        model.generation_config.pad_token_id = (
-            model.generation_config.eos_token_id
-            if isinstance(model.generation_config.eos_token_id, int)
-            else model.generation_config.eos_token_id[-1]
-        )  # Hack for eos_token_id configuration as a list
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         if assistant_model is not None:
             assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id
 
