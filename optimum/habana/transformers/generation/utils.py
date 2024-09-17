@@ -90,6 +90,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "bart",
     "mpt",
     "t5",
+    "mt5",
     "mistral",
     "phi",
     "mixtral",
