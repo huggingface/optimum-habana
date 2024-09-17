@@ -314,8 +314,9 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if isinstance(loss_fn, dict) and dataset_name:
             loss_fn = loss_fn[dataset_name]
 
-        # Hackishly insert the distributed model into the loss function, if the loss stores the model
-        # Only called once per process
+        # Insert the wrapped (e.g. distributed or compiled) model into the loss function,
+        # if the loss stores the model. Only called once per process
+        # from https://github.com/UKPLab/sentence-transformers/blob/v3.1.0/sentence_transformers/trainer.py#L337
         if (
             model == self.model_wrapped
             and model != self.model  # Only if the model is wrapped
