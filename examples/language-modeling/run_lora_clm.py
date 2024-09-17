@@ -24,7 +24,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
-from unsloth.chat_templates import get_chat_template
+# from unsloth.chat_templates import get_chat_template
 
 import datasets
 import evaluate
@@ -458,11 +458,11 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    tokenizer = get_chat_template(
-        tokenizer,
-        mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
-        chat_template="chatml",
-    )
+    # tokenizer = get_chat_template(
+    #     tokenizer,
+    #     mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+    #     chat_template="chatml",
+    # )
 
     # Get the datasets
     if data_args.dataset_name is not None:
