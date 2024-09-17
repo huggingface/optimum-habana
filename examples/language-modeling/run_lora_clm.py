@@ -378,7 +378,7 @@ def get_chat_template(tokenizer, mapping, chat_template):
     return tokenizer
 
 
-def apply_template(examples):
+def apply_template(examples, tokenizer):
     messages = examples["conversations"]
     text = [tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=False) for message in messages]
     return {"text": text}
@@ -527,7 +527,12 @@ def main():
             token=model_args.token,
             **dataset_args,
         )
-        raw_datasets = raw_datasets.map(apply_template, batched=True)
+        # Apply chat template to the dataset
+        raw_datasets = raw_datasets.map(
+            lambda examples: apply_template(examples, tokenizer),
+            batched=True,
+            remove_columns=raw_datasets["train"].column_names,
+        )
 
     # Load model
     if model_args.model_name_or_path:
