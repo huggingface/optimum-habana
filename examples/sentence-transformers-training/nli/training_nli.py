@@ -6,6 +6,7 @@ STS benchmark dataset
 
 import logging
 import sys
+import argparse
 from datetime import datetime
 
 from datasets import load_dataset
@@ -28,16 +29,37 @@ def main():
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
     # You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
-    model_name = sys.argv[1] if len(sys.argv) > 1 else "bert-base-uncased"
-    train_batch_size = 16
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_name', help='model name or path', default="bert-base-uncased", nargs='?')
+    parser.add_argument('--peft', help='use LoRA', action='store_true', default=False)
+    parser.add_argument('--lora_target_modules', nargs='+', default=["query", "key","value"])
+    parser.add_argument('--bf16', help='use bf16', action='store_true', default=False)
+    parser.add_argument('--use_hpu_graphs_for_training', help='use hpu graphs for training', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--learning_rate', help='learning rate', type=float, default=5e-5)
+    parser.add_argument('--deepspeed', help='deepspeed config file', default=None)
+    parser.add_argument('--train_batch_size', help='train batch size', default=16, type=int)
+    args = parser.parse_args()
 
     output_dir = (
-        "output/training_nli_" + model_name.replace("/", "-") + "-" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        "output/training_nli_" + args.model_name.replace("/", "-") + "-" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
 
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(args.model_name)
+    if args.peft:
+        from peft import LoraConfig, get_peft_model
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=64,
+            lora_dropout=0.05,
+            bias="none",
+            inference_mode=False,
+            target_modules=args.lora_target_modules,
+        )
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     # 2. Load the AllNLI dataset: https://huggingface.co/datasets/sentence-transformers/all-nli
     # We'll start with 10k training samples, but you can increase this to get a stronger model
@@ -71,11 +93,11 @@ def main():
         output_dir=output_dir,
         # Optional training parameters:
         num_train_epochs=1,
-        per_device_train_batch_size=train_batch_size,
-        per_device_eval_batch_size=train_batch_size,
+        per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.train_batch_size,
         warmup_ratio=0.1,
         # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-        # bf16=False,  # Set to True if you have a GPU that supports BF16
+        bf16=args.bf16,  # Set to True if you have a GPU that supports BF16
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,
@@ -87,10 +109,12 @@ def main():
         use_habana=True,
         gaudi_config_name="Habana/bert-base-uncased",
         use_lazy_mode=True,
-        use_hpu_graphs=True,
+        use_hpu_graphs=args.use_hpu_graphs_for_training,
         use_hpu_graphs_for_inference=False,
-        use_hpu_graphs_for_training=True,
+        use_hpu_graphs_for_training=args.use_hpu_graphs_for_training,
         dataloader_drop_last=True,
+        learning_rate=args.learning_rate,
+        deepspeed=args.deepspeed,
     )
 
     # 6. Create the trainer & start training
