@@ -20,12 +20,12 @@ This directory contains a script that showcases how to perform text-to-image gen
 
 Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser and Robin Rombach and the Stability AI team.
 
-
 ## Text-to-image Generation
 
 ### Single Prompt
 
 Here is how to generate images with one prompt:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
@@ -43,10 +43,10 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-
 ### Multiple Prompts
 
 Here is how to generate images with several prompts:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
@@ -61,7 +61,9 @@ python text_to_image_generation.py \
 ```
 
 ### Distributed inference with multiple HPUs
+
 Here is how to generate images with two prompts on two HPUs:
+
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
@@ -101,9 +103,9 @@ python text_to_image_generation.py \
 ```
 
 > There are two different checkpoints for Stable Diffusion 2:
+>
 > - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
 > - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
-
 
 ### Latent Diffusion Model for 3D (LDM3D)
 
@@ -127,7 +129,9 @@ python text_to_image_generation.py \
     --ldm3d \
     --bf16
 ```
+
 Here is how to generate images and depth maps with two prompts on two HPUs:
+
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
@@ -146,6 +150,7 @@ python ../gaudi_spawn.py \
 ```
 
 > There are three different checkpoints for LDM3D:
+>
 > - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
 > - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
 > - use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
@@ -155,6 +160,7 @@ python ../gaudi_spawn.py \
 Stable Diffusion XL was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://arxiv.org/pdf/2307.01952.pdf) by the Stability AI team.
 
 Here is how to generate SDXL images with a single prompt:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
@@ -174,6 +180,7 @@ python text_to_image_generation.py \
 > You can enable this mode with `--use_hpu_graphs`.
 
 Here is how to generate SDXL images with several prompts:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
@@ -191,6 +198,7 @@ python text_to_image_generation.py \
 SDXL combines a second text encoder (OpenCLIP ViT-bigG/14) with the original text encoder to significantly
 increase the number of parameters. Here is how to generate images with several prompts for both `prompt`
 and `prompt_2` (2nd text encoder), as well as their negative prompts:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
@@ -209,6 +217,7 @@ python text_to_image_generation.py \
 ```
 
 Here is how to generate SDXL images with two prompts on two HPUs:
+
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
@@ -227,14 +236,17 @@ python ../gaudi_spawn.py \
     --bf16 \
     --distributed
 ```
+
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
 ### SDXL-Turbo
+
 SDXL-Turbo is a distilled version of SDXL 1.0, trained for real-time synthesis.
 
 Here is how to generate images with multiple prompts:
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/sdxl-turbo \
@@ -267,11 +279,13 @@ Before running SD3 pipeline, you need to:
 
 1. Agree to the Terms and Conditions for using SD3 model at [HuggingFace model page](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 2. Authenticate with HuggingFace using your HF Token. For authentication, run:
+
 ```bash
 huggingface-cli login
 ```
 
 Here is how to generate SD3 images with a single prompt:
+
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python text_to_image_generation.py \
@@ -291,12 +305,32 @@ python text_to_image_generation.py \
 > For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 
+### FLUX.1
+
+FLUX.1 was was introduced by Black Forest Labs [here](https://blackforestlabs.ai/announcing-black-forest-labs/)
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path black-forest-labs/FLUX.1-schnell \
+    --prompts "A cat holding a sign that says hello world" \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/flux_1_images \
+    --scheduler flow_match_euler_discrete\
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
 ## ControlNet
 
-ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
 It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
 
 Here is how to generate images conditioned by canny edge model:
+
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
@@ -314,6 +348,7 @@ python text_to_image_generation.py \
 ```
 
 Here is how to generate images conditioned by canny edge model and with multiple prompts:
+
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
@@ -331,6 +366,7 @@ python text_to_image_generation.py \
 ```
 
 Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
+
 ```bash
 pip install -r requirements.txt
 python ../gaudi_spawn.py \
@@ -350,6 +386,7 @@ python ../gaudi_spawn.py \
 ```
 
 Here is how to generate images conditioned by open pose model:
+
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
@@ -368,6 +405,7 @@ python text_to_image_generation.py \
 ```
 
 Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
+
 ```bash
 pip install -r requirements.txt
 python text_to_image_generation.py \
@@ -392,6 +430,7 @@ Inpainting replaces or edits specific areas of an image. For more details,
 please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint).
 
 ### Stable Diffusion Inpainting
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path  stabilityai/stable-diffusion-2-inpainting \
@@ -409,6 +448,7 @@ python text_to_image_generation.py \
 ```
 
 ### Stable Diffusion XL Inpainting
+
 ```bash
 python text_to_image_generation.py \
     --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
@@ -455,10 +495,10 @@ python image_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-
 ### Multiple Prompts
 
 Here is how to generate images with several prompts and one image.
+
 ```bash
 pip install -r requirements.txt
 python image_to_image_generation.py \
@@ -481,10 +521,10 @@ python image_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-
 ### Stable Diffusion XL Refiner
 
 Here is how to generate SDXL images with a single prompt and one image:
+
 ```bash
 pip install -r requirements.txt
 python image_to_image_generation.py \
@@ -505,6 +545,7 @@ python image_to_image_generation.py \
 ### Stable Diffusion Image Variations
 
 Here is how to generate images with one image, it does not accept prompt input
+
 ```bash
 pip install -r requirements.txt
 python image_to_image_generation.py \
@@ -565,6 +606,7 @@ Script `image_to_video_generation.py` showcases how to perform image-to-video ge
 ### Single Image Prompt
 
 Here is how to generate video with one image prompt:
+
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python image_to_video_generation.py \
@@ -585,6 +627,7 @@ python image_to_video_generation.py \
 ### Multiple Image Prompts
 
 Here is how to generate videos with several image prompts:
+
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python image_to_video_generation.py \
