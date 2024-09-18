@@ -1,7 +1,7 @@
 from .modeling_gemma import (
+    GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
-    GaudiGemmaAttention,
+    GaudiGemmaMLP,
     GaudiGemmaModel,
-    GaudiGemmaMLP
 )

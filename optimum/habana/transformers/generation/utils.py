@@ -890,15 +890,20 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
         if generation_config.reuse_cache:
-            assert self.config.model_type in [
-                "llama",
-                "mistral",
-                "falcon",
-                "mixtral",
-                "phi",
-                "qwen2",
-                "gemma",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, starcoder2 and gemma at the moment"
+            assert (
+                self.config.model_type
+                in [
+                    "llama",
+                    "mistral",
+                    "falcon",
+                    "mixtral",
+                    "phi",
+                    "qwen2",
+                    "gptj",
+                    "starcoder2",
+                    "gemma",
+                ]
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, gemma and starcoder2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0

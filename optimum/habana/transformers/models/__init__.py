@@ -65,11 +65,11 @@ from .falcon import (
     gaudi_falcon_linear_forward,
 )
 from .gemma import (
+    GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
-    GaudiGemmaAttention,
-    GaudiGemmaModel,
     GaudiGemmaMLP,
+    GaudiGemmaModel,
 )
 from .gpt2 import (
     GaudiGPT2Attention,

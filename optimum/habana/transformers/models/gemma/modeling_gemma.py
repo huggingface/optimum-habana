@@ -19,23 +19,22 @@
 # limitations under the License.
 """PyTorch Gemma model."""
 
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch import nn
+import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
-import math
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma.modeling_gemma import (
     GemmaAttention,
     GemmaConfig,
-    GemmaMLP,
     GemmaDecoderLayer,
     GemmaForCausalLM,
+    GemmaMLP,
     GemmaModel,
     apply_rotary_pos_emb,
-    repeat_kv,
 )
 from transformers.utils import logging
 
@@ -47,7 +46,9 @@ except ImportError:
 
 import habana_frameworks.torch.core as htcore
 
+
 logger = logging.get_logger(__name__)
+
 
 def gaudi_gemma_repeat_kv(
     query_states: torch.Tensor,
@@ -73,6 +74,7 @@ def gaudi_gemma_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
 
 class Matmul(torch.nn.Module):
     def __init__(self):
@@ -122,6 +124,7 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+
 class GaudiGemmaAttention(GemmaAttention):
     def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -162,7 +165,7 @@ class GaudiGemmaAttention(GemmaAttention):
         self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
-    
+
     def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
@@ -188,7 +191,7 @@ class GaudiGemmaAttention(GemmaAttention):
             attn_output = attn_output[:, :, :-q_padding, :]
 
         return attn_output
-    
+
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
@@ -217,7 +220,7 @@ class GaudiGemmaAttention(GemmaAttention):
         - add new arg flash_attention_recompute
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
+            logger.warning_once(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
@@ -350,6 +353,7 @@ class GaudiGemmaAttention(GemmaAttention):
             self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
+
 class GaudiGemmaMLP(GemmaMLP):
     def pre_mlp_forward(self, x):
         inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
@@ -364,7 +368,8 @@ class GaudiGemmaMLP(GemmaMLP):
         if hasattr(self.down_proj, "post_all_reduce"):
             return self.down_proj.post_all_reduce(x)
         return x
-    
+
+
 class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
     def __init__(self, config: GemmaConfig, layer_idx: int):
         super().__init__(config, layer_idx)
@@ -474,7 +479,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
-    
+
     def post_attn_pre_mlp(self, hidden_states, residual):
         hidden_states = self.self_attn.post_attn_forward(hidden_states)
 
@@ -575,7 +580,7 @@ class GaudiGemmaModel(GemmaModel):
                     past_seen_tokens = past_key_values.get_usable_length(seq_length)
                 else:
                     past_seen_tokens = past_key_values[0][0].shape[2]
-        
+
         cache_position = None
 
         if position_ids is None:
