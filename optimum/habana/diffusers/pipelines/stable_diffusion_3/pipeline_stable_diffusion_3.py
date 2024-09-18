@@ -495,7 +495,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             profile_batch = 0
             
             # 7. Denoising loop
-            for j in range(2):
+            for j in range(num_batches):
 
                 if j == profile_batch:
                     print(f"Profiling {j} batch ")
@@ -518,8 +518,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         self.scheduler.timesteps = timesteps
                         self.scheduler._init_step_index(timesteps[0])
 
-                    t5 = time.time()
-
                     for i in range(len(timesteps)):
                         timestep = timesteps[0]
                         timesteps = torch.roll(timesteps, shifts=-1, dims=0)
@@ -536,7 +534,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                         timestep = timestep.expand(latent_model_input.shape[0])
 
-                        # t3 = time.time()
 
                         noise_pred = self.transformer_hpu(
                             latent_model_input,
@@ -545,10 +542,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                             pooled_prompt_embeddings_batch,
                             self.joint_attention_kwargs,
                         )
-                        # t4 = time.time()
-
-                        # print("transformer loop time ", t4-t3)
-
 
                         # perform guidance
                         if self.do_classifier_free_guidance:
@@ -558,7 +551,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         # compute the previous noisy sample x_t -> x_t-1
                         latents_dtype = latents_batch.dtype
                         latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, return_dict=False)[0]
-
 
                         if latents_batch.dtype != latents_dtype:
                             if torch.backends.mps.is_available():
@@ -594,8 +586,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         if not self.use_hpu_graphs:
                             htcore.mark_step(sync=True)
                     
-                    t6 = time.time()
-                    print(f"Time for {j} batch = ",t6-t5) 
                 if j == profile_batch:
                     hb_profiler.stop()
 
