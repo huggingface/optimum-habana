@@ -1280,10 +1280,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[1] + generation_config.max_new_tokens + num_virtual_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                cache_device = "cpu" if generation_config.kv_cache_on_host else "hpu"
                 if not is_greedy_or_beam_and_bucket:
                     if generation_config.kv_cache_on_host and self.config.model_type in ["llama"]:
                         print("Allocate KV Cache on CPU...")
+                        cache_device = "cpu"
                         unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens,
                         device=cache_device

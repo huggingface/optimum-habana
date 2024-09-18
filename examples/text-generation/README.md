@@ -686,19 +686,26 @@ You can add `--kv_cache_on_host` arg to enable it. [Pytorch SDPA operator](https
 For exmaple:
 ```bash
 python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+--model_name_or_path 01-ai/Yi-34B-Chat \
 --use_kv_cache \
 --bf16 \
 --attn_softmax_bf16 \
---max_new_tokens 128 \
 --reuse_cache \
 --do_sample \
---prompt "Here is my prompt"
+--dataset_name emozilla/pg19-test \
+--batch_size 1 \
+--max_input_tokens 11200 \
+--column_name "text" \
+--dataset_max_samples 1 \
+--warmup 0 \
+--n_iterations 1 \
+--max_new_tokens 5000 \
 --kv_cache_on_host
 ```
 
 > [!NOTE]
-> `--kv_cache_on_host` only supports llama model for now. And it can not work with `--use_hpu_grapgs` and FP8 data type.
+> 1. `--kv_cache_on_host` only supports llama model for now. And it can not work with `--use_hpu_grapgs` and FP8 data type.
+> 2. Try to use it when you only meet HPU workspace allocation error (`OOM`) since it will increase latency.
 
 ## Language Model Evaluation Harness
 
