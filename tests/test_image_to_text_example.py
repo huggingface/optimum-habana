@@ -14,16 +14,16 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 87.2901500056982),
+            ("llava-hf/llava-1.5-7b-hf", 1, 82.3422128290106),
             ("llava-hf/llava-1.5-13b-hf", 1, 51.04717105443364),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
-            ("HuggingFaceM4/idefics2-8b", 1, 24.07768894366222),
+            ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
         ],
         "fp8": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 115.48515989461843),
-            ("llava-hf/llava-1.5-13b-hf", 1, 78.2635142547838),
+            ("llava-hf/llava-1.5-7b-hf", 1, 105.25707848037551),
+            ("llava-hf/llava-1.5-13b-hf", 1, 66.40730104076319),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 45.011551008367084),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 45.18544502949674),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 30.9535718774675),
@@ -58,6 +58,8 @@ def _test_image_to_text(
         f"--model_name_or_path {model_name}",
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
+        "--ignore_eos",
+        "--use_kv_cache",
     ]
 
     command += [

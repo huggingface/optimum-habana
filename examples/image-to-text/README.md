@@ -40,6 +40,7 @@ python3 run_pipeline.py \
     --model_name_or_path Salesforce/blip-image-captioning-large \
     --image_path "https://ankur3107.github.io/assets/images/image-captioning-example.png" \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -48,6 +49,7 @@ To run Llava-1.5-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -56,6 +58,7 @@ To run Llava-1.5-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-13b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -64,6 +67,7 @@ To run Llava-v1.6-mistral-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -72,6 +76,7 @@ To run Llava-v1.6-vicuna-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -81,6 +86,7 @@ To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-34b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -90,6 +96,7 @@ To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -99,6 +106,7 @@ To run idefics2 inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16
 ```
 
@@ -111,56 +119,62 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP
 Here is an example to measure the tensor quantization statistics on Llava-1.5-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-1.5-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-1.5-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-mistral-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-v1.6-mistral-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-v1.6-vicuna-13b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16
+    --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16
 ```
 
 ### Inference with FusedSDPA
@@ -173,6 +187,7 @@ python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
@@ -185,6 +200,7 @@ python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
+    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
@@ -196,23 +212,25 @@ Use the following commands to run Llava-v1.6-mistral-7b FP8 inference with Fused
 Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention \
---flash_attention_recompute
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention \
---flash_attention_recompute
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 ## LORA Finetune
 
