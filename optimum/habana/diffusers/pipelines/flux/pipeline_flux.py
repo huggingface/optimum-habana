@@ -25,7 +25,6 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from diffusers.utils import BaseOutput, replace_example_docstring
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
@@ -35,6 +34,7 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
+from ...schedulers import GaudiFlowMatchEulerDiscreteScheduler
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -110,7 +110,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
     def __init__(
         self,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: GaudiFlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -380,13 +380,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
