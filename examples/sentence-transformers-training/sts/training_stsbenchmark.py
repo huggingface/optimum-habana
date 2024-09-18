@@ -84,7 +84,7 @@ def main():
     )
 
     # 5. Define the training arguments
-    args = SentenceTransformerGaudiTrainingArguments(
+    stargs = SentenceTransformerGaudiTrainingArguments(
         # Required parameter:
         output_dir=output_dir,
         # Optional training parameters:
@@ -116,7 +116,7 @@ def main():
     # trainer = SentenceTransformerTrainer(
     trainer = SentenceTransformerGaudiTrainer(
         model=model,
-        args=args,
+        args=stargs,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         loss=train_loss,
@@ -138,6 +138,10 @@ def main():
     final_output_dir = f"{output_dir}/final"
     model.save(final_output_dir)
 
+    if args.peft:
+        model.eval()
+        model = model.merge_and_unload()
+        model.save_pretrained(f"{output_dir}/merged")
 
 if __name__ == "__main__":
     main()
