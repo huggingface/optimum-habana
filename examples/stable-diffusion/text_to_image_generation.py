@@ -26,6 +26,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler
 )
 from optimum.habana.utils import set_seed
 
@@ -65,7 +66,7 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim", "flow_match_euler_discrete"],
         type=str,
         help="Name of scheduler",
     )
@@ -275,13 +276,16 @@ def main():
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3"]
+    flux_models = ["FLUX.1-dev", "FLUX.1-schnell"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
+    flux = True if any(model in args.model_name_or_path for model in flux_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing}
+
     if args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
@@ -292,6 +296,10 @@ def main():
         )
     elif args.scheduler == "ddim":
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
+    elif args.scheduler == "flow_match_euler_discrete":
+        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
     else:
         scheduler = None
 
@@ -340,16 +348,18 @@ def main():
                 negative_prompts = negative_prompt
     kwargs_call["negative_prompt"] = negative_prompts
 
-    if sdxl or sd3:
+    if sdxl or sd3 or flux:
         prompts_2 = args.prompts_2
-        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.prompts_2 is not None:
             with distributed_state.split_between_processes(args.prompts_2) as prompt_2:
                 prompts_2 = prompt_2
+        kwargs_call["prompt_2"] = prompts_2
+
+    if sdxl or sd3:
+        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.negative_prompts_2 is not None:
             with distributed_state.split_between_processes(args.negative_prompts_2) as negative_prompt_2:
                 negative_prompts_2 = negative_prompt_2
-        kwargs_call["prompt_2"] = prompts_2
         kwargs_call["negative_prompt_2"] = negative_prompts_2
 
     if sd3:
@@ -425,6 +435,22 @@ def main():
             from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
 
             pipeline = GaudiStableDiffusion3Pipeline.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+    elif flux:
+        # SD3 pipelines
+        if controlnet:
+            # Import SD3+ControlNet pipeline
+            raise ValueError("SD3+ControlNet pipeline is not currenly supported")
+        elif inpainting:
+            # Import SD3 Inpainting pipeline
+            raise ValueError("SD3 Inpainting pipeline is not currenly supported")
+        else:
+            # Import SD3 pipeline
+            from optimum.habana.diffusers import GaudiFluxPipeline
+
+            pipeline = GaudiFluxPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
