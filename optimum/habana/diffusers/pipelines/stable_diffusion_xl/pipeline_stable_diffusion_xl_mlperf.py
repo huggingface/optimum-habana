@@ -44,7 +44,7 @@ from ...models.attention_processor import (
     ScaledDotProductAttention,
 )
 from ...models.unet_2d_condition import gaudi_unet_2d_condition_model_forward
-
+from ....utils import HabanaProfile
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -287,6 +287,8 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -416,6 +418,10 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            profiling_warmup_steps (`int`, *optional*): 
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
 
         Examples:
 
@@ -565,6 +571,13 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image, device, batch_size * num_images_per_prompt
             )
+        
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=False,
+        )
+        hb_profiler.start()
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -623,6 +636,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end,
                         callback_on_step_end_tensor_inputs,
                     )
+                    hb_profiler.step()
                 for i, t in enumerate(timesteps[-2:], 18):
                     if self.interrupt:
                         continue
@@ -649,6 +663,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end,
                         callback_on_step_end_tensor_inputs,
                     )
+                    hb_profiler.step()
             else:
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
@@ -676,6 +691,8 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end,
                         callback_on_step_end_tensor_inputs,
                     )
+                    hb_profiler.step()
+            hb_profiler.stop()
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
