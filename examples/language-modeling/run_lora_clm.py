@@ -701,8 +701,16 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True, add_bos_token=True):
-        add_eos_token_o = tokenizer.add_eos_token
-        add_bos_token_o = tokenizer.add_bos_token
+        if hasattr(tokenizer, "add_eos_token"):
+            add_eos_token_o = tokenizer.add_eos_token
+        else:
+            add_eos_token_o = None
+
+        if hasattr(tokenizer, "add_bos_token"):
+            add_bos_token_o = tokenizer.add_bos_token
+        else:
+            add_bos_token_o = None
+
         if not data_args.dataset_concatenation:
             tokenizer.add_eos_token = add_eos_token
             padding = "max_length"
@@ -717,8 +725,12 @@ def main():
             return_tensors=None,
         )
         # restore original value
-        tokenizer.add_eos_token = add_eos_token_o
-        tokenizer.add_bos_token = add_bos_token_o
+        if add_eos_token_o is not None:
+            tokenizer.add_eos_token = add_eos_token_o
+
+        if add_bos_token_o is not None:
+            tokenizer.add_bos_token = add_bos_token_o
+
         for i in range(len(results["input_ids"])):
             if (
                 results["input_ids"][i][-1] != tokenizer.eos_token_id
