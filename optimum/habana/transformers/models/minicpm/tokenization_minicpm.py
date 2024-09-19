@@ -154,7 +154,7 @@ class MiniCPMTokenizer(LlamaTokenizerFast):
                     ],
                     "role": "assistant",
                 }
-            except:
+            except Exception:
                 logger.error(traceback.format_exc())
                 return {
                     "content": content.strip(),
@@ -240,7 +240,7 @@ def message_format(msg, system_suffix="", user_prefix=""):
                 if isinstance(tool_call["arguments"], str):
                     try:
                         tool_call["arguments"] = json.loads(tool_call["arguments"])
-                    except:
+                    except Exception:
                         continue
                 args = ",".join([k + "=" + add_quotes(v) for k, v in tool_call["arguments"].items()])
                 tool_calls.append(f"{tool_name}({args})")
@@ -334,7 +334,7 @@ def input_format(messages: List[Dict], tools: List[Dict], add_to_system=True):
         for tool in tools:
             try:
                 tools_string += "\n\n" + transform_function(tool)
-            except:
+            except Exception:
                 pass
         tools_template = """# Functions
 Here is a list of functions that you can invoke:
@@ -422,7 +422,7 @@ def resolve_ast_by_type(value):
     elif isinstance(value, ast.Subscript):
         try:
             output = ast.unparse(value.body[0].value)
-        except:
+        except Exception:
             output = ast.unparse(value.value) + "[" + ast.unparse(value.slice) + "]"
     else:
         raise Exception(f"Unsupported AST type: {type(value)}")

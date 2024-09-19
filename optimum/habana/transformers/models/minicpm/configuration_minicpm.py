@@ -109,8 +109,8 @@ class MiniCPM3Config(PretrainedConfig):
             **kwargs,
         )
         try:
-            import flash_attn
+            import flash_attn  # noqa
 
             self._attn_implementation = "flash_attention_2"
-        except:
+        except ImportError:
             pass
