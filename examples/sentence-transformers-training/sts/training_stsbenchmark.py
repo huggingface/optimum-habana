@@ -4,9 +4,8 @@ that can be compared using cosine-similarity to measure the similarity.
 
 """
 
-import logging
-import sys
 import argparse
+import logging
 from datetime import datetime
 
 from datasets import load_dataset
@@ -17,6 +16,7 @@ from sentence_transformers.similarity_functions import SimilarityFunction
 from optimum.habana import SentenceTransformerGaudiTrainer, SentenceTransformerGaudiTrainingArguments
 from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_transformers_to_gaudi
 
+
 adapt_sentence_transformers_to_gaudi()
 
 
@@ -26,13 +26,18 @@ def main():
 
     # You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
     parser = argparse.ArgumentParser()
-    parser.add_argument('model_name', help='model name or path', default="distilbert-base-uncased", nargs='?')
-    parser.add_argument('--peft', help='use LoRA', action='store_true', default=False)
-    parser.add_argument('--lora_target_modules', nargs='+', default=["q_lin", "k_lin","v_lin"])
-    parser.add_argument('--bf16', help='use bf16', action='store_true', default=False)
-    parser.add_argument('--use_hpu_graphs_for_training', help='use hpu graphs for training', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--learning_rate', help='learning rate', type=float, default=5e-5)
-    parser.add_argument('--deepspeed', help='deepspeed config file', default=None)
+    parser.add_argument("model_name", help="model name or path", default="distilbert-base-uncased", nargs="?")
+    parser.add_argument("--peft", help="use LoRA", action="store_true", default=False)
+    parser.add_argument("--lora_target_modules", nargs="+", default=["q_lin", "k_lin", "v_lin"])
+    parser.add_argument("--bf16", help="use bf16", action="store_true", default=False)
+    parser.add_argument(
+        "--use_hpu_graphs_for_training",
+        help="use hpu graphs for training",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
+    parser.add_argument("--deepspeed", help="deepspeed config file", default=None)
     args = parser.parse_args()
 
     train_batch_size = 16
@@ -50,6 +55,7 @@ def main():
 
     if args.peft:
         from peft import LoraConfig, get_peft_model
+
         peft_config = LoraConfig(
             r=16,
             lora_alpha=64,
@@ -142,6 +148,7 @@ def main():
         model.eval()
         model = model.merge_and_unload()
         model.save_pretrained(f"{output_dir}/merged")
+
 
 if __name__ == "__main__":
     main()

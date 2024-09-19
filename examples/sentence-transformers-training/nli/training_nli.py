@@ -4,9 +4,8 @@ with softmax loss function. At every 100 training steps, the model is evaluated 
 STS benchmark dataset
 """
 
-import logging
-import sys
 import argparse
+import logging
 from datetime import datetime
 
 from datasets import load_dataset
@@ -30,14 +29,19 @@ def main():
 
     # You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
     parser = argparse.ArgumentParser()
-    parser.add_argument('model_name', help='model name or path', default="bert-base-uncased", nargs='?')
-    parser.add_argument('--peft', help='use LoRA', action='store_true', default=False)
-    parser.add_argument('--lora_target_modules', nargs='+', default=["query", "key","value"])
-    parser.add_argument('--bf16', help='use bf16', action='store_true', default=False)
-    parser.add_argument('--use_hpu_graphs_for_training', help='use hpu graphs for training', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--learning_rate', help='learning rate', type=float, default=5e-5)
-    parser.add_argument('--deepspeed', help='deepspeed config file', default=None)
-    parser.add_argument('--train_batch_size', help='train batch size', default=16, type=int)
+    parser.add_argument("model_name", help="model name or path", default="bert-base-uncased", nargs="?")
+    parser.add_argument("--peft", help="use LoRA", action="store_true", default=False)
+    parser.add_argument("--lora_target_modules", nargs="+", default=["query", "key", "value"])
+    parser.add_argument("--bf16", help="use bf16", action="store_true", default=False)
+    parser.add_argument(
+        "--use_hpu_graphs_for_training",
+        help="use hpu graphs for training",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
+    parser.add_argument("--deepspeed", help="deepspeed config file", default=None)
+    parser.add_argument("--train_batch_size", help="train batch size", default=16, type=int)
     args = parser.parse_args()
 
     output_dir = (
@@ -49,6 +53,7 @@ def main():
     model = SentenceTransformer(args.model_name)
     if args.peft:
         from peft import LoraConfig, get_peft_model
+
         peft_config = LoraConfig(
             r=16,
             lora_alpha=64,
@@ -147,6 +152,7 @@ def main():
         model.eval()
         model = model.merge_and_unload()
         model.save_pretrained(f"{output_dir}/merged")
+
 
 if __name__ == "__main__":
     main()

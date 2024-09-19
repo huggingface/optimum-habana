@@ -16,6 +16,7 @@ def st_gaudi_transformer_save(self, output_path: str, safe_serialization: bool =
     with open(os.path.join(output_path, "sentence_bert_config.json"), "w") as fOut:
         json.dump(self.get_config_dict(), fOut, indent=2)
 
+
 def st_gaudi_transformer_tokenize(
     self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True
 ):
