@@ -50,9 +50,9 @@
                 "multi_card": {
                     "learning_rate": 8e-4,
                     "train_batch_size": 16,
-                    "perplexity": 21.7858,
-                    "train_runtime": 23.8993,
-                    "train_samples_per_second": 939.24,
+                    "perplexity": 21.786644821433327,
+                    "train_runtime": 24.8822,
+                    "train_samples_per_second": 886.689,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"

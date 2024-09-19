@@ -23,7 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, pipeline
+from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -34,6 +34,46 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def setup_quantization(model, args):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        config = FP8Config.from_json_file(args.quant_config)
+        if config.measure:
+            model = prepare(model, config)
+        elif config.quantize:
+            model = convert(model, config)
+    else:
+        import habana_frameworks.torch.core as htcore
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
+        htcore.hpu_initialize(model)
+
+    return model
+
+
+def finalize_quantization(model):
+    if os.getenv("USE_INC", "1") != "0":
+        try:
+            from neural_compressor.torch.quantization import finalize_calibration
+        except ImportError:
+            raise ImportError(
+                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
+            )
+
+        finalize_calibration(model)
+    else:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.finish_measurements(model)
 
 
 def main():
@@ -96,6 +136,16 @@ def main():
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
+    parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+    parser.add_argument(
+        "--use_kv_cache",
+        action="store_true",
+        help="Whether to use the key/value cache for decoding. It should speed up generation.",
+    )
 
     args = parser.parse_args()
 
@@ -111,12 +161,21 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type == "llava":
-        args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
-    elif args.prompt is None and model_type == "llava_next":
-        args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
-        if args.model_name_or_path in ["llava-hf/llava-v1.6-vicuna-13b-hf", "llava-hf/llava-v1.6-vicuna-7b-hf"]:
-            args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
+    if args.prompt is None:
+        if model_type == "llava":
+            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
+        elif model_type == "llava_next":
+            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is shown in this image?"},
+                    {"type": "image"},
+                ],
+            }
+        ]
+        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -152,10 +211,12 @@ def main():
     )
     generate_kwargs = {
         "lazy_mode": True,
+        "use_cache": args.use_kv_cache,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
+        "flash_attention_recompute": args.flash_attention_recompute,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -163,18 +224,14 @@ def main():
         generator.model = wrap_in_hpu_graph(generator.model)
 
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(generator.model)
-
-        htcore.hpu_initialize(generator.model)
+        generator.model = setup_quantization(generator.model, args)
 
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
     if args.quant_config:
-        habana_quantization_toolkit.finish_measurements(generator.model)
+        finalize_quantization(generator.model)
 
     start = time.perf_counter()
     for i in range(args.n_iterations):
@@ -191,8 +248,9 @@ def main():
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
+    logger.info(f"result = {result}")
     logger.info(
-        f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
 
     # Store results if necessary

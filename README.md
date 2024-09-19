@@ -59,9 +59,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 > ```
 > git clone https://github.com/huggingface/optimum-habana
-> cd optimum-habana && git checkout v1.13.0
+> cd optimum-habana && git checkout v1.13.1
 > ```
-> with `v1.13.0` the version number of this release.
+> with `v1.13.1` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
 
@@ -70,6 +70,18 @@ Optimum for Intel Gaudi is a fast-moving project, and you may want to install it
 ```bash
 pip install git+https://github.com/huggingface/optimum-habana.git
 git clone https://github.com/huggingface/optimum-habana
+```
+
+### Option 3: Use the `transformers_future` branch to have the latest changes from Transformers
+
+The `transformers_future` branch is regularly updated with the latest changes from the main branches of Optimum Habana and Transformers. This enables you to try out new Transformers features that have not been merged into the main branch yet.
+
+> [!WARNING]
+> The `transformers_future` branch may have some regressions or bugs and may be less stable than the main branch.
+
+```bash
+pip install git+https://github.com/huggingface/optimum-habana.git@transformers_future
+git clone -b transformers_future https://github.com/huggingface/optimum-habana
 ```
 
 ## Install dependencies
@@ -141,7 +153,7 @@ You can generate images from prompts using Stable Diffusion on Intel Gaudi using
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "runwayml/stable-diffusion-v1-5"
+model_name = "CompVis/stable-diffusion-v1-4"
 
 - scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 + scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -229,7 +241,9 @@ The following model architectures, tasks and device distributions have been vali
 |------------------|:--------:|:--------------------:|:------|
 | Stable Diffusion | <li>[textual inversion](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#textual-inversion)</li><li>[ControlNet](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#controlnet-training)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Stable Diffusion XL | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#fine-tuning-for-stable-diffusion-xl)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion Depth2img | | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Text to Video    |          | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-to-video)</li> |
 
 </div>
 

@@ -281,7 +281,7 @@ from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDefaultDDPOStableDiffusionPipeline
 
 gaudi_config = GaudiConfig.from_pretrained("Habana/stable-diffusion")
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "CompVis/stable-diffusion-v1-4"
 lora_model_id = "ddpo-finetuned-stable-diffusion"
 pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
     model_id,

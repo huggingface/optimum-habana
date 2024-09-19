@@ -40,7 +40,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.13.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -51,14 +51,14 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="runwayml/stable-diffusion-v1-5",
+        default="CompVis/stable-diffusion-v1-4",
         type=str,
         help="Path to pre-trained model",
     )
     parser.add_argument(
         "--src_image_path",
-        default=None,
         type=str,
+        required=True,
         help="Path to source image",
     )
     # Pipeline arguments
@@ -230,6 +230,8 @@ def main():
         from optimum.habana.diffusers import GaudiStableDiffusionImageVariationPipeline as Img2ImgPipeline
 
         kwargs["revision"] = "v2.0"
+    else:
+        from optimum.habana.diffusers import GaudiStableDiffusionImg2ImgPipeline as Img2ImgPipeline
 
     if "image-variations" in args.model_name_or_path:
         im = PIL.Image.open(requests.get(args.src_image_path, stream=True).raw)

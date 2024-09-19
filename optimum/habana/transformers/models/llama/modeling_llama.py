@@ -569,7 +569,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        if use_flash_attention and FusedSDPA:
+        if use_flash_attention and FusedSDPA is not None:
             import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
