@@ -50,7 +50,7 @@ from ..llama.modeling_llama import (
     GaudiLlamaRotaryEmbedding,
 )
 
-import KVCache, Matmul, apply_customized_rope_module
+from optimum.habana.transformers.models.modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE

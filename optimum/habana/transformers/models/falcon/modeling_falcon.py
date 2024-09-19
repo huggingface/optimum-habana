@@ -25,10 +25,8 @@ try:
 except ImportError:
     SDPContext = False
 
-import apply_customized_rope_module
+from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import habana_frameworks.torch.core as htcore
-import KVCache
-import Matmul
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F

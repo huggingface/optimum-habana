@@ -3,10 +3,8 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
-import apply_customized_rope_module
-import KVCache
-import Matmul
 import torch
+from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import torch.nn.functional as F
 from torch.distributed.distributed_c10d import ProcessGroup
 from transformers.activations import ACT2FN

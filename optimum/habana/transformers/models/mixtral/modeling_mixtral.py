@@ -24,9 +24,8 @@ import contextlib
 import math
 from typing import List, Optional, Tuple, Union
 
-import apply_customized_rope_module
+from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache
 import habana_frameworks.torch.core as htcore
-import KVCache
 import torch
 import torch.nn.functional as F
 from torch import nn

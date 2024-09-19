@@ -22,7 +22,7 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
-import apply_customized_rope_module
+from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module
 
 
 def gaudi_gpt_neox_attention_forward(

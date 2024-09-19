@@ -20,9 +20,7 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
-import apply_customized_rope_module
-import KVCache
-import Matmul
+from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
