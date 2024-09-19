@@ -509,9 +509,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
                     pooled_prompt_embeddings_batch = pooled_prompt_embeddings_batches[0]
                     pooled_prompt_embeddings_batches = torch.roll(pooled_prompt_embeddings_batches, shifts=-1, dims=0)
-                    # print("Latent batches size =", latents_batch.shape)
-                    # print("text_embeddings_batch size  = ", text_embeddings_batch.shape)
-                    # print("pooled_prompt_embeddings_batch size= ", pooled_prompt_embeddings_batch.shape)
 
                     if hasattr(self.scheduler, "_init_step_index"):
                         # Reset scheduler step index for next batch
