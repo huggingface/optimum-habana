@@ -235,7 +235,7 @@ class CheckpointFunction(torch.autograd.Function):
                 outputs_with_grad.append(outputs[i])
                 args_with_grad.append(args[i])
         if len(outputs_with_grad) == 0:
-            raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
+            raise RuntimeError("none of output has requires_grad=True, this checkpoint() is not necessary")
         torch.autograd.backward(outputs_with_grad, args_with_grad)
         grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
 
@@ -415,7 +415,7 @@ def checkpoint(
 
         if use_reentrant:
             if context_fn is not noop_context_fn or debug is not False:
-                raise ValueError("Passing `context_fn` or `debug` is only supported when " "use_reentrant=False.")
+                raise ValueError("Passing `context_fn` or `debug` is only supported when use_reentrant=False.")
             return CheckpointFunction.apply(function, preserve, *args)
         else:
             if determinism_check is None:
@@ -441,8 +441,7 @@ def _version_check():
                 return func(*args, **kwargs)
             else:
                 warnings.warn(
-                    f"Function '{func.__name__}' is disabled for PyTorch versions less than {
-                        __MIN_TORCH_VERSION}."
+                    f"Function '{func.__name__}' is disabled for PyTorch versions less than {__MIN_TORCH_VERSION}."
                 )
                 return None
 
