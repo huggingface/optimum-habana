@@ -17,21 +17,23 @@ import argparse
 import json
 import logging
 import os
+import tempfile
 import time
 from pathlib import Path
-import tempfile
+
 import PIL.Image
 import requests
 import torch
 from transformers import AutoConfig, pipeline
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.checkpoint_utils import (
+    get_ds_injection_policy,
     get_repo_root,
     model_on_meta,
     write_checkpoints_json,
-    get_ds_injection_policy,
 )
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 
 logging.basicConfig(
@@ -167,9 +169,7 @@ def main():
 
         # Initialize process(es) for DeepSpeed
         deepspeed.init_distributed(dist_backend="hccl")
-        logger.info(
-            "DeepSpeed is enabled. world_size {} rank {} local_rank {}".format(world_size, rank, local_rank)
-        )
+        logger.info("DeepSpeed is enabled. world_size {} rank {} local_rank {}".format(world_size, rank, local_rank))
         config = AutoConfig.from_pretrained(args.model_name_or_path)
         load_to_meta = model_on_meta(config)
 
