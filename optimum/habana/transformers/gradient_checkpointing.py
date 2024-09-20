@@ -18,6 +18,9 @@
 # of the backward pass when gradient checkpointing is performed
 # Original implementation here: https://github.com/pytorch/pytorch/blob/v2.4.0/torch/utils/checkpoint.py
 
+import contextlib
+from functools import wraps
+from packaging import version
 from typing import Callable, ContextManager, Optional, Tuple
 import warnings
 
@@ -26,21 +29,27 @@ import habana_frameworks.torch.hpu as hthpu
 import torch
 from torch.utils.checkpoint import (
     check_backward_validity, 
-    checkpoint, 
     detach_variable,
-    get_device_states, 
-    noop_context_fn,
+    get_device_states,
     set_device_states, 
 )
-import torch.utils.checkpoint as tuc
 from torch.utils._pytree import tree_map
-from torch.utils._python_dispatch import TorchDispatchMode
+
 
 __all__ = [
-    "CheckpointFunction",
     "checkpoint",
+    "CheckpointFunction",
     "DefaultDeviceType",
 ]
+
+
+# Extra variables to ensure backward compatibility
+__MIN_TORCH_VERSION = "2.1.0"
+__IS_MIN_TORCH_VALID = version.parse(version.parse(torch.__version__).base_version) > version.parse(__MIN_TORCH_VERSION)
+
+
+def noop_context_fn():
+    return contextlib.nullcontext(), contextlib.nullcontext()
 
 
 def _get_device_module(device="hpu"):
@@ -81,7 +90,8 @@ class DefaultDeviceType:
         return DefaultDeviceType._default_device_type
 
 
-torch.utils.checkpoint.DefaultDeviceType = DefaultDeviceType
+if hasattr(torch.utils.checkpoint, 'DefaultDeviceType'):
+    torch.utils.checkpoint.DefaultDeviceType = DefaultDeviceType
 
 
 def _infer_device_type(*args):
@@ -111,9 +121,6 @@ def _infer_device_type(*args):
         return device_types[0]
 
 
-torch.utils.checkpoint._infer_device_type = _infer_device_type
-
-
 def _get_autocast_kwargs():
     #  autocast caching is permanently disabled on HPU.
     hpu_autocast_kwargs = {
@@ -129,9 +136,6 @@ def _get_autocast_kwargs():
     }
 
     return hpu_autocast_kwargs, cpu_autocast_kwargs
-
-
-torch.utils.checkpoint._get_autocast_kwargs = _get_autocast_kwargs
 
 
 class CheckpointFunction(torch.autograd.Function):
@@ -239,6 +243,19 @@ class CheckpointFunction(torch.autograd.Function):
         return (None, None) + grads
 
 
+def _conditional_disable_dynamo(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if hasattr(torch, '_disable_dynamo'):
+            @torch._disable_dynamo
+            def inner_func(*args, **kwargs):
+                return func(*args, **kwargs)
+            return inner_func(*args, **kwargs)
+        else:
+            return func(*args, **kwargs)
+    return wrapper
+
+
 # TorchDynamo does not step inside utils.checkpoint function.  The flow
 # looks likes this
 #  1) TorchDynamo tries to wrap utils.checkpoint in a HigherOrderOp by
@@ -249,13 +266,13 @@ class CheckpointFunction(torch.autograd.Function):
 #     break. And here, the following disable wrapper ensures that
 #     TorchDynamo does not trigger again on the frames created by
 #     utils.checkpoint innards.
-@torch._disable_dynamo
+@_conditional_disable_dynamo
 def checkpoint(
     function,
     *args,
     use_reentrant: Optional[bool] = None,
     context_fn: Callable[[], Tuple[ContextManager, ContextManager]] = noop_context_fn,
-    determinism_check: str = tuc._DEFAULT_DETERMINISM_MODE,
+    determinism_check: Optional[str] = None,
     debug: bool = False,
     **kwargs
 ):
@@ -370,54 +387,78 @@ def checkpoint(
     Returns:
         Output of running :attr:`function` on :attr:`*args`
     """
-    if use_reentrant is None:
-        warnings.warn(
-            "torch.utils.checkpoint: the use_reentrant parameter should be "
-            "passed explicitly. In version 2.4 we will raise an exception "
-            "if use_reentrant is not passed. use_reentrant=False is "
-            "recommended, but if you need to preserve the current default "
-            "behavior, you can pass use_reentrant=True. Refer to docs for more "
-            "details on the differences between the two variants.",
-            stacklevel=2
-        )
-        use_reentrant = True
-
-    # Hack to mix *args with **kwargs in a python 2.7-compliant way
-    preserve = kwargs.pop("preserve_rng_state", True)
-    if kwargs and use_reentrant:
-        raise ValueError(
-            "Unexpected keyword arguments: " + ",".join(arg for arg in kwargs)
-        )
-
-    if use_reentrant:
-        if context_fn is not noop_context_fn or debug is not False:
+    if not __IS_MIN_TORCH_VALID:
+        preserve = kwargs.pop("preserve_rng_state", True)
+        if kwargs:
             raise ValueError(
-                "Passing `context_fn` or `debug` is only supported when "
-                "use_reentrant=False."
+                "Unexpected keyword arguments: " + ",".join(arg for arg in kwargs)
             )
+        
         return CheckpointFunction.apply(function, preserve, *args)
     else:
-        gen = _checkpoint_without_reentrant_generator(
-            function, preserve, context_fn, determinism_check, debug, *args, **kwargs
-        )
-        # Runs pre-forward logic
-        next(gen)
-        ret = function(*args, **kwargs)
-        # Runs post-forward logic
-        try:
+        if use_reentrant is None:
+            warnings.warn(
+                "torch.utils.checkpoint: the use_reentrant parameter should be "
+                "passed explicitly. In version 2.4 we will raise an exception "
+                "if use_reentrant is not passed. use_reentrant=False is "
+                "recommended, but if you need to preserve the current default "
+                "behavior, you can pass use_reentrant=True. Refer to docs for more "
+                "details on the differences between the two variants.",
+                stacklevel=2
+            )
+            use_reentrant = True
+
+        # Hack to mix *args with **kwargs in a python 2.7-compliant way
+        preserve = kwargs.pop("preserve_rng_state", True)
+        if kwargs and use_reentrant:
+            raise ValueError(
+                "Unexpected keyword arguments: " + ",".join(arg for arg in kwargs)
+            )
+
+        if use_reentrant:
+            if context_fn is not noop_context_fn or debug is not False:
+                raise ValueError(
+                    "Passing `context_fn` or `debug` is only supported when "
+                    "use_reentrant=False."
+                )
+            return CheckpointFunction.apply(function, preserve, *args)
+        else:
+            if determinism_check is None:
+                determinism_check = torch.utils.checkpoint._DEFAULT_DETERMINISM_MODE
+            gen = _checkpoint_without_reentrant_generator(
+                function, preserve, context_fn, determinism_check, debug, *args, **kwargs
+            )
+            # Runs pre-forward logic
             next(gen)
-        except StopIteration:
-            return ret
+            ret = function(*args, **kwargs)
+            # Runs post-forward logic
+            try:
+                next(gen)
+            except StopIteration:
+                return ret
+
+
+def __version_check():
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if __IS_MIN_TORCH_VALID:
+                return func(*args, **kwargs)
+            else:
+                warnings.warn(f"Function '{func.__name__}' is disabled for PyTorch versions less than {__MIN_TORCH_VERSION}.")
+                return None
+        return wrapper
+    return decorator
 
 
 # NB: this helper wraps fn before calling checkpoint_impl. kwargs and
 #     saving/restoring of global state is handled here.
-
+@__version_check
 def _checkpoint_without_reentrant_generator(
     fn,
     preserve_rng_state=True,
     context_fn: Callable[[], Tuple[ContextManager, ContextManager]] = noop_context_fn,
-    determinism_check: str = tuc._DEFAULT_DETERMINISM_MODE,
+    determinism_check: Optional[str] = None,
     debug: bool = False,
     *args,
     **kwargs
@@ -451,28 +492,31 @@ def _checkpoint_without_reentrant_generator(
     """
     unpack_error_cb = None
 
-    if tuc._checkpoint_debug_enabled if tuc._checkpoint_debug_enabled is not None else debug:
+    if torch.utils.checkpoint._checkpoint_debug_enabled \
+        if torch.utils.checkpoint._checkpoint_debug_enabled is not None \
+            else debug:
         if context_fn != noop_context_fn:
             raise ValueError(
                 "debug=True is incompatible with non-default context_fn"
             )
-        context_fn, unpack_error_cb = tuc._get_debug_context_and_cb()
+        context_fn, unpack_error_cb = torch.utils.checkpoint._get_debug_context_and_cb()
 
-    if determinism_check in tuc._allowed_determinism_checks_to_fns:
-        metadata_fn = tuc._allowed_determinism_checks_to_fns[determinism_check]
+    if determinism_check in torch.utils.checkpoint._allowed_determinism_checks_to_fns:
+        metadata_fn = torch.utils.checkpoint._allowed_determinism_checks_to_fns[determinism_check]
     else:
         raise ValueError(
-            f"determinism_check should be one of {list(tuc._allowed_determinism_checks_to_fns.keys())}, "
+            f"determinism_check should be one of {
+                list(torch.utils.checkpoint._allowed_determinism_checks_to_fns.keys())}, "
             f"but got {determinism_check}"
         )
 
     device = _infer_device_type(*args)
     device_module = _get_device_module(device)
     forward_context, recompute_context = context_fn()
-    if tuc._is_compiling(fn, args, kwargs) and context_fn != noop_context_fn:
+    if torch.utils.checkpoint._is_compiling(fn, args, kwargs) and context_fn != noop_context_fn:
         assert (
-            isinstance(forward_context, TorchDispatchMode) and
-            isinstance(recompute_context, TorchDispatchMode)
+            isinstance(forward_context, torch.utils._python_dispatch.TorchDispatchMode) and
+            isinstance(recompute_context, torch.utils._python_dispatch.TorchDispatchMode)
         ), \
             "In torch.compile mode, `context_fn` arg passed to `torch.utils.checkpoint` " + \
             "must generate a tuple of two `TorchDispatchMode`s."
@@ -510,21 +554,21 @@ def _checkpoint_without_reentrant_generator(
                 **cpu_autocast_kwargs), recompute_context:  # type: ignore[attr-defined]
                 fn(*args, **kwargs)
 
-    new_frame = tuc._CheckpointFrame(
+    new_frame = torch.utils.checkpoint._CheckpointFrame(
         recompute_fn,
-        tuc._enable_checkpoint_early_stop,
+        torch.utils.checkpoint._enable_checkpoint_early_stop,
         unpack_error_cb,
         metadata_fn
     )
     dummy = torch.empty((0,), requires_grad=True)
-    new_frame.input_saver = tuc._NoopSaveInputs.apply(dummy, kwargs, *args)
+    new_frame.input_saver = torch.utils.checkpoint._NoopSaveInputs.apply(dummy, kwargs, *args)
 
     # When ambient grad_mode is False
     if new_frame.input_saver.grad_fn is None:
         yield
         return
 
-    with tuc._checkpoint_hook(new_frame), forward_context:
+    with torch.utils.checkpoint._checkpoint_hook(new_frame), forward_context:
         yield
     new_frame.forward_completed = True
 
@@ -539,6 +583,3 @@ def _checkpoint_without_reentrant_generator(
         )
 
     return
-
-
-torch.utils.checkpoint._checkpoint_without_reentrant_generator = _checkpoint_without_reentrant_generator
