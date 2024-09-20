@@ -44,8 +44,8 @@ __all__ = [
 
 
 # Extra variables to ensure backward compatibility
-__MIN_TORCH_VERSION = "2.1.0"
-__IS_MIN_TORCH_VALID = version.parse(version.parse(torch.__version__).base_version) > version.parse(
+__MIN_TORCH_VERSION: str = "2.1.0"
+__IS_MIN_TORCH_VALID: bool = version.parse(version.parse(torch.__version__).base_version) > version.parse(
     __MIN_TORCH_VERSION
 )
 
@@ -142,6 +142,8 @@ def _get_autocast_kwargs():
 
 
 class CheckpointFunction(torch.autograd.Function):
+    _IS_MIN_TORCH_VALID: bool = version.parse(version.parse(torch.__version__).base_version) > version.parse("2.1.0")
+
     @staticmethod
     def forward(ctx, run_function, preserve_rng_state, *args):
         if torch.is_grad_enabled():  # grad may be disabled, e.g., during validation
@@ -160,7 +162,7 @@ class CheckpointFunction(torch.autograd.Function):
             ctx.had_device_in_fwd = False
             if hasattr(ctx, "had_cuda_in_fwd"):
                 ctx.had_cuda_in_fwd = False
-            if __IS_MIN_TORCH_VALID:
+            if CheckpointFunction._IS_MIN_TORCH_VALID:
                 device_module = _get_device_module(ctx.device)
                 if getattr(device_module, "_initialized", False):
                     ctx.had_device_in_fwd = True
@@ -210,17 +212,17 @@ class CheckpointFunction(torch.autograd.Function):
         # present at this time during forward.  Restore the surrounding state
         # when we're done.
         rng_devices = []
-        if __IS_MIN_TORCH_VALID and ctx.preserve_rng_state and ctx.had_device_in_fwd:
+        if CheckpointFunction._IS_MIN_TORCH_VALID and ctx.preserve_rng_state and ctx.had_device_in_fwd:
             rng_devices = ctx.fwd_devices
         with torch.random.fork_rng(devices=rng_devices, enabled=ctx.preserve_rng_state, device_type=ctx.device):
             if ctx.preserve_rng_state:
                 torch.set_rng_state(ctx.fwd_cpu_state)
-                if __IS_MIN_TORCH_VALID and ctx.had_device_in_fwd:
+                if CheckpointFunction._IS_MIN_TORCH_VALID and ctx.had_device_in_fwd:
                     set_device_states(ctx.fwd_devices, ctx.fwd_device_states)
             detached_inputs = detach_variable(tuple(inputs))
 
-            with torch.enable_grad(), torch.autocast(**ctx.hpu_autocast_kwargs), torch.cpu.amp.autocast(
-                **ctx.cpu_autocast_kwargs
+            with torch.enable_grad(), torch.autocast(**ctx.hpu_autocast_kwargs), torch.amp.autocast(
+                "cpu", **ctx.cpu_autocast_kwargs
             ):
                 outputs = ctx.run_function(*detached_inputs)
 
@@ -452,7 +454,7 @@ def _version_check():
 
 # NB: this helper wraps fn before calling checkpoint_impl. kwargs and
 #     saving/restoring of global state is handled here.
-@_version_check
+@_version_check()
 def _checkpoint_without_reentrant_generator(
     fn,
     preserve_rng_state: bool = True,
@@ -504,8 +506,7 @@ def _checkpoint_without_reentrant_generator(
         metadata_fn = torch.utils.checkpoint._allowed_determinism_checks_to_fns[determinism_check]
     else:
         raise ValueError(
-            f"determinism_check should be one of {
-                list(torch.utils.checkpoint._allowed_determinism_checks_to_fns.keys())}, "
+            f"determinism_check should be one of {list(torch.utils.checkpoint._allowed_determinism_checks_to_fns.keys())}, "
             f"but got {determinism_check}"
         )
 
@@ -547,8 +548,8 @@ def _checkpoint_without_reentrant_generator(
                 if had_device_in_fwd:
                     set_device_states(fwd_devices, fwd_device_states)
 
-            with torch.autocast(**hpu_autocast_kwargs), torch.cpu.amp.autocast(
-                **cpu_autocast_kwargs
+            with torch.autocast(**hpu_autocast_kwargs), torch.amp.autocast(
+                "cpu", **cpu_autocast_kwargs
             ), recompute_context:  # type: ignore[attr-defined]
                 fn(*args, **kwargs)
 
