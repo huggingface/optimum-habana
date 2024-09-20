@@ -26,10 +26,10 @@ import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
-from habana_frameworks.torch.hpex.kernels import FusedSDPA
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from habana_frameworks.torch.hpex.kernels import FusedSDPA
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.activations import ACT2FN
@@ -495,7 +495,9 @@ class MiniCPMAttention(nn.Module):
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             if token_idx is None or self.layer_idx >= len(past_key_value):
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
             else:
                 # HACK: Manually implement cache update for auto-regressive generation
                 past_key_states, past_value_states = past_key_value[self.layer_idx]
@@ -631,7 +633,9 @@ class MiniCPMFlashAttention2(MiniCPMAttention):
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             if token_idx is None or self.layer_idx >= len(past_key_value):
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
             else:
                 # HACK: Manually implement cache update for auto-regressive generation
                 past_key_states, past_value_states = past_key_value[self.layer_idx]
@@ -870,7 +874,9 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             if token_idx is None or self.layer_idx >= len(past_key_value):
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
             else:
                 # HACK: Manually implement cache update for auto-regressive generation
                 past_key_states, past_value_states = past_key_value[self.layer_idx]
