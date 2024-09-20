@@ -10,9 +10,6 @@ from transformers.modeling_outputs import (
 )
 from transformers.models.gpt_neo.modeling_gpt_neo import (
     GPTNeoForCausalLM,
-    GPTNeoBlock,
-    GPTNeoAttention,
-    GPTNeoMLP,
     logger
 )
 
@@ -99,59 +96,49 @@ def gaudi_gpt_neo_selfattention_forward(
     return outputs  # a, present, (attentions)
 
 
-class GaudiGPTNeoBlock(GPTNeoBlock):
-    def __init__(self, config, layer_id):
-        super(GPTNeoBlock, self).__init__()
-        hidden_size = config.hidden_size
-        inner_dim = config.intermediate_size if config.intermediate_size is not None else 4 * hidden_size
-        self.ln_1 = torch.nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.attn = GPTNeoAttention(config, layer_id)
-        self.ln_2 = torch.nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.mlp = GPTNeoMLP(inner_dim, config)
-
-    def forward(
-        self,
+def gaudi_gpt_neo_block_forward(
+    self,
+    hidden_states,
+    layer_past=None,
+    attention_mask=None,
+    head_mask=None,
+    use_cache=False,
+    output_attentions=False,
+    token_idx=None,
+):
+    """
+    Copied from GPTNeoBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+    The only differences are:
+    - add new args token_idx
+    """
+    residual = hidden_states
+    hidden_states = self.ln_1(hidden_states)
+    attn_outputs = self.attn(
         hidden_states,
-        layer_past=None,
-        attention_mask=None,
-        head_mask=None,
-        use_cache=False,
-        output_attentions=False,
-        token_idx=None,
-    ):
-        """
-        Copied from GPTNeoBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
-        The only differences are:
-        - add new args token_idx
-        """
-        residual = hidden_states
-        hidden_states = self.ln_1(hidden_states)
-        attn_outputs = self.attn(
-            hidden_states,
-            layer_past=layer_past,
-            attention_mask=attention_mask,
-            head_mask=head_mask,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            token_idx=token_idx,
-        )
-        attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-        outputs = attn_outputs[1:]
-        # residual connection
-        hidden_states = attn_output + residual
+        layer_past=layer_past,
+        attention_mask=attention_mask,
+        head_mask=head_mask,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+    )
+    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
+    outputs = attn_outputs[1:]
+    # residual connection
+    hidden_states = attn_output + residual
 
-        residual = hidden_states
-        hidden_states = self.ln_2(hidden_states)
-        feed_forward_hidden_states = self.mlp(hidden_states)
-        # residual connection
-        hidden_states = residual + feed_forward_hidden_states
+    residual = hidden_states
+    hidden_states = self.ln_2(hidden_states)
+    feed_forward_hidden_states = self.mlp(hidden_states)
+    # residual connection
+    hidden_states = residual + feed_forward_hidden_states
 
-        if use_cache:
-            outputs = (hidden_states,) + outputs
-        else:
-            outputs = (hidden_states,) + outputs[1:]
+    if use_cache:
+        outputs = (hidden_states,) + outputs
+    else:
+        outputs = (hidden_states,) + outputs[1:]
 
-        return outputs  # hidden_states, present, (attentions, cross_attentions)
+    return outputs  # hidden_states, present, (attentions, cross_attentions)
 
 
 def gaudi_gpt_neo_model_forward(

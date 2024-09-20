@@ -57,7 +57,6 @@ from .models import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
     GaudiGPTNeoForCausalLM,
-    GaudiGPTNeoBlock,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
     GaudiLlamaAttention,
@@ -144,6 +143,7 @@ from .models import (
     gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
+    gaudi_gpt_neo_block_forward,
     gaudi_gpt_neo_attention_forward,
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neox_attention_forward,
@@ -364,7 +364,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for gpt-neo generation on Gaudi
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoForCausalLM = GaudiGPTNeoForCausalLM
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoModel.forward = gaudi_gpt_neo_model_forward
-    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoBlock = GaudiGPTNeoBlock
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoBlock.forward = gaudi_gpt_neo_block_forward
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoAttention.forward = gaudi_gpt_neo_attention_forward
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoSelfAttention.forward = gaudi_gpt_neo_selfattention_forward
 
