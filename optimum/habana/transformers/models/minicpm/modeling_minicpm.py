@@ -26,6 +26,7 @@ import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
+from habana_frameworks.torch.hpex.kernels import FusedSDPA
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -493,7 +494,19 @@ class MiniCPMAttention(nn.Module):
         key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            if token_idx is None or self.layer_idx >= len(past_key_value):
+                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            else:
+                # HACK: Manually implement cache update for auto-regressive generation
+                past_key_states, past_value_states = past_key_value[self.layer_idx]
+                key_states = past_key_states.index_add_(
+                    -2, token_idx - 1, key_states - torch.index_select(past_key_states, -2, token_idx - 1)
+                )
+                value_states = past_value_states.index_add(
+                    -2, token_idx - 1, value_states - torch.index_select(past_value_states, -2, token_idx - 1)
+                )
+                past_key_value.key_cache[self.layer_idx] = key_states
+                past_key_value.value_cache[self.layer_idx] = value_states
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
 
@@ -617,7 +630,19 @@ class MiniCPMFlashAttention2(MiniCPMAttention):
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            if token_idx is None or self.layer_idx >= len(past_key_value):
+                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            else:
+                # HACK: Manually implement cache update for auto-regressive generation
+                past_key_states, past_value_states = past_key_value[self.layer_idx]
+                key_states = past_key_states.index_add_(
+                    -2, token_idx - 1, key_states - torch.index_select(past_key_states, -2, token_idx - 1)
+                )
+                value_states = past_value_states.index_add(
+                    -2, token_idx - 1, value_states - torch.index_select(past_value_states, -2, token_idx - 1)
+                )
+                past_key_value.key_cache[self.layer_idx] = key_states
+                past_key_value.value_cache[self.layer_idx] = value_states
 
         # TODO: These transpose are quite inefficient but Flash Attention requires the layout [batch_size, sequence_length, num_heads, head_dim]. We would need to refactor the KV cache
         # to be able to avoid many of these transpose/reshape/view.
@@ -784,6 +809,7 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
         """
         Changes for HPU support:
         - Add token_idx support
+        - Changed fused SDPA implementation to Habana version
         """
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -825,10 +851,11 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
+            usable_length = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             if token_idx is None:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            else:
-                kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                kv_seq_len += usable_length
+            elif usable_length > 0:
+                kv_seq_len = usable_length
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
         q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin, position_ids)
@@ -842,7 +869,19 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
         key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            if token_idx is None or self.layer_idx >= len(past_key_value):
+                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            else:
+                # HACK: Manually implement cache update for auto-regressive generation
+                past_key_states, past_value_states = past_key_value[self.layer_idx]
+                key_states = past_key_states.index_add_(
+                    -2, token_idx - 1, key_states - torch.index_select(past_key_states, -2, token_idx - 1)
+                )
+                value_states = past_value_states.index_add(
+                    -2, token_idx - 1, value_states - torch.index_select(past_value_states, -2, token_idx - 1)
+                )
+                past_key_value.key_cache[self.layer_idx] = key_states
+                past_key_value.value_cache[self.layer_idx] = value_states
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
@@ -857,14 +896,14 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
             key_states = key_states.contiguous()
             value_states = value_states.contiguous()
 
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
+        attn_output = FusedSDPA.apply(
             query_states,
             key_states,
             value_states,
-            attn_mask=attention_mask,
-            dropout_p=self.attention_dropout if self.training else 0.0,
+            attention_mask,
+            self.attention_dropout if self.training else 0.0,
             # The q_len > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case q_len == 1.
-            is_causal=self.is_causal and attention_mask is None and q_len > 1,
+            self.is_causal and attention_mask is None and q_len > 1,
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
