@@ -14,26 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This file modifies some utilities and adds a mark_step() at the beginning 
+# This file modifies some utilities and adds a mark_step() at the beginning
 # of the backward pass when gradient checkpointing is performed
 # Original implementation here: https://github.com/pytorch/pytorch/blob/v2.4.0/torch/utils/checkpoint.py
 
 import contextlib
-from functools import wraps
-from packaging import version
-from typing import Callable, ContextManager, Optional, Tuple
 import warnings
+from functools import wraps
+from typing import Callable, ContextManager, Optional, Tuple
 
 import habana_frameworks.torch.core as htcore
 import habana_frameworks.torch.hpu as hthpu
 import torch
+from packaging import version
+from torch.utils._pytree import tree_map
 from torch.utils.checkpoint import (
-    check_backward_validity, 
+    check_backward_validity,
     detach_variable,
     get_device_states,
-    set_device_states, 
+    set_device_states,
 )
-from torch.utils._pytree import tree_map
 
 
 __all__ = [
@@ -45,7 +45,9 @@ __all__ = [
 
 # Extra variables to ensure backward compatibility
 __MIN_TORCH_VERSION = "2.1.0"
-__IS_MIN_TORCH_VALID = version.parse(version.parse(torch.__version__).base_version) > version.parse(__MIN_TORCH_VERSION)
+__IS_MIN_TORCH_VALID = version.parse(version.parse(torch.__version__).base_version) > version.parse(
+    __MIN_TORCH_VERSION
+)
 
 
 def noop_context_fn():
@@ -90,7 +92,7 @@ class DefaultDeviceType:
         return DefaultDeviceType._default_device_type
 
 
-if hasattr(torch.utils.checkpoint, 'DefaultDeviceType'):
+if hasattr(torch.utils.checkpoint, "DefaultDeviceType"):
     torch.utils.checkpoint.DefaultDeviceType = DefaultDeviceType
 
 
@@ -101,6 +103,7 @@ def _infer_device_type(*args):
         nonlocal device_types
         if isinstance(arg, torch.Tensor) and not arg.device.type == "cpu":
             device_types.append(arg.device.type)
+
     tree_map(add_device_types, args)
 
     device_types_set = set(device_types)
@@ -145,7 +148,7 @@ class CheckpointFunction(torch.autograd.Function):
             check_backward_validity(args)
         ctx.run_function = run_function
         ctx.preserve_rng_state = preserve_rng_state
-        # Accommodates the (remote) possibility that autocast is enabled for cpu AND gpu.
+        # Accommodates the (remote) possibility that autocast is enabled for cpu AND hpu.
         ctx.device = _infer_device_type(*args)
         ctx.hpu_autocast_kwargs, ctx.cpu_autocast_kwargs = _get_autocast_kwargs()
         if preserve_rng_state:
@@ -155,10 +158,13 @@ class CheckpointFunction(torch.autograd.Function):
             # run_function, we SHOULD actually stash the cuda state here.  Unfortunately,
             # we have no way to anticipate this will happen before we run the function.)
             ctx.had_device_in_fwd = False
-            device_module = _get_device_module(ctx.device)
-            if getattr(device_module, "_initialized", False):
-                ctx.had_device_in_fwd = True
-                ctx.fwd_devices, ctx.fwd_device_states = get_device_states(*args)
+            if hasattr(ctx, "had_cuda_in_fwd"):
+                ctx.had_cuda_in_fwd = False
+            if __IS_MIN_TORCH_VALID:
+                device_module = _get_device_module(ctx.device)
+                if getattr(device_module, "_initialized", False):
+                    ctx.had_device_in_fwd = True
+                    ctx.fwd_devices, ctx.fwd_device_states = get_device_states(*args)
 
         # Save non-tensor inputs in ctx, keep a placeholder None for tensors
         # to be filled out during the backward.
@@ -204,19 +210,18 @@ class CheckpointFunction(torch.autograd.Function):
         # present at this time during forward.  Restore the surrounding state
         # when we're done.
         rng_devices = []
-        if ctx.preserve_rng_state and ctx.had_device_in_fwd:
+        if __IS_MIN_TORCH_VALID and ctx.preserve_rng_state and ctx.had_device_in_fwd:
             rng_devices = ctx.fwd_devices
-        with torch.random.fork_rng(
-            devices=rng_devices, enabled=ctx.preserve_rng_state, device_type=ctx.device
-        ):
+        with torch.random.fork_rng(devices=rng_devices, enabled=ctx.preserve_rng_state, device_type=ctx.device):
             if ctx.preserve_rng_state:
                 torch.set_rng_state(ctx.fwd_cpu_state)
-                if ctx.had_device_in_fwd:
+                if __IS_MIN_TORCH_VALID and ctx.had_device_in_fwd:
                     set_device_states(ctx.fwd_devices, ctx.fwd_device_states)
             detached_inputs = detach_variable(tuple(inputs))
 
             with torch.enable_grad(), torch.autocast(**ctx.hpu_autocast_kwargs), torch.cpu.amp.autocast(
-                **ctx.cpu_autocast_kwargs):
+                **ctx.cpu_autocast_kwargs
+            ):
                 outputs = ctx.run_function(*detached_inputs)
 
         if isinstance(outputs, torch.Tensor):
@@ -230,15 +235,9 @@ class CheckpointFunction(torch.autograd.Function):
                 outputs_with_grad.append(outputs[i])
                 args_with_grad.append(args[i])
         if len(outputs_with_grad) == 0:
-            raise RuntimeError(
-                "none of output has requires_grad=True,"
-                " this checkpoint() is not necessary"
-            )
+            raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
         torch.autograd.backward(outputs_with_grad, args_with_grad)
-        grads = tuple(
-            inp.grad if isinstance(inp, torch.Tensor) else None
-            for inp in detached_inputs
-        )
+        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
 
         return (None, None) + grads
 
@@ -246,13 +245,16 @@ class CheckpointFunction(torch.autograd.Function):
 def _conditional_disable_dynamo(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if hasattr(torch, '_disable_dynamo'):
+        if hasattr(torch, "_disable_dynamo"):
+
             @torch._disable_dynamo
             def inner_func(*args, **kwargs):
                 return func(*args, **kwargs)
+
             return inner_func(*args, **kwargs)
         else:
             return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -274,7 +276,7 @@ def checkpoint(
     context_fn: Callable[[], Tuple[ContextManager, ContextManager]] = noop_context_fn,
     determinism_check: Optional[str] = None,
     debug: bool = False,
-    **kwargs
+    **kwargs,
 ):
     r"""Checkpoint a model or part of the model.
 
@@ -390,10 +392,8 @@ def checkpoint(
     if not __IS_MIN_TORCH_VALID:
         preserve = kwargs.pop("preserve_rng_state", True)
         if kwargs:
-            raise ValueError(
-                "Unexpected keyword arguments: " + ",".join(arg for arg in kwargs)
-            )
-        
+            raise ValueError("Unexpected keyword arguments: " + ",".join(arg for arg in kwargs))
+
         return CheckpointFunction.apply(function, preserve, *args)
     else:
         if use_reentrant is None:
@@ -404,23 +404,18 @@ def checkpoint(
                 "recommended, but if you need to preserve the current default "
                 "behavior, you can pass use_reentrant=True. Refer to docs for more "
                 "details on the differences between the two variants.",
-                stacklevel=2
+                stacklevel=2,
             )
             use_reentrant = True
 
         # Hack to mix *args with **kwargs in a python 2.7-compliant way
         preserve = kwargs.pop("preserve_rng_state", True)
         if kwargs and use_reentrant:
-            raise ValueError(
-                "Unexpected keyword arguments: " + ",".join(arg for arg in kwargs)
-            )
+            raise ValueError("Unexpected keyword arguments: " + ",".join(arg for arg in kwargs))
 
         if use_reentrant:
             if context_fn is not noop_context_fn or debug is not False:
-                raise ValueError(
-                    "Passing `context_fn` or `debug` is only supported when "
-                    "use_reentrant=False."
-                )
+                raise ValueError("Passing `context_fn` or `debug` is only supported when " "use_reentrant=False.")
             return CheckpointFunction.apply(function, preserve, *args)
         else:
             if determinism_check is None:
@@ -438,30 +433,35 @@ def checkpoint(
                 return ret
 
 
-def __version_check():
+def _version_check():
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             if __IS_MIN_TORCH_VALID:
                 return func(*args, **kwargs)
             else:
-                warnings.warn(f"Function '{func.__name__}' is disabled for PyTorch versions less than {__MIN_TORCH_VERSION}.")
+                warnings.warn(
+                    f"Function '{func.__name__}' is disabled for PyTorch versions less than {
+                        __MIN_TORCH_VERSION}."
+                )
                 return None
+
         return wrapper
+
     return decorator
 
 
 # NB: this helper wraps fn before calling checkpoint_impl. kwargs and
 #     saving/restoring of global state is handled here.
-@__version_check
+@_version_check
 def _checkpoint_without_reentrant_generator(
     fn,
-    preserve_rng_state=True,
+    preserve_rng_state: bool = True,
     context_fn: Callable[[], Tuple[ContextManager, ContextManager]] = noop_context_fn,
     determinism_check: Optional[str] = None,
     debug: bool = False,
     *args,
-    **kwargs
+    **kwargs,
 ):
     """Checkpointing without reentrant autograd.
 
@@ -492,13 +492,13 @@ def _checkpoint_without_reentrant_generator(
     """
     unpack_error_cb = None
 
-    if torch.utils.checkpoint._checkpoint_debug_enabled \
-        if torch.utils.checkpoint._checkpoint_debug_enabled is not None \
-            else debug:
+    if (
+        torch.utils.checkpoint._checkpoint_debug_enabled
+        if torch.utils.checkpoint._checkpoint_debug_enabled is not None
+        else debug
+    ):
         if context_fn != noop_context_fn:
-            raise ValueError(
-                "debug=True is incompatible with non-default context_fn"
-            )
+            raise ValueError("debug=True is incompatible with non-default context_fn")
         context_fn, unpack_error_cb = torch.utils.checkpoint._get_debug_context_and_cb()
 
     if determinism_check in torch.utils.checkpoint._allowed_determinism_checks_to_fns:
@@ -514,12 +514,12 @@ def _checkpoint_without_reentrant_generator(
     device_module = _get_device_module(device)
     forward_context, recompute_context = context_fn()
     if torch.utils.checkpoint._is_compiling(fn, args, kwargs) and context_fn != noop_context_fn:
-        assert (
-            isinstance(forward_context, torch.utils._python_dispatch.TorchDispatchMode) and
-            isinstance(recompute_context, torch.utils._python_dispatch.TorchDispatchMode)
-        ), \
-            "In torch.compile mode, `context_fn` arg passed to `torch.utils.checkpoint` " + \
-            "must generate a tuple of two `TorchDispatchMode`s."
+        assert isinstance(forward_context, torch.utils._python_dispatch.TorchDispatchMode) and isinstance(
+            recompute_context, torch.utils._python_dispatch.TorchDispatchMode
+        ), (
+            "In torch.compile mode, `context_fn` arg passed to `torch.utils.checkpoint` "
+            + "must generate a tuple of two `TorchDispatchMode`s."
+        )
     # Accommodates the (remote) possibility that autocast is enabled for cpu AND hpu.
     hpu_autocast_kwargs, cpu_autocast_kwargs = _get_autocast_kwargs(device=device)
 
@@ -542,23 +542,19 @@ def _checkpoint_without_reentrant_generator(
         rng_devices = []
         if preserve_rng_state and had_device_in_fwd:
             rng_devices = fwd_devices
-        with torch.random.fork_rng(
-            devices=rng_devices, enabled=preserve_rng_state, device_type=device
-        ):
+        with torch.random.fork_rng(devices=rng_devices, enabled=preserve_rng_state, device_type=device):
             if preserve_rng_state:
                 torch.set_rng_state(fwd_cpu_state)
                 if had_device_in_fwd:
                     set_device_states(fwd_devices, fwd_device_states)
 
             with torch.autocast(**hpu_autocast_kwargs), torch.cpu.amp.autocast(
-                **cpu_autocast_kwargs), recompute_context:  # type: ignore[attr-defined]
+                **cpu_autocast_kwargs
+            ), recompute_context:  # type: ignore[attr-defined]
                 fn(*args, **kwargs)
 
     new_frame = torch.utils.checkpoint._CheckpointFrame(
-        recompute_fn,
-        torch.utils.checkpoint._enable_checkpoint_early_stop,
-        unpack_error_cb,
-        metadata_fn
+        recompute_fn, torch.utils.checkpoint._enable_checkpoint_early_stop, unpack_error_cb, metadata_fn
     )
     dummy = torch.empty((0,), requires_grad=True)
     new_frame.input_saver = torch.utils.checkpoint._NoopSaveInputs.apply(dummy, kwargs, *args)
@@ -572,8 +568,7 @@ def _checkpoint_without_reentrant_generator(
         yield
     new_frame.forward_completed = True
 
-    if getattr(device_module, "_initialized", False) and \
-       preserve_rng_state and not had_device_in_fwd:  # type: ignore[possibly-undefined]
+    if getattr(device_module, "_initialized", False) and preserve_rng_state and not had_device_in_fwd:  # type: ignore[possibly-undefined]
         # Device was not initialized before running the forward, so we didn't
         # stash the device state.
         raise RuntimeError(
