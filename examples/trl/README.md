@@ -8,7 +8,8 @@ First, you should install the requirements:
 $ pip install -U -r requirements.txt
 ```
 ## Supervised Finetuning
-The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
+
+1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
     python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
@@ -38,6 +39,38 @@ The following example is for the supervised Lora finetune with Qwen2 model for c
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
         --adam_epsilon 1e-08
+
+2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-v0.1 on 4 cards:
+
+    ```
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+        --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+        --dataset_name "philschmid/dolly-15k-oai-style" \
+        --subset 'data/' \
+        --streaming False \
+        --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+        --output_dir="./model_mixtral" \
+        --do_train \
+        --max_steps=500 \
+        --logging_steps=10 \
+        --save_steps=100 \
+        --per_device_train_batch_size=2 \
+        --per_device_eval_batch_size=1 \
+        --gradient_accumulation_steps=2 \
+        --learning_rate=1e-4 \
+        --lr_scheduler_type="cosine" \
+        --warmup_steps=100 \
+        --weight_decay=0.05 \
+        --optim="paged_adamw_32bit" \
+        --lora_target_modules "q_proj" "v_proj" \
+        --bf16 \
+        --remove_unused_columns=False \
+        --max_seq_length 512 \
+        --run_name="sft_mixtral" \
+        --report_to=none \
+        --use_habana \
+        --use_lazy_mode
+    ```
 
 ## DPO pipeline
 
