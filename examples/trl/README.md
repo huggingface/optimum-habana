@@ -11,6 +11,7 @@ $ pip install -U -r requirements.txt
 
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
+    ```
     python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
         --dataset_name "philschmid/dolly-15k-oai-style" \
@@ -39,6 +40,7 @@ $ pip install -U -r requirements.txt
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
         --adam_epsilon 1e-08
+    ```
 
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-v0.1 on 4 cards:
 
