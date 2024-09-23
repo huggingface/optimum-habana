@@ -55,6 +55,7 @@ GAUDI_LOADABLE_CLASSES = {
     "optimum.habana.diffusers.schedulers": {
         "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiFlowMatchEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerAncestralDiscreteScheduler": ["save_pretrained", "from_pretrained"],
     },
 }
