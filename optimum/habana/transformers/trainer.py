@@ -692,14 +692,6 @@ class GaudiTrainer(Trainer):
                 def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
                     """DeepSpeed acitvation checkpointing."""
                     if use_reentrant is None:
-                        logger.warning(
-                            "torch.utils.checkpoint: the use_reentrant parameter should be "
-                            "passed explicitly. In version 2.4 we will raise an exception "
-                            "if use_reentrant is not passed. use_reentrant=False is "
-                            "recommended, but if you need to preserve the current default "
-                            "behavior, you can pass use_reentrant=True. Refer to docs for more "
-                            "details on the differences between the two variants."
-                        )
                         use_reentrant = True
                     if use_reentrant:
                         all_outputs = []
