@@ -439,15 +439,15 @@ def main():
                 **kwargs,
             )
     elif flux:
-        # SD3 pipelines
+        # Flux pipelines
         if controlnet:
-            # Import SD3+ControlNet pipeline
-            raise ValueError("SD3+ControlNet pipeline is not currenly supported")
+            # Import Flux+ControlNet pipeline
+            raise ValueError("Flux+ControlNet pipeline is not currenly supported")
         elif inpainting:
-            # Import SD3 Inpainting pipeline
-            raise ValueError("SD3 Inpainting pipeline is not currenly supported")
+            # Import FLux Inpainting pipeline
+            raise ValueError("Flux Inpainting pipeline is not currenly supported")
         else:
-            # Import SD3 pipeline
+            # Import Flux pipeline
             from optimum.habana.diffusers import GaudiFluxPipeline
 
             pipeline = GaudiFluxPipeline.from_pretrained(
