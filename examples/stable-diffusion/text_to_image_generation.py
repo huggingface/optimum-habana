@@ -270,6 +270,11 @@ def main():
         action="store_true",
         help="Enable deterministic generation using CPU Generator",
     )
+    parser.add_argument(
+        "--mlperf",
+        action="store_true",
+        help="Use StableDiffusionXLPipeline_HPU",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -279,6 +284,7 @@ def main():
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
+    mlperf = True if (args.mlperf is not None) and (args.mlperf is not None) else False
 
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing}
@@ -400,6 +406,12 @@ def main():
             from optimum.habana.diffusers import AutoPipelineForInpainting
 
             pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
+
+        elif mlperf:
+            # Import SDXL HPU pipeline
+            from optimum.habana.diffusers import StableDiffusionXLPipeline_HPU
+
+            pipeline = StableDiffusionXLPipeline_HPU.from_pretrained(args.model_name_or_path, **kwargs)
 
         else:
             # Import SDXL pipeline
