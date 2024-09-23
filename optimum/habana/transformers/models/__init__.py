@@ -138,10 +138,10 @@ from .modeling_all_models import (
     gaudi_invert_attention_mask,
 )
 from .mpt import (
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
 )
 from .opt import (
     GaudiOPTForCausalLM,

@@ -494,7 +494,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         model = SwinForImageClassification.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
         image_processor = self.default_image_processor
 
-        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        image = Image.open("./tests/resource/img/000000039769.png")
         inputs = image_processor(images=image, return_tensors="pt").to(torch_device)
 
         # forward pass
