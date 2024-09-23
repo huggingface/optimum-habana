@@ -377,7 +377,9 @@ class GaudiMptForCausalLM(MptForCausalLM):
 
                 input_ids = input_ids[:, remove_prefix_length:]
             else:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
+
             # Converting back to tuples as it should be, so there's no type mismatch when calling graph
             past_key_values = tuple([tuple(kv) for kv in past_key_values])
         elif bucket_internal and token_idx is not None:
