@@ -255,6 +255,186 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
 
 
+def freeze_and_unfreeze_parameters(model):
+    # List of parameters to unfreeze for Llama 3.1 70B
+    unfrozen_parameters = [
+        "^lm_head.weight$",
+        "^model.embed_tokens.weight$",
+        # input_layernorm layers
+        "model.layers.0.input_layernorm",
+        "model.layers.1.input_layernorm",
+        "model.layers.2.input_layernorm",
+        "model.layers.3.input_layernorm",
+        "model.layers.4.input_layernorm",
+        "model.layers.5.input_layernorm",
+        "model.layers.6.input_layernorm",
+        "model.layers.7.input_layernorm",
+        "model.layers.8.input_layernorm",
+        "model.layers.9.input_layernorm",
+        "model.layers.10.input_layernorm",
+        "model.layers.11.input_layernorm",
+        "model.layers.12.input_layernorm",
+        "model.layers.13.input_layernorm",
+        "model.layers.14.input_layernorm",
+        "model.layers.15.input_layernorm",
+        # mlp.down_proj layers
+        "model.layers.1.mlp.down_proj",
+        "model.layers.0.mlp.down_proj",
+        "model.layers.30.mlp.down_proj",
+        "model.layers.2.mlp.down_proj",
+        "model.layers.21.mlp.down_proj",
+        "model.layers.22.mlp.down_proj",
+        "model.layers.29.mlp.down_proj",
+        "model.layers.5.mlp.down_proj",
+        "model.layers.4.mlp.down_proj",
+        "model.layers.20.mlp.down_proj",
+        "model.layers.23.mlp.down_proj",
+        "model.layers.19.mlp.down_proj",
+        "model.layers.3.mlp.down_proj",
+        "model.layers.17.mlp.down_proj",
+        "model.layers.6.mlp.down_proj",
+        "model.layers.31.mlp.down_proj",
+        # mlp.gate_proj layers
+        "model.layers.1.mlp.gate_proj",
+        "model.layers.2.mlp.gate_proj",
+        "model.layers.3.mlp.gate_proj",
+        "model.layers.4.mlp.gate_proj",
+        "model.layers.0.mlp.gate_proj",
+        "model.layers.25.mlp.gate_proj",
+        "model.layers.26.mlp.gate_proj",
+        "model.layers.5.mlp.gate_proj",
+        "model.layers.24.mlp.gate_proj",
+        "model.layers.28.mlp.gate_proj",
+        "model.layers.23.mlp.gate_proj",
+        "model.layers.27.mlp.gate_proj",
+        "model.layers.21.mlp.gate_proj",
+        "model.layers.22.mlp.gate_proj",
+        "model.layers.29.mlp.gate_proj",
+        "model.layers.20.mlp.gate_proj",
+        # mlp.up_proj layers
+        "model.layers.4.mlp.up_proj",
+        "model.layers.3.mlp.up_proj",
+        "model.layers.0.mlp.up_proj",
+        "model.layers.5.mlp.up_proj",
+        "model.layers.7.mlp.up_proj",
+        "model.layers.6.mlp.up_proj",
+        "model.layers.2.mlp.up_proj",
+        "model.layers.1.mlp.up_proj",
+        "model.layers.8.mlp.up_proj",
+        "model.layers.12.mlp.up_proj",
+        "model.layers.14.mlp.up_proj",
+        "model.layers.9.mlp.up_proj",
+        "model.layers.15.mlp.up_proj",
+        "model.layers.17.mlp.up_proj",
+        "model.layers.13.mlp.up_proj",
+        "model.layers.19.mlp.up_proj",
+        # post_attention_layernorm layers
+        "model.layers.0.post_attention_layernorm",
+        "model.layers.1.post_attention_layernorm",
+        "model.layers.2.post_attention_layernorm",
+        "model.layers.3.post_attention_layernorm",
+        "model.layers.4.post_attention_layernorm",
+        "model.layers.5.post_attention_layernorm",
+        "model.layers.6.post_attention_layernorm",
+        "model.layers.7.post_attention_layernorm",
+        "model.layers.8.post_attention_layernorm",
+        "model.layers.9.post_attention_layernorm",
+        "model.layers.10.post_attention_layernorm",
+        "model.layers.11.post_attention_layernorm",
+        "model.layers.12.post_attention_layernorm",
+        "model.layers.13.post_attention_layernorm",
+        "model.layers.14.post_attention_layernorm",
+        "model.layers.15.post_attention_layernorm",
+        # self_attn.k_proj layers
+        "model.layers.29.self_attn.k_proj",
+        "model.layers.25.self_attn.k_proj",
+        "model.layers.23.self_attn.k_proj",
+        "model.layers.28.self_attn.k_proj",
+        "model.layers.21.self_attn.k_proj",
+        "model.layers.19.self_attn.k_proj",
+        "model.layers.22.self_attn.k_proj",
+        "model.layers.20.self_attn.k_proj",
+        "model.layers.24.self_attn.k_proj",
+        "model.layers.31.self_attn.k_proj",
+        "model.layers.27.self_attn.k_proj",
+        "model.layers.26.self_attn.k_proj",
+        "model.layers.17.self_attn.k_proj",
+        "model.layers.11.self_attn.k_proj",
+        "model.layers.18.self_attn.k_proj",
+        "model.layers.14.self_attn.k_proj",
+        # self_attn.o_proj layers
+        "model.layers.14.self_attn.o_proj",
+        "model.layers.7.self_attn.o_proj",
+        "model.layers.5.self_attn.o_proj",
+        "model.layers.11.self_attn.o_proj",
+        "model.layers.6.self_attn.o_proj",
+        "model.layers.24.self_attn.o_proj",
+        "model.layers.9.self_attn.o_proj",
+        "model.layers.13.self_attn.o_proj",
+        "model.layers.10.self_attn.o_proj",
+        "model.layers.12.self_attn.o_proj",
+        "model.layers.8.self_attn.o_proj",
+        "model.layers.25.self_attn.o_proj",
+        "model.layers.21.self_attn.o_proj",
+        "model.layers.23.self_attn.o_proj",
+        "model.layers.15.self_attn.o_proj",
+        "model.layers.16.self_attn.o_proj",
+        # self_attn.q_proj layers
+        "model.layers.8.self_attn.q_proj",
+        "model.layers.13.self_attn.q_proj",
+        "model.layers.9.self_attn.q_proj",
+        "model.layers.14.self_attn.q_proj",
+        "model.layers.10.self_attn.q_proj",
+        "model.layers.11.self_attn.q_proj",
+        "model.layers.0.self_attn.q_proj",
+        "model.layers.15.self_attn.q_proj",
+        "model.layers.1.self_attn.q_proj",
+        "model.layers.6.self_attn.q_proj",
+        "model.layers.5.self_attn.q_proj",
+        "model.layers.7.self_attn.q_proj",
+        "model.layers.12.self_attn.q_proj",
+        "model.layers.16.self_attn.q_proj",
+        "model.layers.17.self_attn.q_proj",
+        "model.layers.26.self_attn.q_proj",
+        # self_attn.v_proj layers
+        "model.layers.26.self_attn.v_proj",
+        "model.layers.17.self_attn.v_proj",
+        "model.layers.3.self_attn.v_proj",
+        "model.layers.28.self_attn.v_proj",
+        "model.layers.29.self_attn.v_proj",
+        "model.layers.21.self_attn.v_proj",
+        "model.layers.15.self_attn.v_proj",
+        "model.layers.16.self_attn.v_proj",
+        "model.layers.20.self_attn.v_proj",
+        "model.layers.25.self_attn.v_proj",
+        "model.layers.6.self_attn.v_proj",
+        "model.layers.23.self_attn.v_proj",
+        "model.layers.4.self_attn.v_proj",
+        "model.layers.1.self_attn.v_proj",
+        "model.layers.22.self_attn.v_proj",
+        "model.layers.14.self_attn.v_proj",
+    ]
+
+    # Freeze all parameters
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Unfreeze specified parameters
+    for name, param in model.named_parameters():
+        for unfrozen_name in unfrozen_parameters:
+            if unfrozen_name.startswith("^") and unfrozen_name.endswith("$"):
+                # Exact match
+                if unfrozen_name[1:-1] == name:
+                    param.requires_grad = True
+                    break
+            else:
+                # Check if unfrozen_name is prefix of the parameter name
+                if name.startswith(unfrozen_name):
+                    param.requires_grad = True
+                    break
+
+
+
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
@@ -486,6 +666,10 @@ def main():
 
     # since this will be pickled to avoid _LazyModule error in Hasher force logger loading before tokenize_function
     tok_logger = transformers.utils.logging.get_logger("transformers.tokenization_utils_base")
+
+    # Freeze all parameters except for the spectrum suggested
+
+    model = freeze_and_unfreeze_parameters(model)
 
     def tokenize_function(examples):
         with CaptureLogger(tok_logger) as cl:
