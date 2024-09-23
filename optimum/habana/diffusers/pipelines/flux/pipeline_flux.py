@@ -140,6 +140,9 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             transformer=transformer,
         )
         self.to(self._device)
+        if use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            transformer = wrap_in_hpu_graph(transformer)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
