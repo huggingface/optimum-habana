@@ -117,7 +117,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -244,6 +244,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 zip(negative_prompt_embeds_batches, prompt_embeds_batches[:])
             ):
                 prompt_embeds_batches[i] = torch.cat([negative_prompt_embeds_batch, prompt_embeds_batch])
+
         prompt_embeds_batches = torch.stack(prompt_embeds_batches)
 
         return latents_batches, prompt_embeds_batches, num_dummy_samples
@@ -431,10 +432,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 lora_scale=lora_scale,
                 clip_skip=self.clip_skip,
             )
-
             if ip_adapter_image is not None:
                 image_embeds = self.prepare_ip_adapter_image_embeds(
-                    ip_adapter_image, device, batch_size * num_images_per_prompt
+                    ip_adapter_image, device, num_prompts * num_images_per_prompt
                 )
 
             # 4. Prepare timesteps
@@ -496,7 +496,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             for j in self.progress_bar(range(num_batches)):
@@ -600,7 +600,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

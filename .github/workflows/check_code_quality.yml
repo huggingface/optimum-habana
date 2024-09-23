@@ -35,3 +35,13 @@ jobs:
         source venv/bin/activate
         ruff check . setup.py
         ruff format --check . setup.py
+    - name: Store PR number if failure to post comment
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        PR_NUMBER: ${{ github.event.number }}
+      run: echo $PR_NUMBER > ./pr_number
+    - uses: actions/upload-artifact@v4
+      if: failure() && github.event_name == 'pull_request'
+      with:
+        name: pr-number
+        path: ./pr_number

@@ -64,6 +64,8 @@ from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionXLPipeline,
 )
@@ -71,7 +73,7 @@ from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0")
+check_min_version("0.29.0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -569,6 +571,13 @@ def parse_args(input_args=None):
         action="store_true",
         help="Checkpoint saving takes a lot of time. Ignore time for checkpoint saving for throughput calculations",
     )
+    parser.add_argument(
+        "--scheduler",
+        default=None,
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim", "ddpm"],
+        type=str,
+        help="Name of scheduler",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -767,7 +776,26 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    if args.scheduler == "euler_discrete":
+        noise_scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
+    elif args.scheduler == "euler_ancestral_discrete":
+        noise_scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
+    elif args.scheduler == "ddim":
+        noise_scheduler = GaudiDDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    elif args.scheduler == "ddpm":
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    else:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        if noise_scheduler.config._class_name == "EulerDiscreteScheduler":
+            noise_scheduler = GaudiEulerDiscreteScheduler.from_config(noise_scheduler.config)
+        elif noise_scheduler.config._class_name == "EulerAncestralDiscreteScheduler":
+            noise_scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(noise_scheduler.config)
+        elif noise_scheduler.config._class_name == "DDIMScheduler":
+            noise_scheduler = GaudiDDIMScheduler.from_config(noise_scheduler.config)
 
     # Check for terminal SNR in combination with SNR Gamma
     text_encoder_one = text_encoder_cls_one.from_pretrained(
@@ -1136,6 +1164,7 @@ def main(args):
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
+    pipeline = None
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
@@ -1382,26 +1411,25 @@ def main(args):
                     ema_unet.copy_to(unet.parameters())
 
                 # create pipeline
-                vae = AutoencoderKL.from_pretrained(
-                    vae_path,
-                    subfolder=("vae" if args.pretrained_vae_model_name_or_path is None else None),
-                    revision=args.revision,
-                    variant=args.variant,
-                )
-                pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    unet=unwrap_model(unet),
-                    revision=args.revision,
-                    variant=args.variant,
-                    use_habana=True,
-                    use_hpu_graphs=args.use_hpu_graphs_for_inference,
-                    gaudi_config=args.gaudi_config_name,
-                )
+                if pipeline is None:
+                    pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        vae=vae,
+                        unet=unwrap_model(unet),
+                        revision=args.revision,
+                        variant=args.variant,
+                        use_habana=True,
+                        use_hpu_graphs=args.use_hpu_graphs_for_inference,
+                        gaudi_config=args.gaudi_config_name,
+                    )
+                else:
+                    # vae and text encoders are frozen, only need to update unet
+                    pipeline.unet = unwrap_model(unet)
+
+                pipeline.scheduler = pipeline.scheduler.from_config(noise_scheduler.config)
                 if args.prediction_type is not None:
                     scheduler_args = {"prediction_type": args.prediction_type}
                     pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-                pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -1433,8 +1461,6 @@ def main(args):
                             }
                         )
 
-                del pipeline
-
     if t0 is not None:
         duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
         ttt = time.perf_counter() - t_start
@@ -1457,13 +1483,6 @@ def main(args):
             ema_unet.copy_to(unet.parameters())
 
         # Serialize pipeline.
-        vae = AutoencoderKL.from_pretrained(
-            vae_path,
-            subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-            revision=args.revision,
-            variant=args.variant,
-            torch_dtype=weight_dtype,
-        )
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=unet,

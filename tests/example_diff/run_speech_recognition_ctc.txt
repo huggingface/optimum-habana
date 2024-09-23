@@ -13,7 +13,7 @@
 > from optimum.habana.utils import set_seed
 52,53d49
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.42.0.dev0")
+< check_min_version("4.45.0.dev0")
 55c51,56
 < require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 ---
@@ -25,8 +25,8 @@
 >         return ()
 59a61,66
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.40.0")
-> check_optimum_habana_min_version("1.11.0")
+> check_min_version("4.43.0")
+> check_optimum_habana_min_version("1.14.0.dev0")
 > 
 > require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 > 
@@ -56,13 +56,14 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-451,457c465,470
+451,458c465,471
 <     if training_args.do_train:
 <         raw_datasets["train"] = load_dataset(
 <             data_args.dataset_name,
 <             data_args.dataset_config_name,
 <             split=data_args.train_split_name,
 <             token=data_args.token,
+<             trust_remote_code=data_args.trust_remote_code,
 <         )
 ---
 >     raw_datasets["train"] = load_dataset(
@@ -70,8 +71,9 @@
 >         data_args.dataset_config_name,
 >         split=data_args.train_split_name,
 >         token=data_args.token,
+>         trust_remote_code=data_args.trust_remote_code,
 >     )
-459,464c472,477
+460,465c473,478
 <         if data_args.audio_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
@@ -85,7 +87,7 @@
 >             " Make sure to set `--audio_column_name` to the correct audio column - one of"
 >             f" {', '.join(raw_datasets['train'].column_names)}."
 >         )
-466,471c479,484
+467,472c480,485
 <         if data_args.text_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
@@ -99,32 +101,32 @@
 >             "Make sure to set `--text_column_name` to the correct text column - one of "
 >             f"{', '.join(raw_datasets['train'].column_names)}."
 >         )
-473,474c486,487
+474,475c487,488
 <         if data_args.max_train_samples is not None:
 <             raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
 ---
 >     if data_args.max_train_samples is not None:
 >         raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
-492c505
+494c507
 <         f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
 ---
 >         f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
-631a645,649
+633a647,651
 >         raise RuntimeError(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-741c759,762
+743c761,764
 <         processor=processor, feature_extractor_input_name=feature_extractor_input_name
 ---
 >         processor=processor,
 >         feature_extractor_input_name=feature_extractor_input_name,
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
-745c766
+747c768
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-746a768
+748a770
 >         gaudi_config=gaudi_config,

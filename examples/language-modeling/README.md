@@ -114,7 +114,7 @@ python ../gaudi_spawn.py \
     --model_name_or_path EleutherAI/gpt-j-6b \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
     --do_train \
     --do_eval \
@@ -237,8 +237,8 @@ python ../gaudi_spawn.py \
 ```
 
 
-### Training in torch.compile mode 
-RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,  
+### Training in torch.compile mode
+RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,
 a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`.
 b) Run the above commands with `--model_name_or_path roberta-large`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
 
@@ -362,7 +362,7 @@ python run_clm.py \
 
 ## PEFT
 
-### LORA/ADALORA/IA3
+### LORA/ADALORA/IA3/LLAMA_ADAPTER
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
 Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
@@ -377,7 +377,7 @@ python3 run_lora_clm.py \
     --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --warmup_ratio  0.03 \
@@ -410,7 +410,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --max_grad_norm  0.3 \
@@ -445,7 +445,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 3 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 3e-4 \
     --warmup_ratio  0.03 \
@@ -480,7 +480,7 @@ LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 	--num_train_epochs 3 \
 	--per_device_train_batch_size 16 \
 	--gradient_accumulation_steps 1 \
-	--evaluation_strategy "no" \
+	--eval_strategy "no" \
 	--save_strategy "no" \
 	--learning_rate 3e-4 \
 	--warmup_ratio 0.03 \
@@ -518,7 +518,7 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \
     --logging_steps 1 \
@@ -535,6 +535,35 @@ python ../gaudi_spawn.py \
     --use_cache False
 ```
 
+- Multi-card finetuning of gemma2 using chat template:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 --use_mpi run_lora_clm.py \
+    --model_name_or_path google/gemma-2b-it \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
+    --do_train \
+    --do_eval \
+    --num_train_epochs 15 \
+    --output_dir ./output/2b_2hpu_16bs_15ep \
+    --save_total_limit 1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 3 \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --bf16 \
+    --logging_strategy epoch \
+    --evaluation_strategy epoch \
+    --lora_target_modules "q_proj" "o_proj" "k_proj" "v_proj" "gate_proj" "up_proj" "down_proj" \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --dataset_name mamamiya405/finred \
+    --chat_prompt True
+```
+
 - Multi-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
@@ -547,7 +576,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -589,7 +618,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --per_device_train_batch_size 10 \
   --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --eval_delay 2 \
   --save_strategy no \
   --learning_rate 0.0018 \
@@ -641,7 +670,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --fsdp_config fsdp_config.json \
   --fsdp auto_wrap \
   --num_train_epochs 2 \
-  --evaluation_strategy epoch \
+  --eval_strategy epoch \
   --per_device_eval_batch_size 1 \
   --eval_delay 2 \
   --do_eval \
@@ -668,7 +697,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
@@ -691,7 +720,49 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`.
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`.
+
+#### Custom Files
+
+To run on your own training and validation files, use the following command:
+
+```bash
+python run_lora_clm.py \
+    --model_name_or_path bigcode/starcoder \
+    --train_file path_to_train_file \
+    --validation_file path_to_validation_file \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-lora-clm \
+    --bf16 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --dataset_concatenation \
+    --throughput_warmup_steps 3
+```
+
+The format of the jsonlines files (with extensions .json or .jsonl) is expected to be
+
+```json
+{"text": "<text>"}
+{"text": "<text>"}
+{"text": "<text>"}
+{"text": "<text>"}
+```
+
+The format of the text files (with extensions .text or .txt) is expected to be
+
+```json
+"<text>"
+"<text>"
+"<text>"
+"<text>"
+```
+
+> Note: When using both custom files i.e `--train_file` and `--validation_file`, all files are expected to be of the same type i.e json or text.
 
 ### Prompt/Prefix/P-tuning
 
@@ -746,11 +817,57 @@ python3 ../text-generation/run_generation.py \
     --use_kv_cache \
     --batch_size 1 \
     --use_hpu_graphs \
-    --ignore_eos \
+    --no-ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
 
 ```
+### Multitask Prompt/Poly seq2seq tuning
+
+To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
+Here is a multi-device command example for [google/flan-t5-base](https://huggingface.co/google/flan-t5-base):
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
+    --model_name_or_path google/flan-t5-base \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 3 \
+    --output_dir out_multi_peft \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "steps" \
+    --eval_steps 500 \
+    --save_strategy "no" \
+    --learning_rate 1e-4  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --bf16
+```
+
+To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
+Here is a multi-device command example for [google/flan-t5-xl](https://huggingface.co/google/flan-t5-xl):
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
+    --model_name_or_path google/flan-t5-xl \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 1 \
+    --output_dir out_poly \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "epoch" \
+    --logging_strategy "epoch" \
+    --save_strategy "no" \
+    --learning_rate 5e-5  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 4 \
+    --bf16 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training
+```
+
 
 ## Streaming
 

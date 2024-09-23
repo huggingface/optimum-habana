@@ -93,7 +93,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             Whether to use HPU graphs or not.
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
-           Or a previously initialized config can be passed.
+            Or a previously initialized config can be passed.
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
@@ -651,6 +651,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             t1 = t0
 
             self._num_timesteps = len(timesteps)
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index()
 
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
@@ -688,12 +690,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
 
-            self._num_timesteps = len(timesteps)
-
             # 8.3 Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             for j in self.progress_bar(range(num_batches)):
@@ -712,6 +712,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 add_text_embeddings_batches = torch.roll(add_text_embeddings_batches, shifts=-1, dims=0)
                 add_time_ids_batch = add_time_ids_batches[0]
                 add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
+
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
+                    self.scheduler._init_step_index(timesteps[0])
 
                 for i in range(num_inference_steps):
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
@@ -819,7 +823,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

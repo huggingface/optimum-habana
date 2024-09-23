@@ -19,7 +19,8 @@
                         "--dataloader_num_workers 2",
                         "--logging_steps 10",
                         "--use_hpu_graphs_for_inference",
-                        "--distribution_strategy fast_ddp"
+                        "--distribution_strategy fast_ddp",
+                        "--trust_remote_code True"
                     ]
                 }
             }

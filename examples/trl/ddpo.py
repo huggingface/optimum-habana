@@ -57,7 +57,7 @@ class ScriptArguments:
         default=None, metadata={"help": "Hugging Face token. If None, token is retrieved from env or cache."}
     )
     pretrained_model: str = field(
-        default="runwayml/stable-diffusion-v1-5", metadata={"help": "the pretrained model to use"}
+        default="CompVis/stable-diffusion-v1-4", metadata={"help": "the pretrained model to use"}
     )
     pretrained_revision: str = field(default="main", metadata={"help": "the pretrained model revision to use"})
     hf_hub_model_id: str = field(

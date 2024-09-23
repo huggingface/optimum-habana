@@ -26,7 +26,8 @@
                         "--predict_with_generate",
                         "--use_hpu_graphs_for_inference",
                         "--label_features_max_length 128",
-                        "--pipelining_fwd_bwd True"
+                        "--pipelining_fwd_bwd True",
+                        "--trust_remote_code True"
                     ]
                 }
             }
@@ -40,10 +41,10 @@
                 "multi_card": {
                     "learning_rate": 8e-5,
                     "train_batch_size": 32,
-                    "eval_wer": 0.8477,
-                    "train_runtime": 287.0947,
-                    "train_samples_per_second": 307.526,
-                    "eval_samples_per_second": 12.069,
+                    "eval_wer": 1.3541597337770384,
+                    "train_runtime": 315.288,
+                    "train_samples_per_second": 276.962,
+                    "eval_samples_per_second": 20.138,
                     "extra_arguments": [
                         "--dataset_config_name hi",
                         "--language hindi",
@@ -58,7 +59,8 @@
                         "--dataloader_num_workers 8",
                         "--predict_with_generate",
                         "--use_hpu_graphs_for_inference",
-                        "--label_features_max_length 128"
+                        "--label_features_max_length 128",
+                        "--trust_remote_code True"
                     ]
                 }
             }

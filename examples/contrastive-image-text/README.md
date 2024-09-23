@@ -118,7 +118,8 @@ python run_clip.py \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
-    --bf16
+    --bf16 \
+    --trust_remote_code
 ```
 
 
@@ -151,7 +152,8 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --mediapipe_dataloader \
     --use_hpu_graphs_for_training \
     --bf16 \
-    --distribution_strategy fast_ddp
+    --distribution_strategy fast_ddp \
+    --trust_remote_code
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -182,7 +184,8 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_to_my_deepspeed_config \
+    --trust_remote_code
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -231,7 +234,8 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --logging_steps 10 \
   --dataloader_num_workers 1 \
   --mediapipe_dataloader \
-  --distribution_strategy fast_ddp
+  --distribution_strategy fast_ddp \
+  --trust_remote_code
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -260,7 +264,8 @@ python run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --bf16 \
-    --mediapipe_dataloader
+    --mediapipe_dataloader \
+    --trust_remote_code
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.

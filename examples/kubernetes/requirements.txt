@@ -1,0 +1,2 @@
+-r optimum-habana/examples/language-modeling/requirements.txt
+-r optimum-habana/examples/text-classification/requirements.txt

@@ -19,7 +19,7 @@ The following example is for the supervised Lora finetune with Qwen2 model for c
         --output_dir ./model_qwen \
         --num_train_epochs 1 \
         --per_device_train_batch_size 16 \
-        --evaluation_strategy "no" \
+        --eval_strategy "no" \
         --save_strategy "no" \
         --learning_rate 3e-4 \
         --warmup_ratio  0.03 \
@@ -197,8 +197,8 @@ There are three main steps to the PPO training process:
 2. Reward modeling using dialog pairs from the SE dataset on the llama-v2-7b-se to create llama-v2-7b-se-rm
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi reward_modeling.py \
-        --model_name=./sft/final_merged_checkpoint \
-        --tokenizer_name=meta-llama/Llama-2-7b-hf \
+        --model_name_or_path=./sft/final_merged_checkpoint \
+        --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
         --output_dir=./rm
     ```
     To merge the adaptors into the base model we can use the `merge_peft_adapter.py` helper script that comes with TRL:
@@ -210,9 +210,9 @@ There are three main steps to the PPO training process:
 3. RL fine-tuning of llama-v2-7b-se with the llama-v2-7b-se-rm reward model:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi ppo.py \
-        --model_name=./sft/final_merged_checkpoint \
+        --model_name_or_path=./sft/final_merged_checkpoint \
         --reward_model_name=./rm_merged_checkpoint \
-        --tokenizer_name=meta-llama/Llama-2-7b-hf \
+        --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
         --adafactor=False \
         --output_max_length=128 \
         --batch_size=8 \
@@ -244,10 +244,10 @@ python run_generation.py \
 
 ### Training
 The following example is for fine-tuning stable diffusion using Denoising Diffusion Policy Optimization
-([DDPO](https://huggingface.co/docs/trl/en/ddpo_trainer)). The implementation supports LoRA and 
+([DDPO](https://huggingface.co/docs/trl/en/ddpo_trainer)). The implementation supports LoRA and
 non-LoRA-based training. LoRA based training is faster and less finicky to converge than non-LoRA
-based training. Recommendations for non-Lora based training (described [here](https://huggingface.co/blog/trl-ddpo)) 
-are setting the learning rate relatively low (e.g., 1e-5) and disabling mixed precision training. 
+based training. Recommendations for non-Lora based training (described [here](https://huggingface.co/blog/trl-ddpo))
+are setting the learning rate relatively low (e.g., 1e-5) and disabling mixed precision training.
 HPU graphs are enabled by default for better performance.
 
 There are two main steps to the DDPO training process:
@@ -272,7 +272,7 @@ python ddpo.py \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
   --push_to_hub False
 ```
-   
+
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
 ```python
 import torch
@@ -281,7 +281,7 @@ from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDefaultDDPOStableDiffusionPipeline
 
 gaudi_config = GaudiConfig.from_pretrained("Habana/stable-diffusion")
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "CompVis/stable-diffusion-v1-4"
 lora_model_id = "ddpo-finetuned-stable-diffusion"
 pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
     model_id,

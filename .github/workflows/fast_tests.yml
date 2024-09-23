@@ -15,13 +15,14 @@ concurrency:
 jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
+            docker pull vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -33,19 +34,18 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
+            vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
-    needs:
-      - transformers # required to wait for the previous tests to finish
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
+            docker pull vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -57,5 +57,5 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
+            vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest \
             /bin/bash tests/ci/fast_tests_diffusers.sh

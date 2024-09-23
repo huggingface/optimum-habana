@@ -10,8 +10,8 @@ from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
 
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.trl import GaudiDPOTrainer
+from optimum.habana import GaudiConfig
+from optimum.habana.trl import GaudiDPOConfig, GaudiDPOTrainer
 from optimum.habana.utils import set_seed
 
 
@@ -47,6 +47,9 @@ class ScriptArguments:
     )
     gradient_checkpointing: Optional[bool] = field(
         default=False, metadata={"help": "whether to use gradient checkpointing"}
+    )
+    gradient_checkpointing_use_reentrant: Optional[bool] = field(
+        default=False, metadata={"help": "whether to use reentrant for gradient checkpointing"}
     )
 
     lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
@@ -140,7 +143,7 @@ if __name__ == "__main__":
     script_args = parser.parse_args_into_dataclasses()[0]
 
     # 1. initialize training arguments:
-    training_args = GaudiTrainingArguments(
+    training_args = GaudiDPOConfig(
         per_device_train_batch_size=script_args.per_device_train_batch_size,
         per_device_eval_batch_size=script_args.per_device_eval_batch_size,
         max_steps=script_args.max_steps,
@@ -149,7 +152,7 @@ if __name__ == "__main__":
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
         gradient_checkpointing=script_args.gradient_checkpointing,
         learning_rate=script_args.learning_rate,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=script_args.eval_steps,
         output_dir=script_args.output_dir,
         report_to=script_args.report_to,
@@ -159,6 +162,7 @@ if __name__ == "__main__":
         bf16=True,
         remove_unused_columns=False,
         run_name="dpo_llama2",
+        gradient_checkpointing_kwargs={"use_reentrant": script_args.gradient_checkpointing_use_reentrant},
         use_habana=True,
         use_lazy_mode=True,
         use_hpu_graphs_for_training=not script_args.gradient_checkpointing and (not script_args.deepspeed),
@@ -246,6 +250,7 @@ if __name__ == "__main__":
         peft_config=peft_config,
         max_prompt_length=script_args.max_prompt_length,
         max_length=script_args.max_length,
+        force_use_ref_model=True,
     )
 
     # 6. train

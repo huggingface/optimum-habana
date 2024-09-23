@@ -54,11 +54,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, LlavaNextCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new args flash_attention_recompute
         - Moved the process of merging images into inputs_embeds into prepare_inputs_for_generation
         """
 
@@ -81,6 +85,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 token_idx=token_idx + self.image_offset,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None:
@@ -244,6 +250,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 **kwargs,
             )
         else:
+            use_flash_attention = kwargs.get("use_flash_attention", False)
+            flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
             position_ids = kwargs.get("position_ids", None)
             labels = kwargs.get("labels", None)
             if past_key_values is None and pixel_values is not None and input_ids.shape[1] != 1:
@@ -263,7 +271,12 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 # 2. Merge text and images
                 batch_size, num_patches, num_channels, height, width = pixel_values.shape
                 reshaped_pixel_values = pixel_values.view(batch_size * num_patches, num_channels, height, width)
-                image_features = self.vision_tower(reshaped_pixel_values, output_hidden_states=True)
+                image_features = self.vision_tower(
+                    reshaped_pixel_values,
+                    output_hidden_states=True,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
+                )
 
                 selected_image_feature = image_features.hidden_states[vision_feature_layer]
 
@@ -383,6 +396,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                     "token_idx": token_idx,
                     "image_sizes": image_sizes,
                     "labels": labels,
+                    "use_flash_attention": use_flash_attention,
+                    "flash_attention_recompute": flash_attention_recompute,
                 }
             )
 

@@ -171,6 +171,16 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "reward_modeling": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+        ["llama"],
+    ),
+    "ppo": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
     "run_prompt_tuning_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
@@ -180,6 +190,16 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_MAPPING,
         ["protst"],
+    ),
+    "run_multitask_prompt_tuning": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        ["t5"],
+    ),
+    "peft_poly_seq2seq_with_generate": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        ["t5"],
     ),
 }
 
@@ -215,13 +235,18 @@ class ExampleTestMeta(type):
         elif (
             "sft" in example_name
             or "dpo" in example_name
+            or "reward_modeling" in example_name
+            or "ppo" in example_name
             or "prompt_tuning" in example_name
+            or "peft_poly" in example_name
             or example_name == "run_sequence_classification"
         ) and not IS_GAUDI2:
             return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
+            return False
+        elif "falcon" in model_name and task_name in ("llama-adapter", "databricks/databricks-dolly-15k"):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -275,7 +300,6 @@ class ExampleTestMeta(type):
             distribution = "multi_card"
         elif deepspeed:
             distribution = "deepspeed"
-
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
@@ -333,7 +357,12 @@ class ExampleTestMeta(type):
 
             # The ESMFold example has no arguments, so we can execute it right away
             if self.EXAMPLE_NAME == "run_esmfold":
-                p = subprocess.Popen(["python3", example_script])
+                cmd_line = f"""
+                        python3
+                        {example_script}
+                        """.split()
+                print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
+                p = subprocess.Popen(cmd_line)
                 return_code = p.wait()
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
@@ -347,6 +376,7 @@ class ExampleTestMeta(type):
                         --bf16
                         --max_seq_length 1024
                     """.split()
+                    print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
                     p = subprocess.Popen(cmd_line)
                     return_code = p.wait()
                     # Ensure the run finished without any issue
@@ -442,7 +472,7 @@ class ExampleTestMeta(type):
                     num_epochs=baseline.get("num_train_epochs"),
                     extra_command_line_arguments=extra_command_line_arguments,
                 )
-
+                print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
                 p = subprocess.Popen(cmd_line, env=env_variables)
                 return_code = p.wait()
 
@@ -451,7 +481,6 @@ class ExampleTestMeta(type):
 
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
-
                 # Ensure performance requirements (accuracy, training time) are met
                 self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
@@ -508,7 +537,8 @@ class ExampleTesterBase(TestCase):
     ) -> List[str]:
         dataset_name = self.DATASET_NAME if self.DATASET_NAME is not None else task
         task_option = f"--{self.DATASET_PARAMETER_NAME} {dataset_name}" if task else " "
-
+        if task in ["multitask-prompt-tuning", "poly-tuning"]:
+            task_option = " "
         cmd_line = ["python3"]
         if multi_card:
             cmd_line.append(f"{script.parent.parent / 'gaudi_spawn.py'}")
@@ -521,7 +551,7 @@ class ExampleTesterBase(TestCase):
                 "--num_gpus 8",
                 "--no_local_rank",
             ]
-        if self.EXAMPLE_NAME == "dpo":
+        if self.EXAMPLE_NAME in ["dpo", "reward_modeling"]:
             cmd_line += [
                 f"{script}",
                 f"--model_name_or_path {model_name}",
@@ -529,6 +559,14 @@ class ExampleTesterBase(TestCase):
                 f"--output_dir {output_dir}",
                 f"--per_device_train_batch_size {train_batch_size}",
                 f"--per_device_eval_batch_size {eval_batch_size}",
+            ]
+        elif self.EXAMPLE_NAME == "ppo":
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--tokenizer_name_or_path {model_name}",
+                f"--output_dir {output_dir}",
+                f"--batch_size {train_batch_size}",
             ]
         else:
             cmd_line += [
@@ -550,10 +588,10 @@ class ExampleTesterBase(TestCase):
 
         if "compile" in task:
             cmd_line += ["--use_lazy_mode False"]
-        elif self.EXAMPLE_NAME != "dpo":
+        elif self.EXAMPLE_NAME not in ["dpo", "ppo", "reward_modeling"]:
             cmd_line += ["--use_lazy_mode"]
 
-        if "bloom" not in model_name and self.EXAMPLE_NAME != "dpo":
+        if "bloom" not in model_name and self.EXAMPLE_NAME not in ["dpo", "ppo", "reward_modeling"]:
             cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
@@ -587,10 +625,12 @@ class ExampleTesterBase(TestCase):
         for metric_name in self.REGRESSION_METRICS.keys():
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
-
         # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
         min_number_metrics = 3
-        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo"] or "bloom" in model_name:
+        if (
+            self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo", "ppo", "reward_modeling"]
+            or "bloom" in model_name
+        ):
             min_number_metrics = 2
 
         # Check that at least 3 metrics are assessed:
@@ -795,6 +835,18 @@ class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
     DATASET_NAME = "lvwerra/stack-exchange-paired"
 
 
+class MultiCardRewardExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="reward_modeling", multi_card=True
+):
+    TASK_NAME = "trl-reward"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardPPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="ppo", multi_card=True):
+    TASK_NAME = "trl-ppo"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
 class MultiCardProteinFoldingClassificationTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_sequence_classification", multi_card=True
 ):
@@ -805,22 +857,41 @@ class MultiCardProteinFoldingClassificationTester(
 class MultiCardCausalLanguageModelingPromptTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prompt-tuning"]
+    TASK_NAME = "prompt-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prefix-tuning"]
+    TASK_NAME = "prefix-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["p-tuning"]
+    TASK_NAME = "p-tuning"
     DATASET_NAME = "ought/raft"
+
+
+class MultiCardMultiTastPromptPeftExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_multitask_prompt_tuning", multi_card=True
+):
+    TASK_NAME = "multitask-prompt-tuning"
+
+
+class MultiCardPolyPeftExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="peft_poly_seq2seq_with_generate", multi_card=True
+):
+    TASK_NAME = "poly-tuning"
+
+
+class MultiCardCausalLanguageModelingLlamaAdapterExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "llama-adapter"
+    DATASET_NAME = "tatsu-lab/alpaca"
 
 
 class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
