@@ -12,7 +12,7 @@ We provide 3 examples to show how to use the Sentence Transformers with HPU devi
 
 The following table contains examples supported and configurations we have validated on Gaudi2. 
 
-| Examples                    |  General  | Mistral 7B | BF16 | Single Card | Multi-Cards |
+| Examples                    |  General  | e5-mistral-7b-instruct | BF16 | Single Card | Multi-Cards |
 |-----------------------------|-----------|------------|------|-------------|-------------|
 | training_nli.py             |     ✔     |      ✔    |   ✔  |     ✔       |     ✔      |
 | training_stsbenchmark.py    |     ✔     |      ✔    |   ✔  |     ✔       |     ✔      |
