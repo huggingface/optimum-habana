@@ -105,6 +105,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "stablelm",
     "mamba",
     "deci",
+    "whisper",
 ]
 
 
@@ -229,8 +230,6 @@ class GaudiGenerationMixin(GenerationMixin):
         elif "donut" in self.__class__.__name__.lower() or (
             self.config.model_type == "vision-encoder-decoder" and "donut" in self.config.encoder.model_type.lower()
         ):
-            pass
-        elif self.config.model_type in ["whisper"]:
             pass
         # user input but doesn't start with decoder_start_token_id -> prepend decoder_start_token_id (and adjust
         # decoder_attention_mask if provided)

@@ -28,6 +28,7 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
     GaudiBloomForCausalLM,
@@ -98,6 +99,11 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -558,6 +564,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+
+    # Optimization for Whisper on Gaudi
+    transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
+    transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
+    transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
+    transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
+    transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
+    transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
