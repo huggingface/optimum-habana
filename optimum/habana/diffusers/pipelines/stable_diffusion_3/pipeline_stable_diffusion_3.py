@@ -591,7 +591,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 speed_measures = speed_metrics(
                     split=speed_metrics_prefix,
                     start_time=t0,
-                    num_samples= batch_size,
+                    num_samples= 1,   # Samples is treated as 1 whole batch (made to match Nvidia measurements)
                     num_steps= batch_size * num_inference_steps,
                     start_time_after_warmup=t1,
                 )
