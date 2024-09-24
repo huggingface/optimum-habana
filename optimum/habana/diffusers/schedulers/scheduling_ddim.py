@@ -184,7 +184,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
-        return variance
+        return torch.relu(variance)  # Negative variance bug fix
 
     def step(
         self,

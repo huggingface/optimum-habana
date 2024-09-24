@@ -535,6 +535,35 @@ python ../gaudi_spawn.py \
     --use_cache False
 ```
 
+- Multi-card finetuning of gemma2 using chat template:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 --use_mpi run_lora_clm.py \
+    --model_name_or_path google/gemma-2b-it \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
+    --do_train \
+    --do_eval \
+    --num_train_epochs 15 \
+    --output_dir ./output/2b_2hpu_16bs_15ep \
+    --save_total_limit 1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 3 \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --bf16 \
+    --logging_strategy epoch \
+    --evaluation_strategy epoch \
+    --lora_target_modules "q_proj" "o_proj" "k_proj" "v_proj" "gate_proj" "up_proj" "down_proj" \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --dataset_name mamamiya405/finred \
+    --chat_prompt True
+```
+
 - Multi-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \

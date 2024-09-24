@@ -68,7 +68,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -335,7 +335,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         >>> mask_image = download_image(mask_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-2-inpainting", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -553,7 +553,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
             self._num_timesteps = len(timesteps)
@@ -715,7 +715,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
+                num_steps=num_batches * batch_size * num_inference_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

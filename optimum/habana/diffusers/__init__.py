@@ -7,6 +7,7 @@ from .pipelines.stable_diffusion.pipeline_stable_diffusion_depth2img import Gaud
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_image_variation import (
     GaudiStableDiffusionImageVariationPipeline,
 )
+from .pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import GaudiStableDiffusionImg2ImgPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix import (
     GaudiStableDiffusionInstructPix2PixPipeline,

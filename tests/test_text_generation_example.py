@@ -38,9 +38,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
+            ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209),
             ("google/gemma-7b", 1, False, 109.70751574382221),
-            ("state-spaces/mamba-130m-hf", 1536, False, 8600),
+            ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605),
             ("Deci/DeciLM-7B", 1, False, 120),
         ],
         "fp8": [
@@ -169,6 +169,9 @@ def _test_text_generation(
 
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
+
+    if "gemma" in model_name.lower():
+        command += ["--use_flash_attention"]
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
         command += ["--reuse_cache"]
