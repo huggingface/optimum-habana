@@ -1036,6 +1036,8 @@ class GaudiTrainer(Trainer):
                                 args.max_grad_norm,
                             )
 
+                    self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
+
                     optimizer_was_run = True
                     self.optimizer.step()
 
@@ -1582,6 +1584,9 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
+        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+            self.optimizer.train()
+
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
@@ -1819,6 +1824,8 @@ class GaudiTrainer(Trainer):
                 self.deepspeed = self.model_wrapped
 
         model.eval()
+        if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+            self.optimizer.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs_for_inference and not self.is_in_train:
@@ -2226,6 +2233,8 @@ class GaudiTrainer(Trainer):
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
         model.eval()
+        if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+            self.optimizer.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs_for_inference and not self.is_in_train:

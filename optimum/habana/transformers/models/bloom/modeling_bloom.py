@@ -164,8 +164,7 @@ def gaudi_bloom_attention_forward(
         present = None
 
     # [batch_size * num_heads, q_length, kv_length]
-    # we use `torch.Tensor.baddbmm` instead of `torch.baddbmm` as the latter isn't supported by TorchScript v1.11
-    matmul_result = alibi.baddbmm(
+    attention_scores = alibi.baddbmm(
         batch1=query_layer,
         batch2=key_layer,
         beta=self.beta,
@@ -173,7 +172,7 @@ def gaudi_bloom_attention_forward(
     )
 
     # change view to [batch_size, num_heads, q_length, kv_length]
-    attention_scores = matmul_result.view(batch_size, self.num_heads, q_length, kv_length)
+    attention_scores = attention_scores.view(batch_size, self.num_heads, q_length, -1)
 
     # cast attention scores to fp32, compute scaled softmax and cast back to initial dtype - [batch_size, num_heads, q_length, kv_length]
     input_dtype = attention_scores.dtype
@@ -187,7 +186,7 @@ def gaudi_bloom_attention_forward(
         attention_probs = attention_probs * head_mask
 
     # change view [batch_size x num_heads, q_length, kv_length]
-    attention_probs_reshaped = attention_probs.view(batch_size * self.num_heads, q_length, kv_length)
+    attention_probs_reshaped = attention_probs.view(batch_size * self.num_heads, q_length, -1)
 
     # matmul: [batch_size * num_heads, q_length, head_dim]
     context_layer = torch.bmm(attention_probs_reshaped, value_layer)
@@ -507,9 +506,12 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
-            model_inputs = {"inputs_embeds": inputs_embeds}
+            model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
         else:
-            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
+            # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the
+            # input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in
+            # the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
         model_inputs.update(
             {

@@ -68,12 +68,12 @@ def gaudi_persimmon_attention_forward(
 
     # Partial rotary embedding
     query_rot, query_pass = (
-        query_states[..., : self.rotary_emb.dim],
-        query_states[..., self.rotary_emb.dim :],
+        query_states[..., : self.rotary_ndims],
+        query_states[..., self.rotary_ndims :],
     )
     key_rot, key_pass = (
-        key_states[..., : self.rotary_emb.dim],
-        key_states[..., self.rotary_emb.dim :],
+        key_states[..., : self.rotary_ndims],
+        key_states[..., self.rotary_ndims :],
     )
     # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
     query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
@@ -97,7 +97,7 @@ def gaudi_persimmon_attention_forward(
             cache_kwargs = {
                 "sin": sin,
                 "cos": cos,
-                "partial_rotation_size": self.rotary_emb.dim,
+                "partial_rotation_size": self.rotary_ndims,
                 "cache_position": cache_position,
             }
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)

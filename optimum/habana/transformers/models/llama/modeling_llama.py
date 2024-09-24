@@ -100,7 +100,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if config is None:
             logger.warning_once(
                 "`LlamaRotaryEmbedding` can now be fully parameterized by passing the model config through the "
-                "`config` argument. All other arguments will be removed in v4.45"
+                "`config` argument. All other arguments will be removed in v4.46"
             )
             self.rope_kwargs = {
                 "rope_type": rope_type,
@@ -186,7 +186,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
 class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def __init__(self, *args, **kwargs):
         logger.warning_once(
-            "`LlamaLinearScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+            "`LlamaLinearScalingRotaryEmbedding` is deprecated an will be removed in v4.46. Please use "
             "`LlamaRotaryEmbedding`, which now also does linear scaling (simply pass the model config to __init__)."
         )
         kwargs["rope_type"] = "linear"
@@ -207,7 +207,7 @@ class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
 class GaudiLlamaDynamicNTKScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def __init__(self, *args, **kwargs):
         logger.warning_once(
-            "`LlamaDynamicNTKScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+            "`LlamaDynamicNTKScalingRotaryEmbedding` is deprecated an will be removed in v4.46. Please use "
             "`LlamaRotaryEmbedding`, which now also does dynamic ntk scaling (simply pass the model config to "
             "__init__)."
         )
@@ -481,7 +481,7 @@ class GaudiLlamaAttention(LlamaAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -563,7 +563,7 @@ class GaudiLlamaAttention(LlamaAttention):
         # logger.warning_once(
         # "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
         # "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
+        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
         # "removed and `position_embeddings` will be mandatory."
         # )
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
@@ -830,7 +830,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
