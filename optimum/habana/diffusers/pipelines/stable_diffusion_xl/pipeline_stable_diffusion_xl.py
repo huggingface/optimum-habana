@@ -479,6 +479,22 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
+        quant_mode=kwargs["quant_mode"]
+        if quant_mode == "measure" or quant_mode == "quantize":
+            import os
+            quant_config_path = os.getenv('QUANT_CONFIG')
+
+            import habana_frameworks.torch.core as htcore
+            htcore.hpu_set_env()
+
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+            config = FP8Config.from_json_file(quant_config_path)
+            if config.measure:
+                self.unet = prepare(self.unet, config)
+            elif config.quantize:
+                self.unet = convert(self.unet, config) 
+            htcore.hpu_initialize(self.unet, mark_only_scales_as_const=True)
+
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
 
@@ -495,7 +511,13 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
+        from contextlib import nullcontext
+        if quant_mode == "disable":
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast)
+        else:
+            ctx_manager = nullcontext()
+
+        with ctx_manager:
             # 0. Default height and width to unet
             height = height or self.default_sample_size * self.vae_scale_factor
             width = width or self.default_sample_size * self.vae_scale_factor
@@ -815,6 +837,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                     self.htcore.mark_step()
 
             hb_profiler.stop()
+
+            if quant_mode == "measure":
+                from neural_compressor.torch.quantization import finalize_calibration
+                finalize_calibration(self.unet)
 
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
