@@ -1,4 +1,4 @@
-# Examples for Sentence Transformer
+# Examples for Sentence Transformers
 
 We provide 3 examples to show how to use the Sentence Transformers with HPU devices. 
 
