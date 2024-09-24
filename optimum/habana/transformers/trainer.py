@@ -683,13 +683,23 @@ class GaudiTrainer(Trainer):
             import transformers.modeling_utils
 
             if args.deepspeed and args.use_lazy_mode:
-                from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
+                from deepspeed.runtime.activation_checkpointing.checkpointing import (
+                    CheckpointFunction,
+                    non_reentrant_checkpoint,
+                )
 
                 # HACK because outputs should always be tuples
-                def hpu_deepspeed_checkpointing(function, *checkpoint_args):
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
                     """DeepSpeed acitvation checkpointing."""
-                    all_outputs = []
-                    CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    if use_reentrant is None:
+                        use_reentrant = True
+                    if use_reentrant:
+                        all_outputs = []
+                        CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    else:
+                        logger.info("DeepSpeed acitvation checkpointing=non_reentrant_checkpoint")
+                        all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
+
                     # Always return a tuple
                     # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
                     # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
