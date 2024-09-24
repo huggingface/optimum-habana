@@ -38,6 +38,11 @@ from transformers.models.gemma.modeling_gemma import (
 )
 from transformers.utils import logging
 
+from ...modeling_attn_mask_utils import (
+    _gaudi_prepare_4d_causal_attention_mask,
+)
+
+
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
@@ -540,15 +545,15 @@ class GaudiGemmaModel(GemmaModel):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
+        """
+        Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
+        The only differences are:
+        - add new args token_idx
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-    """
-    Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
-    The only differences are:
-    - add new args token_idx
-    """
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -556,6 +561,12 @@ class GaudiGemmaModel(GemmaModel):
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -590,8 +601,11 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        attention_mask = self._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask,
+            input_ids.shape if input_ids is not None else (batch_size, seq_length),
+            inputs_embeds,
+            past_seen_tokens,
         )
         # embed positions
         hidden_states = inputs_embeds
