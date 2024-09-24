@@ -6,7 +6,7 @@ We provide 3 examples to show how to use the Sentence Transformers with HPU devi
 
 - **[training_nli.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/nli)** - This example provides two sentences (a premise and a hypothesis), and the task of Natural Language Inference (NLI) is to determine whether the premise entails the hypothesis, contradicts it, or if they are neutral. Commonly the NLI dataset in [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) are used.
 
-- **[training_paraphrases.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/paraphrases)** - This example loads various datasets from the sentence transformers. We construct batches by sampling examples from the respective dataset. 
+- **[training_paraphrases.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/paraphrases)** - This example loads various datasets from the Sentence Transformers. We construct batches by sampling examples from the respective dataset. 
 
 ### Tested Examples/Models and Configurations
 
