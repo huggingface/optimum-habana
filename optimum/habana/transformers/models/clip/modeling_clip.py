@@ -60,7 +60,7 @@ class Softmax(nn.Module):
         super().__init__()
 
     def forward(self, x, dim=None, invAttnHead=None):
-        return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
+        return torch.nn.functional.softmax(x, dim)
 
 
 class GaudiCLIPAttention(CLIPAttention):

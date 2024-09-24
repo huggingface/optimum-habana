@@ -678,13 +678,23 @@ class GaudiTrainer(Trainer):
             import transformers.modeling_utils
 
             if args.deepspeed and args.use_lazy_mode:
-                from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
+                from deepspeed.runtime.activation_checkpointing.checkpointing import (
+                    CheckpointFunction,
+                    non_reentrant_checkpoint,
+                )
 
                 # HACK because outputs should always be tuples
-                def hpu_deepspeed_checkpointing(function, *checkpoint_args):
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
                     """DeepSpeed acitvation checkpointing."""
-                    all_outputs = []
-                    CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    if use_reentrant is None:
+                        use_reentrant = True
+                    if use_reentrant:
+                        all_outputs = []
+                        CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    else:
+                        logger.info("DeepSpeed acitvation checkpointing=non_reentrant_checkpoint")
+                        all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
+
                     # Always return a tuple
                     # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
                     # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
@@ -956,9 +966,9 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2 and starcoder2
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
                 if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2"]:
+                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
@@ -1871,9 +1881,9 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2 and starcoder2
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
             if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2"]:
+                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
                     if self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
                     if self.model.generation_config.use_flash_attention:
