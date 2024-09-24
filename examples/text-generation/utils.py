@@ -254,8 +254,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        # TODO: [SW-195965] Remove once load supports other types
-        model = model.to(model_dtype)
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
