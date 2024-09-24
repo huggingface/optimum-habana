@@ -1,6 +1,6 @@
 # Examples for Sentence Transformer
 
-We provide 3 examples to show how to use the sentence transformer with HPU devices. 
+We provide 3 examples to show how to use the Sentence Transformers with HPU devices. 
 
 - **[training_stsbenchmark.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/sts)** - This example shows how to create a SentenceTransformer model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
 
