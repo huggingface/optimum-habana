@@ -21,3 +21,4 @@ The following table contains examples supported and configurations we have valid
 Notice: 
 1. in the table the column 'General' means the general models like small models
 2. when Mistral 7b Model is enabled for the test single card will use the LoRA + gradient_checkpoint and multi-card will use the deepspeed zero2/zero3 stage to reduce the memory requirement. 
+3. About the detailed command on how to run each example you can read each readme under each example folder. 
