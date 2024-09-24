@@ -19,6 +19,6 @@ The following table contains examples supported and configurations we have valid
 | training_paraphrases.py     |     ✔     |           |       |     ✔       |            |
 
 Notice: 
-1. in the table the column 'General' means the general models like small models
+1. In the table, the column 'General' refers to general models like mpnet, MiniLM.
 2. When e5-mistral-7b-instruct model is enabled for the test, single card will use the LoRA + gradient_checkpoint and multi-card will use the deepspeed zero2/zero3 stage to reduce the memory requirement. 
 3. For the detailed instructions on how to run each example, you can refer to the README file located in each example folder. 
