@@ -105,6 +105,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "stablelm",
     "mamba",
     "deci",
+    "gemma",
     "whisper",
 ]
 
@@ -445,7 +446,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         else:
                             assert False
                     elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon, qwen2, starcoder2
+                        return (0, 0, 0, pad_amount)  # llama, falcon, qwen2, starcoder2, gemma
                     else:
                         assert False, "Unknown case, please handle, or dont use bucketing"
 
@@ -889,16 +890,20 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
         if generation_config.reuse_cache:
-            assert self.config.model_type in [
-                "llama",
-                "mistral",
-                "falcon",
-                "mixtral",
-                "phi",
-                "qwen2",
-                "gptj",
-                "starcoder2",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2 and starcoder2 at the moment"
+            assert (
+                self.config.model_type
+                in [
+                    "llama",
+                    "mistral",
+                    "falcon",
+                    "mixtral",
+                    "phi",
+                    "qwen2",
+                    "gptj",
+                    "starcoder2",
+                    "gemma",
+                ]
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, gemma and starcoder2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1127,7 +1132,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["kv_cache_len"] = calculated_max_length
                 model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
 
-            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2", "gptj", "starcoder2"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2", "gptj", "starcoder2", "gemma"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
