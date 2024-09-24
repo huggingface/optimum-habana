@@ -139,10 +139,10 @@ from .modeling_all_models import (
     gaudi_invert_attention_mask,
 )
 from .mpt import (
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
 )
 from .opt import (
     GaudiOPTForCausalLM,
@@ -226,4 +226,12 @@ from .wav2vec2 import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+)
+from .whisper import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
 )

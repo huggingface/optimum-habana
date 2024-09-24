@@ -489,7 +489,7 @@ python run_generation.py \
 You can load pre-quantized 4bit models with the argument `--load_quantized_model`.
 Currently, uint4 checkpoints and single device are supported.
 More information on enabling 4 bit inference in SynapseAI is available here:
-https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html.
 
 Below is an example to load a model with 4bit checkpoints from Hugging Face.
 Please note that model name is denoted as `<model_path_in_hugging_face>`.

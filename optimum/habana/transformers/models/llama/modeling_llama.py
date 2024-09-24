@@ -1346,7 +1346,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
@@ -1400,6 +1401,17 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             }
         )
         return model_inputs
+
+    # Transformer4.43 use new Cache mechanism while Gaudi is not.
+    # Adding _reorder_cache back to support HPU.
+    @staticmethod
+    def _reorder_cache(past_key_values, beam_idx):
+        reordered_past = ()
+        for layer_past in past_key_values:
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
+            )
+        return reordered_past
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):

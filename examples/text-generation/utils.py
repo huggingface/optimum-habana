@@ -135,6 +135,10 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
+    if args.global_rank == 0 and not args.torch_compile and args.show_graphs_count:
+        os.environ.setdefault("GRAPH_VISUALIZATION", "true")
+        shutil.rmtree(".graph_dumps", ignore_errors=True)
+
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")

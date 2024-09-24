@@ -798,7 +798,8 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
                     input_ids = input_ids[:, cache_position]
             else:
                 # past_length += token_idx
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
