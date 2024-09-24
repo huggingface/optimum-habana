@@ -19,28 +19,12 @@ from transformers.models.whisper.modeling_whisper import (
     WhisperForConditionalGeneration,
     WhisperModel,
     WhisperSdpaAttention,
+    shift_tokens_right,
 )
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
-
-
-# Copied from transformers.models.bart.modeling_bart.shift_tokens_right
-def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
-    """
-    Shift input ids one token to the right.
-    """
-    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
-    shifted_input_ids[:, 1:] = input_ids[:, :-1].clone()
-    shifted_input_ids[:, 0] = decoder_start_token_id
-
-    if pad_token_id is None:
-        raise ValueError("self.model.config.pad_token_id has to be defined.")
-    # replace possible -100 values in labels by `pad_token_id`
-    shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
-
-    return shifted_input_ids
 
 
 class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
@@ -119,7 +103,7 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
                     cache_position = cache_position if not is_cross_attention else None
                     # change cache_position to token_idx
                     key_states, value_states = past_key_value.update(
-                        key_states, value_states, self.layer_idx, {"cache_position": token_idx}
+                        key_states, value_states, self.layer_idx, {"cache_position": cache_position}
                     )
 
         causal_mask = attention_mask
@@ -312,8 +296,11 @@ class GaudiWhisperDecoder(WhisperDecoder):
                 past_key_values_length, past_key_values_length + input_shape[1], device=inputs_embeds.device
             )
 
-        if position_ids is None and token_idx:
-            position_ids = (token_idx - 1).unsqueeze(0)
+        if position_ids is None:
+            if token_idx is not None:
+                position_ids = (token_idx - 1).unsqueeze(0)
+            else:
+                position_ids = cache_position.unsqueeze(0)
         # embed positions
         if input_ids is not None:
             positions = self.embed_positions(
