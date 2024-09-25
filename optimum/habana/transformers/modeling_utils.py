@@ -274,6 +274,7 @@ def adapt_transformers_to_gaudi():
         GaudiGenerationMixin._prepare_cache_for_generation
     )
     transformers.generation.GenerationConfig = GaudiGenerationConfig
+    transformers.generation.configuration_utils.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
