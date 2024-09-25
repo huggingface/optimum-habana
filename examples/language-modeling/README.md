@@ -691,7 +691,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`.
 
 #### Custom Files
 
