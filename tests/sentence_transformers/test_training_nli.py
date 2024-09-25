@@ -7,6 +7,7 @@ STS benchmark dataset
 import logging
 from datetime import datetime
 
+import pytest
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer, losses
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
@@ -22,7 +23,8 @@ from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_t
 adapt_sentence_transformers_to_gaudi()
 
 
-def test_training_nli():
+@pytest.mark.parametrize("peft", [False, True])
+def test_training_nli(peft):
     # Set the log level to INFO to get more information
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
@@ -37,6 +39,20 @@ def test_training_nli():
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
     model = SentenceTransformer(model_name)
+    if peft:
+        from peft import LoraConfig, get_peft_model
+
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=64,
+            lora_dropout=0.05,
+            bias="none",
+            inference_mode=False,
+            target_modules=["query", "key", "value"],
+        )
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     # 2. Load the AllNLI dataset: https://huggingface.co/datasets/sentence-transformers/all-nli
     # We'll start with 10k training samples, but you can increase this to get a stronger model

@@ -373,7 +373,8 @@ class DeciLMForCausalLM(LlamaForCausalLM, DeciLMPreTrainedModel):
         past_length = 0
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if isinstance(past_key_values, Cache):
                     past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
