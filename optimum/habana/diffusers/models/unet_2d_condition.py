@@ -5,42 +5,9 @@ import torch
 import torch.utils.checkpoint
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, torch_utils, unscale_lora_layers
-from torch.fft import (
-    fftn,
-    fftshift,
-    ifftn,
-    ifftshift,
-)
-
+from optimum.habana.diffusers.utils.torch_utils import gaudi_fourier_filter
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
-    """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
-
-    This version of the method comes from here:
-    https://github.com/huggingface/diffusers/pull/5164#issuecomment-1732638706
-    """
-    x = x_in
-    B, C, H, W = x.shape
-
-    # FFT
-    # Moving to CPU as torch.fft operations are not supported on HPU
-    x = x.to(device="cpu", dtype=torch.float32)
-    x_freq = fftn(x, dim=(-2, -1))
-    x_freq = fftshift(x_freq, dim=(-2, -1))
-
-    B, C, H, W = x_freq.shape
-    mask = torch.ones((B, C, H, W), device=x.device)
-    crow, ccol = H // 2, W // 2
-    mask[..., crow - threshold : crow + threshold, ccol - threshold : ccol + threshold] = scale
-    x_freq = x_freq * mask
-
-    # IFFT
-    x_freq = ifftshift(x_freq, dim=(-2, -1))
-    x_filtered = ifftn(x_freq, dim=(-2, -1)).real
-    return x_filtered.to(device=x_in.device, dtype=x_in.dtype)
 
 
 def gaudi_unet_2d_condition_model_forward(

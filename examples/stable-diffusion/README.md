@@ -533,6 +533,67 @@ python unconditional_image_generation.py \
     --output_dir "/tmp/"
 ```
 
+## Additional inference techniques
+
+Here is how to run the diffusers examples of inference techniques. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/overview_techniques).
+
+### Controlling brightness
+
+Here is how to run the example of controlling brightness. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path ptx0/pseudo-journey-v2 \
+    --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
+    --num_images_per_prompt 1 \
+    --batch_size 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --image_save_dir /tmp/stable_diffusion_images_brightness \
+    --seed 33 \
+    --use_zero_snr \
+    --guidance_scale 0.7 \
+    --timestep_spacing trailing
+```
+
+### Prompt weighting
+
+Here is how to run the example of prompt weighting. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "a red cat playing with a ball+++" "a red cat playing with a ball---" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana --use_hpu_graphs \
+    --image_save_dir /tmp/stable_diffusion_images_compel \
+    --seed 33 \
+    --bf16 \
+    --num_inference_steps 20 \
+    --use_compel
+```
+
+### Controlling image quality
+
+Here is how to run the example of improving image quality. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/image_quality).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "A squirrel eating a burger" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana \
+    --image_save_dir /tmp/stable_diffusion_images_freeu \
+    --seed 33 \
+    --use_freeu \
+    --bf16
+```
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
@@ -584,65 +645,3 @@ python image_to_video_generation.py \
 
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
-
-# Diffusers Inference techniques
-
-Here is how to run the diffusers examples of inference techniques. For more details,
-please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/overview_techniques).
-
-## Control brightness
-
-Here is how to run the example of controlling brightness. For more details,
-please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path ptx0/pseudo-journey-v2 \
-    --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
-    --num_images_per_prompt 1 \
-    --batch_size 1 \
-    --use_habana \
-    --use_hpu_graphs \
-    --image_save_dir /tmp/stable_diffusion_images_brightness \
-    --seed 33 \
-    --use_zero_snr \
-    --guidance_scale 0.7 \
-    --timestep_spacing trailing
-```
-
-## Prompt weighting
-
-Here is how to run the example of prompt weighting. For more details,
-please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts).
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --prompts "a red cat playing with a ball+++" "a red cat playing with a ball---" \
-    --num_images_per_prompt 4 \
-    --batch_size 4 \
-    --use_habana --use_hpu_graphs \
-    --image_save_dir /tmp/stable_diffusion_images_compel \
-    --seed 33 \
-    --bf16 \
-    --num_inference_steps 20 \
-    --use_compel
-```
-
-## Controlling image quality
-
-Here is how to run the example of improving image quality. For more details,
-please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/image_quality).
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --prompts "A squirrel eating a burger" \
-    --num_images_per_prompt 4 \
-    --batch_size 4 \
-    --use_habana \
-    --image_save_dir /tmp/stable_diffusion_images_freeu \
-    --seed 33 \
-    --use_freeu \
-    --bf16
-```
