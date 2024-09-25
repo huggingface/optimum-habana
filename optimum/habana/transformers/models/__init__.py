@@ -79,8 +79,8 @@ from .gpt2 import (
     gaudi_gpt2_forward,
 )
 from .gpt_bigcode import (
+    GaudiGPTBigCodeAttention,
     GaudiGPTBigCodeForCausalLM,
-    gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
 )
