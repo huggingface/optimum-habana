@@ -170,10 +170,16 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
-        return (
-            self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-            self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
-        )
+        if self.attention_scaling == 1.0:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype),
+                self._sin_cached[:seq_len].to(dtype=x.dtype),
+            )
+        else:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+                self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+            )
 
 
 class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
@@ -345,8 +351,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         super().__init__()
         self._hpu_kernel_fsdpa = fusedSDPA
 
-    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
-        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+    def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode)
 
 
 class Matmul(torch.nn.Module):
@@ -611,7 +617,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        if use_flash_attention and FusedSDPA:
+        if use_flash_attention and FusedSDPA is not None:
             import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
@@ -977,7 +983,6 @@ class GaudiLlamaModel(LlamaModel):
         config.parallel_strategy = None
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
@@ -1341,7 +1346,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
@@ -1395,6 +1401,17 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             }
         )
         return model_inputs
+
+    # Transformer4.43 use new Cache mechanism while Gaudi is not.
+    # Adding _reorder_cache back to support HPU.
+    @staticmethod
+    def _reorder_cache(past_key_values, beam_idx):
+        reordered_past = ()
+        for layer_past in past_key_values:
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
+            )
+        return reordered_past
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):

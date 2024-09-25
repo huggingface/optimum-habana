@@ -37,11 +37,14 @@
 60a67,72
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.43.0")
-> check_optimum_habana_min_version("1.12.0")
+> check_optimum_habana_min_version("1.14.0.dev0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-129a142,150
+70a83,84
+> nltk.download("punkt_tab")  # Needed for version 3.8.2
+> 
+129a144,152
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -51,17 +54,17 @@
 >             )
 >         },
 >     )
-213c234
+213c236
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-261a283
+261a285
 >     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
-317c339
+317c341
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-346a369,375
+346a371,377
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -69,25 +72,25 @@
 >         token=model_args.token,
 >     )
 > 
-347a377
+347a379
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-349,350c379,381
+349,350c381,383
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-432a464
+432a466
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-451a484,489
+451a486,491
 >     is_bart = model.config.model_type == "bart"
 >     if is_bart and training_args.do_train:
 >         raise ValueError(
 >             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
 >         )
 > 
-454c492,499
+454c494,501
 <     embedding_size = model.get_input_embeddings().weight.shape[0]
 ---
 >     embeddings = model.get_input_embeddings()
@@ -98,16 +101,16 @@
 >             embedding_size = embeddings.weight.shape[0]
 >     else:
 >         embedding_size = embeddings.weight.shape[0]
-487a533
+487a535
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-558a605,606
+558a607,608
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
-560c608
+560c610
 <         inputs = [prefix + inp for inp in inputs]
 ---
 >         inputs = [prefix + inp + suffix for inp in inputs]
-575a624,663
+575a626,665
 >     def preprocess_bucketing_function(examples):
 >         # remove pairs where at least one record is None
 > 
@@ -148,22 +151,22 @@
 >         model_inputs["labels"] = labels["input_ids"]
 >         return model_inputs
 > 
-590a679,684
+590a681,686
 >     def wrapper_preprocess_function(examples):
 >         if model.config.is_encoder_decoder:
 >             return preprocess_bucketing_function(examples)
 >         else:
 >             return preprocess_function(examples)
 > 
-599c693
+599c695
 <                 preprocess_function,
 ---
 >                 wrapper_preprocess_function,
-615c709
+615c711
 <                 preprocess_function,
 ---
 >                 wrapper_preprocess_function,
-625,630c719,727
+625,630c721,729
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -180,7 +183,7 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-665,672c762,773
+665,672c764,775
 <     training_args.generation_max_length = (
 <         training_args.generation_max_length
 <         if training_args.generation_max_length is not None
@@ -202,13 +205,13 @@
 >         training_args.generation_config.num_beams = data_args.num_beams
 >     elif training_args.generation_num_beams is not None:
 >         training_args.generation_config.num_beams = training_args.generation_num_beams
-675c776
+675c778
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-676a778
+676a780
 >         gaudi_config=gaudi_config,
-765,769d866
+765,769d868
 < 
 < 
 < def _mp_fn(index):

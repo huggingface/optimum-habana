@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--show_graphs_count",
+        action="store_true",
+        help="Show statistics of HPU graph compilation.",
+    )
+    parser.add_argument(
         "--reuse_cache",
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
@@ -311,6 +316,11 @@ def setup_parser(parser):
         default="none",
         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
     )
+    parser.add_argument(
+        "--input_embeds",
+        action="store_true",
+        help="Whether to enable inputs_embeds or not.",
+    )
 
     args = parser.parse_args()
 
@@ -331,13 +341,25 @@ def setup_parser(parser):
     return args
 
 
+def prepare_generation_embedding(model, model_name, input_tokens):
+    batch_size = input_tokens["input_ids"].size(0)
+
+    inputs_embeds = model.get_input_embeddings()(input_tokens["input_ids"])
+
+    if inputs_embeds.size(0) != batch_size:
+        inputs_embeds = inputs_embeds.expand(batch_size, -1, -1)
+
+    attention_mask = input_tokens["attention_mask"]
+    return {"inputs_embeds": inputs_embeds, "attention_mask": attention_mask}
+
+
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
@@ -428,9 +450,22 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
+
+            input_data = {}
+            if args.input_embeds:
+                inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
+                if inputs_embeds is not None:
+                    input_data.update(inputs_embeds)
+                    input_data.update(input_tokens)
+                else:
+                    args.input_embeds = False
+                    input_data.update(input_tokens)
+            else:
+                input_data.update(input_tokens)
+
             iteration_times = []
             outputs = model.generate(
-                **input_tokens,
+                **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
@@ -519,8 +554,10 @@ def main():
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
 
-        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+        stats = "Input embeds" if args.input_embeds else "Input tokens"
+        stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+        if args.show_graphs_count:
+            stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
         print()
         print("Stats:")

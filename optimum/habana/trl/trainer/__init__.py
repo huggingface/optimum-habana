@@ -24,3 +24,5 @@ from .ppo_trainer import GaudiPPOTrainer
 from .reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
 
 from .ddpo_trainer import GaudiDDPOTrainer
+from .dpo_config import GaudiDPOConfig
+from .sft_config import GaudiSFTConfig

@@ -135,7 +135,7 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
-    if args.global_rank == 0 and not args.torch_compile:
+    if args.global_rank == 0 and not args.torch_compile and args.show_graphs_count:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
@@ -273,7 +273,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             if model.peft_type == "ADAPTION_PROMPT":
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
@@ -340,7 +340,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 
         model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
 
     return model, args.assistant_model
@@ -408,13 +408,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2", "gemma"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
         model = setup_quantization(model, args)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model)
@@ -625,6 +625,7 @@ def initialize_model(args, logger):
         if not args.parallel_strategy == "tp"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
+
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 

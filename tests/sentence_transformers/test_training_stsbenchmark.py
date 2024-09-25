@@ -7,6 +7,7 @@ that can be compared using cosine-similarity to measure the similarity.
 import logging
 from datetime import datetime
 
+import pytest
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer, losses
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
@@ -19,7 +20,8 @@ from optimum.habana.sentence_transformers.modeling_utils import adapt_sentence_t
 adapt_sentence_transformers_to_gaudi()
 
 
-def test_training_stsbenchmark():
+@pytest.mark.parametrize("peft", [False, True])
+def test_training_stsbenchmark(peft):
     # Set the log level to INFO to get more information
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
@@ -37,6 +39,20 @@ def test_training_stsbenchmark():
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
     model = SentenceTransformer(model_name)
+    if peft:
+        from peft import LoraConfig, get_peft_model
+
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=64,
+            lora_dropout=0.05,
+            bias="none",
+            inference_mode=False,
+            target_modules=["q_lin", "k_lin", "v_lin"],
+        )
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     # 2. Load the STSB dataset: https://huggingface.co/datasets/sentence-transformers/stsb
     train_dataset = load_dataset("sentence-transformers/stsb", split="train")

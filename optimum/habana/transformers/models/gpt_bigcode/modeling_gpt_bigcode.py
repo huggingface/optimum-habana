@@ -21,7 +21,16 @@ import habana_frameworks.torch.core as htcore
 
 
 def gaudi_flash_attn_v1(
-    query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_causal, scale, softmax_mode, q_block_size
+    query_layer,
+    key_layer,
+    value_layer,
+    attention_mask,
+    dropout_rate,
+    is_causal,
+    scale,
+    softmax_mode,
+    enable_recompute,
+    q_block_size,
 ):
     """
     Gaudi version of Flash Attention V1 to support long sequence at prompt phase
@@ -42,7 +51,7 @@ def gaudi_flash_attn_v1(
         row_q = query_layer[:, :, s:e, :]
         row_mask = attention_mask[:, :, s:e, :]
         attn_output_partial = FusedSDPA.apply(
-            row_q, key_layer, value_layer, row_mask, dropout_rate, is_causal, scale, softmax_mode
+            row_q, key_layer, value_layer, row_mask, dropout_rate, is_causal, scale, softmax_mode, enable_recompute
         )
         row_o_list.append(attn_output_partial)
     attn_output = torch.cat(row_o_list, dim=-2)
@@ -106,33 +115,32 @@ def apply_FusedSDPA(
     else:
         use_causal_mask = self.is_causal and attention_mask is None and query_length > 1
 
-    import habana_frameworks.torch.hpu as ht
-
-    with ht.sdp_kernel(enable_recompute=enable_recompute):
-        if query_length > 8192:
-            sdpa_result = gaudi_flash_attn_v1(
-                query,
-                key,
-                value,
-                attention_mask,
-                self.attn_pdrop if self.training else 0.0,
-                use_causal_mask,
-                scale,
-                "fast" if flash_attention_fast_softmax else "None",
-                4096,
-            )
-            htcore.mark_step()
-        else:
-            sdpa_result = FusedSDPA.apply(
-                query,
-                key,
-                value,
-                attention_mask,
-                self.attn_pdrop if self.training else 0.0,
-                use_causal_mask,
-                scale,
-                "fast" if flash_attention_fast_softmax else "None",
-            )
+    if query_length > 8192:
+        sdpa_result = gaudi_flash_attn_v1(
+            query,
+            key,
+            value,
+            attention_mask,
+            self.attn_pdrop if self.training else 0.0,
+            use_causal_mask,
+            scale,
+            "fast" if flash_attention_fast_softmax else "None",
+            enable_recompute,
+            4096,
+        )
+        htcore.mark_step()
+    else:
+        sdpa_result = FusedSDPA.apply(
+            query,
+            key,
+            value,
+            attention_mask,
+            self.attn_pdrop if self.training else 0.0,
+            use_causal_mask,
+            scale,
+            "fast" if flash_attention_fast_softmax else "None",
+            enable_recompute,
+        )
 
     if self.multi_query:
         # (batch_size, num_heads, seq_len, head_dim) --> (batch_size, seq_len, num_heads, head_dim)
@@ -550,7 +558,8 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
                 if token_type_ids is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:
