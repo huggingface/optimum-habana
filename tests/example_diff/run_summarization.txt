@@ -8,7 +8,7 @@
 > import torch
 > import transformers
 33,34d35
-<
+< 
 < import transformers
 45,47c46
 <     Seq2SeqTrainer,
@@ -23,27 +23,27 @@
 > from optimum.habana.utils import set_seed
 54,55d55
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.45.0")
+< check_min_version("4.46.0.dev0")
 57c57,63
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 ---
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
->
+> 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
->
+> 
 60a67,72
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.43.0")
+> check_min_version("4.45.0")
 > check_optimum_habana_min_version("1.14.0.dev0")
->
+> 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
->
+> 
 70a83,84
 > nltk.download("punkt_tab")  # Needed for version 3.8.2
->
+> 
 129a144,152
 >     use_cache: bool = field(
 >         default=True,
@@ -71,7 +71,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
->
+> 
 347a379
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 349,350c381,383
@@ -89,14 +89,14 @@
 >         raise ValueError(
 >             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
 >         )
->
+> 
 454c494,501
 <     embedding_size = model.get_input_embeddings().weight.shape[0]
 ---
 >     embeddings = model.get_input_embeddings()
 >     if is_deepspeed_zero3_enabled():
 >         import deepspeed
->
+> 
 >         with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
 >             embedding_size = embeddings.weight.shape[0]
 >     else:
@@ -113,7 +113,7 @@
 575a626,665
 >     def preprocess_bucketing_function(examples):
 >         # remove pairs where at least one record is None
->
+> 
 >         inputs, targets = [], []
 >         for i in range(len(examples[text_column])):
 >             if examples[text_column][i] and examples[summary_column][i]:
@@ -121,7 +121,7 @@
 >                 targets.append(examples[summary_column][i])
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
->
+> 
 >         inputs = [prefix + inp + suffix for inp in inputs]
 >         model_inputs = tokenizer(inputs, return_tensors="pt", padding=True)
 >         new_model_inputs = {"input_ids": []}
@@ -140,24 +140,24 @@
 >         model_inputs = new_model_inputs
 >         # Tokenize targets with the `text_target` keyword argument
 >         labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
->
+> 
 >         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
 >         # padding in the loss.
 >         if padding == "max_length" and data_args.ignore_pad_token_for_loss:
 >             labels["input_ids"] = [
 >                 [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
 >             ]
->
+> 
 >         model_inputs["labels"] = labels["input_ids"]
 >         return model_inputs
->
+> 
 590a681,686
 >     def wrapper_preprocess_function(examples):
 >         if model.config.is_encoder_decoder:
 >             return preprocess_bucketing_function(examples)
 >         else:
 >             return preprocess_function(examples)
->
+> 
 599c695
 <                 preprocess_function,
 ---
@@ -212,8 +212,8 @@
 676a780
 >         gaudi_config=gaudi_config,
 765,769d868
-<
-<
+< 
+< 
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()
