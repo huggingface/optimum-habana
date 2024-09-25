@@ -2437,6 +2437,17 @@ class GaudiGenerationMixin(GenerationMixin):
         if streamer is not None:
             streamer.end()
 
+        if batch_size > 1 and has_eos_stopping_criteria:
+            eos_token_id = generation_config.eos_token_id
+            idx_bs = generation_config.max_length
+            for i in range(batch_size):
+                for idx in range(len(input_ids[i])):
+                    if input_ids[i][idx] == eos_token_id:
+                        idx_bs = idx
+                    if idx > idx_bs:
+                        input_ids[i][idx] = pad_token_id
+                idx_bs = generation_config.max_length
+
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
                 return GenerateEncoderDecoderOutput(
