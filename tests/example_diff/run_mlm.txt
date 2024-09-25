@@ -1,13 +1,13 @@
 17,19c17,18
 < Fine-tuning the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
-< 
+<
 < Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 ---
 > Training the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
 35,36d33
 < from datasets import load_dataset
-< 
+<
 37a35
 > from datasets import load_dataset
 46,49d43
@@ -20,26 +20,26 @@
 > from optimum.habana.utils import set_seed
 56,57d51
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.45.0.dev0")
+< check_min_version("4.45.0")
 59c53,59
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 61a62,69
-> 
+>
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.43.0")
 > check_optimum_habana_min_version("1.14.0.dev0")
-> 
+>
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
-> 
-> 
+>
+>
 137c145
 <             "choices": ["auto", "bfloat16", "float16", "float32"],
 ---
@@ -63,7 +63,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 284a300
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 286,287c302,304
@@ -103,7 +103,7 @@
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 656d673
-< 
+<
 659,660c676,681
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -113,10 +113,10 @@
 >                 data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-> 
+>
 683,687d703
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

@@ -19,7 +19,7 @@ except ImportError:
         return ()
 
 
-check_min_version("4.45.0.dev0")
+check_min_version("4.45.0")
 check_optimum_habana_min_version("1.14.0.dev0")
 
 # Setup logging

@@ -4,14 +4,14 @@
 > # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
 17,19c17,18
 < Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
-< 
+<
 < Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
 35,36d33
 < from datasets import load_dataset
-< 
+<
 37a35
 > from datasets import load_dataset
 45,46d42
@@ -25,24 +25,24 @@
 > from optimum.habana.utils import set_seed
 57,58d52
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.45.0.dev0")
+< check_min_version("4.45.0")
 60c54,60
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 63a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.43.0")
 > check_optimum_habana_min_version("1.14.0.dev0")
-> 
+>
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
-> 
+>
 79c85,86
 <                 "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
 ---
@@ -65,7 +65,7 @@
 195c211,212
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
-> 
+>
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
 221a239,241
 >     save_last_ckpt: bool = field(
@@ -82,7 +82,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 273a301
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 275,276c303,305
@@ -95,12 +95,12 @@
 390a420
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
 486a517
-> 
+>
 550a582,585
-> 
+>
 >         def tensor_mapper(x):
 >             return {i: torch.tensor(x[i], dtype=torch.int32) for i in x}
-> 
+>
 553a589,590
 >         if training_args.resume_from_checkpoint is not None and training_args.resume_from_checkpoint != "":
 >             train_dataset = train_dataset.map(tensor_mapper)
@@ -137,7 +137,7 @@
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 622d661
-< 
+<
 625,626c664,669
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -147,10 +147,10 @@
 >                 data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-> 
+>
 649,653d691
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

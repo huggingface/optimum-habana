@@ -542,7 +542,8 @@ class GaudiGenerationMixin(GenerationMixin):
         if not generation_config.ignore_eos and generation_config._eos_token_tensor is not None:
             criteria.append(EosTokenCriteria(eos_token_id=generation_config._eos_token_tensor))
         if (
-            generation_config.assistant_confidence_threshold is not None
+            generation_config.is_assistant
+            and generation_config.assistant_confidence_threshold is not None
             and generation_config.assistant_confidence_threshold > 0
         ):
             criteria.append(
@@ -1934,7 +1935,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         model_kwargs["past_key_values"].crop(-1)
 
                     all_outputs.append(outputs)
-                outputs = stack_model_outputs(all_outputs)
+                outputs = stack_model_outputs(all_outputs, self.config.get_text_config())
 
             else:
                 # compute the candidate tokens by the language model and collect their hidden_states
@@ -2772,13 +2773,16 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
 
                 inputs_per_sub_batches = _split_model_inputs(
-                    model_inputs, split_size=batch_size, full_batch_size=batch_beam_size
+                    model_inputs,
+                    split_size=batch_size,
+                    full_batch_size=batch_beam_size,
+                    config=self.config.get_text_config(),
                 )
                 outputs_per_sub_batch = [
                     self(**inputs_per_sub_batch, return_dict=True) for inputs_per_sub_batch in inputs_per_sub_batches
                 ]
 
-                outputs = stack_model_outputs(outputs_per_sub_batch)
+                outputs = stack_model_outputs(outputs_per_sub_batch, self.config.get_text_config())
             else:
                 hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
                 outputs = self(
