@@ -563,7 +563,8 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]
 
