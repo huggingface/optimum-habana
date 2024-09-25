@@ -137,7 +137,8 @@ The following command triggers the fine-tuning of [GPT-NeoX-20B](https://hugging
 Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
 It reaches a perplexity of 10.469.
 
-**Note:** For GPT-NeoX-20B model, please switch to jemalloc in case of host OOM issues using ``` export LD_PRELOAD=<path>/libjemalloc.so.2 ```
+> [!NOTE]
+>  For GPT-NeoX-20B model, please switch to jemalloc in case of host OOM issues using ``` export LD_PRELOAD=<path>/libjemalloc.so.2 ```
 
 > Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
 
