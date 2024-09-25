@@ -284,7 +284,7 @@ def main():
     parser.add_argument(
         "--use_zero_snr",
         action="store_true",
-        help="Use rescale_betas_zero_snr for control image brightness",
+        help="Use rescale_betas_zero_snr for controlling image brightness",
     )
     args = parser.parse_args()
 
