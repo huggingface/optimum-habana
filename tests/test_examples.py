@@ -240,6 +240,7 @@ class ExampleTestMeta(type):
             or "prompt_tuning" in example_name
             or "peft_poly" in example_name
             or example_name == "run_sequence_classification"
+            or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
             return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
