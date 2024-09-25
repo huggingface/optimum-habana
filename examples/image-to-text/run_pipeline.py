@@ -36,6 +36,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def setup_quantization(model, args):
+    from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+    config = FP8Config.from_json_file(args.quant_config)
+    if config.measure:
+        model = prepare(model, config)
+    elif config.quantize:
+        model = convert(model, config)
+    return model
+
+
+def finalize_quantization(model):
+    from neural_compressor.torch.quantization import finalize_calibration
+
+    finalize_calibration(model)
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -101,7 +118,7 @@ def main():
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-
+    os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
@@ -163,10 +180,7 @@ def main():
         generator.model = wrap_in_hpu_graph(generator.model)
 
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(generator.model)
-
+        generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
 
     # warm up
@@ -174,7 +188,7 @@ def main():
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
     if args.quant_config:
-        habana_quantization_toolkit.finish_measurements(generator.model)
+        finalize_quantization(generator.model)
 
     start = time.perf_counter()
     for i in range(args.n_iterations):
