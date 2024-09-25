@@ -362,7 +362,7 @@ python run_clm.py \
 
 ## PEFT
 
-### LORA/ADALORA/IA3/LLAMA_ADAPTER
+### LORA/ADALORA/IA3/LLAMA_ADAPTER/VERA/LN_TUNING
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
 Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
@@ -720,7 +720,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`.
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`.
 
 #### Custom Files
 
