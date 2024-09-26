@@ -5,13 +5,10 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithPast,
     CausalLMOutputWithCrossAttentions,
+    CausalLMOutputWithPast,
 )
-from transformers.models.gpt_neo.modeling_gpt_neo import (
-    GPTNeoForCausalLM,
-    logger
-)
+from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoForCausalLM, logger
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
@@ -32,14 +29,14 @@ def gaudi_gpt_neo_attention_forward(
     - add new args token_idx
     """
     return self.attention(
-            hidden_states,
-            attention_mask=attention_mask,
-            layer_past=layer_past,
-            head_mask=head_mask,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            token_idx=token_idx,
-        )
+        hidden_states,
+        attention_mask=attention_mask,
+        layer_past=layer_past,
+        head_mask=head_mask,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+    )
 
 
 def gaudi_gpt_neo_selfattention_forward(
@@ -212,7 +209,9 @@ def gaudi_gpt_neo_model_forward(
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
     else:
         # 4d mask is passed through the layers
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(attention_mask, input_shape, inputs_embeds, past_length)
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask, input_shape, inputs_embeds, past_length
+        )
 
     if token_type_ids is not None:
         token_type_embeds = self.wte(token_type_ids)
@@ -291,6 +290,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
