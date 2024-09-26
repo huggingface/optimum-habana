@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 from itertools import cycle
 from pathlib import Path
@@ -322,6 +323,12 @@ def setup_parser(parser):
         help="Whether to enable inputs_embeds or not.",
     )
 
+    parser.add_argument(
+        "--conversation_input",
+        default=None,
+        type=str,
+        help="Optional JSON input file containing conversation input.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -386,8 +393,6 @@ def main():
                     return save_path
                 else:
                     print("Failed to download book! Exiting...")
-                    import sys
-
                     sys.exit()
 
             def assemble_prompt(prompt_size, book_path):
@@ -407,6 +412,14 @@ def main():
                 1342,  # Pride and Prejudice
             ]
             input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
+        elif args.conversation_input and hasattr(tokenizer, "chat_template"):
+            with open(args.conversation_input, "r") as fh:
+                messages = json.load(fh)
+                try:
+                    input_sentences = [tokenizer.apply_chat_template(conversation=messages, tokenize=False)]
+                except Exception as e:
+                    logger.error(f"Error applying chat template to tokenizer: {e}")
+                    sys.exit()
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -418,6 +431,7 @@ def main():
                 "In the far far distance from our galaxy,",
                 "Peace is the only way",
             ]
+
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
