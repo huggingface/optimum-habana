@@ -277,6 +277,12 @@ def main():
         type=str,
         help="Quantization mode 'measure', 'quantize' or 'disable'",
     )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -533,6 +539,14 @@ def main():
 
     # Set RNG seed
     set_seed(args.seed)
+
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:
