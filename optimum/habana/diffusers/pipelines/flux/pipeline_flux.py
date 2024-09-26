@@ -244,8 +244,23 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
-
+        import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
+
+        quant_mode=kwargs["quant_mode"]
+        if quant_mode == "measure" or quant_mode == "quantize":
+            import os
+            quant_config_path = os.getenv('QUANT_CONFIG')
+
+            htcore.hpu_set_env()
+
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+            config = FP8Config.from_json_file(quant_config_path)
+            if config.measure:
+                self.transformer = prepare(self.transformer, config)
+            elif config.quantize:
+                self.transformer = convert(self.transformer, config)
+            htcore.hpu_initialize(self.transformer, mark_only_scales_as_const=True)
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -276,6 +291,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
         device = self._execution_device
 
+        # 3. Run text encoder
         (
             prompt_embeds,
             pooled_prompt_embeds,
@@ -348,6 +364,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
         throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
 
+        ht.hpu.synchronize()
         t0 = time.time()
         t1 = t0
 
@@ -363,6 +380,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             for i, t in enumerate(timesteps):
                 # because compilation occurs in the first two iterations
                 if i == throughput_warmup_steps:
+                    ht.hpu.synchronize()
                     t1 = time.time()
                 if self.interrupt:
                     continue
@@ -402,16 +420,10 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 htcore.mark_step(sync=True)
 
             hb_profiler.stop()
-            t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
-            speed_metrics_prefix = "generation"
-            speed_measures = speed_metrics(
-                split=speed_metrics_prefix,
-                start_time=t0,
-                num_samples=num_batches * batch_size,
-                num_steps=num_batches * batch_size * num_inference_steps,
-                start_time_after_warmup=t1,
-            )
-            logger.info(f"Speed metrics: {speed_measures}")
+
+            if quant_mode == "measure":
+                from neural_compressor.torch.quantization import finalize_calibration
+                finalize_calibration(self.transformer)
 
         if output_type == "latent":
             image = latents
@@ -421,6 +433,19 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
+
+        # Synchronize and measure performance
+        ht.hpu.synchronize()
+        t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
+        speed_metrics_prefix = "generation"
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=t0,
+            num_samples=num_batches * batch_size,
+            num_steps=num_batches * batch_size * num_inference_steps,
+            start_time_after_warmup=t1,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
 
         # Offload all models
         self.maybe_free_model_hooks()

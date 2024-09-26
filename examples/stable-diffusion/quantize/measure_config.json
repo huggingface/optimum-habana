@@ -1,0 +1,5 @@
+{
+    "method": "HOOKS",
+    "mode": "MEASURE",
+    "dump_stats_path": "quantize/measure_all/fp8"
+}
