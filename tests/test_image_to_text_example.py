@@ -56,7 +56,8 @@ def _test_image_to_text(
         f"{path_to_example_dir / 'image-to-text' / 'run_pipeline.py'}",
         f"--model_name_or_path {model_name}",
         f"--batch_size {batch_size}",
-        "--max_new_tokens 20",
+        "--max_new_tokens 20", 
+        "--use_kv_cache"
     ]
 
     command += [
