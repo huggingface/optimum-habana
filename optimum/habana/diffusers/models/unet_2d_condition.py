@@ -5,7 +5,9 @@ import torch
 import torch.utils.checkpoint
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, torch_utils, unscale_lora_layers
+
 from optimum.habana.diffusers.utils.torch_utils import gaudi_fourier_filter
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

@@ -23,6 +23,7 @@ from torch.fft import (
     ifftshift,
 )
 
+
 def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":
     r"""
     Copied from https://github.com/huggingface/diffusers/blob/v0.29.2/src/diffusers/utils/torch_utils.py#L93
