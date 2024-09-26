@@ -83,6 +83,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gpt2",
     "opt",
     "gptj",
+    "gpt_neo",
     "gpt_neox",
     "llama",
     "falcon",
