@@ -491,7 +491,7 @@ class LoadImageTester(unittest.TestCase):
             load_image(INVOICE_URL, timeout=0.001)
 
     def test_load_img_local(self):
-        img = load_image("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        img = load_image("./tests/resource/img/000000039769.png")
         img_arr = np.array(img)
 
         self.assertEqual(
