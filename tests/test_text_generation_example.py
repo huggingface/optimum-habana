@@ -170,6 +170,9 @@ def _test_text_generation(
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
 
+    if "gemma" in model_name.lower():
+        command += ["--use_flash_attention"]
+
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
         command += ["--reuse_cache"]
 
