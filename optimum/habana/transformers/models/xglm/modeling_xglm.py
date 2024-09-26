@@ -178,7 +178,7 @@ def gaudi_xglm_decoder_layer_forward(
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
-        token_idx=token_idx
+        token_idx=token_idx,
     )
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
     hidden_states = residual + hidden_states
@@ -242,7 +242,7 @@ def gaudi_xglm_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) ->  Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from XGLMModel.forward: https://github.com/huggingface/transformers/blob/v4.44.1/src/transformers/models/xglm/modeling_xglm.py
     The only differences are:
@@ -300,8 +300,7 @@ def gaudi_xglm_model_forward(
     if self.gradient_checkpointing and self.training:
         if use_cache:
             logger.warning_once(
-                "`use_cache = True` is incompatible with gradient checkpointing`. Setting `use_cache ="
-                " False`..."
+                "`use_cache = True` is incompatible with gradient checkpointing`. Setting `use_cache =" " False`..."
             )
             use_cache = False
 
@@ -350,13 +349,11 @@ def gaudi_xglm_model_forward(
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
                 layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(
-                    cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
-                ),
+                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
                 past_key_value=past_key_value,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
-                token_idx=token_idx
+                token_idx=token_idx,
             )
         hidden_states = layer_outputs[0]
 
