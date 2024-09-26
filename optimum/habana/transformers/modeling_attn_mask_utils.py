@@ -96,7 +96,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
             # OOM problem can be prevent by using bool tensor
             bsz, src_len = attention_mask_2d.size()
             tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
-            bool_mask = (attention_mask_2d != 1.0)
+            bool_mask = attention_mask_2d != 1.0
             expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
 
             return causal_4d_mask.masked_fill(expanded_attn_mask, torch.finfo(dtype).min)
