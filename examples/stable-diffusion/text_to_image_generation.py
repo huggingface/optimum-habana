@@ -293,6 +293,12 @@ def main():
         type=str,
         help="Quantization mode 'measure', 'quantize' or 'disable'",
     )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -572,6 +578,14 @@ def main():
             raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
 
         pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
+
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:

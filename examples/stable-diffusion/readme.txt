@@ -10,3 +10,12 @@ To run sample with 1 image 1 batch in FP8 precision (quant weights were tuned wi
 
 To run sample with 1 image 1 batch in FP8 precision (quant weights were tuned with 500 prompts):
 ./run_fp8_500.sh
+
+* Added batching
+* Added --prompt_file option for large number of input prompts
+
+To run sample with 5 prompts (batch size 1) in BF16 precision:
+./run_bf16_prompts_5.sh
+
+To run sample with 100 prompts (batch size 1) in BF16 precision:
+./run_bf16_prompts_100.sh
