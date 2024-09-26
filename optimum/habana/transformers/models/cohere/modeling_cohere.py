@@ -1,5 +1,5 @@
 import math
-from typing import Optional, List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -16,8 +16,8 @@ from transformers.models.cohere.modeling_cohere import (
     DynamicCache,
     StaticCache,
     apply_rotary_pos_emb,
-    repeat_kv,
     logger,
+    repeat_kv,
 )
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
@@ -197,9 +197,7 @@ def gaudi_cohere_model_forward(
         )
 
     if self.gradient_checkpointing and self.training and use_cache:
-        logger.warning_once(
-            "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-        )
+        logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.")
         use_cache = False
 
     if inputs_embeds is None:
@@ -298,6 +296,7 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -380,7 +379,9 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
             if token_idx is None:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
