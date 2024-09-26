@@ -137,11 +137,9 @@ def gaudi_bloom_attention_forward(
     # 3 x [batch_size, num_heads, seq_length, head_dim]
     query_layer, key_layer, value_layer = self._reshape(fused_qkv)
 
-    batch_size, q_length, _, _ = query_layer.shape
-
-    query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
-    key_layer = key_layer.permute(0, 2, 3, 1).reshape(batch_size * self.num_heads, self.head_dim, q_length)
-    value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+    query_layer = query_layer.reshape(batch_size * self.num_heads, -1, self.head_dim)
+    key_layer = key_layer.reshape(batch_size * self.num_heads, -1, self.head_dim).transpose(1, 2)
+    value_layer = value_layer.reshape(batch_size * self.num_heads, -1, self.head_dim)
 
     # Collapse views to improve performance on HPU
     query_layer = query_layer.contiguous()
