@@ -275,7 +275,7 @@ def main():
         "--quant_mode",
         default="disable",
         type=str,
-        help="Quantization mode 'measure', 'quantize' or 'disable'",
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
     )
     parser.add_argument(
         "--prompts_file",
