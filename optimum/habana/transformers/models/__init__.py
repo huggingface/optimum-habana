@@ -85,11 +85,10 @@ from .gpt_bigcode import (
     gaudi_gpt_bigcode_model_forward,
 )
 from .gpt_neox import (
+    GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
-    gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_model_forward,
-    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
@@ -154,9 +153,9 @@ from .opt import (
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
 from .persimmon import (
+    GaudiPersimmonAttention,
+    GaudiPersimmonDecoderLayer,
     GaudiPersimmonForCausalLM,
-    gaudi_persimmon_attention_forward,
-    gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
 )
 from .phi import (
@@ -192,9 +191,9 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
 )
 from .stablelm import (
+    GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
-    gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
 )
 from .starcoder2 import (
