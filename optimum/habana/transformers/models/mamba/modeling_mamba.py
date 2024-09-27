@@ -75,6 +75,8 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
         else:
             idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
             input_ids = torch.index_select(input_ids, 1, idx)
+            if attention_mask is not None:
+                attention_mask = None
     else:
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, torch.arange(token_idx_cpu, device=input_ids.device))
