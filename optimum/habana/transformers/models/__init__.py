@@ -62,6 +62,7 @@ from .falcon import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiFalconRotaryEmbedding,
     gaudi_falcon_linear_forward,
 )
 from .gemma import (
@@ -85,11 +86,11 @@ from .gpt_bigcode import (
     gaudi_gpt_bigcode_model_forward,
 )
 from .gpt_neox import (
+    GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
-    gaudi_gpt_neox_attention_forward,
+    GaudiGPTNeoXRotaryEmbedding,
     gaudi_gpt_neox_model_forward,
-    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
