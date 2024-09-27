@@ -482,7 +482,7 @@ class GaudiFalconAttention(FalconAttention):
                 kv_seq_len += layer_past[0].shape[-2]
 
         if alibi is None:
-            cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len) #position_ids
+            cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
             query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids)
 
         if use_cache:
