@@ -146,6 +146,11 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
+    parser.add_argument(
+        "--chat_template",
+        action="store_true",
+        help="Whether to use Llava/Llava Next processors and apply chat template. It might lower performance.",
+    )
 
     args = parser.parse_args()
 
@@ -161,21 +166,30 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next"):
-        if model_type == "llava":
-            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
-        elif model_type == "llava_next":
-            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-        conversation = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What is shown in this image?"},
-                    {"type": "image"},
-                ],
-            }
-        ]
-        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+    # Made optional due to lower performance
+    if args.chat_template:
+        if args.prompt is None and model_type in ("llava", "llava_next"):
+            if model_type == "llava":
+                processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
+            elif model_type == "llava_next":
+                processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is shown in this image?"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+    else:
+        if args.prompt is None and model_type == "llava":
+            args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
+        elif args.prompt is None and model_type == "llava_next":
+            args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
+            if args.model_name_or_path in ["llava-hf/llava-v1.6-vicuna-13b-hf", "llava-hf/llava-v1.6-vicuna-7b-hf"]:
+                args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
