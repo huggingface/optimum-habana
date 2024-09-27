@@ -20,6 +20,14 @@ This directory contains a script that showcases how to perform text-to-image gen
 
 Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser and Robin Rombach and the Stability AI team.
 
+
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Text-to-image Generation
 
 ### Single Prompt
@@ -332,7 +340,6 @@ It is a type of model for controlling StableDiffusion by conditioning the model 
 Here is how to generate images conditioned by canny edge model:
 
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
@@ -350,7 +357,6 @@ python text_to_image_generation.py \
 Here is how to generate images conditioned by canny edge model and with multiple prompts:
 
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
@@ -368,7 +374,6 @@ python text_to_image_generation.py \
 Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
 
 ```bash
-pip install -r requirements.txt
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
@@ -388,7 +393,6 @@ python ../gaudi_spawn.py \
 Here is how to generate images conditioned by open pose model:
 
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
@@ -407,7 +411,6 @@ python text_to_image_generation.py \
 Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
 
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
@@ -474,7 +477,6 @@ Here is how to generate images with one prompt and one image.
 Take instruct-pix2pix as an example.
 
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "timbrooks/instruct-pix2pix" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -500,7 +502,6 @@ python image_to_image_generation.py \
 Here is how to generate images with several prompts and one image.
 
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "timbrooks/instruct-pix2pix" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -526,7 +527,6 @@ python image_to_image_generation.py \
 Here is how to generate SDXL images with a single prompt and one image:
 
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -547,7 +547,6 @@ python image_to_image_generation.py \
 Here is how to generate images with one image, it does not accept prompt input
 
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "lambdalabs/sd-image-variations-diffusers" \
     --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \

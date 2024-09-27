@@ -28,6 +28,7 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
     GaudiBloomForCausalLM,
@@ -45,17 +46,22 @@ from .models import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
+    GaudiGemmaMLP,
+    GaudiGemmaModel,
     GaudiGPT2Attention,
     GaudiGPT2Block,
     GaudiGPT2DoubleHeadsModel,
     GaudiGPT2LMHeadModel,
+    GaudiGPTBigCodeAttention,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
+    GaudiGPTNeoForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
     GaudiLlamaAttention,
@@ -76,6 +82,8 @@ from .models import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
@@ -96,6 +104,11 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -134,14 +147,15 @@ from .models import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
-    gaudi_gemma_attention_forward,
-    gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_forward,
-    gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
+    gaudi_gpt_neo_attention_forward,
+    gaudi_gpt_neo_block_forward,
+    gaudi_gpt_neo_model_forward,
+    gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
@@ -152,8 +166,6 @@ from .models import (
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -349,12 +361,20 @@ def adapt_transformers_to_gaudi():
     transformers.models.gptj.modeling_gptj.GPTJModel = GaudiGPTJModel
 
     # Optimization for GPTBigCode on Gaudi
-    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = (
-        gaudi_gpt_bigcode_attention_forward
-    )
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention = GaudiGPTBigCodeAttention
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeForCausalLM = GaudiGPTBigCodeForCausalLM
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeBlock.forward = gaudi_gpt_bigcode_block_forward
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeModel.forward = gaudi_gpt_bigcode_model_forward
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBIGCODE_ATTENTION_CLASSES.update(
+        {"eager": GaudiGPTBigCodeAttention}
+    )
+
+    # Optimization for gpt-neo generation on Gaudi
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoForCausalLM = GaudiGPTNeoForCausalLM
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoModel.forward = gaudi_gpt_neo_model_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoBlock.forward = gaudi_gpt_neo_block_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoAttention.forward = gaudi_gpt_neo_attention_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoSelfAttention.forward = gaudi_gpt_neo_selfattention_forward
 
     # Optimization for gpt-neox generation on Gaudi
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
@@ -420,8 +440,8 @@ def adapt_transformers_to_gaudi():
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
-    transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
-    transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
+    transformers.models.mpt.modeling_mpt.MptAttention = GaudiMptAttention
+    transformers.models.mpt.modeling_mpt.MptBlock = GaudiMptBlock
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
@@ -439,9 +459,10 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for gemma on Gaudi
     transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
-    transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
+    transformers.models.gemma.modeling_gemma.GemmaMLP = GaudiGemmaMLP
+    transformers.models.gemma.modeling_gemma.GemmaAttention = GaudiGemmaAttention
     transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
-    transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
+    transformers.models.gemma.modeling_gemma.GemmaModel = GaudiGemmaModel
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
@@ -558,6 +579,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+
+    # Optimization for Whisper on Gaudi
+    transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
+    transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
+    transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
+    transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
+    transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
+    transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
