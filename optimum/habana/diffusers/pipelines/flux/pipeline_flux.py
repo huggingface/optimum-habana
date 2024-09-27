@@ -141,8 +141,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         )
         self.to(self._device)
         if use_hpu_graphs:
-            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-            transformer = wrap_in_hpu_graph(transformer)
+            transformer = self.ht.wrap_in_hpu_graph(transformer)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -244,8 +243,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
-
-        import habana_frameworks.torch.core as htcore
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -355,6 +352,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             warmup=profiling_warmup_steps,
             active=profiling_steps,
             record_shapes=False,
+            with_stack=True
         )
         hb_profiler.start()
 
@@ -397,9 +395,10 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-
+                if profiling_warmup_steps and profiling_steps:
+                    self.ht.hpu.synchronize()
                 hb_profiler.step()
-                htcore.mark_step(sync=True)
+                self.ht.core.mark_step(sync=True)
 
             hb_profiler.stop()
             t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
