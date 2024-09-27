@@ -72,6 +72,12 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaTextMLP,
+    GaudiMllamaTextModel,
+    GaudiMllamaRotaryEmbedding,
     GaudiLlavaForConditionalGeneration,
     GaudiLlavaNextForConditionalGeneration,
     GaudiMistralAttention,
@@ -110,6 +116,7 @@ from .models import (
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
     LlamaConfig,
+    MllamaTextConfig,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -161,6 +168,7 @@ from .models import (
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_mllama_text_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
@@ -398,6 +406,16 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
     transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
+
+    # Optimization for mllama generation on Gaudi
+    transformers.models.mllama.modeling_mllama.MllamaForCausalLM = GaudiMllamaForCausalLM
+    transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
+    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
+    transformers.models.mllama.modeling_mllama.MllamaTextMLP = GaudiMllamaTextMLP
+    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaRotaryEmbedding = GaudiMllamaRotaryEmbedding
+    transformers.models.mllama.modeling_mllama.MllamaTextRMSNorm.forward = gaudi_mllama_text_rmsnorm_forward
+    transformers.models.mllama.configuration_mllama.MllamaTextConfig = MllamaTextConfig
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration

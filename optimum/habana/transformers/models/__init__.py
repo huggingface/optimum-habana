@@ -116,6 +116,16 @@ from .llama import (
     LlamaConfig,
     gaudi_llama_rmsnorm_forward,
 )
+from .mllama import (
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaTextMLP,
+    GaudiMllamaTextModel,
+    GaudiMllamaRotaryEmbedding,
+    MllamaTextConfig,
+    gaudi_mllama_text_rmsnorm_forward,
+)
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
 from .mamba import (
