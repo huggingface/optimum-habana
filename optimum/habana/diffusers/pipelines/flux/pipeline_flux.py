@@ -141,7 +141,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         )
         self.to(self._device)
         if use_hpu_graphs:
-            transformer = self.ht.wrap_in_hpu_graph(transformer)
+            transformer = self.ht.hpu.wrap_in_hpu_graph(transformer)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
