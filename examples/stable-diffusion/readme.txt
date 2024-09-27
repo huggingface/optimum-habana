@@ -19,3 +19,11 @@ To run sample with 5 prompts (batch size 1) in BF16 precision:
 
 To run sample with 100 prompts (batch size 1) in BF16 precision:
 ./run_bf16_prompts_100.sh
+
+* Added hybrid (mixed fp9 and bf16) precision denoising 
+
+To run sample with 1 image 1 batch in hybrid precision:
+./run_fp8_500_hybrid.sh
+
+To run sample with 5 prompts (batch size 1) in hybrid precision:
+./run_fp8_500_hybrid_prompts_5.sh

@@ -346,8 +346,13 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
-        quant_mode=kwargs["quant_mode"]
-        if quant_mode == "measure" or quant_mode == "quantize":
+        quant_mode = kwargs["quant_mode"]
+
+        if quant_mode == "quantize-mixed":
+            import copy
+            transformer_bf16 = copy.deepcopy(self.transformer).to(self._execution_device)
+
+        if quant_mode == "measure" or quant_mode.startswith("quantize"):
             import os
             quant_config_path = os.getenv('QUANT_CONFIG')
 
@@ -523,6 +528,14 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 self.scheduler.timesteps = timesteps
                 self.scheduler._init_step_index(timesteps[0])
 
+            # Mixed quantization
+            quant_mixed_step = len(timesteps)
+            if quant_mode == "quantize-mixed":
+                # 10% of steps use higher precision in mixed quant mode
+                quant_mixed_step = quant_mixed_step - (quant_mixed_step // 10)
+                print(f"Use FP8  Transformer at steps 0 to {quant_mixed_step - 1}")
+                print(f"Use BF16 Transformer at steps {quant_mixed_step} to {len(timesteps) - 1}")
+
             for i in self.progress_bar(range(len(timesteps))):
                 if use_warmup_inference_steps and i == throughput_warmup_steps:
                     ht.hpu.synchronize()
@@ -537,17 +550,31 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = timestep.expand(latents_batch.shape[0]).to(latents_batch.dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latents_batch,
-                    timestep=timestep / 1000,
-                    guidance=guidance_batch,
-                    pooled_projections=pooled_prompt_embeddings_batch,
-                    encoder_hidden_states=text_embeddings_batch,
-                    txt_ids=text_ids_batch,
-                    img_ids=latent_image_ids_batch,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                if i >= quant_mixed_step:
+                    # Mixed quantization
+                    noise_pred = transformer_bf16(
+                        hidden_states=latents_batch,
+                        timestep=timestep / 1000,
+                        guidance=guidance_batch,
+                        pooled_projections=pooled_prompt_embeddings_batch,
+                        encoder_hidden_states=text_embeddings_batch,
+                        txt_ids=text_ids_batch,
+                        img_ids=latent_image_ids_batch,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                else:
+                    noise_pred = self.transformer(
+                        hidden_states=latents_batch,
+                        timestep=timestep / 1000,
+                        guidance=guidance_batch,
+                        pooled_projections=pooled_prompt_embeddings_batch,
+                        encoder_hidden_states=text_embeddings_batch,
+                        txt_ids=text_ids_batch,
+                        img_ids=latent_image_ids_batch,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents_batch.dtype
@@ -567,11 +594,9 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                     latents_batch = callback_outputs.pop("latents", latents_batch)
 
                     _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
-                    _negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", None)
                     if _prompt_embeds is not None and _negative_prompt_embeds is not None:
                         text_embeddings_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
                     _pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", None)
-                    _negative_pooled_prompt_embeds = callback_outputs.pop("negative_pooled_prompt_embeds", None)
                     if _pooled_prompt_embeds is not None and _negative_pooled_prompt_embeds is not None:
                         pooled_prompt_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _pooled_prompt_embeds])
 
@@ -601,7 +626,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             outputs["images"].append(image)
             #htcore.mark_step(sync=True)
 
-        # Stage after denoising
+        # 7. Stage after denoising
         hb_profiler.stop()
 
         if quant_mode == "measure":
@@ -622,8 +647,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         logger.info(f"Speed metrics: {speed_measures}")
 
         # 8 Output Images
-        # Remove dummy generations if needed
         if num_dummy_samples > 0:
+            # Remove dummy generations if needed
             outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
         # Process generated images
