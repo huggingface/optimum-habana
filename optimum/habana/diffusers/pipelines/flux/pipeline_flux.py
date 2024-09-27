@@ -362,7 +362,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 # because compilation occurs in the first two iterations
                 if i == throughput_warmup_steps:
                     # clac acc time `end - t1`
-                    self.ht.hpu.synchronize()
+                    torch.hpu.synchronize()
                     t1 = time.time()
                 if self.interrupt:
                     continue
@@ -398,13 +398,13 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                 if profiling_warmup_steps and profiling_steps:
-                    self.ht.hpu.synchronize()
+                    torch.hpu.synchronize()
                 hb_profiler.step()
-                self.ht.core.mark_step(sync=True)
+                self.htcore.mark_step(sync=True)
 
             hb_profiler.stop()
             # clac acc time `end - t1`
-            self.ht.hpu.synchronize()
+            torch.hpu.synchronize()
             t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
