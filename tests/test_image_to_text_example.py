@@ -14,15 +14,15 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 77.9331887247788),
-            ("llava-hf/llava-1.5-13b-hf", 1, 47.98471187876668),
+            ("llava-hf/llava-1.5-7b-hf", 1, 77.98733740859008),
+            ("llava-hf/llava-1.5-13b-hf", 1, 48.54364937033955),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
         ],
         "fp8": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 96.25635876671548),
-            ("llava-hf/llava-1.5-13b-hf", 1, 66.68347979470798),
+            ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
+            ("llava-hf/llava-1.5-13b-hf", 1, 67.20488222876344),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 45.011551008367084),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 45.18544502949674),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 30.9535718774675),
