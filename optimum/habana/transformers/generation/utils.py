@@ -705,7 +705,6 @@ class GaudiGenerationMixin(GenerationMixin):
         Changes:
         - change the default from DynamicCache to tuples
         """
-
         cache_name = "past_key_values" if "mamba" not in self.__class__.__name__.lower() else "cache_params"
         requires_cross_attention_cache = (
             self.config.is_encoder_decoder or model_kwargs.get("encoder_outputs") is not None
@@ -2814,7 +2813,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].clone()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
@@ -3260,7 +3259,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].clone()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
