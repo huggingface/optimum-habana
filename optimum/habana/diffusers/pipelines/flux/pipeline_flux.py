@@ -21,12 +21,12 @@ import numpy as np
 import PIL.Image
 
 import torch
-
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from diffusers.utils import BaseOutput, replace_example_docstring
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
 
 from optimum.utils import logging
@@ -34,7 +34,6 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
-from ...schedulers import GaudiFlowMatchEulerDiscreteScheduler
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -110,7 +109,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
     def __init__(
         self,
-        scheduler: GaudiFlowMatchEulerDiscreteScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -140,6 +139,9 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             transformer=transformer,
         )
         self.to(self._device)
+        if use_habana:
+            import habana_frameworks.torch as ht
+            self.ht = ht
         if use_hpu_graphs:
             transformer = self.ht.hpu.wrap_in_hpu_graph(transformer)
 
@@ -400,7 +402,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 if profiling_warmup_steps and profiling_steps:
                     torch.hpu.synchronize()
                 hb_profiler.step()
-                self.htcore.mark_step(sync=True)
+                self.ht.core.mark_step(sync=True)
 
             hb_profiler.stop()
             # clac acc time `end - t1`
