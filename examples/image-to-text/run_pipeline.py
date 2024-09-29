@@ -36,17 +36,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ("yes", "true", "t", "y", "1"):
-        return True
-    elif v.lower() in ("no", "false", "f", "n", "0"):
-        return False
-    else:
-        raise argparse.ArgumentTypeError("Boolean value expected.")
-
-
 def setup_quantization(model, args):
     if os.getenv("USE_INC", "1") != "0":
         try:
@@ -154,8 +143,7 @@ def main():
     )
     parser.add_argument(
         "--use_kv_cache",
-        type=str2bool,
-        default=True,
+        action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
 
@@ -223,13 +211,15 @@ def main():
     )
     generate_kwargs = {
         "lazy_mode": True,
-        "use_cache": args.use_kv_cache,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
     }
+    if args.use_kv_cache:
+        generate_kwargs["use_cache"] = args.use_kv_cache
+
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
