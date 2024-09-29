@@ -25,8 +25,7 @@ from accelerate import PartialState
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
-    GaudiEulerDiscreteScheduler,
-    GaudiFlowMatchEulerDiscreteScheduler
+    GaudiEulerDiscreteScheduler
 )
 from optimum.habana.utils import set_seed
 
