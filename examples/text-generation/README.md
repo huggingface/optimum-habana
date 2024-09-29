@@ -513,15 +513,15 @@ python run_lm_eval.py \
 
 ### Loading 4 Bit Checkpoints from Neural Compressor (INC)
 
-You can load pre-quantized 4bit checkpoint with the argument `--quantized_inc_model_path`, supplied together with the original model with the argument `--model_name_or_path`.
-Currently, uint4 checkpoints and single device are supported.
-NOTE: In this flow you can load a checkpoint that was quantized using INC.
-More information on enabling 4 bit inference in SynapseAI is available here:
+You can load a pre-quantized 4-bit checkpoint with the argument `--quantized_inc_model_path`, supplied with the original model with the argument `--model_name_or_path`.
+Currently, only uint4 checkpoints and single-device configurations are supported.
+**Note:** In this process, you can load a checkpoint that has been quantized using INC.
+More information on enabling 4-bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
 
-Below is an example to load a llama7b model with a 4bit checkpoint quantized in INC.
-Please note that model checkpoint name is denoted as `<local_model_path_from_inc>`.
-Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
+Below is an example of loading a llama7b model with a 4bit checkpoint quantized in INC.
+Please note that the model checkpoint name is denoted as `<local_model_path_from_inc>`.
+Additionally, the following environment variables are used for performance optimizations and are planned to be removed in future versions:
 `SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
 ```bash
 SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
@@ -581,12 +581,12 @@ and by adding the argument `--load_quantized_model_with_autogptq`.
 Setting the above environment variables improves performance. These variables will be removed in future releases.
  
 
-Here is an example to run a quantized model on Llama2-7b `TheBloke/Llama-2-7b-Chat-GPTQ`:
+Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
 SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false \
 ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
 --attn_softmax_bf16 \
---model_name_or_path TheBloke/Llama-2-7b-Chat-GPTQ \
+--model_name_or_path <quantized_gptq_model> \
 --use_hpu_graphs \
 --limit_hpu_graphs \
 --use_kv_cache \
