@@ -167,9 +167,7 @@ def main():
         ]
 
     if args.prompt is None:
-        if model_type == "paligemma":
-            args.prompt = "caption es"
-        else:
+        if model_type in ("llava", "llava_next"):
             if model_type == "llava":
                 processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
             elif model_type == "llava_next":
@@ -184,6 +182,8 @@ def main():
                 }
             ]
             args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+        elif model_type == "paligemma":
+            args.prompt = "caption es"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
