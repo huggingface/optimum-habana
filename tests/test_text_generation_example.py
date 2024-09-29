@@ -43,6 +43,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605),
             ("Deci/DeciLM-7B", 1, False, 120),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122),
+            ("facebook/xglm-1.7B", 1, False, 357.46365062825083),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),

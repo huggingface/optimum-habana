@@ -109,6 +109,7 @@ from .models import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+    GaudiXGLMForCausalLM,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -207,6 +208,9 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )
 
 
@@ -590,3 +594,9 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
+    # Optimization for starcoder2 on Gaudi
+    transformers.models.xglm.modeling_xglm.XGLMForCausalLM = GaudiXGLMForCausalLM
+    transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
+    transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
+    transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
