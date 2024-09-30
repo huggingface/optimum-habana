@@ -49,4 +49,3 @@ def gaudi_fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "t
     x_freq = ifftshift(x_freq, dim=(-2, -1))
     x_filtered = ifftn(x_freq, dim=(-2, -1)).real
     return x_filtered.to(device=x_in.device, dtype=x_in.dtype)
-
