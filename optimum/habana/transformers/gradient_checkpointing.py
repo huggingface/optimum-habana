@@ -27,6 +27,7 @@ import torch
 from packaging import version
 from torch.utils._pytree import tree_map
 from torch.utils.checkpoint import (
+    DefaultDeviceType,
     check_backward_validity,
     detach_variable,
     get_device_states,
@@ -38,7 +39,6 @@ from torch.utils.checkpoint import (
 __all__ = [
     "checkpoint",
     "CheckpointFunction",
-    "DefaultDeviceType",
 ]
 
 
@@ -48,46 +48,14 @@ if version.parse(version.parse(torch.__version__).base_version) < version.parse(
     warnings.warn("PyTorch version is less than 2.1. Please upgrade to continue.", UserWarning)
 
 
+if not hthpu.is_initialized() and DefaultDeviceType.get_device_type() != "hpu":
+    # Set the default device type to 'hpu'
+    DefaultDeviceType.set_device_type("hpu")
+
+
 def _get_device_module(device="hpu"):
     device_module = getattr(torch, device)
     return device_module
-
-
-class DefaultDeviceType:
-    r"""
-    A class that manages the default device type for checkpointing.
-
-    If no non-CPU tensors are present, the default device type will
-    be used. The default value is 'hpu'. The device type is used in
-    the checkpointing process when determining which device states
-    to save and restore for recomputation.
-    """
-
-    _default_device_type = "hpu"
-
-    @staticmethod
-    def set_device_type(device: str = "hpu"):
-        """
-        Set the default device type for checkpointing.
-
-        Args:
-            device (str): The device type to be set as default. Default is 'hpu'.
-        """
-        DefaultDeviceType._default_device_type = device
-
-    @staticmethod
-    def get_device_type() -> str:
-        """
-        Get the current default device type for checkpointing.
-
-        Returns:
-            str: The current default device type.
-        """
-        return DefaultDeviceType._default_device_type
-
-
-if hasattr(torch.utils.checkpoint, "DefaultDeviceType"):
-    torch.utils.checkpoint.DefaultDeviceType = DefaultDeviceType
 
 
 def _infer_device_type(*args):
@@ -370,7 +338,7 @@ def checkpoint(
     if use_reentrant is None:
         warnings.warn(
             "torch.utils.checkpoint: the use_reentrant parameter should be "
-            "passed explicitly. In version 2.4 we will raise an exception "
+            "passed explicitly. In version 2.5 we will raise an exception "
             "if use_reentrant is not passed. use_reentrant=False is "
             "recommended, but if you need to preserve the current default "
             "behavior, you can pass use_reentrant=True. Refer to docs for more "
