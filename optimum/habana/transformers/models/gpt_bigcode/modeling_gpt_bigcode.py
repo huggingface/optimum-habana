@@ -1,4 +1,4 @@
-import math
+import math, os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -97,7 +97,6 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         - added args use_flash_attention, flash_attention_recompute, flash_attention_fast_softmax, flash_attention_causal_mask to control parameters of FusedSDPA
         - added special case handling for input larger 8192 with function gaudi_flash_attn_v1
         """
-
         scale = None
         if not self.scale_attn_weights:
             scale = 1
@@ -147,7 +146,6 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
                 enable_recompute,
                 self.block_size,
             )
-            htcore.mark_step()
         else:
             sdpa_result = self.fused_scaled_dot_product_attention(
                 query,
@@ -157,10 +155,9 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
                 self.attn_pdrop if self.training else 0.0,
                 use_causal_mask,
                 scale,
-                "fast" if flash_attention_fast_softmax else "None",
-                enable_recompute,
+                "fast" if flash_attention_fast_softmax and query_length > 1 else "None",
+                enable_recompute=True if query_length > 1 or os.getenv("QUANT_CONFIG", "") else False ,
             )
-
         if self.multi_query:
             # (batch_size, num_heads, seq_len, head_dim) --> (batch_size, seq_len, num_heads, head_dim)
             sdpa_result = sdpa_result.transpose(1, 2)
@@ -171,6 +168,17 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
             sdpa_result = sdpa_result.reshape(query_shape)
 
         return sdpa_result, None
+
+    def update(self, prev, cur, dim, idx):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
 
     def forward(
         self,
@@ -187,6 +195,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: int = None,
     ) -> Union[
         Tuple[torch.Tensor, Optional[torch.Tensor]],
         Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, ...]],
@@ -197,6 +206,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         - add new args token_idx, use_flash_attention, flash_attention_recompute, flash_attention_fast_softmax, flash_attention_causal_mask
         - optimize KV cache
         """
+        bsz, q_len, _ = hidden_states.size()
         if use_flash_attention:
             assert (
                 self.fused_scaled_dot_product_attention is not None
@@ -226,20 +236,31 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
             )
 
         key, value = key_value.split((self.head_dim, self.head_dim), dim=-1)
-
-        if layer_past is not None:
-            past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
+        if use_cache:
+            if layer_past is None:
+                past_key = torch.zeros(
+                    key.shape, dtype=key.dtype, device=key.device)
+                past_value = torch.zeros(
+                    value.shape, dtype=value.dtype, device=value.device)
+                # Return list instead of tuple
+                present = [past_key, past_value]
+            else:
+                present = layer_past
+                #past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
             if token_idx is not None:
                 # Using out of place version of index_add_() to ensure the intermediate tensors are not lost when HPU graphs are enabled.
-                key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
-                value = past_value.index_add(
-                    1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1)
-                )
+                #key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
+                #value = past_value.index_add(
+                #    1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1)
+                #)
+                key = self.update(present[0], key, -2, token_idx)
+                value = self.update(present[1], value, -2, token_idx)
             else:
                 key = torch.cat((past_key, key), dim=-2)
                 value = torch.cat((past_value, value), dim=-2)
 
-        present = torch.cat((key, value), dim=-1) if use_cache else None
+            #present = torch.cat((key, value), dim=-1) if use_cache else None
+                present = (key, value) if use_cache else None
 
         if not output_attentions and head_mask is None and use_flash_attention:
             # Difference with the original implementation: there is no need to transpose the key here,
@@ -253,6 +274,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
                 flash_attention_fast_softmax,
                 flash_attention_causal_mask,
             )
+
         else:
             attn_output, attn_weights = self._attn(query, key.transpose(-1, -2), value, attention_mask, head_mask)
 
@@ -261,6 +283,10 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 
+        if token_idx is not None and cache_idx is not None and q_len == 1:
+            # Return only past key value shapes and not the tensors during decode phase (q len is 1)
+            # to avoid making past key values as persistent output tensors of HPU graphs.
+            present = (present[0].shape, present[1].shape)
         outputs = (attn_output, present)
         if output_attentions:
             if self.multi_query:
@@ -286,6 +312,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    cache_idx: int = None,
     **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
@@ -307,6 +334,7 @@ def gaudi_gpt_bigcode_block_forward(
         flash_attention_recompute=flash_attention_recompute,
         flash_attention_fast_softmax=flash_attention_fast_softmax,
         flash_attention_causal_mask=flash_attention_causal_mask,
+        cache_idx=cache_idx,
     )
     attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
     outputs = attn_outputs[1:]
@@ -369,6 +397,8 @@ def gaudi_gpt_bigcode_model_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    cache_idx: Optional[int] = None,
+    lazy_mode: Optional[bool] = True,
 ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTBigCodeModel.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -410,9 +440,9 @@ def gaudi_gpt_bigcode_model_forward(
 
     if past_key_values is None:
         past_length = 0
-        past_key_values = tuple([None] * len(self.h))
+        #past_key_values = tuple([None] * len(self.h))
     else:
-        past_length = past_key_values[0].size(-2)
+        past_length = past_key_values[0][0].size(-2)
 
     if attention_mask is not None and len(attention_mask.shape) == 2 and position_ids is None:
         # create position_ids on the fly for batch generation
@@ -427,10 +457,13 @@ def gaudi_gpt_bigcode_model_forward(
     # Self-attention mask.
     query_length = input_shape[-1]
     key_length = past_length + query_length
-    if past_length > 0 and token_idx is not None:
-        self_attention_mask = self.bias[None, past_length - 1 : past_length, :past_length]
-    else:
-        self_attention_mask = self.bias[None, key_length - query_length : key_length, :key_length]
+    if len(attention_mask.shape) == 2:
+        if past_length > 0 and token_idx is not None:
+            padded_length = attention_mask.shape[-1]
+            #self_attention_mask = self.bias[None, past_length - 1 : past_length, :past_length]
+            self_attention_mask = self.bias[None, past_length - 1 : past_length, :padded_length]
+        else:
+            self_attention_mask = self.bias[None, key_length - query_length : key_length, :key_length]
 
     if attention_mask is not None:
         self_attention_mask = self_attention_mask * attention_mask.view(batch_size, 1, -1).to(
@@ -500,7 +533,16 @@ def gaudi_gpt_bigcode_model_forward(
     all_self_attentions = () if output_attentions else None
     all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
     all_hidden_states = () if output_hidden_states else None
-    for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+
+    if lazy_mode:
+        htcore.mark_step()
+    #for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+    for i, block in enumerate(self.h):
+        if (lazy_mode and
+                not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
+            htcore.mark_step()    
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -520,7 +562,7 @@ def gaudi_gpt_bigcode_model_forward(
         else:
             outputs = block(
                 hidden_states,
-                layer_past=layer_past,
+                layer_past=None if past_key_values is None else past_key_values[i],
                 attention_mask=attention_mask,
                 head_mask=head_mask[i],
                 encoder_hidden_states=encoder_hidden_states,
@@ -532,6 +574,8 @@ def gaudi_gpt_bigcode_model_forward(
                 flash_attention_recompute=flash_attention_recompute,
                 flash_attention_fast_softmax=flash_attention_fast_softmax,
                 flash_attention_causal_mask=flash_attention_causal_mask,
+                cache_idx=cache_idx,
+                lazy_mode=lazy_mode,
             )
 
         hidden_states = outputs[0]
@@ -557,6 +601,7 @@ def gaudi_gpt_bigcode_model_forward(
             if v is not None
         )
 
+    print("libin debug gaudi_gpt_bigcode_model_forward")    
     return BaseModelOutputWithPastAndCrossAttentions(
         last_hidden_state=hidden_states,
         past_key_values=presents,
@@ -580,7 +625,11 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
+        bucket_internal = kwargs.get("bucket_internal", None)
+        attention_mask = kwargs.get("attention_mask", None)
+        position_ids = kwargs.get("position_ids", None)
         # Omit tokens covered by past_key_values
+
         if past_key_values:
             if token_idx is not None:
                 idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
@@ -603,10 +652,12 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
                 input_ids = input_ids[:, remove_prefix_length:]
                 if token_type_ids is not None:
                     token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
-
-        attention_mask = kwargs.get("attention_mask", None)
-        position_ids = kwargs.get("position_ids", None)
-
+        elif bucket_internal and token_idx is not None:
+            # KV cache is pre allocated will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
+        
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -618,6 +669,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
                     position_ids = position_ids[:, -input_ids.shape[1] :]
         else:
             position_ids = None
+        
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -637,6 +689,8 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute", False),
                 "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax", False),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask", False),
+                "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
             }
         )
         return model_inputs
@@ -662,6 +716,8 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -690,6 +746,8 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            cache_idx=cache_idx,
+            lazy_mode=lazy_mode,
         )
         hidden_states = transformer_outputs[0]
 

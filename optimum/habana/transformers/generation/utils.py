@@ -319,6 +319,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+
         if model_kwargs["past_key_values"]:
             for i in range(len(model_kwargs["past_key_values"])):
                 for j in range(len(model_kwargs["past_key_values"][i])):
@@ -2417,10 +2418,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 # before starting the decode phase.
                 if (
                     "input_ids" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]
+                    and outputs.past_key_values[0][0].shape[-2] == model_inputs["input_ids"].shape[1]
                 ) or (
                     "inputs_embeds" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["inputs_embeds"].shape[1]
+                    and outputs.past_key_values[0][0].shape[-2] == model_inputs["inputs_embeds"].shape[1]
                 ):
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
