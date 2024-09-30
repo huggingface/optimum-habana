@@ -161,7 +161,7 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None:
+    if args.prompt is None and model_type in ("llava", "llava_next"):
         if model_type == "llava":
             processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
         elif model_type == "llava_next":
@@ -211,13 +211,15 @@ def main():
     )
     generate_kwargs = {
         "lazy_mode": True,
-        "use_cache": args.use_kv_cache,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
     }
+    if args.use_kv_cache:
+        generate_kwargs["use_cache"] = args.use_kv_cache
+
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
