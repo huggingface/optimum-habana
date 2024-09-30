@@ -25,7 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
             ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
             ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
-            ("bigcode/starcoder", 256, False, 4329.754794647058),
+            ("bigcode/starcoder", 256, True, 7266.31310658261),
             ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
             ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
             ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
@@ -159,14 +159,21 @@ def _test_text_generation(
         f"--max_new_tokens {max_output_tokens}",
     ]
 
+    is_starcoder_first_gen_model = "starcoder" in model_name.lower() and "starcoder2" not in model_name.lower()
+
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
     if "falcon" in model_name.lower() or "starcoder2" in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
 
-    if "starcoder" in model_name.lower() and "starcoder2" not in model_name.lower():
+    if is_starcoder_first_gen_model:
         command += ["--use_flash_attention"]
+
+        # starcoder doesn't support reuse_cache, but implements bucket_internal instead
+        if reuse_cache:
+            command += ["--bucket_size 128"]
+            command += ["--bucket_internal"]
 
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
@@ -174,7 +181,7 @@ def _test_text_generation(
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
 
-    if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
+    if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 
     if torch_compile:
