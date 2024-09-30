@@ -352,6 +352,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
+        print("libin debug fusesdpa ", query.shape, key.shape, value.shape)
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode)
 
 
@@ -381,6 +382,7 @@ class KVCache(torch.nn.Module):
 
     @staticmethod
     def update(prev, cur, dim, idx, inp_seq_len):
+        print("libin update prev/cur/dim/idx ", prev.shape,cur.shape, dim,idx)
         orig_cur = cur
         if prev.shape == cur.shape:
             prev.copy_(cur)
@@ -642,6 +644,8 @@ class GaudiLlamaAttention(LlamaAttention):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                         )
+                print("libin debug fused ",q_len, query_states.shape, key_states.shape, value_states.shape,attn_output.shape)
+        
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
