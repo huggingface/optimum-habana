@@ -320,23 +320,43 @@ class GaudiGenerationMixin(GenerationMixin):
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
         if model_kwargs["past_key_values"]:
-            for i in range(len(model_kwargs["past_key_values"])):
-                for j in range(len(model_kwargs["past_key_values"][i])):
-                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
-                        model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+            if model_kwargs.get("mqa_model", False):
+                for i in range(len(model_kwargs["past_key_values"])):  # layer
+                    if torch.is_tensor(
+                        model_kwargs["past_key_values"][i]
+                    ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
+                        model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
+                            model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
                         )
                         if model_kwargs.get("lazy_mode", False):
                             self.htcore_generation.mark_step()
+            else:
+                for i in range(len(model_kwargs["past_key_values"])):  # layer
+                    for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
+                        if torch.is_tensor(
+                            model_kwargs["past_key_values"][i][j]
+                        ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
+                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+                            )
+                            if model_kwargs.get("lazy_mode", False):
+                                self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
         if model_kwargs["past_key_values"]:
-            for i in range(len(model_kwargs["past_key_values"])):
-                for j in range(len(model_kwargs["past_key_values"][i])):
-                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
-                        t = model_kwargs["past_key_values"][i][j]
+            if model_kwargs.get("mqa_model", False):
+                for i in range(len(model_kwargs["past_key_values"])):
+                    if torch.is_tensor(model_kwargs["past_key_values"][i]):
+                        t = model_kwargs["past_key_values"][i]
                         del t
-                        model_kwargs["past_key_values"][i][j] = None
+                        model_kwargs["past_key_values"][i] = None
+            else:
+                for i in range(len(model_kwargs["past_key_values"])):
+                    for j in range(len(model_kwargs["past_key_values"][i])):
+                        if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
+                            t = model_kwargs["past_key_values"][i][j]
+                            del t
+                            model_kwargs["past_key_values"][i][j] = None
         del model_kwargs["past_key_values"]
         model_kwargs["past_key_values"] = None
 
@@ -1679,6 +1699,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
+        model_kwargs["mqa_model"] = False
         model_kwargs["lazy_mode"] = lazy_mode
 
         batch_indices = torch.arange(batch_size, device=input_ids.device)
@@ -2065,7 +2086,26 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned pask key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
+
+                is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
+                model_kwargs["mqa_model"] = is_mqa_model
+                if is_mqa_model:
+                    do_padding = outputs.past_key_values[0].shape[1] == model_inputs["input_ids"].shape[1]
+                else:
+                    key_to_check = (
+                        "input_ids"
+                        if "input_ids" in model_inputs
+                        else "inputs_embeds"
+                        if "inputs_embeds" in model_inputs
+                        else None
+                    )
+                    do_padding = (
+                        key_to_check is not None
+                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                    )
+
+                if do_padding:
+                    self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
             if hb_gen_time is not None:
@@ -2257,6 +2297,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
+        model_kwargs["mqa_model"] = False
         model_kwargs["lazy_mode"] = lazy_mode
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
@@ -2415,13 +2456,25 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                if (
-                    "input_ids" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]
-                ) or (
-                    "inputs_embeds" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["inputs_embeds"].shape[1]
-                ):
+
+                is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
+                model_kwargs["mqa_model"] = is_mqa_model
+                if is_mqa_model:
+                    do_padding = outputs.past_key_values[0].shape[1] == model_inputs["input_ids"].shape[1]
+                else:
+                    key_to_check = (
+                        "input_ids"
+                        if "input_ids" in model_inputs
+                        else "inputs_embeds"
+                        if "inputs_embeds" in model_inputs
+                        else None
+                    )
+                    do_padding = (
+                        key_to_check is not None
+                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                    )
+
+                if do_padding:
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
