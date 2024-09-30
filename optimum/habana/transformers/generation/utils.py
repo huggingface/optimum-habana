@@ -957,7 +957,7 @@ class GaudiGenerationMixin(GenerationMixin):
                             model_kwargs[other_inputs] = torch.nn.functional.pad(
                                 model_kwargs[other_inputs],
                                 (0, generation_config.max_new_tokens),
-                                value=generation_config.pad_token_id,
+                                value=0,
                             )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
