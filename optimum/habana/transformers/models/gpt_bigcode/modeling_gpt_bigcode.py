@@ -1,3 +1,21 @@
+# coding=utf-8
+# Copyright 2024 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
+
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -573,12 +591,14 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
     - add token_idx, use_flash_attention, flash_attention_recompute, flash_attention_fast_softmax, flash_attention_causal_mask into model_inputs
     - when KV cache is enabled, slice next_input_ids from input_ids based on the token_idx
     - when KV cache is enabled, slice next_position_ids from position_ids based on the token_idx
+    - support for internal bucketing
     """
 
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
+        bucket_internal = kwargs.get("bucket_internal", False)
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
@@ -605,6 +625,11 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
+
+        if past_key_values is None and bucket_internal and token_idx is not None:
+            # KV cache will be padded with bucket internal hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
