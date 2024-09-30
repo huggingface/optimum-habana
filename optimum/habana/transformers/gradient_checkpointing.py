@@ -48,7 +48,7 @@ if version.parse(version.parse(torch.__version__).base_version) < version.parse(
     warnings.warn("PyTorch version is less than 2.1. Please upgrade to continue.", UserWarning)
 
 
-if DefaultDeviceType.get_device_type() != "hpu":
+if not hthpu.is_initialized() and DefaultDeviceType.get_device_type() != "hpu":
     # Set the default device type to 'hpu'
     DefaultDeviceType.set_device_type("hpu")
 
