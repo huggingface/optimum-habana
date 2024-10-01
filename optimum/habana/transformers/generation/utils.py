@@ -52,7 +52,6 @@ from transformers.generation.utils import (
     GenerateOutput,
     GenerationMixin,
     GenerationMode,
-    _ranking_fast,
     _split_model_inputs,
     _split_model_outputs,
     stack_model_outputs,
@@ -1733,15 +1732,6 @@ class GaudiGenerationMixin(GenerationMixin):
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
             model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
-        # Create cosine_matrix_mask based on the attention_mask
-        cosine_matrix_mask = torch.ones_like(input_ids, dtype=torch.long)
-        if self.config.is_encoder_decoder:
-            if "decoder_attention_mask" in model_kwargs and model_kwargs["decoder_attention_mask"] is not None:
-                cosine_matrix_mask = model_kwargs["decoder_attention_mask"]
-        else:
-            cosine_matrix_mask = model_kwargs["attention_mask"]
-        cosine_matrix_mask = cosine_matrix_mask.repeat_interleave(top_k, dim=0)
-
         this_peer_finished = False
 
         hb_profer = HabanaProfile(
@@ -1996,12 +1986,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # compute the degeneration penalty and re-rank the candidates based on the degeneration penalty and the
             # model confidence. Keeping `selected_idx` on CPU enables multi-device contrastive search and doesn't
             # introduce (noticeable) slowdowns on single-device runs.
-            selected_idx = _ranking_fast(
-                context_hidden, next_hidden, top_k_probs, cosine_matrix_mask, penalty_alpha, top_k
-            )
-            cosine_matrix_mask = torch.cat(
-                [cosine_matrix_mask, cosine_matrix_mask.new_ones((cosine_matrix_mask.shape[0], 1))], dim=-1
-            )
+            selected_idx = _ranking_fast(context_hidden, next_hidden, top_k_probs, penalty_alpha, top_k)
 
             # This will be used instead of the previous inneficient torch.stack(torch.split())
             augmented_idx = torch.tensor(
@@ -3810,3 +3795,27 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
         else:
             return input_ids
+
+
+def _ranking_fast(
+    context_hidden: torch.FloatTensor,
+    next_hidden: torch.FloatTensor,
+    next_top_k_probs: torch.FloatTensor,
+    alpha: float,
+    beam_width: int,
+) -> torch.FloatTensor:
+    """
+    Reranks the top_k candidates based on a degeneration penalty (cosine similarity with previous tokens), as described
+    in the paper "A Contrastive Framework for Neural Text Generation". Returns the index of the best candidate for each
+    row in the batch.
+    """
+    norm_context_hidden = context_hidden / context_hidden.norm(dim=2, keepdim=True)
+    norm_next_hidden = next_hidden / next_hidden.norm(dim=2, keepdim=True)
+    cosine_matrix = torch.matmul(norm_context_hidden, norm_next_hidden.transpose(1, 2)).squeeze(-1)  # [B*K, S]
+
+    degeneration_penalty, _ = torch.max(cosine_matrix, dim=-1)  # [B*K]
+    next_top_k_probs = next_top_k_probs.view(-1)  # [B*K]
+    contrastive_score = (1.0 - alpha) * next_top_k_probs - alpha * degeneration_penalty
+    contrastive_score = torch.stack(torch.split(contrastive_score, beam_width))  # [B, K]
+    _, selected_idx = contrastive_score.max(dim=-1)  # [B]
+    return selected_idx
