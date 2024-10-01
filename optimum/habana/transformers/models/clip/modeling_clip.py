@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Union
 
+from optimum.habana.transformers.models.modeling_all_models import Matmul
 import torch
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
@@ -45,14 +46,6 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
 
 
 class Softmax(nn.Module):
