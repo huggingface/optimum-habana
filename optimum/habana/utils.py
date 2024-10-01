@@ -400,3 +400,9 @@ def get_device_name():
         return "gaudi2"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
+
+
+def is_gaudi3():
+    import habana_frameworks.torch as htorch
+
+    return htorch.hpu.get_device_name() == "GAUDI3"
