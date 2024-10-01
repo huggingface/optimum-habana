@@ -249,8 +249,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument("--gptq", action="store_true", help="Enable Quantization to 4 bit with AutoGPTQ")
-
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -335,9 +333,6 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.gptq:
-        raise RuntimeError("Setting both quant_config and gptq is unsupported. ")
-
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
