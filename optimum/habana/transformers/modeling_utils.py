@@ -159,7 +159,6 @@ from .models import (
     gaudi_gpt_neo_block_forward,
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
-    gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
