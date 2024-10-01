@@ -12,29 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 import math
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL.Image
-
 import torch
-
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
-
-from diffusers.utils import BaseOutput, replace_example_docstring
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
+from diffusers.utils import BaseOutput, replace_example_docstring
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
-from ..pipeline_utils import GaudiDiffusionPipeline
 from ...schedulers import GaudiFlowMatchEulerDiscreteScheduler
+from ..pipeline_utils import GaudiDiffusionPipeline
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -143,19 +141,12 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         self.to(self._device)
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-            transformer = wrap_in_hpu_graph(transformer)
 
+            transformer = wrap_in_hpu_graph(transformer)
 
     @classmethod
     def _split_inputs_into_batches(
-        cls,
-        batch_size,
-        latents,
-        prompt_embeds,
-        pooled_prompt_embeds,
-        text_ids,
-        latent_image_ids,
-        guidance
+        cls, batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance
     ):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
@@ -222,8 +213,15 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         latent_image_ids_batches = torch.stack(latent_image_ids_batches)
         guidance_batches = torch.stack(guidance_batches)
 
-        return latents_batches, prompt_embeds_batches, pooled_prompt_embeds_batches, text_ids_batches, latent_image_ids_batches, guidance_batches, num_dummy_samples
-
+        return (
+            latents_batches,
+            prompt_embeds_batches,
+            pooled_prompt_embeds_batches,
+            text_ids_batches,
+            latent_image_ids_batches,
+            guidance_batches,
+            num_dummy_samples,
+        )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -250,7 +248,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         max_sequence_length: int = 512,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        **kwargs
+        **kwargs,
     ):
         r"""
         Adapted from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/flux/pipeline_flux.py#L531
@@ -326,23 +324,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
@@ -350,15 +331,18 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
         if quant_mode == "quantize-mixed":
             import copy
+
             transformer_bf16 = copy.deepcopy(self.transformer).to(self._execution_device)
 
         if quant_mode == "measure" or quant_mode.startswith("quantize"):
             import os
-            quant_config_path = os.getenv('QUANT_CONFIG')
+
+            quant_config_path = os.getenv("QUANT_CONFIG")
 
             htcore.hpu_set_env()
 
             from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
             config = FP8Config.from_json_file(quant_config_path)
             if config.measure:
                 self.transformer = prepare(self.transformer, config)
@@ -442,7 +426,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             sigmas,
             mu=mu,
         )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
         # handle guidance
@@ -483,15 +466,9 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             text_ids_batches,
             latent_image_ids_batches,
             guidance_batches,
-            num_dummy_samples
+            num_dummy_samples,
         ) = self._split_inputs_into_batches(
-            batch_size,
-            latents,
-            prompt_embeds,
-            pooled_prompt_embeds,
-            text_ids,
-            latent_image_ids,
-            guidance
+            batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance
         )
 
         outputs = {
@@ -500,15 +477,11 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
         # 6. Denoising loop
         for j in range(num_batches):
-
             # The throughput is calculated from the 4th iteration
             # because compilation occurs in the first 2-3 iterations
             if j == throughput_warmup_steps:
                 ht.hpu.synchronize()
                 t1 = time.time()
-            if use_warmup_inference_steps:
-                ht.hpu.synchronize()
-                t0_inf = time.time()
 
             latents_batch = latents_batches[0]
             latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -537,13 +510,12 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 print(f"Use BF16 Transformer at steps {quant_mixed_step} to {len(timesteps) - 1}")
 
             for i in self.progress_bar(range(len(timesteps))):
-                if use_warmup_inference_steps and i == throughput_warmup_steps:
+                if use_warmup_inference_steps and i == throughput_warmup_steps and j == num_batches - 1:
                     ht.hpu.synchronize()
-                    t1_inf = time.time()
-                    t1 += t1_inf - t0_inf
+                    t1 = time.time()
 
                 if self.interrupt:
-                   continue
+                    continue
 
                 timestep = timesteps[0]
                 timesteps = torch.roll(timesteps, shifts=-1, dims=0)
@@ -585,35 +557,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents_batch = latents_batch.to(latents_dtype)
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
-
-                    latents_batch = callback_outputs.pop("latents", latents_batch)
-
-                    _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
-                    if _prompt_embeds is not None and _negative_prompt_embeds is not None:
-                        text_embeddings_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
-                    _pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", None)
-                    if _pooled_prompt_embeds is not None and _negative_pooled_prompt_embeds is not None:
-                        pooled_prompt_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _pooled_prompt_embeds])
-
-
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, timestep, latents)
-
                 hb_profiler.step()
-                #htcore.mark_step(sync=True)
-
-            if use_warmup_inference_steps:
-                t1 = warmup_inference_steps_time_adjustment(
-                    t1, t1_inf, num_inference_steps, throughput_warmup_steps
-                )
+                # htcore.mark_step(sync=True)
 
             if not output_type == "latent":
                 latents_batch = self._unpack_latents(latents_batch, height, width, self.vae_scale_factor)
@@ -624,24 +569,29 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 image = latents_batch
 
             outputs["images"].append(image)
-            #htcore.mark_step(sync=True)
+            # htcore.mark_step(sync=True)
 
         # 7. Stage after denoising
         hb_profiler.stop()
 
         if quant_mode == "measure":
             from neural_compressor.torch.quantization import finalize_calibration
+
             finalize_calibration(self.transformer)
 
         ht.hpu.synchronize()
         speed_metrics_prefix = "generation"
+        if use_warmup_inference_steps:
+            t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
         speed_measures = speed_metrics(
             split=speed_metrics_prefix,
             start_time=t0,
-            num_samples=num_batches * batch_size
+            num_samples=batch_size
             if t1 == t0 or use_warmup_inference_steps
             else (num_batches - throughput_warmup_steps) * batch_size,
-            num_steps=num_batches * batch_size * num_inference_steps,
+            num_steps=batch_size * num_inference_steps
+            if use_warmup_inference_steps
+            else (num_batches - throughput_warmup_steps) * batch_size * num_inference_steps,
             start_time_after_warmup=t1,
         )
         logger.info(f"Speed metrics: {speed_measures}")
