@@ -614,4 +614,3 @@ class BridgeTowerModelTrainingTest(unittest.TestCase):
             for name, param in model.named_parameters():
                 if self._is_layer_used(model_class, name):
                     self.assertIsNotNone(param.grad, f"Gradients should not be None - got {param.grad} for {name}")
-

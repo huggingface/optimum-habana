@@ -658,4 +658,3 @@ class FalconLanguageGenerationTest(unittest.TestCase):
             falcon_output_eager = falcon(input_ids, output_attentions=True)[0]
             falcon_output_sdpa = falcon(input_ids)[0]
         self.assertTrue(torch.allclose(falcon_output_eager, falcon_output_sdpa, atol=1e-3))
-
