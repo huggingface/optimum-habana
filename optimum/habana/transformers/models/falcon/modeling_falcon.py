@@ -48,6 +48,8 @@ from transformers.models.falcon.modeling_falcon import (
 )
 from transformers.utils import logging
 
+from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
+
 from ...modeling_attn_mask_utils import (
     GaudiAttentionMaskConverter,
     _gaudi_prepare_4d_causal_attention_mask,
@@ -80,7 +82,7 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
             k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         )
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
 def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -255,7 +257,7 @@ class GaudiFalconAttention(FalconAttention):
     """
 
     def __init__(self, config: FalconConfig, layer_idx=None):
-        super().__init__(config)
+        super().__init__(config, layer_idx)
 
         self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
 
@@ -269,6 +271,7 @@ class GaudiFalconAttention(FalconAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.max_position_embeddings = config.max_position_embeddings
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def _split_heads(
         self, fused_qkv: torch.Tensor, broadcast: Optional[bool] = True

@@ -59,6 +59,7 @@ from transformers.generation.utils import (
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from transformers.utils import ModelOutput, is_hqq_available, is_quanto_available, is_torchdynamo_compiling
 
 from optimum.utils import logging
@@ -726,7 +727,6 @@ class GaudiGenerationMixin(GenerationMixin):
         Changes:
         - change the default from DynamicCache to tuples
         """
-
         cache_name = "past_key_values" if "mamba" not in self.__class__.__name__.lower() else "cache_params"
         requires_cross_attention_cache = (
             self.config.is_encoder_decoder or model_kwargs.get("encoder_outputs") is not None
@@ -1823,7 +1823,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         logit_for_next_step = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
                 else:
                     # .float() is needed to retain precision for later logits manipulations
-                    logit_for_next_step = outputs.logits[:, -1, :].float()
+                    logit_for_next_step = outputs.logits[:, -1, :]
 
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs,
@@ -1990,7 +1990,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 full_hidden_states = outputs.hidden_states
 
             # .float() is needed to retain precision for later logits manipulations
-            logits = outputs.logits[:, -1, :].float()
+            logits = outputs.logits[:, -1, :]
             context_hidden = last_hidden_states.repeat_interleave(top_k, dim=0)
 
             # compute the degeneration penalty and re-rank the candidates based on the degeneration penalty and the
@@ -2397,7 +2397,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
-                    next_token_logits = outputs.logits[:, token_idx - 1, :].float()
+                    next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     if model_kwargs.get("num_virtual_tokens", 0) > 0:
@@ -2412,7 +2412,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # .float() is needed to retain precision for later logits manipulations
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
                 if token_idx is not None and self.config.is_encoder_decoder:
                     # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
@@ -2868,7 +2868,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
@@ -3314,7 +3314,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
@@ -3634,8 +3634,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # 2.3. Process the new logits
             # .float() is needed to retain precision for later logits manipulations
-            new_logits = outputs.logits[:, -candidate_length - 1 :].float()  # excludes the input prompt if present
-            next_token_logits = new_logits.clone()
+            new_logits = outputs.logits[:, -candidate_length - 1 :]
             if len(logits_processor) > 0:
                 for i in range(candidate_length + 1):
                     new_logits[:, i, :] = logits_processor(candidate_input_ids[:, : cur_len + i], new_logits[:, i, :])
@@ -3810,3 +3809,102 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
         else:
             return input_ids
+
+
+class GaudiRotaryEmbedding(torch.nn.Module):
+    def __init__(
+        self,
+        dim=None,
+        max_position_embeddings=2048,
+        base=10000,
+        device=None,
+        scaling_factor=1.0,
+        rope_type="default",
+        config=None,
+    ):
+        super().__init__()
+        # TODO (joao): remove the `if` below, only used for BC
+        self.rope_kwargs = {}
+        if config is None:
+            logger.warning_once(
+                "`GaudiRotaryEmbedding` can now be fully parameterized by passing the model config through the "
+                "`config` argument. All other arguments will be removed in v4.46"
+            )
+            self.rope_kwargs = {
+                "rope_type": rope_type,
+                "factor": scaling_factor,
+                "dim": dim,
+                "base": base,
+                "max_position_embeddings": max_position_embeddings,
+            }
+            self.rope_type = rope_type
+            self.max_seq_len_cached = max_position_embeddings
+            self.original_max_seq_len = max_position_embeddings
+        else:
+            # BC: "rope_type" was originally "type"
+            if config.rope_scaling is not None:
+                self.rope_type = config.rope_scaling.get("rope_type", config.rope_scaling.get("type"))
+            else:
+                self.rope_type = "default"
+            self.max_seq_len_cached = config.max_position_embeddings
+            self.original_max_seq_len = config.max_position_embeddings
+
+        self.config = config
+        self.rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
+
+        inv_freq, self.attention_scaling = self.rope_init_fn(self.config, device, **self.rope_kwargs)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.original_inv_freq = self.inv_freq
+
+        # Build here to make `torch.jit.trace` work.
+        self._set_cos_sin_cache(
+            seq_len=self.max_seq_len_cached, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+        )
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
+
+    def _dynamic_frequency_update(self, seq_len, device):
+        """
+        dynamic RoPE layers should recompute `inv_freq` in the following situations:
+        1 - growing beyond the cached sequence length (allow scaling)
+        2 - the current sequence length is in the original scale (avoid losing precision with small sequences)
+        """
+        # seq_len = torch.max(position_ids) + 1
+        if seq_len > self.max_seq_len_cached:  # growth
+            inv_freq, self.attention_scaling = self.rope_init_fn(
+                self.config, device, seq_len=seq_len, **self.rope_kwargs
+            )
+            self.register_buffer("inv_freq", inv_freq, persistent=False)  # TODO joao: may break with compilation
+            self.max_seq_len_cached = seq_len
+
+        if seq_len < self.original_max_seq_len and self.max_seq_len_cached > self.original_max_seq_len:  # reset
+            self.register_buffer("inv_freq", self.original_inv_freq, persistent=False)
+            self.max_seq_len_cached = self.original_max_seq_len
+
+    @torch.no_grad()
+    def forward(self, x, seq_len=None):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        if "dynamic" in self.rope_type:
+            self._dynamic_frequency_update(seq_len, device=x.device)
+
+        if seq_len > self.max_seq_len_cached:
+            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+
+        if self.attention_scaling == 1.0:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype),
+                self._sin_cached[:seq_len].to(dtype=x.dtype),
+            )
+        else:
+            return (
+                self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+                self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
+            )
