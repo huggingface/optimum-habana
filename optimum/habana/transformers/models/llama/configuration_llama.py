@@ -27,6 +27,7 @@ class LlamaConfig(LlamaConfig):
         mlp_bias=False,
         fused_qkv=False,
         parallel_strategy=None,
+        flash_attention_fp8=False,
         **kwargs,
     ):
         super().__init__(
@@ -56,3 +57,4 @@ class LlamaConfig(LlamaConfig):
 
         self.fused_qkv = fused_qkv
         self.parallel_strategy = parallel_strategy
+        self.flash_attention_fp8 = flash_attention_fp8
