@@ -65,10 +65,11 @@ from .falcon import (
     gaudi_falcon_linear_forward,
 )
 from .gemma import (
+    GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
-    gaudi_gemma_attention_forward,
-    gaudi_gemma_model_forward,
+    GaudiGemmaMLP,
+    GaudiGemmaModel,
 )
 from .gpt2 import (
     GaudiGPT2Attention,
@@ -78,10 +79,17 @@ from .gpt2 import (
     gaudi_gpt2_forward,
 )
 from .gpt_bigcode import (
+    GaudiGPTBigCodeAttention,
     GaudiGPTBigCodeForCausalLM,
-    gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
+)
+from .gpt_neo import (
+    GaudiGPTNeoForCausalLM,
+    gaudi_gpt_neo_attention_forward,
+    gaudi_gpt_neo_block_forward,
+    gaudi_gpt_neo_model_forward,
+    gaudi_gpt_neo_selfattention_forward,
 )
 from .gpt_neox import (
     GaudiGPTNeoXForCausalLM,
@@ -138,10 +146,10 @@ from .modeling_all_models import (
     gaudi_invert_attention_mask,
 )
 from .mpt import (
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
 )
 from .opt import (
     GaudiOPTForCausalLM,
@@ -225,4 +233,12 @@ from .wav2vec2 import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+)
+from .whisper import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
 )

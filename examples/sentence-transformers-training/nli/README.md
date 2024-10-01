@@ -4,6 +4,8 @@ Given two sentences (premise and hypothesis), the task of Natural Language Infer
 
 The paper in [Conneau et al.](https://arxiv.org/abs/1705.02364) shows that NLI data can be quite useful when training Sentence Embedding methods. In [Sentence-BERT-Paper](https://arxiv.org/abs/1908.10084) NLI as a first fine-tuning step for sentence embedding methods has been used.
 
+# General Models
+
 ## Single-card Training
 
 To pre-train on the NLI task:
@@ -46,7 +48,29 @@ For multi-card training you can use the script of [gaudi_spawn.py](https://githu
 HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_nli.py bert-base-uncased
 ```
 
-## Dataset
+
+# Large Models (intfloat/e5-mistral-7b-instruct)
+
+## Single-card Training with LoRA+gradient_checkpointing
+
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can utilize LoRA and gradient checkpointing techniques to reduce the memory requirements, making it feasible to train the model on a single HPU.
+
+```bash
+python training_nli.py intfloat/e5-mistral-7b-instruct --peft --lora_target_module "q_proj" "k_proj" "v_proj" --learning_rate 1e-5
+```
+
+## Multi-card Training with Deepspeed Zero2/3
+
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can use the Zero2/Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
+
+Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero2.
+
+```bash
+python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_nli.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
+```
+In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. To further reduce memory usage, change the stage to 3 (DeepSpeed Zero3) in the `ds_config.json` file.
+
+# Dataset
 
 We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) into a dataset we call [AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli). These two datasets contain sentence pairs and one of three labels: entailment, neutral, contradiction:
 
@@ -58,7 +82,7 @@ We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNL
 
 We format AllNLI in a few different subsets, compatible with different loss functions. See [triplet subset of AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli/viewer/triplet) as example.
 
-## SoftmaxLoss
+# SoftmaxLoss
 
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_SoftmaxLoss.png" alt="SBERT SoftmaxLoss" width="250"/>
 

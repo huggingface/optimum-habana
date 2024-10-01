@@ -810,7 +810,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
             input_ids = input_ids[:, :token_idx]

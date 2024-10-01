@@ -63,7 +63,7 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
 
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(0, seq_len, dtype=torch.long, device=self.weight.device).expand(bsz, -1)
-        positions += past_key_values_length
+        positions = positions + past_key_values_length
 
         return super().forward(positions + self.offset)
 

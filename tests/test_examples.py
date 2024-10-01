@@ -240,13 +240,21 @@ class ExampleTestMeta(type):
             or "prompt_tuning" in example_name
             or "peft_poly" in example_name
             or example_name == "run_sequence_classification"
+            or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
             return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
-        elif "falcon" in model_name and task_name in ("llama-adapter", "databricks/databricks-dolly-15k"):
+        elif "falcon" in model_name and task_name in (
+            "llama-adapter",
+            "databricks/databricks-dolly-15k",
+            "vera",
+            "ia3",
+            "adalora",
+            "ln_tuning",
+        ):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -898,4 +906,32 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True, fp8=True
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingVeraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "vera"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingLnExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ln_tuning"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingIA3ExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ia3"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingAdaloraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "adalora"
     DATASET_NAME = "tatsu-lab/alpaca"

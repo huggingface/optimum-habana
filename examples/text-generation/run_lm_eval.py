@@ -110,13 +110,14 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             "qwen2",
             "gptj",
             "starcoder2",
+            "gemma",
         ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
