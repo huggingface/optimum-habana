@@ -32,9 +32,9 @@ import torch.nn.functional as F
 
 # Local imports
 from run_generation import setup_parser
-from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
+from utils import finalize_quantization, initialize_model
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
