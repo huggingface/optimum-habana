@@ -677,7 +677,7 @@ class GaudiTrainer(Trainer):
         if args.gradient_checkpointing:
             import transformers.modeling_utils
 
-            if args.deepspeed and args.use_lazy_mode:
+            if args.deepspeed:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import (
                     CheckpointFunction,
                     non_reentrant_checkpoint,

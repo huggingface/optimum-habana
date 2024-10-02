@@ -52,7 +52,6 @@ from transformers.generation.utils import (
     GenerateOutput,
     GenerationMixin,
     GenerationMode,
-    _ranking_fast,
     _split_model_inputs,
     _split_model_outputs,
     stack_model_outputs,
@@ -83,6 +82,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gpt2",
     "opt",
     "gptj",
+    "gpt_neo",
     "gpt_neox",
     "llama",
     "falcon",
@@ -324,23 +324,43 @@ class GaudiGenerationMixin(GenerationMixin):
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
         if model_kwargs["past_key_values"]:
-            for i in range(len(model_kwargs["past_key_values"])):
-                for j in range(len(model_kwargs["past_key_values"][i])):
-                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
-                        model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+            if model_kwargs.get("mqa_model", False):
+                for i in range(len(model_kwargs["past_key_values"])):  # layer
+                    if torch.is_tensor(
+                        model_kwargs["past_key_values"][i]
+                    ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
+                        model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
+                            model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
                         )
                         if model_kwargs.get("lazy_mode", False):
                             self.htcore_generation.mark_step()
+            else:
+                for i in range(len(model_kwargs["past_key_values"])):  # layer
+                    for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
+                        if torch.is_tensor(
+                            model_kwargs["past_key_values"][i][j]
+                        ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
+                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+                            )
+                            if model_kwargs.get("lazy_mode", False):
+                                self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
         if model_kwargs["past_key_values"]:
-            for i in range(len(model_kwargs["past_key_values"])):
-                for j in range(len(model_kwargs["past_key_values"][i])):
-                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
-                        t = model_kwargs["past_key_values"][i][j]
+            if model_kwargs.get("mqa_model", False):
+                for i in range(len(model_kwargs["past_key_values"])):
+                    if torch.is_tensor(model_kwargs["past_key_values"][i]):
+                        t = model_kwargs["past_key_values"][i]
                         del t
-                        model_kwargs["past_key_values"][i][j] = None
+                        model_kwargs["past_key_values"][i] = None
+            else:
+                for i in range(len(model_kwargs["past_key_values"])):
+                    for j in range(len(model_kwargs["past_key_values"][i])):
+                        if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
+                            t = model_kwargs["past_key_values"][i][j]
+                            del t
+                            model_kwargs["past_key_values"][i][j] = None
         del model_kwargs["past_key_values"]
         model_kwargs["past_key_values"] = None
 
@@ -1080,7 +1100,7 @@ class GaudiGenerationMixin(GenerationMixin):
                             model_kwargs[other_inputs] = torch.nn.functional.pad(
                                 model_kwargs[other_inputs],
                                 (0, generation_config.max_new_tokens),
-                                value=generation_config.pad_token_id,
+                                value=0,
                             )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
@@ -1713,15 +1733,6 @@ class GaudiGenerationMixin(GenerationMixin):
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
             model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
-        # Create cosine_matrix_mask based on the attention_mask
-        cosine_matrix_mask = torch.ones_like(input_ids, dtype=torch.long)
-        if self.config.is_encoder_decoder:
-            if "decoder_attention_mask" in model_kwargs and model_kwargs["decoder_attention_mask"] is not None:
-                cosine_matrix_mask = model_kwargs["decoder_attention_mask"]
-        else:
-            cosine_matrix_mask = model_kwargs["attention_mask"]
-        cosine_matrix_mask = cosine_matrix_mask.repeat_interleave(top_k, dim=0)
-
         this_peer_finished = False
 
         hb_profer = HabanaProfile(
@@ -1747,6 +1758,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
+        model_kwargs["mqa_model"] = False
         model_kwargs["lazy_mode"] = lazy_mode
 
         batch_indices = torch.arange(batch_size, device=input_ids.device)
@@ -1975,12 +1987,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # compute the degeneration penalty and re-rank the candidates based on the degeneration penalty and the
             # model confidence. Keeping `selected_idx` on CPU enables multi-device contrastive search and doesn't
             # introduce (noticeable) slowdowns on single-device runs.
-            selected_idx = _ranking_fast(
-                context_hidden, next_hidden, top_k_probs, cosine_matrix_mask, penalty_alpha, top_k
-            )
-            cosine_matrix_mask = torch.cat(
-                [cosine_matrix_mask, cosine_matrix_mask.new_ones((cosine_matrix_mask.shape[0], 1))], dim=-1
-            )
+            selected_idx = _ranking_fast(context_hidden, next_hidden, top_k_probs, penalty_alpha, top_k)
 
             # This will be used instead of the previous inneficient torch.stack(torch.split())
             augmented_idx = torch.tensor(
@@ -2137,7 +2144,26 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned pask key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
+
+                is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
+                model_kwargs["mqa_model"] = is_mqa_model
+                if is_mqa_model:
+                    do_padding = outputs.past_key_values[0].shape[1] == model_inputs["input_ids"].shape[1]
+                else:
+                    key_to_check = (
+                        "input_ids"
+                        if "input_ids" in model_inputs
+                        else "inputs_embeds"
+                        if "inputs_embeds" in model_inputs
+                        else None
+                    )
+                    do_padding = (
+                        key_to_check is not None
+                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                    )
+
+                if do_padding:
+                    self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
             if hb_gen_time is not None:
@@ -2319,6 +2345,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
+        model_kwargs["mqa_model"] = False
         model_kwargs["lazy_mode"] = lazy_mode
         while self._has_unfinished_sequences(
             this_peer_finished, synced_gpus, device=input_ids.device, cur_len=cur_len, max_length=max_length
@@ -2477,13 +2504,25 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                if (
-                    "input_ids" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]
-                ) or (
-                    "inputs_embeds" in model_inputs
-                    and outputs.past_key_values[0][0].shape[2] == model_inputs["inputs_embeds"].shape[1]
-                ):
+
+                is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
+                model_kwargs["mqa_model"] = is_mqa_model
+                if is_mqa_model:
+                    do_padding = outputs.past_key_values[0].shape[1] == model_inputs["input_ids"].shape[1]
+                else:
+                    key_to_check = (
+                        "input_ids"
+                        if "input_ids" in model_inputs
+                        else "inputs_embeds"
+                        if "inputs_embeds" in model_inputs
+                        else None
+                    )
+                    do_padding = (
+                        key_to_check is not None
+                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                    )
+
+                if do_padding:
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
@@ -3856,3 +3895,28 @@ class GaudiRotaryEmbedding(torch.nn.Module):
                 self._cos_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
                 self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
             )
+
+
+def _ranking_fast(
+    context_hidden: torch.FloatTensor,
+    next_hidden: torch.FloatTensor,
+    next_top_k_probs: torch.FloatTensor,
+    alpha: float,
+    beam_width: int,
+) -> torch.FloatTensor:
+    """
+    Reranks the top_k candidates based on a degeneration penalty (cosine similarity with previous tokens), as described
+    in the paper "A Contrastive Framework for Neural Text Generation". Returns the index of the best candidate for each
+    row in the batch.
+    """
+    norm_context_hidden = context_hidden / context_hidden.norm(dim=2, keepdim=True)
+    norm_next_hidden = next_hidden / next_hidden.norm(dim=2, keepdim=True)
+    cosine_matrix = torch.matmul(norm_context_hidden, norm_next_hidden.transpose(1, 2)).squeeze(-1)  # [B*K, S]
+
+    degeneration_penalty, _ = torch.max(cosine_matrix, dim=-1)  # [B*K]
+    next_top_k_probs = next_top_k_probs.view(-1)  # [B*K]
+    contrastive_score = (1.0 - alpha) * next_top_k_probs - alpha * degeneration_penalty
+    contrastive_score = torch.stack(torch.split(contrastive_score, beam_width))  # [B, K]
+    _, selected_idx = contrastive_score.max(dim=-1)  # [B]
+    return selected_idx
+  

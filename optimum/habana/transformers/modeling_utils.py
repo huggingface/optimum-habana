@@ -60,6 +60,7 @@ from .models import (
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
+    GaudiGPTNeoForCausalLM,
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
@@ -154,6 +155,10 @@ from .models import (
     gaudi_gpt2_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
+    gaudi_gpt_neo_attention_forward,
+    gaudi_gpt_neo_block_forward,
+    gaudi_gpt_neo_model_forward,
+    gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
@@ -364,6 +369,13 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBIGCODE_ATTENTION_CLASSES.update(
         {"eager": GaudiGPTBigCodeAttention}
     )
+
+    # Optimization for gpt-neo generation on Gaudi
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoForCausalLM = GaudiGPTNeoForCausalLM
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoModel.forward = gaudi_gpt_neo_model_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoBlock.forward = gaudi_gpt_neo_block_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoAttention.forward = gaudi_gpt_neo_attention_forward
+    transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoSelfAttention.forward = gaudi_gpt_neo_selfattention_forward
 
     # Optimization for gpt-neox generation on Gaudi
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention = GaudiGPTNeoXAttention
