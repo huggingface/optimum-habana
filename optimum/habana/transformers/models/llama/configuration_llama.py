@@ -25,6 +25,7 @@ class LlamaConfig(LlamaConfig):
         attention_bias=False,
         attention_dropout=0.0,
         mlp_bias=False,
+        head_dim=None,
         fused_qkv=False,
         parallel_strategy=None,
         **kwargs,

@@ -35,6 +35,7 @@ from transformers.models.qwen2.modeling_qwen2 import (
     apply_rotary_pos_emb,
     logger,
 )
+from transformers.utils import is_torchdynamo_compiling
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -763,6 +764,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
@@ -816,10 +818,18 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1, :]
 
-        logits = self.lm_head(hidden_states).float()
+        if labels is None and not is_torchdynamo_compiling():
+            logger.warning_once(
+                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+            )
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        # TODO: remove the float() operation in v4.46
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
@@ -852,6 +862,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        num_logits_to_keep=None,
         token_idx=None,
         **kwargs,
     ):
@@ -883,6 +894,8 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         cache_position = None
 
@@ -890,7 +903,12 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
+            model_inputs = {
+                "input_ids": input_ids.clone(memory_format=torch.contiguous_format)
+            }  # `contiguous()` needed for compilation use cases
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
         model_inputs.update(
             {

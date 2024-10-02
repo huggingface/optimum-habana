@@ -23,7 +23,6 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_EosTokenCriteria_call,
     gaudi_MaxLengthCriteria_call,
-    gaudi_MaxNewTokensCriteria_call,
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
@@ -276,10 +275,13 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._contrastive_search = GaudiGenerationMixin._contrastive_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
+    transformers.generation.GenerationMixin._prepare_cache_for_generation = (
+        GaudiGenerationMixin._prepare_cache_for_generation
+    )
     transformers.generation.GenerationConfig = GaudiGenerationConfig
+    transformers.generation.configuration_utils.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
-    transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
     transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
     transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
     transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
