@@ -52,18 +52,6 @@ def gaudi_MaxLengthCriteria_call(
         return create_return_const_tensor(input_ids, is_done)
 
 
-def gaudi_MaxNewTokensCriteria_call(
-    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-) -> Union[torch.BoolTensor, bool]:
-    token_idx = kwargs.get("token_idx", None)
-    if token_idx is not None:
-        assert not kwargs["needs_tensor_output"]
-        return token_idx >= self.max_length
-    else:
-        is_done = input_ids.shape[-1] >= self.max_length
-        return create_return_const_tensor(input_ids, is_done)
-
-
 def gaudi_MaxTimeCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:

@@ -24,10 +24,18 @@ def gaudi_MambaForCausalLM_update_model_kwargs_for_generation(
         and model_kwargs["cache_position"] is not None
     ):
         model_kwargs["cache_position"] = model_kwargs["cache_position"][-1:] + num_new_tokens
+
+    if "attention_mask" in model_kwargs:
+        attention_mask = model_kwargs["attention_mask"]
+        model_kwargs["attention_mask"] = torch.cat(
+            [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+        )
+
     if token_idx is not None:
         token_idx.add_(1)
         if "token_idx_cpu" in model_kwargs:
             model_kwargs["token_idx_cpu"] += 1
+
     return model_kwargs
 
 
@@ -38,7 +46,7 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
     use_cache=None,
     cache_params: Optional[MambaCache] = None,
     cache_position: Optional[torch.LongTensor] = None,
-    attention_mask=None,
+    attention_mask: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
     token_idx = kwargs.get("token_idx", None)
@@ -54,6 +62,10 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
                 )
             if cache_position[0] > 0:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
+
+                if attention_mask is not None:
+                    attention_mask = None
+
             else:
                 # we initialize the `cache_position` to full size of `conv_states` at prefill stage
                 # considering padding will be applied when input length is shorter, and truncation
@@ -63,6 +75,8 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
         else:
             idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
             input_ids = torch.index_select(input_ids, 1, idx)
+            if attention_mask is not None:
+                attention_mask = None
     else:
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, torch.arange(token_idx_cpu, device=input_ids.device))
@@ -76,6 +90,7 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
             "cache_params": cache_params,
             "use_cache": use_cache,
             "cache_position": cache_position,
+            "attention_mask": attention_mask,
         }
     )
     return model_inputs

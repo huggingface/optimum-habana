@@ -85,7 +85,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         Loads a `~generation.GaudiGenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
 
         Args:
-            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig`]):
+            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig]`):
                 `GaudiSeq2SeqTrainingArguments.generation_config` argument.
 
         Returns:

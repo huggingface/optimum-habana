@@ -8,8 +8,8 @@ from transformers.generation.candidate_generator import (
 
 
 if TYPE_CHECKING:
+    from transformers.generation.logits_process import LogitsProcessorList
     from transformers.modeling_utils import PreTrainedModel
-    from transfromers.generation.logits_process import LogitsProcessorList
 
     from .configuration_utils import GaudiGenerationConfig
 
