@@ -445,7 +445,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 scale=self.norm_factor,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
-                flash_attention_fp8=config.flash_attention_fp8,
+                flash_attention_fp8=config.flash_attention_fp8 if hasattr(config, "flash_attention_fp8") else False
             )
             if FusedSDPA
             else None
