@@ -3799,6 +3799,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
 
 class GaudiRotaryEmbedding(torch.nn.Module):
+    """
+    Referred from FalconRotaryEmbedding: https://github.com/huggingface/transformers/blob/v4.45.0/src/transformers/models/falcon/modeling_falcon.py#L167
+    The only differences are:
+    - modify forward function to use seq_len instead of position_ids
+    """
     def __init__(
         self,
         dim=None,
@@ -3919,4 +3924,3 @@ def _ranking_fast(
     contrastive_score = torch.stack(torch.split(contrastive_score, beam_width))  # [B, K]
     _, selected_idx = contrastive_score.max(dim=-1)  # [B]
     return selected_idx
-  
