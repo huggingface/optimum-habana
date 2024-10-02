@@ -153,7 +153,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
             # 1. Extra the input embeddings
             inputs_embeds = self.get_input_embeddings()(input_ids)
-            
+
             image_features = None
             # 2. Merge text and images
             if pixel_values is not None and input_ids.shape[1] != 1:
