@@ -725,7 +725,6 @@ class GaudiGenerationMixin(GenerationMixin):
         Changes:
         - change the default from DynamicCache to tuples
         """
-
         cache_name = "past_key_values" if "mamba" not in self.__class__.__name__.lower() else "cache_params"
         requires_cross_attention_cache = (
             self.config.is_encoder_decoder or model_kwargs.get("encoder_outputs") is not None
@@ -1813,7 +1812,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         logit_for_next_step = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
                 else:
                     # .float() is needed to retain precision for later logits manipulations
-                    logit_for_next_step = outputs.logits[:, -1, :].float()
+                    logit_for_next_step = outputs.logits[:, -1, :]
 
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs,
@@ -1980,7 +1979,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 full_hidden_states = outputs.hidden_states
 
             # .float() is needed to retain precision for later logits manipulations
-            logits = outputs.logits[:, -1, :].float()
+            logits = outputs.logits[:, -1, :]
             context_hidden = last_hidden_states.repeat_interleave(top_k, dim=0)
 
             # compute the degeneration penalty and re-rank the candidates based on the degeneration penalty and the
@@ -2382,7 +2381,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
-                    next_token_logits = outputs.logits[:, token_idx - 1, :].float()
+                    next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     if model_kwargs.get("num_virtual_tokens", 0) > 0:
@@ -2397,7 +2396,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # .float() is needed to retain precision for later logits manipulations
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
                 if token_idx is not None and self.config.is_encoder_decoder:
                     # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
@@ -2853,7 +2852,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
@@ -3299,7 +3298,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
 
             next_token_scores = torch.nn.functional.log_softmax(
                 next_token_logits, dim=-1
@@ -3619,8 +3618,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # 2.3. Process the new logits
             # .float() is needed to retain precision for later logits manipulations
-            new_logits = outputs.logits[:, -candidate_length - 1 :].float()  # excludes the input prompt if present
-            next_token_logits = new_logits.clone()
+            new_logits = outputs.logits[:, -candidate_length - 1 :]
             if len(logits_processor) > 0:
                 for i in range(candidate_length + 1):
                     new_logits[:, i, :] = logits_processor(candidate_input_ids[:, : cur_len + i], new_logits[:, i, :])
