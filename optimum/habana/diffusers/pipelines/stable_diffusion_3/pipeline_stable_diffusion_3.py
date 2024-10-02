@@ -375,7 +375,21 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
+
+        quant_mode=kwargs["quant_mode"]
+        if quant_mode == "measure" or quant_mode == "quantize":
+            import os
+            quant_config_path = os.getenv('QUANT_CONFIG')
+            htcore.hpu_set_env()
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+            config = FP8Config.from_json_file(quant_config_path)
+            if config.measure:
+                self.transformer = prepare(self.transformer, config)
+            elif config.quantize:
+                self.transformer = convert(self.transformer, config)
+            htcore.hpu_initialize(self.transformer, mark_only_scales_as_const=True)
 
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             height = height or self.default_sample_size * self.vae_scale_factor
@@ -413,7 +427,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 num_prompts = prompt_embeds.shape[0]
             num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
 
-
             device = self._execution_device
 
             (
@@ -439,7 +452,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 max_sequence_length=max_sequence_length,
             )
 
-
             # 4. Prepare timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -457,7 +469,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 generator,
                 latents,
             )
-            
+
             logger.info(
                 f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
                 f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
@@ -466,9 +478,9 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
-
-            t0 = time.time()
-            t1 = t0
+            use_warmup_inference_steps = (
+            num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+        )
 
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
@@ -478,9 +490,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             hb_profiler.start()
             
-
             # 6. Split Input data to batches (HPU-specific step)
-
             latents_batches, text_embeddings_batches, pooled_prompt_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
                 batch_size,
                 latents,
@@ -494,124 +504,130 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 "images": [],
             }
 
-            # Set which Batch to Profile
-            profile_batch = 0
-            
+            t0 = time.time()
+            t1 = t0
+
             # 7. Denoising loop
-            for j in range(num_batches):
+            for j in self.progress_bar(range(num_batches)):
 
-                with self.progress_bar(range(num_inference_steps)) as progress_bar:
+                latents_batch = latents_batches[0]
+                latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+                text_embeddings_batch = text_embeddings_batches[0]
+                text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+                pooled_prompt_embeddings_batch = pooled_prompt_embeddings_batches[0]
+                pooled_prompt_embeddings_batches = torch.roll(pooled_prompt_embeddings_batches, shifts=-1, dims=0)
 
-                    latents_batch = latents_batches[0]
-                    latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
-                    text_embeddings_batch = text_embeddings_batches[0]
-                    text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
-                    pooled_prompt_embeddings_batch = pooled_prompt_embeddings_batches[0]
-                    pooled_prompt_embeddings_batches = torch.roll(pooled_prompt_embeddings_batches, shifts=-1, dims=0)
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
+                    self.scheduler.timesteps = timesteps
+                    self.scheduler._init_step_index(timesteps[0])
+                
+                # The throughput is calculated from the 4th iteration
+                # because compilation occurs in the first 2-3 iterations
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
+                
+                for i in range(len(timesteps)):
+                    timestep = timesteps[0]
+                    timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                    if hasattr(self.scheduler, "_init_step_index"):
-                        # Reset scheduler step index for next batch
-                        self.scheduler.timesteps = timesteps
-                        self.scheduler._init_step_index(timesteps[0])
-
-                    for i in range(len(timesteps)):
-                        timestep = timesteps[0]
-                        timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                        # because compilation occurs in the first two iterations
-                        if i == throughput_warmup_steps:
-                            t1 = time.time()
-
-                        if self.interrupt:
-                            continue
-
-                        # expand the latents if we are doing classifier free guidance
-                        latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
-                        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                        timestep = timestep.expand(latent_model_input.shape[0])
-
-
-                        noise_pred = self.transformer_hpu(
-                            latent_model_input,
-                            timestep,
-                            text_embeddings_batch,
-                            pooled_prompt_embeddings_batch,
-                            self.joint_attention_kwargs,
-                        )
-
-                        # perform guidance
-                        if self.do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                            noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                        # compute the previous noisy sample x_t -> x_t-1
-                        latents_dtype = latents_batch.dtype
-                        latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, return_dict=False)[0]
-
-                        if latents_batch.dtype != latents_dtype:
-                            if torch.backends.mps.is_available():
-                                # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                                latents_batch = latents_batch.to(latents_dtype)
-
-                        if callback_on_step_end is not None:
-                            print(" in callback")
-                            callback_kwargs = {}
-                            for k in callback_on_step_end_tensor_inputs:
-                                callback_kwargs[k] = locals()[k]
-                            callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
-
-                            latents_batch = callback_outputs.pop("latents", latents_batch)
-
-                            _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
-                            _negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", None)
-                            if _prompt_embeds is not None and _negative_prompt_embeds is not None:
-                                text_embeddings_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
-                            _pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", None)
-                            _negative_pooled_prompt_embeds = callback_outputs.pop("negative_pooled_prompt_embeds", None)
-                            if _pooled_prompt_embeds is not None and _negative_pooled_prompt_embeds is not None:
-                                pooled_prompt_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _pooled_prompt_embeds])
-
-
-                        # call the callback, if provided
-                        if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                            progress_bar.update()
-                        
-                        hb_profiler.step()
-
-                        if not self.use_hpu_graphs:
-                            htcore.mark_step(sync=True)
+                    # because compilation occurs in the first two iterations
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+                    if self.interrupt:
+                        continue
                     
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                    timestep_batch = timestep.expand(latent_model_input.shape[0])
 
-                t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
-                speed_metrics_prefix = "generation"
-                speed_measures = speed_metrics(
-                    split=speed_metrics_prefix,
-                    start_time=t0,
-                    num_samples= batch_size,  
-                    num_steps= batch_size * num_inference_steps,
-                    start_time_after_warmup=t1,
-                )
-                logger.info(f"Speed metrics: {speed_measures}")
+                    noise_pred = self.transformer_hpu(
+                        latent_model_input,
+                        timestep_batch,
+                        text_embeddings_batch,
+                        pooled_prompt_embeddings_batch,
+                        self.joint_attention_kwargs,
+                    )
 
+                    # perform guidance
+                    if self.do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents_dtype = latents_batch.dtype
+                    latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, return_dict=False)[0]
+
+                    if latents_batch.dtype != latents_dtype:
+                        if torch.backends.mps.is_available():
+                            # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                            latents_batch = latents_batch.to(latents_dtype)
+
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
+
+                        latents_batch = callback_outputs.pop("latents", latents_batch)
+
+                        _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
+                        _negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", None)
+                        if _prompt_embeds is not None and _negative_prompt_embeds is not None:
+                            text_embeddings_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
+                        _pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", None)
+                        _negative_pooled_prompt_embeds = callback_outputs.pop("negative_pooled_prompt_embeds", None)
+                        if _pooled_prompt_embeds is not None and _negative_pooled_prompt_embeds is not None:
+                            pooled_prompt_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _pooled_prompt_embeds])
+                    
+                    hb_profiler.step()
+
+                    if not self.use_hpu_graphs:
+                        htcore.mark_step(sync=True)
+                    
                 if output_type == "latent":
                     image = latents_batch
 
                 else:
                     latents_batch = (latents_batch / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-
                     image = self.vae.decode(latents_batch, return_dict=False)[0]
                     image = self.image_processor.postprocess(image, output_type=output_type)
                 
                 outputs["images"].append(image)
 
-            
+            # End of Denoising loop
+
             hb_profiler.stop()
+
+            if use_warmup_inference_steps:
+                t1 = warmup_inference_steps_time_adjustment(
+                    t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                )
+            ht.hpu.synchronize()
+            speed_metrics_prefix = "generation"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_batches * batch_size
+                if t1 == t0 or num_batches < throughput_warmup_steps
+                else (num_batches - throughput_warmup_steps) * batch_size,
+                num_steps=num_batches * batch_size * num_inference_steps,
+                start_time_after_warmup=t1,
+            )
+            logger.info(f"Speed metrics: {speed_measures}")
+
+            if quant_mode == "measure":
+                from neural_compressor.torch.quantization import finalize_calibration
+                finalize_calibration(self.transformer)
 
             # 8 Output Images
             # Remove dummy generations if needed
             if num_dummy_samples > 0:
                 outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
-
 
             # Process generated images
             for i, image in enumerate(outputs["images"][:]):
@@ -633,11 +649,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     else:
                         outputs["images"] = torch.cat((outputs["images"], image), 0)
 
-
             # Offload all models
             self.maybe_free_model_hooks()
-
-            
 
             if not return_dict:
                 return outputs["images"]
@@ -658,7 +671,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         joint_attention_kwargs
     ):
         if self.use_hpu_graphs:
-            # print("Using HPU Graphs")
             return self.capture_replay(
                 latent_model_input,
                 timestep,
@@ -714,7 +726,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 graph_inputs = inputs
                 graph_outputs = outputs
                 self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
-                print(self.cache[h])
             return outputs
 
         # Replay the cached graph with updated inputs
