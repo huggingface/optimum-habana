@@ -68,12 +68,12 @@ def gaudi_persimmon_attention_forward(
 
     # Partial rotary embedding
     query_rot, query_pass = (
-        query_states[..., : self.rotary_emb.dim],
-        query_states[..., self.rotary_emb.dim :],
+        query_states[..., : self.rotary_ndims],
+        query_states[..., self.rotary_ndims :],
     )
     key_rot, key_pass = (
-        key_states[..., : self.rotary_emb.dim],
-        key_states[..., self.rotary_emb.dim :],
+        key_states[..., : self.rotary_ndims],
+        key_states[..., self.rotary_ndims :],
     )
     # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
     query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
@@ -97,7 +97,7 @@ def gaudi_persimmon_attention_forward(
             cache_kwargs = {
                 "sin": sin,
                 "cos": cos,
-                "partial_rotation_size": self.rotary_emb.dim,
+                "partial_rotation_size": self.rotary_ndims,
                 "cache_position": cache_position,
             }
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
@@ -339,6 +339,7 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
@@ -369,7 +370,8 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
         )
 
         hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
+        # No upscaling to float was ever done for Persimmon
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
 
         loss = None
         if labels is not None:
@@ -405,6 +407,7 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -437,12 +440,19 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
+            model_inputs = {
+                "input_ids": input_ids.clone(memory_format=torch.contiguous_format)
+            }  # `contiguous()` needed for compilation use cases
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
         model_inputs.update(
             {
