@@ -3,7 +3,6 @@ from .configuration_utils import GaudiGenerationConfig
 from .stopping_criteria import (
     gaudi_EosTokenCriteria_call,
     gaudi_MaxLengthCriteria_call,
-    gaudi_MaxNewTokensCriteria_call,
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
