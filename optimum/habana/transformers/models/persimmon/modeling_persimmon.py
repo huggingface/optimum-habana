@@ -6,187 +6,208 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.persimmon.modeling_persimmon import PersimmonForCausalLM, apply_rotary_pos_emb
+from transformers.models.persimmon.configuration_persimmon import PersimmonConfig
+from transformers.models.persimmon.modeling_persimmon import (
+    PersimmonAttention,
+    PersimmonDecoderLayer,
+    PersimmonForCausalLM,
+    apply_rotary_pos_emb,
+)
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)
 
 
-def gaudi_persimmon_attention_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Cache] = None,
-    output_attentions: bool = False,
-    use_cache: bool = False,
-    cache_position: Optional[torch.LongTensor] = None,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    """
-    Copied from PersimmonAttention.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/persimmon/modeling_persimmon.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    bsz, q_len, _ = hidden_states.size()
+class GaudiPersimmonAttention(PersimmonAttention):
+    """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    # [batch_size, seq_length, 3 x hidden_size]
-    fused_qkv = self.query_key_value(hidden_states)
+    def __init__(self, config: PersimmonConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
-    # 3 x [batch_size, seq_length, num_heads, head_dim]
-    (query_states, key_states, value_states) = self._split_heads(fused_qkv)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        Copied from PersimmonAttention.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/persimmon/modeling_persimmon.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        """
+        bsz, q_len, _ = hidden_states.size()
 
-    if self.qk_layernorm:
-        query_states = self.q_layernorm(query_states)
-        key_states = self.k_layernorm(key_states)
+        # [batch_size, seq_length, 3 x hidden_size]
+        fused_qkv = self.query_key_value(hidden_states)
 
-    # [batch_size, num_heads, seq_length, head_dim] -> [batch_size, seq_length, num_heads, head_dim]
-    query_states = query_states.transpose(1, 2)
-    value_states = value_states.transpose(1, 2)
-    key_states = key_states.transpose(1, 2)
+        # 3 x [batch_size, seq_length, num_heads, head_dim]
+        (query_states, key_states, value_states) = self._split_heads(fused_qkv)
 
-    kv_seq_len = key_states.shape[-2]
-    if past_key_value is not None:
-        if self.layer_idx is None:
-            raise ValueError(
-                f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                "with a layer index."
-            )
-        if token_idx is not None and past_key_value.get_usable_length(kv_seq_len, self.layer_idx) > 0:
-            # When token_idx is used, static seq len = (input token len + max output token len)
-            kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        else:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        if self.qk_layernorm:
+            query_states = self.q_layernorm(query_states)
+            key_states = self.k_layernorm(key_states)
 
-    # Partial rotary embedding
-    query_rot, query_pass = (
-        query_states[..., : self.rotary_ndims],
-        query_states[..., self.rotary_ndims :],
-    )
-    key_rot, key_pass = (
-        key_states[..., : self.rotary_ndims],
-        key_states[..., self.rotary_ndims :],
-    )
-    # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
-    query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
+        # [batch_size, num_heads, seq_length, head_dim] -> [batch_size, seq_length, num_heads, head_dim]
+        query_states = query_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
 
-    # [batch_size, seq_length, num_heads, head_dim]
-    query_states = torch.cat((query_rot, query_pass), dim=-1)
-    key_states = torch.cat((key_rot, key_pass), dim=-1)
-
-    if past_key_value is not None:
-        if token_idx is not None:
-            if 0 <= self.layer_idx < len(past_key_value.key_cache):
-                past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
-                past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
-                key_states = past_key_value.key_cache[self.layer_idx]
-                value_states = past_key_value.value_cache[self.layer_idx]
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            if token_idx is not None and past_key_value.get_usable_length(kv_seq_len, self.layer_idx) > 0:
+                # When token_idx is used, static seq len = (input token len + max output token len)
+                kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             else:
-                past_key_value.key_cache.append(key_states)
-                past_key_value.value_cache.append(value_states)
-        else:
-            # Specific to RoPE models with partial rotation
-            cache_kwargs = {
-                "sin": sin,
-                "cos": cos,
-                "partial_rotation_size": self.rotary_ndims,
-                "cache_position": cache_position,
-            }
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
-    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-    if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-        raise ValueError(
-            f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-            f" {attn_weights.size()}"
+        # Partial rotary embedding
+        query_rot, query_pass = (
+            query_states[..., : self.rotary_ndims],
+            query_states[..., self.rotary_ndims :],
         )
-
-    if attention_mask is not None:  # no matter the length, we just slice it
-        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-        attn_weights = attn_weights + causal_mask
-
-    # upcast attention to fp32
-    attn_weights = nn.functional.softmax(attn_weights, dtype=torch.float32, dim=-1).to(query_states.dtype)
-    attn_weights = self.attention_dropout(attn_weights)
-
-    attn_output = torch.matmul(attn_weights, value_states)
-
-    if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-            f" {attn_output.size()}"
+        key_rot, key_pass = (
+            key_states[..., : self.rotary_ndims],
+            key_states[..., self.rotary_ndims :],
         )
+        # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
+        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos[position_ids], sin[position_ids])
 
-    attn_output = attn_output.transpose(1, 2).contiguous()
-    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        # [batch_size, seq_length, num_heads, head_dim]
+        query_states = torch.cat((query_rot, query_pass), dim=-1)
+        key_states = torch.cat((key_rot, key_pass), dim=-1)
 
-    attn_output = self.dense(attn_output)
+        if past_key_value is not None:
+            if token_idx is not None:
+                if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                    past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
+                    past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
+                    key_states = past_key_value.key_cache[self.layer_idx]
+                    value_states = past_key_value.value_cache[self.layer_idx]
+                else:
+                    past_key_value.key_cache.append(key_states)
+                    past_key_value.value_cache.append(value_states)
+            else:
+                # Specific to RoPE models with partial rotation
+                cache_kwargs = {
+                    "sin": sin,
+                    "cos": cos,
+                    "partial_rotation_size": self.rotary_ndims,
+                    "cache_position": cache_position,
+                }
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
-    if not output_attentions:
-        attn_weights = None
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-    return attn_output, attn_weights, past_key_value
+        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+
+        if attention_mask is not None:  # no matter the length, we just slice it
+            causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+            attn_weights = attn_weights + causal_mask
+
+        # upcast attention to fp32
+        attn_weights = nn.functional.softmax(attn_weights, dtype=torch.float32, dim=-1).to(query_states.dtype)
+        attn_weights = self.attention_dropout(attn_weights)
+
+        attn_output = torch.matmul(attn_weights, value_states)
+
+        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
+
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
+        attn_output = self.dense(attn_output)
+
+        if not output_attentions:
+            attn_weights = None
+
+        return attn_output, attn_weights, past_key_value
 
 
-def gaudi_persimmon_decoder_layer_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    cache_position: Optional[torch.LongTensor] = None,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-    """
-    Copied from PersimmonDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/persimmon/modeling_persimmon.py
-    The only differences are:
-    - add new args token_idx
-    """
-    residual = hidden_states
+class GaudiPersimmonDecoderLayer(PersimmonDecoderLayer):
+    def __init__(self, config: PersimmonConfig, layer_idx: int):
+        super().__init__(config, layer_idx)
+        self.self_attn = GaudiPersimmonAttention(config=config, layer_idx=layer_idx)
 
-    hidden_states = self.input_layernorm(hidden_states)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from PersimmonDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/persimmon/modeling_persimmon.py
+        The only differences are:
+        - add new args token_idx
+        """
+        residual = hidden_states
 
-    # Self Attention
-    hidden_states, self_attn_weights, present_key_value = self.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        cache_position=cache_position,
-        token_idx=token_idx,
-    )
-    hidden_states = residual + hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
 
-    # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states = self.mlp(hidden_states)
+        # Self Attention
+        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
+        hidden_states = residual + hidden_states
 
-    hidden_states = self.dropout(hidden_states)
-    hidden_states = hidden_states + residual
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
 
-    outputs = (hidden_states,)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = hidden_states + residual
 
-    if output_attentions:
-        outputs += (self_attn_weights,)
+        outputs = (hidden_states,)
 
-    if use_cache:
-        outputs += (present_key_value,)
+        if output_attentions:
+            outputs += (self_attn_weights,)
 
-    return outputs
+        if use_cache:
+            outputs += (present_key_value,)
+
+        return outputs
 
 
 def gaudi_persimmon_model_forward(
