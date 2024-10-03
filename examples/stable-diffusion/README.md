@@ -668,6 +668,8 @@ python image_to_video_generation.py \
 ### Image-to-video ControlNet
 
 Here is how to generate video conditioned by depth:
+
+```
 python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
     --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
@@ -696,3 +698,4 @@ python image_to_video_generation.py \
     --motion_bucket_id=14 \
     --width=512 \
     --height=512
+```
