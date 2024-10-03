@@ -115,7 +115,7 @@ if __name__ == "__main__":
         if args.dataset_name:
             dataset = load_dataset(
                 args.dataset_name,
-                data_dir=args.subset,
+                data_dir=None if args.subset == "None" else args.subset,
                 split=args.split,
                 token=script_args.token,
                 num_proc=args.num_workers if not args.streaming else None,
