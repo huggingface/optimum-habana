@@ -228,8 +228,12 @@ def main():
         from optimum.habana.diffusers import GaudiStableVideoDiffusionControlNetPipeline
         from optimum.habana.diffusers.models import ControlNetSDVModel, UNetSpatioTemporalConditionControlNetModel
 
-        controlnet = ControlNetSDVModel.from_pretrained(args.controlnet_model_name_or_path, subfolder="controlnet", **kwargs)
-        unet = UNetSpatioTemporalConditionControlNetModel.from_pretrained(args.model_name_or_path, subfolder="unet", **kwargs)
+        controlnet = ControlNetSDVModel.from_pretrained(
+            args.controlnet_model_name_or_path, subfolder="controlnet", **kwargs
+        )
+        unet = UNetSpatioTemporalConditionControlNetModel.from_pretrained(
+            args.model_name_or_path, subfolder="unet", **kwargs
+        )
         pipeline = GaudiStableVideoDiffusionControlNetPipeline.from_pretrained(
             args.model_name_or_path, controlnet=controlnet, unet=unet, **kwargs
         )
