@@ -79,9 +79,24 @@ def unify_measurements(
                 for i in range(0, len(max_inputs)):
                     max_inputs[i] = max(measurement_json[node_name]["inputs"][i], max_inputs[i])
                 if max_outputs is not None:
-                    max_outputs = max(measurement_json[node_name]["outputs"], max_outputs)
+                    if isinstance(max_outputs[0], list):
+                        for i in range(0, len(max_outputs)):
+                            for j in range(0, len(max_outputs[i])):
+                                max_outputs[i][j] = max(
+                                    measurement_json[node_name]["outputs"][i][j], max_outputs[i][j]
+                                )
+                    else:
+                        for i in range(0, len(max_outputs)):
+                            max_outputs[i] = max(measurement_json[node_name]["outputs"][i], max_outputs[i])
                 if max_weight is not None:
-                    max_weight = max(measurement_json[node_name]["params"]["weight"], max_weight)
+                    if isinstance(max_weight, dict):
+                        for key, values in max_weight.items():
+                            for i in range(0, len(values)):
+                                max_weight[key][i] = max(
+                                    measurement_json[node_name]["params"]["weight"][key][i], max_weight[key][i]
+                                )
+                    else:
+                        max_weight = max(measurement_json[node_name]["params"]["weight"], max_weight)
         else:
             for measurement_json in measurements_jsons:
                 for i in range(0, len(max_inputs)):
@@ -99,9 +114,20 @@ def unify_measurements(
             for i in range(0, len(max_inputs)):
                 unified_json["Nodes"][node_name]["inputs"][i] = max_inputs[i]
             if max_outputs is not None:
-                unified_json["Nodes"][node_name]["outputs"] = max_outputs
+                if isinstance(max_outputs[0], list):
+                    for i in range(0, len(max_outputs)):
+                        for j in range(0, len(max_outputs[i])):
+                            unified_json["Nodes"][node_name]["outputs"][i][j] = max_outputs[i][j]
+                else:
+                    for i in range(0, len(max_outputs)):
+                        unified_json["Nodes"][node_name]["outputs"][i] = max_outputs[i]
             if max_weight is not None:
-                unified_json["Nodes"][node_name]["params"]["weight"] = max_weight
+                if isinstance(max_weight, dict):
+                    for key, values in max_weight.items():
+                        for i in range(0, len(values)):
+                            unified_json["Nodes"][node_name]["params"]["weight"][key][i] = max_weight[key][i]
+                else:
+                    unified_json["Nodes"][node_name]["params"]["weight"] = max_weight
         else:
             for i in range(0, len(max_inputs)):
                 for j in range(0, len(max_inputs[i])):
