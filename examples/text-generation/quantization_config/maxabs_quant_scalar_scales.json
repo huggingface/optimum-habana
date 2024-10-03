@@ -1,0 +1,8 @@
+{
+    "method": "HOOKS",
+    "mode": "QUANTIZE",
+    "observer": "maxabs",
+    "scale_method": "maxabs_hw",
+    "dump_stats_path": "./hqt_output/measure",
+    "scale_format": "scalar"
+}
