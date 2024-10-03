@@ -37,43 +37,20 @@ logger = logging.getLogger(__name__)
 
 
 def setup_quantization(model, args):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import FP8Config, convert, prepare
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
+    from neural_compressor.torch.quantization import FP8Config, convert, prepare
 
-        config = FP8Config.from_json_file(args.quant_config)
-        if config.measure:
-            model = prepare(model, config)
-        elif config.quantize:
-            model = convert(model, config)
-    else:
-        import habana_frameworks.torch.core as htcore
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
-        htcore.hpu_initialize(model)
+    config = FP8Config.from_json_file(args.quant_config)
+    if config.measure:
+        model = prepare(model, config)
+    elif config.quantize:
+        model = convert(model, config)
 
     return model
 
 
 def finalize_quantization(model):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import finalize_calibration
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
-
-        finalize_calibration(model)
-    else:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+    from neural_compressor.torch.quantization import finalize_calibration
+    finalize_calibration(model)
 
 
 def main():
@@ -151,7 +128,7 @@ def main():
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-
+    os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
@@ -227,6 +204,7 @@ def main():
 
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
+        htcore.hpu_initialize(generator.model)
 
     # warm up
     for i in range(args.warmup):
