@@ -179,6 +179,15 @@ from .qwen2 import (
     GaudiQwen2Model,
     gaudi_qwen2_rmsnorm_forward,
 )
+from .qwen2_moe import (
+    GaudiQwen2MoeAttention,
+    GaudiQwen2MoeDecoderLayer,
+    GaudiQwen2MoeForCausalLM,
+    GaudiQwen2MoeMLP,
+    GaudiQwen2MoeModel,
+    gaudi_qwen2moe_block_sparse_moe_forward,
+    gaudi_qwen2moe_rmsnorm_forward,
+)
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
     gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
