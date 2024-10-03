@@ -349,7 +349,7 @@
                         "--max_train_samples 1000",
                         "--use_habana",
                         "--ppo_epochs 1",
-			"--batched_gen True",
+                        "--batched_gen True",
                         "--mini_batch_size 1",
                         "--output_max_length 128",
                         "--input_max_length 128",
@@ -470,6 +470,146 @@
                         "--use_lazy_mode",
                         "--max_grad_norm 0.3",
                         "--fp8"
+                    ]
+                }
+            }
+        },
+        "ia3": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 3.3,
+                    "train_runtime": 262.8,
+                    "train_samples_per_second": 161,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--ia3_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--peft_type ia3"
+                    ]
+                }
+            }
+        },
+        "adalora": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 2.59,
+                    "train_runtime": 459,
+                    "train_samples_per_second": 107,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--adalora_init_r 12",
+                        "--adalora_target_r 4",
+                        "--adalora_tinit 50",
+                        "--adalora_tfinal 500",
+                        "--adalora_delta_t 100",
+                        "--adalora_orth_reg_weight 0.5",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--peft_type adalora"
+                    ]
+                }
+            }
+        },
+        "vera": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 1e-2,
+                    "train_batch_size": 8,
+                    "perplexity": 8.68,
+                    "train_runtime": 318.7,
+                    "train_samples_per_second": 126.6,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--vera_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--peft_type vera"
+                    ]
+                }
+            }
+        },
+        "ln_tuning": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 2.83,
+                    "train_runtime": 249,
+                    "train_samples_per_second": 165,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--ln_target_module input_layernorm post_attention_layernorm norm",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--peft_type ln_tuning"
                     ]
                 }
             }

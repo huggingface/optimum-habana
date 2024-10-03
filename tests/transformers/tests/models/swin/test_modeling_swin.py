@@ -245,19 +245,16 @@ class SwinModelTest(ModelTesterMixin, unittest.TestCase):
 
     def setUp(self):
         self.model_tester = SwinModelTester(self)
-        self.config_tester = ConfigTester(self, config_class=SwinConfig, embed_dim=37)
+        self.config_tester = ConfigTester(
+            self,
+            config_class=SwinConfig,
+            embed_dim=37,
+            has_text_modality=False,
+            common_properties=["image_size", "patch_size", "num_channels"],
+        )
 
     def test_config(self):
-        self.create_and_test_config_common_properties()
-        self.config_tester.create_and_test_config_to_json_string()
-        self.config_tester.create_and_test_config_to_json_file()
-        self.config_tester.create_and_test_config_from_and_save_pretrained()
-        self.config_tester.create_and_test_config_with_num_labels()
-        self.config_tester.check_config_can_be_init_without_params()
-        self.config_tester.check_config_arguments_init()
-
-    def create_and_test_config_common_properties(self):
-        return
+        self.config_tester.run_common_tests()
 
     def test_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
@@ -494,7 +491,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         model = SwinForImageClassification.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
         image_processor = self.default_image_processor
 
-        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        image = Image.open("./tests/resource/img/000000039769.png")
         inputs = image_processor(images=image, return_tensors="pt").to(torch_device)
 
         # forward pass
@@ -506,3 +503,32 @@ class SwinModelIntegrationTest(unittest.TestCase):
         self.assertEqual(outputs.logits.shape, expected_shape)
         expected_slice = torch.tensor([-0.0949, -0.6437, -0.0894]).to(torch_device)
         self.assertTrue(torch.allclose(outputs.logits[0, :3], expected_slice, atol=1e-4))
+
+    @slow
+    def test_inference_interpolate_pos_encoding(self):
+        # Swin models have an `interpolate_pos_encoding` argument in their forward method,
+        # allowing to interpolate the pre-trained position embeddings in order to use
+        # the model on higher resolutions.
+        model = SwinModel.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
+
+        image_processor = self.default_image_processor
+        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        inputs = image_processor(images=image, size={"height": 481, "width": 481}, return_tensors="pt")
+        pixel_values = inputs.pixel_values.to(torch_device)
+
+        # forward pass
+        with torch.no_grad():
+            outputs = model(pixel_values, interpolate_pos_encoding=True)
+
+        # verify the logits
+        expected_shape = torch.Size((1, 256, 768))
+        self.assertEqual(outputs.last_hidden_state.shape, expected_shape)
+
+
+@require_torch
+class SwinBackboneTest(unittest.TestCase):
+    all_model_classes = (SwinBackbone,) if is_torch_available() else ()
+    config_class = SwinConfig
+
+    def setUp(self):
+        self.model_tester = SwinModelTester(self)

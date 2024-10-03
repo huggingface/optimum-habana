@@ -505,7 +505,8 @@ def gaudi_BlipTextLMHead_prepare_inputs_for_generation(
     # cut decoder_input_ids if past_key_values is used
     if past_key_values is not None:
         if token_idx is not None:
-            input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            idx = token_idx + model_kwargs.get("inputs_embeds_offset", 0) - 1
+            input_ids = torch.index_select(input_ids, 1, idx)
         else:
             past_length = past_key_values[0][0].shape[2]
 

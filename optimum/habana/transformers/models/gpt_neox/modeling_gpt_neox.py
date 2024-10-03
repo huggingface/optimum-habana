@@ -2,7 +2,9 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.gpt_neox.configuration_gpt_neox import GPTNeoXConfig
 from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXAttention,
     GPTNeoXForCausalLM,
@@ -14,6 +16,7 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
 )
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 try:
@@ -23,94 +26,101 @@ except ImportError:
     FusedRoPE = None
 
 
-def gaudi_gpt_neox_attention_forward(
-    self,
-    hidden_states: torch.FloatTensor,
-    attention_mask: torch.FloatTensor,
-    position_ids: torch.LongTensor,
-    head_mask: Optional[torch.FloatTensor] = None,
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
-    use_cache: Optional[bool] = False,
-    output_attentions: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-):
-    """
-    Copied from GPTNeoXAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    has_layer_past = layer_past is not None
+class GaudiGPTNeoXAttention(GPTNeoXAttention):
+    def __init__(self, config: GPTNeoXConfig, layer_idx=None):
+        super().__init__(config, layer_idx)
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
-    # Compute QKV
-    # Attention heads [batch, seq_len, hidden_size]
-    #   --> [batch, seq_len, (np * 3 * head_size)]
-    qkv = self.query_key_value(hidden_states)
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: torch.FloatTensor,
+        position_ids: torch.LongTensor,
+        head_mask: Optional[torch.FloatTensor] = None,
+        layer_past: Optional[Cache] = None,
+        use_cache: Optional[bool] = False,
+        output_attentions: Optional[bool] = False,
+        padding_mask: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+    ):
+        """
+        Copied from GPTNeoXAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        """
+        has_layer_past = layer_past is not None
 
-    # [batch, seq_len, (num_heads * 3 * head_size)]
-    #   --> [batch, seq_len, num_heads, 3 * head_size]
-    new_qkv_shape = qkv.size()[:-1] + (self.num_attention_heads, 3 * self.head_size)
-    qkv = qkv.view(*new_qkv_shape)
+        # Compute QKV
+        # Attention heads [batch, seq_len, hidden_size]
+        #   --> [batch, seq_len, (np * 3 * head_size)]
+        qkv = self.query_key_value(hidden_states)
 
-    # [batch, seq_len, num_attention_heads, 3 * head_size] --> 3 [batch, num_attention_heads, seq_len, head_size]
-    query = qkv[..., : self.head_size].permute(0, 2, 1, 3)
-    key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
-    value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
+        # [batch, seq_len, (num_heads * 3 * head_size)]
+        #   --> [batch, seq_len, num_heads, 3 * head_size]
+        new_qkv_shape = qkv.size()[:-1] + (self.num_attention_heads, 3 * self.head_size)
+        qkv = qkv.view(*new_qkv_shape)
 
-    # Compute rotary embeddings on rotary_ndims
-    query_rot = query[..., : self.rotary_ndims]
-    query_pass = query[..., self.rotary_ndims :]
-    key_rot = key[..., : self.rotary_ndims]
-    key_pass = key[..., self.rotary_ndims :]
+        # [batch, seq_len, num_attention_heads, 3 * head_size] --> 3 [batch, num_attention_heads, seq_len, head_size]
+        query = qkv[..., : self.head_size].permute(0, 2, 1, 3)
+        key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
+        value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
 
-    # Compute token offset for rotary embeddings (when decoding)
-    seq_len = key.shape[-2]
-    if has_layer_past:
-        seq_len += layer_past[0].shape[-2]
-    cos, sin = self.rotary_emb(value, seq_len=seq_len)
-    query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids, training=self.training)
-    query = torch.cat((query, query_pass), dim=-1).contiguous()
-    key = torch.cat((key, key_pass), dim=-1).contiguous()
-    value = value.contiguous()
+        # Compute rotary embeddings on rotary_ndims
+        query_rot = query[..., : self.rotary_ndims]
+        query_pass = query[..., self.rotary_ndims :]
+        key_rot = key[..., : self.rotary_ndims]
+        key_pass = key[..., self.rotary_ndims :]
 
-    # Cache QKV values
-    if has_layer_past:
-        past_key = layer_past[0]
-        past_value = layer_past[1]
-        if token_idx is not None:
-            past_key.index_copy_(2, token_idx - 1, key)
-            past_value.index_copy_(2, token_idx - 1, value)
-            key = past_key
-            value = past_value
-        else:
-            key = torch.cat((past_key, key), dim=-2)
-            value = torch.cat((past_value, value), dim=-2)
+        # Compute token offset for rotary embeddings (when decoding)
+        seq_len = key.shape[-2]
+        if has_layer_past:
+            seq_len += layer_past[0].shape[-2]
+        cos, sin = self.rotary_emb(value, seq_len=seq_len)
+        query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids, training=self.training)
+        query = torch.cat((query, query_pass), dim=-1).contiguous()
+        key = torch.cat((key, key_pass), dim=-1).contiguous()
+        value = value.contiguous()
 
-    present = (key, value) if use_cache else None
+        # Cache QKV values
+        if has_layer_past:
+            past_key = layer_past[0]
+            past_value = layer_past[1]
+            if token_idx is not None:
+                past_key.index_copy_(2, token_idx - 1, key)
+                past_value.index_copy_(2, token_idx - 1, value)
+                key = past_key
+                value = past_value
+            else:
+                key = torch.cat((past_key, key), dim=-2)
+                value = torch.cat((past_value, value), dim=-2)
 
-    # Compute attention
-    attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        present = (key, value) if use_cache else None
 
-    # Reshape outputs
-    attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
-    attn_output = self.dense(attn_output)
+        # Compute attention
+        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
 
-    outputs = (attn_output, present)
-    if output_attentions:
-        outputs += (attn_weights,)
+        # Reshape outputs
+        attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
+        attn_output = self.dense(attn_output)
 
-    return outputs
+        outputs = (attn_output, present)
+        if output_attentions:
+            outputs += (attn_weights,)
+
+        return outputs
 
 
 class GaudiGPTNeoXLayer(GPTNeoXLayer):
-    def __init__(self, config):
+    def __init__(self, config, layer_idx):
         super(GPTNeoXLayer, self).__init__()
         self.use_parallel_residual = config.use_parallel_residual
         self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_attention_dropout = torch.nn.Dropout(config.hidden_dropout)
         self.post_mlp_dropout = torch.nn.Dropout(config.hidden_dropout)
-        self.attention = GPTNeoXAttention(config)
+        self.attention = GaudiGPTNeoXAttention(config, layer_idx)
         self.mlp = GPTNeoXMLP(config)
 
     def forward(
@@ -120,8 +130,9 @@ class GaudiGPTNeoXLayer(GPTNeoXLayer):
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ):
         """
@@ -137,6 +148,7 @@ class GaudiGPTNeoXLayer(GPTNeoXLayer):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
         attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
@@ -173,11 +185,12 @@ def gaudi_gpt_neox_model_forward(
     position_ids: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
@@ -260,6 +273,7 @@ def gaudi_gpt_neox_model_forward(
                 use_cache,
                 None,
                 output_attentions,
+                cache_position,
                 None,
             )
         else:
@@ -271,6 +285,7 @@ def gaudi_gpt_neox_model_forward(
                 layer_past=layer_past,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                cache_position=cache_position,
                 token_idx=token_idx,
             )
         hidden_states = outputs[0]
@@ -322,12 +337,13 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -343,6 +359,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
 
@@ -372,14 +389,24 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
     ):
         input_shape = input_ids.shape
 
         # cut decoder_input_ids if past is used
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]
 
@@ -392,7 +419,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
                 input_ids = input_ids[:, remove_prefix_length:]
 
-        position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -402,6 +428,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
@@ -411,29 +439,20 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
         model_inputs.update(
             {
-                "attention_mask": attention_mask,
-                "past_key_values": past_key_values,
                 "position_ids": position_ids,
-                "use_cache": kwargs.get("use_cache"),
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
                 "token_idx": token_idx,
             }
         )
 
         return model_inputs
-
-
-def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dtype):
-    self.max_seq_len_cached = seq_len
-    t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
-    freqs = torch.outer(t, self.inv_freq)
-    # Different from paper, but it uses a different permutation in order to obtain the same calculation
-    emb = torch.cat((freqs, freqs), dim=-1)
-    self.cos_cached = emb.cos()
-    self.sin_cached = emb.sin()
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
@@ -462,4 +481,4 @@ def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
                 rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
         return rope_q, rope_k
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
