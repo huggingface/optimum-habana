@@ -1,4 +1,20 @@
+import json
+import os
 from typing import Dict, List, Tuple, Union
+
+import torch
+
+from optimum.habana.utils import to_device_dtype
+
+
+def st_gaudi_transformer_save(self, output_path: str, safe_serialization: bool = True) -> None:
+    state_dict = self.auto_model.state_dict()
+    state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
+    self.auto_model.save_pretrained(output_path, state_dict=state_dict, safe_serialization=safe_serialization)
+    self.tokenizer.save_pretrained(output_path)
+
+    with open(os.path.join(output_path, "sentence_bert_config.json"), "w") as fOut:
+        json.dump(self.get_config_dict(), fOut, indent=2)
 
 
 def st_gaudi_transformer_tokenize(

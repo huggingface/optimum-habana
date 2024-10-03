@@ -104,9 +104,9 @@
                 "multi_card": {
                     "learning_rate": 3e-5,
                     "train_batch_size": 40,
-                    "eval_f1": 0.8758,
-                    "train_runtime": 41.4282,
-                    "train_samples_per_second": 2771.405,
+                    "eval_f1": 0.8452579034941764,
+                    "train_runtime": 31.445,
+                    "train_samples_per_second": 2845.068,
                     "extra_arguments": [
                         "--max_seq_length 128",
                         "--use_hpu_graphs_for_inference"

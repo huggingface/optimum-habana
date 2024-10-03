@@ -46,6 +46,8 @@ from transformers.trainer import TRAINING_ARGS_NAME
 from transformers.trainer_utils import EvalLoopOutput
 from transformers.training_args import ParallelMode
 
+from optimum.habana.transformers.trainer import _is_peft_model
+
 from ..transformers import GaudiConfig, GaudiTrainer
 from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
 
@@ -224,7 +226,11 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if self.args.use_hpu_graphs_for_training:
             import habana_frameworks.torch as ht
 
-            ht.hpu.ModuleCacher()(model=model, allow_unused_input=True, inplace=True)
+            if _is_peft_model(model):
+                base_model = model.get_base_model()
+                ht.hpu.ModuleCacher()(model=base_model, allow_unused_input=True, inplace=True)
+            else:
+                ht.hpu.ModuleCacher()(model=model, allow_unused_input=True, inplace=True)
 
         return model
 
@@ -308,12 +314,14 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if isinstance(loss_fn, dict) and dataset_name:
             loss_fn = loss_fn[dataset_name]
 
-        # Hackishly insert the distributed model into the loss function, if the loss stores the model
-        # Only called once per process
+        # Insert the wrapped (e.g. distributed or compiled) model into the loss function,
+        # if the loss stores the model. Only called once per process
+        # from https://github.com/UKPLab/sentence-transformers/blob/v3.1.0/sentence_transformers/trainer.py#L337
         if (
-            self.args.parallel_mode != ParallelMode.NOT_PARALLEL
-            and hasattr(model, "module")
-            and hasattr(loss_fn, "model")
+            model == self.model_wrapped
+            and model != self.model  # Only if the model is wrapped
+            and hasattr(loss_fn, "model")  # Only if the loss stores the model
+            and loss_fn.model != model  # Only if the wrapped model is not already stored
         ):
             loss_fn = self.override_model_in_loss(loss_fn, model)
         loss = loss_fn(features, labels)

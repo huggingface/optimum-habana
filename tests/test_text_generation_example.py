@@ -25,7 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
             ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
             ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
-            ("bigcode/starcoder", 256, False, 4329.754794647058),
+            ("bigcode/starcoder", 256, True, 7266.31310658261),
             ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
             ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
             ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
@@ -38,10 +38,11 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
+            ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209),
             ("google/gemma-7b", 1, False, 109.70751574382221),
-            ("state-spaces/mamba-130m-hf", 1536, False, 8600),
+            ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605),
             ("Deci/DeciLM-7B", 1, False, 120),
+            ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -57,7 +58,11 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
-            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 40.94),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, 3428.65),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
+            ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, 1147.50),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
@@ -154,19 +159,29 @@ def _test_text_generation(
         f"--max_new_tokens {max_output_tokens}",
     ]
 
+    is_starcoder_first_gen_model = "starcoder" in model_name.lower() and "starcoder2" not in model_name.lower()
+
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
     if "falcon" in model_name.lower() or "starcoder2" in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
 
-    if "starcoder" in model_name.lower() and "starcoder2" not in model_name.lower():
+    if is_starcoder_first_gen_model:
         command += ["--use_flash_attention"]
+
+        # starcoder doesn't support reuse_cache, but implements bucket_internal instead
+        if reuse_cache:
+            command += ["--bucket_size 128"]
+            command += ["--bucket_internal"]
 
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
 
-    if (reuse_cache or torch_compile) and not parallel_strategy == "tp":
+    if "gemma" in model_name.lower():
+        command += ["--use_flash_attention"]
+
+    if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 
     if torch_compile:
@@ -200,6 +215,9 @@ def _test_text_generation(
             command.insert(-2, "--flash_attention_recompute")
             command.insert(-2, "--attn_softmax_bf16")
             command.insert(-2, "--trim_logits")
+        if "Mixtral" in model_name:
+            command.insert(-2, "--bucket_size 128")
+            command.insert(-2, "--bucket_internal")
         elif "falcon-180b" in model_name.lower():
             command.insert(-2, "--flash_attention_recompute")
 
@@ -254,9 +272,14 @@ def _test_text_generation(
                         e.args = (f"The following command failed:\n{' '.join(measure_command[:-2])}",)
                     raise
 
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
-            )
+            if "Mixtral" in model_name:
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant_mixtral.json"
+                )
+            else:
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+                )
 
         command = [x for y in command for x in re.split(pattern, y) if x]
         print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
