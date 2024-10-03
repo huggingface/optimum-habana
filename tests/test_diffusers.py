@@ -109,8 +109,13 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionXLImg2ImgPipeline,
     GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
+    GaudiStableVideoDiffusionControlNetPipeline,
     GaudiStableVideoDiffusionPipeline,
     GaudiTextToVideoSDPipeline,
+)
+from optimum.habana.diffusers.models import (
+    ControlNetSDVModel,
+    UNetSpatioTemporalConditionControlNetModel,
 )
 from optimum.habana.utils import set_seed
 
@@ -2826,6 +2831,206 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
+
+
+class GaudiStableVideoDiffusionControlNetPipelineTester(TestCase):
+    """
+    Tests the StableVideoDiffusionControlNetPipeline for Gaudi.
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNetSpatioTemporalConditionControlNetModel(
+            sample_size=None,
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=(
+                "UpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+            ),
+            block_out_channels=(320, 640, 1280, 1280),
+            addition_time_embed_dim=256,
+            projection_class_embeddings_input_dim=768,
+            layers_per_block=2,
+            cross_attention_dim=1024,
+            transformer_layers_per_block=1,
+            num_attention_heads=(5, 10, 20, 20),
+            num_frames=14,
+        )
+        torch.manual_seed(0)
+        controlnet = ControlNetSDVModel(
+            sample_size=96,  #
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=(
+                "UpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+            ),
+            block_out_channels=(320, 640, 1280, 1280),
+            addition_time_embed_dim=256,
+            projection_class_embeddings_input_dim=768,
+            layers_per_block=2,
+            cross_attention_dim=1024,
+            transformer_layers_per_block=1,
+            num_attention_heads=(5, 10, 20, 20),  #
+            num_frames=14,
+            conditioning_channels=3,
+            conditioning_embedding_out_channels=(16, 32, 96, 256),
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            prediction_type="v_prediction",
+            interpolation_type="linear",
+            use_karras_sigmas=True,
+            sigma_min=0.002,
+            sigma_max=700,
+            timestep_spacing="leading",
+            timestep_type="continuous",  # can be "discrete" or "continuous"
+            steps_offset=1,
+            rescale_betas_zero_snr=False,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKLTemporalDecoder(
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"),
+            block_out_channels=(128, 256, 512, 512),
+            layers_per_block=2,
+            latent_channels=4,
+            sample_size=768,
+            scaling_factor=0.18215,
+            force_upcast=True,
+        )
+
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=1280,
+            intermediate_size=5120,
+            projection_dim=1024,
+            num_hidden_layers=32,
+            num_attention_heads=16,
+            num_channels=3,
+            image_size=224,
+            patch_size=14,
+            hidden_act="gelu",
+            layer_norm_eps=1e-5,
+            attention_dropout=0.0,
+            initializer_range=0.02,
+            initializer_factor=1.0,
+        )
+        image_encoder = CLIPVisionModelWithProjection(config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(
+            crop_size=64,
+            size=64,
+        )
+        components = {
+            "unet": unet,
+            "image_encoder": image_encoder,
+            "controlnet": controlnet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(device)
+        controlnet_condition = floats_tensor((14, 3, 64, 64), rng=random.Random(0)).to(device)
+        inputs = {
+            "generator": generator,
+            "image": image,
+            "controlnet_condition": controlnet_condition,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+            "min_guidance_scale": 1.0,
+            "max_guidance_scale": 2.5,
+            "num_frames": 14,
+            "height": 64,
+            "width": 64,
+        }
+        return inputs
+
+    def test_stable_video_diffusion_single_video(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+        sd_pipe = GaudiStableVideoDiffusionControlNetPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+
+        def _get_image_from_pipeline(pipeline, device=device):
+            for component in pipeline.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipeline.to(device)
+            pipeline.set_progress_bar_config(disable=None)
+            outputs = pipeline(
+                **self.get_dummy_inputs(device),
+            ).frames
+            image = outputs[0]
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(image.shape, (14, 3, 64, 64))
+            return image[0::6, -3:, -3:, -1]
+
+        expected_slice = np.array(
+            [
+                0.5463,
+                0.5432,
+                0.5576,
+                0.4749,
+                0.4736,
+                0.4888,
+                0.3865,
+                0.3912,
+                0.3869,
+                0.5402,
+                0.5389,
+                0.5326,
+                0.4747,
+                0.4920,
+                0.4760,
+                0.4115,
+                0.4248,
+                0.4222,
+                0.5359,
+                0.5335,
+                0.5221,
+                0.4835,
+                0.5044,
+                0.4884,
+                0.4266,
+                0.4409,
+                0.4295,
+            ]
+        )
+        image_slice = _get_image_from_pipeline(sd_pipe)
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
 
 
 class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
