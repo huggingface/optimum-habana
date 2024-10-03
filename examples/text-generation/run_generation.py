@@ -294,19 +294,9 @@ def setup_parser(parser):
         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
     )
     parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
-    )
-    parser.add_argument(
-        "--load_quantized_model",
-        action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
     )
     parser.add_argument(
         "--parallel_strategy",
@@ -321,6 +311,35 @@ def setup_parser(parser):
         help="Whether to enable inputs_embeds or not.",
     )
 
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+
+    quant_parser_group = parser.add_mutually_exclusive_group()
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autogptq",
+        action="store_true",
+        help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_inc",
+        action="store_true",
+        help="Load a Huggingface quantized checkpoint using INC.",
+    )
+    quant_parser_group.add_argument(
+        "--quantized_inc_model_path",
+        type=str,
+        default=None,
+        help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -333,6 +352,9 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
