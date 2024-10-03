@@ -37,11 +37,10 @@ from transformers.models.qwen2.modeling_qwen2 import (
 )
 from transformers.utils import is_torchdynamo_compiling
 
-from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
-
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 try:

@@ -15,11 +15,10 @@ from transformers.models.persimmon.modeling_persimmon import (
 )
 from transformers.utils import logging
 
-from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
-
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)
@@ -115,7 +114,9 @@ class GaudiPersimmonAttention(PersimmonAttention):
                     "partial_rotation_size": self.rotary_ndims,
                     "cache_position": cache_position,
                 }
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 

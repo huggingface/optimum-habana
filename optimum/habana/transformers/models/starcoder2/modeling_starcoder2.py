@@ -35,11 +35,10 @@ from transformers.models.starcoder2.modeling_starcoder2 import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
-from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
-
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 try:

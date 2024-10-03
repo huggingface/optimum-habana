@@ -48,12 +48,11 @@ from transformers.models.falcon.modeling_falcon import (
 )
 from transformers.utils import logging
 
-from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
-
 from ...modeling_attn_mask_utils import (
     GaudiAttentionMaskConverter,
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)

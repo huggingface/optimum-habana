@@ -16,14 +16,14 @@ from transformers.models.stablelm.modeling_stablelm import (
 )
 from transformers.utils import logging
 
-from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
-
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)
+
 
 class GaudiStableLmAttention(StableLmAttention):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -112,7 +112,9 @@ class GaudiStableLmAttention(StableLmAttention):
                     "partial_rotation_size": self.rotary_ndims,
                     "cache_position": cache_position,
                 }
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
         # Repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
