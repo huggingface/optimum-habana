@@ -391,7 +391,7 @@ class GaudiMixtralAttention(MixtralAttention):
 
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
+        if not output_attentions or FusedSDPA:
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
