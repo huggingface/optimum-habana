@@ -3415,7 +3415,6 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
         )
-        install_requirements(path_to_script.parent / "requirements.txt")
 
         with tempfile.TemporaryDirectory():
             test_args = f"""
