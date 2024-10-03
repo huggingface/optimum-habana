@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from accelerate import PartialState
+from compel import Compel, ReturnedEmbeddingsType
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
@@ -50,7 +51,7 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="runwayml/stable-diffusion-v1-5",
+        default="CompVis/stable-diffusion-v1-4",
         type=str,
         help="Path to pre-trained model",
     )
@@ -270,6 +271,21 @@ def main():
         action="store_true",
         help="Enable deterministic generation using CPU Generator",
     )
+    parser.add_argument(
+        "--use_compel",
+        action="store_true",
+        help="Use compel for prompt weighting",
+    )
+    parser.add_argument(
+        "--use_freeu",
+        action="store_true",
+        help="Use freeu for improving generation quality",
+    )
+    parser.add_argument(
+        "--use_zero_snr",
+        action="store_true",
+        help="Use rescale_betas_zero_snr for controlling image brightness",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -281,7 +297,7 @@ def main():
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
     # Set the scheduler
-    kwargs = {"timestep_spacing": args.timestep_spacing}
+    kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
     if args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
@@ -420,6 +436,8 @@ def main():
         elif inpainting:
             # Import SD3 Inpainting pipeline
             raise ValueError("SD3 Inpainting pipeline is not currenly supported")
+        elif args.use_compel:
+            raise ValueError("SD3 pipeline + Compel is not currenly supported")
         else:
             # Import SD3 pipeline
             from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
@@ -481,7 +499,7 @@ def main():
                 # SD LDM3D use-case
                 from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
 
-                if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+                if args.model_name_or_path == "CompVis/stable-diffusion-v1-4":
                     args.model_name_or_path = "Intel/ldm3d-4c"
                 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
                     args.model_name_or_path,
@@ -498,13 +516,51 @@ def main():
 
     # Set RNG seed
     set_seed(args.seed)
+    if args.use_compel:
+        tokenizer = [pipeline.tokenizer]
+        text_encoder = [pipeline.text_encoder]
+        if sdxl:
+            tokenizer.append(pipeline.tokenizer_2)
+            text_encoder.append(pipeline.text_encoder_2)
+            compel = Compel(
+                tokenizer=tokenizer,
+                text_encoder=text_encoder,
+                returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+                requires_pooled=[False, True],
+                device=torch.device("cpu"),
+            )
+        else:
+            compel = Compel(tokenizer=tokenizer, text_encoder=text_encoder, device=torch.device("cpu"))
+
+    if args.use_freeu:
+        if args.use_hpu_graphs:
+            raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
+
+        pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
-            outputs = pipeline(prompt=prompt, **kwargs_call)
+            if args.use_compel:
+                if sdxl:
+                    conditioning, pooled = compel(prompt)
+                    outputs = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, **kwargs_call)
+                else:
+                    prompt_embeds = compel(prompt)
+                    outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
+            else:
+                outputs = pipeline(prompt=prompt, **kwargs_call)
+
     else:
-        outputs = pipeline(prompt=args.prompts, **kwargs_call)
+        if args.use_compel:
+            if sdxl:
+                conditioning, pooled = compel(args.prompts)
+                outputs = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, **kwargs_call)
+            else:
+                prompt_embeds = compel(args.prompts)
+                outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
+        else:
+            outputs = pipeline(prompt=args.prompts, **kwargs_call)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:

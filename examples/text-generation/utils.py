@@ -135,7 +135,7 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
-    if args.global_rank == 0 and not args.torch_compile:
+    if args.global_rank == 0 and not args.torch_compile and args.show_graphs_count:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
@@ -177,10 +177,12 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode"]:
+    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom"]:
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
+    elif model.config.model_type in ["gpt_neox"]:
+        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
     else:
         model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
@@ -419,7 +421,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2", "gemma"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
