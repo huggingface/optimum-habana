@@ -2431,6 +2431,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugin": self.args.deepspeed_plugin,
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "distribution_strategy": self.args.distribution_strategy,
+            "dynamic": self.args.compile_dynamic,
         }
         if is_accelerate_available("0.28.0"):
             args["dataloader_config"] = dataloader_config
