@@ -35,6 +35,8 @@ from transformers.models.starcoder2.modeling_starcoder2 import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
+from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -160,6 +162,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -916,4 +919,4 @@ def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
                 q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
             ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

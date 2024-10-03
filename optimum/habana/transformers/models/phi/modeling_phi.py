@@ -37,6 +37,8 @@ from transformers.models.phi.modeling_phi import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
+from optimum.habana.transformers.generation.utils import GaudiRotaryEmbedding
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -136,6 +138,7 @@ class GaudiPhiAttention(PhiAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -210,7 +213,7 @@ class GaudiPhiAttention(PhiAttention):
             key_states[..., self.rotary_ndims :],
         )
         # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
-        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
+        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos[position_ids], sin[position_ids])
 
         # [batch_size, seq_length, num_heads, head_dim]
         query_states = torch.cat((query_rot, query_pass), dim=-1)
