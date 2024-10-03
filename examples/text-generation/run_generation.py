@@ -28,9 +28,9 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 
 logging.basicConfig(
@@ -438,6 +438,13 @@ def main():
                     max_length=args.max_input_tokens,
                     truncation=True,
                 )
+
+                def compute_valid_sequence_lengths_tensor(input_tokens):
+                    attn_mask = input_tokens["attention_mask"]
+                    return torch.sum(attn_mask, dim=1)
+
+                valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
+                generation_config.valid_sequence_lengths = valid_sequence_lengths
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
