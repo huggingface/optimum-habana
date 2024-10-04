@@ -130,3 +130,7 @@
 >     trainer = GaudiTrainer(
 748a770
 >         gaudi_config=gaudi_config,
+754c776
+<         processing_class=processor,
+---
+>         tokenizer=processor,

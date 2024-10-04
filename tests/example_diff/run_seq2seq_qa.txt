@@ -56,6 +56,10 @@
 >         + f"mixed-precision training: {mixed_precision}"
 661a680
 >         gaudi_config=gaudi_config,
+666c685
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 735,739d753
 < 
 < 
