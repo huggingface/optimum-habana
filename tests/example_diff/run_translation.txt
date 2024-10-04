@@ -91,6 +91,10 @@
 >     trainer = GaudiSeq2SeqTrainer(
 596a632
 >         gaudi_config=gaudi_config,
+600c636
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 689,693d724
 < 
 < 
