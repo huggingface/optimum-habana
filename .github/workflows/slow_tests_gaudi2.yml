@@ -9,37 +9,9 @@ concurrency:
   group: ${{ github.workflow }}
 
 jobs:
-  stable-diffusion:
-    name: Test Stable Diffusion
-    runs-on: [self-hosted, linux, x64, gaudi2]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Pull image
-        run: |
-            docker pull vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest
-      - name: Run tests
-        run: |
-            docker run \
-            --rm \
-            -v $PWD:/root/workspace \
-            -v /scratch-1:/data \
-            --workdir=/root/workspace \
-            --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=all \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            -e GAUDI2_CI=1 \
-            -e HF_HOME=/data \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest \
-            /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
-    needs:
-      - stable-diffusion  # run the job when the previous test job is done
     runs-on: [self-hosted, linux, x64, gaudi2]
     steps:
       - name: Checkout
