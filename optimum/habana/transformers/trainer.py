@@ -311,8 +311,7 @@ class GaudiTrainer(Trainer):
             ):
                 # Make the total number of samples divisible by the batch size in lazy mode if needed
                 num_samples += (
-                    self.args.per_device_train_batch_size
-                    - num_samples % self.args.per_device_train_batch_size
+                    self.args.per_device_train_batch_size - num_samples % self.args.per_device_train_batch_size
                 )
             return RandomSampler(self.train_dataset, num_samples=num_samples)
 
@@ -1031,7 +1030,7 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
-                    
+
                     self._zero_model_grad(model)
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
@@ -1302,72 +1301,6 @@ class GaudiTrainer(Trainer):
                         "\nThis won't yield the same results as if the training had not been interrupted."
                     )
 
-    def _save_checkpoint(self, model, trial, metrics=None):
-        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
-        # want to save except FullyShardedDDP.
-        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
-
-        # Save model checkpoint
-        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-
-        if self.hp_search_backend is None and trial is None:
-            self.store_flos()
-
-        run_dir = self._get_output_dir(trial=trial)
-        output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
-
-        if not self.args.save_only_model:
-            # Save optimizer and scheduler
-            self._save_optimizer_and_scheduler(output_dir)
-            # Save RNG state
-            self._save_rng_state(output_dir)
-
-        # Determine the new best metric / best model checkpoint
-        if metrics is not None and self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-            if not metric_to_check.startswith("eval_"):
-                metric_to_check = f"eval_{metric_to_check}"
-            try:
-                metric_value = metrics[metric_to_check]
-            except KeyError as exc:
-                raise KeyError(
-                    f"The `metric_for_best_model` training argument is set to '{metric_to_check}', which is not found in the evaluation metrics. "
-                    f"The available evaluation metrics are: {list(metrics.keys())}. Consider changing the `metric_for_best_model` via the TrainingArguments."
-                ) from exc
-
-            operator = np.greater if self.args.greater_is_better else np.less
-            if (
-                self.state.best_metric is None
-                or self.state.best_model_checkpoint is None
-                or operator(metric_value, self.state.best_metric)
-            ):
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-        # Save the Trainer state
-        if self.args.should_save:
-            # Update `ExportableState` callbacks and `TrainerControl` state to where we are currently
-            for cb in [
-                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
-            ]:
-                cb_name = cb.__class__.__name__
-                cb_state = cb.state()
-                if isinstance(self.state.stateful_callbacks[cb_name], list):
-                    self.state.stateful_callbacks[cb_name].append(cb_state)
-                else:
-                    self.state.stateful_callbacks[cb_name] = cb_state
-            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-
-        if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
-
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            # Solely rely on numerical checkpoint id for rotation.
-            # mtime is not reliable especially on some fuse fs in cloud environments.
-            self._rotate_checkpoints(use_mtime=False, output_dir=run_dir)
-
     def _save_rng_state(self, output_dir):
         # Save RNG state in non-distributed training
         rng_states = {
@@ -1536,7 +1469,7 @@ class GaudiTrainer(Trainer):
         arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
         """
         if self.use_cpu_amp:
-            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
         elif self.use_hpu_amp:
             ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
         else:
@@ -1621,7 +1554,9 @@ class GaudiTrainer(Trainer):
             output_dir = self.args.output_dir
 
         if self.is_fsdp_enabled:
-            if "FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type):
+            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)) and (
+                is_accelerate_available("0.24.2")
+            ):
                 state_dict = self.accelerator.get_state_dict(self.model)
                 if self.args.should_save:
                     self._save(output_dir, state_dict=state_dict)
@@ -1856,6 +1791,14 @@ class GaudiTrainer(Trainer):
         # Will be useful when we have an iterable dataset so don't know its length.
         observed_num_examples = 0
 
+        # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
+        _should_update_inputs: bool = (
+            hasattr(self.model, "generation_config") and self.model.generation_config is not None
+        ) and (self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"])
+
+        # set a default dtype of logits
+        logits_dtype: str = "float32"
+
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
             if (
@@ -1873,42 +1816,37 @@ class GaudiTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
-            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
-                    if self.model.generation_config.attn_softmax_bf16:
-                        inputs["attn_softmax_bf16"] = True
-                    if self.model.generation_config.use_flash_attention:
-                        inputs["use_flash_attention"] = True
-                    if self.model.generation_config.flash_attention_recompute:
-                        inputs["flash_attention_recompute"] = True
-                    if self.model.generation_config.flash_attention_causal_mask:
-                        inputs["flash_attention_causal_mask"] = True
+            if _should_update_inputs:
+                if self.model.generation_config.attn_softmax_bf16:
+                    inputs["attn_softmax_bf16"] = True
+                if self.model.generation_config.use_flash_attention:
+                    inputs["use_flash_attention"] = True
+                if self.model.generation_config.flash_attention_recompute:
+                    inputs["flash_attention_recompute"] = True
+                if self.model.generation_config.flash_attention_causal_mask:
+                    inputs["flash_attention_causal_mask"] = True
 
             # Prediction step
             losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             main_input_name = getattr(self.model, "main_input_name", "input_ids")
             inputs_decode = self._prepare_input(inputs[main_input_name]) if args.include_inputs_for_metrics else None
 
-            # Save the logits dtype since we need to convert them into floats during the process
-            # They will be converted back into their original dtype right before computing metrics
-            if logits is not None:
-                logits_dtype = get_dtype(logits)
-
             # Update containers
             if losses is not None:
                 losses = self.gather_function((losses.repeat(batch_size)))
                 all_losses.add(losses)
-            if labels is not None:
-                labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
-                labels = self.gather_function((labels))
-                if not self.args.batch_eval_metrics or description == "Prediction":
-                    all_labels.add(labels)
             if inputs_decode is not None:
                 inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
                 inputs_decode = self.gather_function((inputs_decode))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_inputs.add(inputs_decode)
+            if labels is not None:
+                # Pad labels here, preparing for preprocess_logits_for_metrics in next logits block.
+                labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+            # Save the logits dtype since we need to convert them into floats during the process
+            # They will be converted back into their original dtype right before computing metrics
             if logits is not None:
+                logits_dtype = get_dtype(logits)
                 if args.use_habana and logits_dtype != "float32":
                     logits = to_device_dtype(logits, target_dtype=torch.float32)
                 logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
@@ -1917,6 +1855,10 @@ class GaudiTrainer(Trainer):
                 logits = self.gather_function((logits))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_preds.add(logits)
+            if labels is not None:
+                labels = self.gather_function((labels))
+                if not self.args.batch_eval_metrics or description == "Prediction":
+                    all_labels.add(labels)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
@@ -2216,6 +2158,7 @@ class GaudiTrainer(Trainer):
             # backward compatibility
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
+
         model.eval()
         # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
         #     self.optimizer.eval()
