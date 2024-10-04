@@ -306,13 +306,13 @@ class GaudiTrainer(Trainer):
             num_samples = len(self.train_dataset)
             if (
                 not self.args.dataloader_drop_last
-                and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                and num_samples % self.args.per_device_train_batch_size != 0
                 and self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ):
                 # Make the total number of samples divisible by the batch size in lazy mode if needed
                 num_samples += (
                     self.args.per_device_train_batch_size
-                    - len(self.train_dataset) % self.args.per_device_train_batch_size
+                    - num_samples % self.args.per_device_train_batch_size
                 )
             return RandomSampler(self.train_dataset, num_samples=num_samples)
 
@@ -575,7 +575,7 @@ class GaudiTrainer(Trainer):
         num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = len(train_dataloader) // args.gradient_accumulation_steps
+            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
@@ -846,6 +846,12 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
         _grad_norm: Optional[float] = None
+        _should_compute_grad_norm: bool = not (
+            is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED
+        ) and (
+            # Gradient clipping
+            args.max_grad_norm is not None and args.max_grad_norm > 0
+        )
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
         if args.eval_on_start:
@@ -1001,10 +1007,9 @@ class GaudiTrainer(Trainer):
                     if is_last_step_and_steps_less_than_grad_acc:
                         self.accelerator.gradient_state._set_sync_gradients(True)
 
-                    # Gradient clipping
-                    if args.max_grad_norm is not None and args.max_grad_norm > 0:
+                    # If the condition is true, we need to compute _grad_norm
+                    if _should_compute_grad_norm:
                         # deepspeed does its own clipping
-
                         if self.gaudi_config.use_fused_clip_norm and args.use_habana:
                             # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                             _grad_norm = self.FusedNorm.clip_norm(model.parameters())
@@ -1017,7 +1022,6 @@ class GaudiTrainer(Trainer):
 
                     self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
 
-                    optimizer_was_run = True
                     self.optimizer.step()
 
                     self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
@@ -1027,8 +1031,8 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
+                    
                     self._zero_model_grad(model)
-
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
                     if args.use_lazy_mode:
@@ -1127,13 +1131,14 @@ class GaudiTrainer(Trainer):
         best_safe_adapter_model_path = os.path.join(self.state.best_model_checkpoint, ADAPTER_SAFE_WEIGHTS_NAME)
 
         model = self.model
+
+        if self.is_deepspeed_enabled:
+            deepspeed_load_checkpoint(
+                self.model_wrapped,
+                self.state.best_model_checkpoint,
+                load_module_strict=not _is_peft_model(self.model),
+            )
         # TODO: check if the code below works
-        # if self.is_deepspeed_enabled:
-        #     deepspeed_load_checkpoint(
-        #         self.model_wrapped,
-        #         self.state.best_model_checkpoint,
-        #         load_module_strict=not _is_peft_model(self.model),
-        #     )
         # elif self.is_fsdp_enabled:
         #     load_result = load_fsdp_model(
         #         self.accelerator.state.fsdp_plugin,
@@ -1142,7 +1147,7 @@ class GaudiTrainer(Trainer):
         #         self.state.best_model_checkpoint,
         #         **_get_fsdp_ckpt_kwargs(),
         #     )
-        if (
+        elif (
             os.path.exists(best_model_path)
             or os.path.exists(best_safe_model_path)
             or os.path.exists(best_adapter_model_path)
@@ -1233,7 +1238,7 @@ class GaudiTrainer(Trainer):
                     and self.accelerator.distributed_type != GaudiDistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
-                    grad_norm = _grad_norm.item()
+                    grad_norm = _grad_norm.detach().item()
                 else:
                     grad_norm = None
 
