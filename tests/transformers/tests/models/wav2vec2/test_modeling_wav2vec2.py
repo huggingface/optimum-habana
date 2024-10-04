@@ -1140,7 +1140,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask_prob = 0.5
         mask_length = 1
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
-        mask = torch.from_numpy(mask).to(torch_device)
+        # mask = torch.from_numpy(mask).to(torch_device)
         self.assertListEqual(mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)])
 
     def test_compute_mask_indices_low_prob(self):
@@ -1156,7 +1156,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         count_dimensions_not_masked = 0
         for _ in range(n_trials):
             mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
-            mask = torch.from_numpy(mask).to(torch_device)
+            # mask = torch.from_numpy(mask).to(torch_device)
             num_masks = torch.sum(mask).item()
             if num_masks > 0:
                 count_dimensions_masked += 1
@@ -1174,7 +1174,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask_prob = 0.5
         mask_length = 4
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
-        mask = torch.from_numpy(mask).to(torch_device)
+        # mask = torch.from_numpy(mask).to(torch_device)
         # because of overlap mask don't have to add up exactly to `mask_prob * sequence_length`, but have to be smaller or equal
         for batch_sum in mask.sum(axis=-1):
             self.assertTrue(int(batch_sum) <= mask_prob * sequence_length)
@@ -1189,7 +1189,7 @@ class Wav2Vec2UtilsTest(unittest.TestCase):
         mask = _compute_mask_indices(
             (batch_size, sequence_length), mask_prob, mask_length, attention_mask=attention_mask
         )
-        mask = torch.from_numpy(mask).to(torch_device)
+        # mask = torch.from_numpy(mask).to(torch_device)
         for batch_sum in mask.sum(axis=-1):
             self.assertTrue(int(batch_sum) <= mask_prob * sequence_length)
         self.assertTrue(mask[:2, sequence_length // 2 :].sum() == 0)
