@@ -15,7 +15,7 @@
                         "--subset None",
                         "--streaming False",
                         "--packing False",
-                        "--num_bucket 8",
+                        "--num_buckets 8",
                         "--gradient_accumulation_steps 8",
                         "--gradient_checkpointing True",
                         "--eval_strategy no",
