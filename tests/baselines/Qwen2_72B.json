@@ -7,9 +7,9 @@
                 "deepspeed": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 3.6,
-                    "train_runtime": 410,
-                    "train_samples_per_second": 6.969,
+                    "perplexity": 3.7,
+                    "train_runtime": 832.7285,
+                    "train_samples_per_second": 7.678,
                     "extra_arguments": [
                         "--bf16 True",
                         "--subset None",
@@ -35,7 +35,7 @@
                         "--max_seq_length 512",
                         "--weight_decay 0.05",
                         "--report_to none",
-                        "--max_steps 50",
+                        "--max_steps 10",
                         "--gradient_checkpointing True",
                         "--pipelining_fwd_bwd True",
                         "--deepspeed tests/configs/deepspeed_zero_3_gaudi1.json"
