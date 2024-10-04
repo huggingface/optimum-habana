@@ -1796,6 +1796,18 @@ class GaudiTrainer(Trainer):
             hasattr(self.model, "generation_config") and self.model.generation_config is not None
         ) and (self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"])
 
+        if _should_update_inputs:
+            _inputs_update: dict = {}
+            if self.model.generation_config.attn_softmax_bf16:
+                _inputs_update["attn_softmax_bf16"] = True
+            if self.model.generation_config.use_flash_attention:
+                _inputs_update["use_flash_attention"] = True
+            if self.model.generation_config.flash_attention_recompute:
+                _inputs_update["flash_attention_recompute"] = True
+            if self.model.generation_config.flash_attention_causal_mask:
+                _inputs_update["flash_attention_causal_mask"] = True
+            _should_update_inputs = len(_inputs_update) > 0
+
         # set a default dtype of logits
         logits_dtype: str = "float32"
 
@@ -1817,14 +1829,7 @@ class GaudiTrainer(Trainer):
 
             # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
             if _should_update_inputs:
-                if self.model.generation_config.attn_softmax_bf16:
-                    inputs["attn_softmax_bf16"] = True
-                if self.model.generation_config.use_flash_attention:
-                    inputs["use_flash_attention"] = True
-                if self.model.generation_config.flash_attention_recompute:
-                    inputs["flash_attention_recompute"] = True
-                if self.model.generation_config.flash_attention_causal_mask:
-                    inputs["flash_attention_causal_mask"] = True
+                inputs.update(_inputs_update)
 
             # Prediction step
             losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
