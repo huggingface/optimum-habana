@@ -12,11 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+The Gaudi Trainer class, to easily train a 🤗 Transformers from scratch or finetune it on a new task.
+"""
 
 import contextlib
 import copy
 import functools
-import importlib.metadata
 import inspect
 import json
 import math
@@ -37,7 +39,6 @@ from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
 from huggingface_hub import upload_folder
-from packaging import version
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -50,7 +51,7 @@ from transformers.integrations.deepspeed import (
 )
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.trainer import _get_fsdp_ckpt_kwargs
+from transformers.trainer import _get_fsdp_ckpt_kwargs, _is_peft_model
 from transformers.trainer_callback import ExportableState, TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
     DistributedTensorGatherer,
@@ -116,15 +117,12 @@ from .training_args import GaudiTrainingArguments
 if is_datasets_available():
     import datasets
 
-
 if is_safetensors_available():
     import safetensors.torch
-
 
 if is_peft_available():
     from peft import PeftModel
     from peft.utils import PeftType
-
 
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
@@ -135,33 +133,14 @@ if is_accelerate_available():
         save_fsdp_optimizer,
     )
 
+if is_accelerate_available("0.28.0"):
+    from accelerate.utils import DataLoaderConfiguration
+
 if TYPE_CHECKING:
     import optuna
 
 
 DATA_SAMPLERS = [RandomSampler, SeedableRandomSampler]
-
-
-if is_accelerate_available("0.28.0"):
-    from accelerate.utils import DataLoaderConfiguration
-
-
-def _is_peft_model(model):
-    if is_peft_available():
-        classes_to_check = (PeftModel,) if is_peft_available() else ()
-        # Here we also check if the model is an instance of `PeftMixedModel` introduced in peft>=0.7.0: https://github.com/huggingface/transformers/pull/28321
-        if version.parse(importlib.metadata.version("peft")) >= version.parse("0.7.0"):
-            from peft import PeftMixedModel
-
-            classes_to_check = (*classes_to_check, PeftMixedModel)
-        return isinstance(model, classes_to_check)
-    return False
-
-
-if TYPE_CHECKING:
-    if is_datasets_available():
-        import datasets
-
 
 logger = logging.get_logger(__name__)
 
