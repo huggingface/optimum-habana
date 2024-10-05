@@ -165,7 +165,7 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    
+
     if args.prompt is None:
         if model_type in ("llava", "llava_next"):
             if model_type == "llava":

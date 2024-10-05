@@ -106,7 +106,6 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mamba",
     "deci",
     "qwen2_moe",
-    "gemma",
     "whisper",
     "paligemma"
 ]
