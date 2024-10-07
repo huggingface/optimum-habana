@@ -1216,6 +1216,8 @@ class GaudiGenerationMixin(GenerationMixin):
             True if generation_config.flash_attention_fast_softmax else False
         )
         model_kwargs["num_virtual_tokens"] = num_virtual_tokens
+        if generation_config.valid_sequence_lengths is not None:
+            model_kwargs["valid_sequence_lengths"] = generation_config.valid_sequence_lengths
 
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[1] + num_virtual_tokens
