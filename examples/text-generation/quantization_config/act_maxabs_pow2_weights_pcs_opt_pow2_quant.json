@@ -3,7 +3,5 @@
     "mode": "QUANTIZE",
     "observer": "maxabs",
     "scale_method": "ACT_MAXABS_POW2_WEIGHTS_PCS_OPT_POW2",
-    "allowlist": {"types": [], "names":  []},
-    "blocklist": {"types": [], "names":  []},
     "dump_stats_path": "./hqt_output/measure"
 }
