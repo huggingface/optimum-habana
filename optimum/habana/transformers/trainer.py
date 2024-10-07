@@ -40,6 +40,7 @@ from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
     GradientAccumulationPlugin,
+    load_fsdp_model,
     load_fsdp_optimizer,
     save_fsdp_model,
     save_fsdp_optimizer,
@@ -1135,15 +1136,14 @@ class GaudiTrainer(Trainer):
                 self.state.best_model_checkpoint,
                 load_module_strict=not _is_peft_model(self.model),
             )
-        # TODO: check if the code below works
-        # elif self.is_fsdp_enabled:
-        #     load_result = load_fsdp_model(
-        #         self.accelerator.state.fsdp_plugin,
-        #         self.accelerator,
-        #         model,
-        #         self.state.best_model_checkpoint,
-        #         **_get_fsdp_ckpt_kwargs(),
-        #     )
+        elif self.is_fsdp_enabled:
+            load_result = load_fsdp_model(
+                self.accelerator.state.fsdp_plugin,
+                self.accelerator,
+                model,
+                self.state.best_model_checkpoint,
+                **_get_fsdp_ckpt_kwargs(),
+            )
         elif (
             os.path.exists(best_model_path)
             or os.path.exists(best_safe_model_path)
