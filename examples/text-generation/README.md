@@ -483,14 +483,13 @@ Some bf16 models don't fit on one card due to hpu memory limitation, but in fp8 
 As measurement is being calculated in bf16 precision, to be able to run fp8 model on single card you should use `unify_measurements` script.
 Here are the steps:
 1. Measure the model on a number of cards that are enough for the model to fit in BF16.
-2. Quantize the model on the same amount of cards for scales to be saved.
-3. Run unify_measurements.py script using the measurement files created after running steps 1 and 2. A unified measurement is then calculated.
+2. Run unify_measurements.py script using the measurement files created in step 1. A unified measurement is then calculated.
 ```bash
 python quantization_tools/unify_measurements.py -g 01234567 -m *path_to_8x_measurements* -o *path_to_output_1x_measurement*
 ```
 In the above example, the measurements of cards 0-7 will be unified to a single measurement. For example, if you specify `-g 0123 4567`,
 cards 0-3 and cards 4-7 will be unified in two different measurement files. All different group combinations are supported.
-4. Run quantization using the unified measurement file/s.
+3. Run quantization using the unified measurement file/s.
 
 More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
