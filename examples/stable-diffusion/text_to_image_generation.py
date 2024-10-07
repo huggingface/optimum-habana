@@ -290,7 +290,7 @@ def main():
         "--quant_mode",
         default="disable",
         type=str,
-        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+        help="Quantization mode 'measure', 'quantize', or 'disable'",
     )
     args = parser.parse_args()
 
