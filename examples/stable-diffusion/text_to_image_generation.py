@@ -286,6 +286,12 @@ def main():
         action="store_true",
         help="Use rescale_betas_zero_snr for controlling image brightness",
     )
+    parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        type=str,
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -403,6 +409,8 @@ def main():
             image = np.concatenate([image, image, image], axis=2)
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
+    
+    kwargs_call["quant_mode"] = args.quant_mode
 
     # Instantiate a Stable Diffusion pipeline class
     if sdxl:

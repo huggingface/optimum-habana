@@ -281,6 +281,7 @@ huggingface-cli login
 
 Here is how to generate SD3 images with a single prompt:
 ```bash
+PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
@@ -295,23 +296,8 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-Here is how to generate SD3 images on a single prompt with FP8 precision:
-```bash
-QUANT_CONFIG=quantize/quant_config.json PT_HPU_WEIGHT_SHARING=0 python text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
-    --prompts "Sailing ship painting by Van Gogh" \
-    --num_images_per_prompt 80 \
-    --batch_size 16 \
-    --num_inference_steps 28 \
-    --image_save_dir ./stable_diffusion_3_images \
-    --scheduler default \
-    --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --use_habana \
-    --use_hpu_graphs \
-    --quant_mode quantize
-```
-
+> For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
+> by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 
 ## ControlNet
 
@@ -678,3 +664,38 @@ python image_to_video_generation.py \
 
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
+
+### Image-to-video ControlNet
+
+Here is how to generate video conditioned by depth:
+
+```
+python image_to_video_generation.py \
+    --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
+    --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
+    --control_image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_0.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_1.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_2.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_3.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_4.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_5.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_6.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_7.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_8.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_9.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_10.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_11.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_12.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_13.png?raw=true" \
+    --image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/chair.png?raw=true" \
+    --video_save_dir SVD_controlnet \
+    --save_frames_as_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --num_frames 14 \
+    --motion_bucket_id=14 \
+    --width=512 \
+    --height=512
+```
