@@ -517,7 +517,7 @@ You can load a pre-quantized 4-bit checkpoint with the argument `--quantized_inc
 Currently, only uint4 checkpoints and single-device configurations are supported.
 **Note:** In this process, you can load a checkpoint that has been quantized using INC.
 More information on enabling 4-bit inference in SynapseAI is available here:
-https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_INT4.html.
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html?highlight=inference%20using%20int4#enabling-and-running-uint4-in-pytorch-models.
 
 Below is an example of loading a llama7b model with a 4bit checkpoint quantized in INC.
 Please note that the model checkpoint name is denoted as `<local_model_path_from_inc>`.
