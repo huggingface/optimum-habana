@@ -37,7 +37,13 @@ import numpy as np
 import torch
 from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
-from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
+from accelerate.utils import (
+    DistributedDataParallelKwargs,
+    GradientAccumulationPlugin,
+    load_fsdp_optimizer,
+    save_fsdp_model,
+    save_fsdp_optimizer,
+)
 from huggingface_hub import upload_folder
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
 from transformers import Trainer
@@ -126,12 +132,6 @@ if is_peft_available():
 
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
-
-if is_accelerate_available():
-    from accelerate.utils import (
-        load_fsdp_optimizer,
-        save_fsdp_optimizer,
-    )
 
 if is_accelerate_available("0.28.0"):
     from accelerate.utils import DataLoaderConfiguration
@@ -845,9 +845,7 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
         _grad_norm: Optional[float] = None
-        _should_compute_grad_norm: bool = not (
-            is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED
-        ) and (
+        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED and (
             # Gradient clipping
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
@@ -1226,7 +1224,7 @@ class GaudiTrainer(Trainer):
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradataion.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
