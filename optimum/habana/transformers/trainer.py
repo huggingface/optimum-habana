@@ -477,16 +477,16 @@ class GaudiTrainer(Trainer):
             raise TypeError(f"train() received got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
         # This might change the seed so needs to run first.
         self._hp_search_setup(trial)
-        self._train_batch_size = self.args.train_batch_size
+        self._train_batch_size = args.train_batch_size
 
         # Model re-init
         model_reloaded = False
         if self.model_init is not None:
             # Seed must be set before instantiating the model when using model_init.
-            if self.args.full_determinism:
-                enable_full_determinism(self.args.seed)
+            if args.full_determinism:
+                enable_full_determinism(args.seed)
             else:
-                set_seed(self.args.seed)
+                set_seed(args.seed)
             self.model = self.call_model_init(trial)
             model_reloaded = True
             # Reinitializes optimizer and scheduler
