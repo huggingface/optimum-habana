@@ -662,7 +662,6 @@ class GaudiLlamaAttention(LlamaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
-
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
             if q_len == 1:

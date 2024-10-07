@@ -28,9 +28,9 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 
 logging.basicConfig(
