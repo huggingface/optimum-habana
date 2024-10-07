@@ -50,6 +50,7 @@ def setup_quantization(model, args):
 
 def finalize_quantization(model):
     from neural_compressor.torch.quantization import finalize_calibration
+
     finalize_calibration(model)
 
 
