@@ -580,8 +580,7 @@ def main():
             # save feature extractor, tokenizer and config
             feature_extractor.save_pretrained(training_args.output_dir)
             tokenizer.save_pretrained(training_args.output_dir)
-            # TODO: uncomment the line below when this is fixed in Transformers
-            # config.save_pretrained(training_args.output_dir)
+            config.save_pretrained(training_args.output_dir)
 
     processor = AutoProcessor.from_pretrained(training_args.output_dir)
 
