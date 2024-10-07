@@ -679,7 +679,10 @@ python image_to_video_generation.py \
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 <<<<<<< main
+<<<<<<< main
 =======
+=======
+>>>>>>> main
 
 ### Image-to-video ControlNet
 
@@ -715,4 +718,7 @@ python image_to_video_generation.py \
     --width=512 \
     --height=512
 ```
+<<<<<<< main
+>>>>>>> main
+=======
 >>>>>>> main
