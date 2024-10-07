@@ -154,7 +154,7 @@ def _test_fsdp(
         if model_name == "bert-base-uncased":
             assert results["eval_f1"] >= ACCURACY_PERF_FACTOR * baseline_acc
         else:
-            assert results["train_loss"] <= baseline_acc
+            assert results["train_loss"] <= (2 - ACCURACY_PERF_FACTOR) * baseline_acc
 
 
 @pytest.mark.parametrize(

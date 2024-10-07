@@ -61,6 +61,7 @@ from .models import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
     GaudiGPTNeoForCausalLM,
+    GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
     GaudiLlamaAttention,
@@ -87,6 +88,8 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPersimmonAttention,
+    GaudiPersimmonDecoderLayer,
     GaudiPersimmonForCausalLM,
     GaudiPhiAttention,
     GaudiPhiDecoderLayer,
@@ -97,6 +100,12 @@ from .models import (
     GaudiQwen2ForCausalLM,
     GaudiQwen2MLP,
     GaudiQwen2Model,
+    GaudiQwen2MoeAttention,
+    GaudiQwen2MoeDecoderLayer,
+    GaudiQwen2MoeForCausalLM,
+    GaudiQwen2MoeMLP,
+    GaudiQwen2MoeModel,
+    GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
     GaudiStarcoder2Attention,
@@ -155,9 +164,7 @@ from .models import (
     gaudi_gpt_neo_block_forward,
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
-    gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_model_forward,
-    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
@@ -170,10 +177,10 @@ from .models import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
     gaudi_owlvitclasspredictionhead_forward,
-    gaudi_persimmon_attention_forward,
-    gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
     gaudi_qwen2_rmsnorm_forward,
+    gaudi_qwen2moe_block_sparse_moe_forward,
+    gaudi_qwen2moe_rmsnorm_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SeamlessM4TAttention_forward,
@@ -189,7 +196,6 @@ from .models import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -379,13 +385,10 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoSelfAttention.forward = gaudi_gpt_neo_selfattention_forward
 
     # Optimization for gpt-neox generation on Gaudi
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention = GaudiGPTNeoXAttention
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
-    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer = GaudiGPTNeoXLayer
-    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
-    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXRotaryEmbedding._set_cos_sin_cache = (
-        gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache
-    )
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
@@ -495,12 +498,10 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
 
     # Optimization for persimmon on Gaudi
+    transformers.models.persimmon.modeling_persimmon.PersimmonAttention = GaudiPersimmonAttention
+    transformers.models.persimmon.modeling_persimmon.PersimmonDecoderLayer = GaudiPersimmonDecoderLayer
     transformers.models.persimmon.modeling_persimmon.PersimmonForCausalLM = GaudiPersimmonForCausalLM
     transformers.models.persimmon.modeling_persimmon.PersimmonModel.forward = gaudi_persimmon_model_forward
-    transformers.models.persimmon.modeling_persimmon.PersimmonAttention.forward = gaudi_persimmon_attention_forward
-    transformers.models.persimmon.modeling_persimmon.PersimmonDecoderLayer.forward = (
-        gaudi_persimmon_decoder_layer_forward
-    )
 
     # Optimization for seamless m4t on Gaudi
     transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TAttention.forward = (
@@ -555,11 +556,22 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GaudiQwen2DecoderLayer
     transformers.models.qwen2.modeling_qwen2.Qwen2RMSNorm.forward = gaudi_qwen2_rmsnorm_forward
 
+    # Optimization for qwen2Moe on Gaudi
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeMLP = GaudiQwen2MoeMLP
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeAttention = GaudiQwen2MoeAttention
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeDecoderLayer = GaudiQwen2MoeDecoderLayer
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeModel = GaudiQwen2MoeModel
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeForCausalLM = GaudiQwen2MoeForCausalLM
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeRMSNorm.forward = gaudi_qwen2moe_rmsnorm_forward
+    transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeSparseMoeBlock.forward = (
+        gaudi_qwen2moe_block_sparse_moe_forward
+    )
+
     # Optimization for stablelm on Gaudi
+    transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
     transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
     transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
-    transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
-    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
 
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
 

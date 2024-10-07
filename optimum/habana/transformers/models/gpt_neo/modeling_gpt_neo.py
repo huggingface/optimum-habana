@@ -204,7 +204,7 @@ def gaudi_gpt_neo_model_forward(
     hidden_states = inputs_embeds + position_embeds
 
     # Attention mask.
-    if self._use_flash_attention_2:
+    if self.config._attn_implementation == "flash_attention_2":
         # 2d mask is passed through the layers
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
     else:

@@ -69,6 +69,10 @@
 >         tokenizer.cls_token = tokenizer.bos_token
 638a661
 >         gaudi_config=gaudi_config,
+643c666
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 707,711d729
 < 
 < 

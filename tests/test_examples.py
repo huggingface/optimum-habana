@@ -243,9 +243,13 @@ class ExampleTestMeta(type):
             or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
             return False
+        elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
+            return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
+            return False
+        elif "llama" in model_name and "trl-sft-qwen" in task_name:
             return False
         elif "falcon" in model_name and task_name in (
             "llama-adapter",
@@ -269,6 +273,8 @@ class ExampleTestMeta(type):
             return True
         elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
             # CodeLlama is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "Qwen2-72B" in model_name and IS_GAUDI2 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -440,6 +446,8 @@ class ExampleTestMeta(type):
                 env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+            elif "Qwen2-72B" in model_name:
+                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
             elif fsdp:
                 if "llama" in model_name:
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
@@ -824,6 +832,11 @@ class MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester(
 class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
     TASK_NAME = "trl-sft"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class DeepspeedSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True):
+    TASK_NAME = "trl-sft-qwen"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
 
 
 class MultiCardSFTChatExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):

@@ -66,11 +66,20 @@
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done."
 >         )
-563a592
+555c583,584
+<             config.save_pretrained(training_args.output_dir)
+---
+>             # TODO: uncomment the line below when this is fixed in Transformers
+>             # config.save_pretrained(training_args.output_dir)
+563a593
 >         label_features_max_length=data_args.label_features_max_length,
-567c596
+567c597
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-568a598
+568a599
 >         gaudi_config=gaudi_config,
+572c603
+<         processing_class=feature_extractor,
+---
+>         tokenizer=feature_extractor,

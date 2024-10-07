@@ -3,7 +3,7 @@ name: (Gaudi2) Non-regression tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 23 * * 3,6'  # every Wednesday and Saturday at 1am CET (midnight winter time)
+    - cron: '0 23 * * *'  # every Wednesday and Saturday at 1am CET (midnight winter time)
 
 concurrency:
   group: ${{ github.workflow }}
@@ -63,7 +63,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.17.0/ubuntu22.04/habanalabs/pytorch-installer-2.3.1:latest \
-            pip install huggingface_hub && huggingface-cli login --token ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }} && /bin/bash tests/ci/slow_tests_deepspeed.sh
+            /bin/bash tests/ci/slow_tests_deepspeed.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   fsdp:
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}

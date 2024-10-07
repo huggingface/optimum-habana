@@ -114,3 +114,7 @@
 >     trainer = GaudiTrainer(
 392a402
 >         gaudi_config=gaudi_config,
+397c407
+<         processing_class=feature_extractor,
+---
+>         tokenizer=feature_extractor,
