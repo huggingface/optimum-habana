@@ -253,7 +253,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
-    elif args.quantized_inc_model_path:
+    elif args.local_quantized_inc_model_path:
         org_model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             **model_kwargs,
@@ -262,7 +262,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         from neural_compressor.torch.quantization import load
 
         model = load(
-            model_name_or_path=args.quantized_inc_model_path,
+            model_name_or_path=args.local_quantized_inc_model_path,
             format="default",
             device="hpu",
             original_model=org_model,
@@ -640,7 +640,7 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
-    if args.load_quantized_model_with_inc or args.quantized_inc_model_path:
+    if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:

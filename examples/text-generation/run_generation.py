@@ -325,7 +325,7 @@ def setup_parser(parser):
         help="Load a Huggingface quantized checkpoint using INC.",
     )
     quant_parser_group.add_argument(
-        "--quantized_inc_model_path",
+        "--local_quantized_inc_model_path",
         type=str,
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
