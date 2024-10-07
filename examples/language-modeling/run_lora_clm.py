@@ -172,6 +172,10 @@ class ModelArguments:
             )
         },
     )
+    flash_attention_fp8: bool = field(
+        default=False,
+        metadata={"help": ("Whether to enable flash attention in FP8.")},
+    )
     use_fused_rope: bool = field(
         default=True,
         metadata={
@@ -509,6 +513,7 @@ def main():
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
         "token": model_args.token,
+        "flash_attention_fp8": model_args.flash_attention_fp8,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -705,6 +710,11 @@ def main():
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
             model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+
+            if model_args.flash_attention_fp8:
+                import habana_frameworks.torch.hpu as hthpu
+
+                assert hthpu.get_device_name() == "GAUDI3", "Flash attention in FP8 is supported only on Gaudi3"
         if not model_args.use_fused_rope:
             model.generation_config.use_fused_rope = False
 
