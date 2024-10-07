@@ -297,7 +297,7 @@ python text_to_image_generation.py \
 
 Here is how to generate SD3 images with a single prompt with FP8 precision:
 ```bash
-QUANT_CONFIG=quantization/stable-diffusion-3/quant_config.json \
+QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json \
 PT_HPU_WEIGHT_SHARING=0 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
