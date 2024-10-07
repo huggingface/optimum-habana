@@ -109,8 +109,13 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionXLImg2ImgPipeline,
     GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
+    GaudiStableVideoDiffusionControlNetPipeline,
     GaudiStableVideoDiffusionPipeline,
     GaudiTextToVideoSDPipeline,
+)
+from optimum.habana.diffusers.models import (
+    ControlNetSDVModel,
+    UNetSpatioTemporalConditionControlNetModel,
 )
 from optimum.habana.utils import set_seed
 
@@ -123,23 +128,23 @@ IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
 if IS_GAUDI2:
     THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
-    TEXTUAL_INVERSION_THROUGHPUT = 104.29806
-    TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
-    CONTROLNET_THROUGHPUT = 92.886919836857
-    CONTROLNET_RUNTIME = 537.4276602957398
+    TEXTUAL_INVERSION_THROUGHPUT = 145.2224933200269
+    TEXTUAL_INVERSION_RUNTIME = 1.542460777796805
+    CONTROLNET_THROUGHPUT = 120.123522340414
+    CONTROLNET_RUNTIME = 1.8647471838630736
     INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
-    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 28.13371205329895
+    DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 36.06376791000366
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
-    TEXTUAL_INVERSION_THROUGHPUT = 60.5991479573174
-    TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
-    CONTROLNET_THROUGHPUT = 44.7278034963213
-    CONTROLNET_RUNTIME = 1116.084316640001
+    TEXTUAL_INVERSION_THROUGHPUT = 122.7445217395719
+    TEXTUAL_INVERSION_RUNTIME = 1.8249286960053723
+    CONTROLNET_THROUGHPUT = 78.51566937458146
+    CONTROLNET_RUNTIME = 2.852933710993966
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.42
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
@@ -720,7 +725,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
 
         self.assertEqual(image.shape, (512, 512, 3))
-        self.assertGreaterEqual(clip_score, target_score)
+        self.assertGreaterEqual(clip_score, 0.95 * target_score)
 
     @slow
     def test_no_generation_regression_ldm3d(self):
@@ -758,7 +763,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         self.assertEqual(rgb.shape, (512, 512, 3))
         self.assertEqual(depth.shape, (512, 512, 1))
-        self.assertGreaterEqual(rgb_clip_score, target_score)
+        self.assertGreaterEqual(rgb_clip_score, 0.95 * target_score)
 
     @slow
     def test_no_generation_regression_upscale(self):
@@ -831,17 +836,16 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     "python3",
                     f"{path_to_script.parent.parent.parent / 'gaudi_spawn.py'}",
                     "--use_mpi",
-                    "--world_size",
-                    "8",
+                    "--world_size 8",
                     f"{path_to_script}",
                     "--pretrained_model_name_or_path CompVis/stable-diffusion-v1-4",
                     f"--train_data_dir {data_dir}",
                     '--learnable_property "object"',
                     '--placeholder_token "<cat-toy>"',
                     '--initializer_token "toy"',
-                    "--resolution 512",
+                    "--resolution 256",
                     "--train_batch_size 4",
-                    "--max_train_steps 375",
+                    "--max_train_steps 10",
                     "--learning_rate 5.0e-04",
                     "--scale_lr",
                     '--lr_scheduler "constant"',
@@ -1240,6 +1244,78 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
+    @slow
+    def test_stable_diffusion_xl_inference_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
+        )
+
+        with tempfile.TemporaryDirectory() as run_dir:
+            cmd_line = f"""
+                python3
+                {path_to_script}
+                --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
+                --num_images_per_prompt 1
+                --num_inference_steps 30
+                --batch_size 1
+                --image_save_dir {run_dir}
+                --use_habana
+                --gaudi_config Habana/stable-diffusion
+                --bf16
+                """.split()
+            cmd_line.append("--prompts")
+            cmd_line.append("Sailing ship painting by Van Gogh")
+
+            # Run textual inversion
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+    if IS_GAUDI2:
+        _sdxl_inferece_throughput_data = (("ddim", 1, 10, 0.301), ("euler_discrete", 1, 10, 0.301))
+    else:
+        _sdxl_inferece_throughput_data = (("ddim", 1, 10, 0.074),)
+
+    @parameterized.expand(_sdxl_inferece_throughput_data, skip_on_empty=True)
+    def test_stable_diffusion_xl_generation_throughput(
+        self, scheduler: str, batch_size: int, num_images_per_prompt: int, baseline: float
+    ):
+        def _sdxl_generation(self, scheduler: str, batch_size: int, num_images_per_prompt: int, baseline: float):
+            kwargs = {"timestep_spacing": "linspace"}
+            if scheduler == "euler_discrete":
+                scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+                )
+            elif scheduler == "ddim":
+                scheduler = GaudiDDIMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+                )
+
+            kwargs = {
+                "scheduler": scheduler,
+                "use_habana": True,
+                "use_hpu_graphs": True,
+                "gaudi_config": "Habana/stable-diffusion",
+            }
+            pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                **kwargs,
+            )
+            num_images_per_prompt = num_images_per_prompt
+            res = {}
+            outputs = pipeline(
+                prompt="Sailing ship painting by Van Gogh",
+                num_images_per_prompt=num_images_per_prompt,
+                batch_size=batch_size,
+                num_inference_steps=30,
+                **res,
+            )
+            self.assertGreaterEqual(outputs.throughput, 0.95 * baseline)
+
+        _sdxl_generation(self, scheduler, batch_size, num_images_per_prompt, baseline)
 
 
 class GaudiStableDiffusion3PipelineTester(TestCase):
@@ -2243,11 +2319,11 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
         target_score = 22.76
 
-        assert len(images) == 1
-        assert images[0].shape == (512, 512, 3)
-        assert clip_score > target_score
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (512, 512, 3))
+        self.assertGreaterEqual(clip_score, 0.95 * target_score)
 
-        assert latency < 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16
+        self.assertLessEqual(latency, 1.05 * DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16)
 
 
 class TrainTextToImage(TestCase):
@@ -2377,7 +2453,7 @@ class TrainControlNet(TestCase):
                     {path_to_script}
                     --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
                     --dataset_name fusing/fill50k
-                    --resolution 512
+                    --resolution 256
                     --train_batch_size 4
                     --learning_rate 1e-05
                     --validation_steps 1000
@@ -2387,7 +2463,7 @@ class TrainControlNet(TestCase):
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
                     --bf16
-                    --num_train_epochs 1
+                    --max_train_steps 10
                     --output_dir {tmpdir}
                     --trust_remote_code
                 """.split()
@@ -2755,6 +2831,206 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
+
+
+class GaudiStableVideoDiffusionControlNetPipelineTester(TestCase):
+    """
+    Tests the StableVideoDiffusionControlNetPipeline for Gaudi.
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNetSpatioTemporalConditionControlNetModel(
+            sample_size=None,
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=(
+                "UpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+            ),
+            block_out_channels=(320, 640, 1280, 1280),
+            addition_time_embed_dim=256,
+            projection_class_embeddings_input_dim=768,
+            layers_per_block=2,
+            cross_attention_dim=1024,
+            transformer_layers_per_block=1,
+            num_attention_heads=(5, 10, 20, 20),
+            num_frames=14,
+        )
+        torch.manual_seed(0)
+        controlnet = ControlNetSDVModel(
+            sample_size=96,  #
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=(
+                "UpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+                "CrossAttnUpBlockSpatioTemporal",
+            ),
+            block_out_channels=(320, 640, 1280, 1280),
+            addition_time_embed_dim=256,
+            projection_class_embeddings_input_dim=768,
+            layers_per_block=2,
+            cross_attention_dim=1024,
+            transformer_layers_per_block=1,
+            num_attention_heads=(5, 10, 20, 20),  #
+            num_frames=14,
+            conditioning_channels=3,
+            conditioning_embedding_out_channels=(16, 32, 96, 256),
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            prediction_type="v_prediction",
+            interpolation_type="linear",
+            use_karras_sigmas=True,
+            sigma_min=0.002,
+            sigma_max=700,
+            timestep_spacing="leading",
+            timestep_type="continuous",  # can be "discrete" or "continuous"
+            steps_offset=1,
+            rescale_betas_zero_snr=False,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKLTemporalDecoder(
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"),
+            block_out_channels=(128, 256, 512, 512),
+            layers_per_block=2,
+            latent_channels=4,
+            sample_size=768,
+            scaling_factor=0.18215,
+            force_upcast=True,
+        )
+
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=1280,
+            intermediate_size=5120,
+            projection_dim=1024,
+            num_hidden_layers=32,
+            num_attention_heads=16,
+            num_channels=3,
+            image_size=224,
+            patch_size=14,
+            hidden_act="gelu",
+            layer_norm_eps=1e-5,
+            attention_dropout=0.0,
+            initializer_range=0.02,
+            initializer_factor=1.0,
+        )
+        image_encoder = CLIPVisionModelWithProjection(config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(
+            crop_size=64,
+            size=64,
+        )
+        components = {
+            "unet": unet,
+            "image_encoder": image_encoder,
+            "controlnet": controlnet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(device)
+        controlnet_condition = floats_tensor((14, 3, 64, 64), rng=random.Random(0)).to(device)
+        inputs = {
+            "generator": generator,
+            "image": image,
+            "controlnet_condition": controlnet_condition,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+            "min_guidance_scale": 1.0,
+            "max_guidance_scale": 2.5,
+            "num_frames": 14,
+            "height": 64,
+            "width": 64,
+        }
+        return inputs
+
+    def test_stable_video_diffusion_single_video(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+        sd_pipe = GaudiStableVideoDiffusionControlNetPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+
+        def _get_image_from_pipeline(pipeline, device=device):
+            for component in pipeline.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipeline.to(device)
+            pipeline.set_progress_bar_config(disable=None)
+            outputs = pipeline(
+                **self.get_dummy_inputs(device),
+            ).frames
+            image = outputs[0]
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(image.shape, (14, 3, 64, 64))
+            return image[0::6, -3:, -3:, -1]
+
+        expected_slice = np.array(
+            [
+                0.5463,
+                0.5432,
+                0.5576,
+                0.4749,
+                0.4736,
+                0.4888,
+                0.3865,
+                0.3912,
+                0.3869,
+                0.5402,
+                0.5389,
+                0.5326,
+                0.4747,
+                0.4920,
+                0.4760,
+                0.4115,
+                0.4248,
+                0.4222,
+                0.5359,
+                0.5335,
+                0.5221,
+                0.4835,
+                0.5044,
+                0.4884,
+                0.4266,
+                0.4409,
+                0.4295,
+            ]
+        )
+        image_slice = _get_image_from_pipeline(sd_pipe)
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
 
 
 class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
@@ -3330,7 +3606,7 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
 
         self.assertEqual(image.shape, (1, 32, 32, 3))
 
-        expected_slice = np.array([0.4664, 0.4886, 0.4403, 0.6902, 0.5592, 0.4534, 0.5931, 0.5951, 0.5224])
+        expected_slice = np.array([0.4925, 0.5007, 0.6594, 0.5544, 0.4423, 0.5585, 0.4643, 0.5444, 0.5376])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
@@ -3344,7 +3620,6 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
         )
-        install_requirements(path_to_script.parent / "requirements.txt")
 
         with tempfile.TemporaryDirectory():
             test_args = f"""

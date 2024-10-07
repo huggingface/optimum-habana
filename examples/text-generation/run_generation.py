@@ -139,8 +139,7 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--profiling_record_shapes",
-        default=False,
-        type=bool,
+        action="store_true",
         help="Record shapes when enabling profiling.",
     )
     parser.add_argument(
@@ -227,6 +226,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--show_graphs_count",
+        action="store_true",
+        help="Show statistics of HPU graph compilation.",
+    )
+    parser.add_argument(
         "--reuse_cache",
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
@@ -290,19 +294,9 @@ def setup_parser(parser):
         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
     )
     parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
-    )
-    parser.add_argument(
-        "--load_quantized_model",
-        action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
     )
     parser.add_argument(
         "--parallel_strategy",
@@ -310,6 +304,40 @@ def setup_parser(parser):
         choices=["tp", "none"],  # Add other strategies as needed
         default="none",
         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+    )
+    parser.add_argument(
+        "--input_embeds",
+        action="store_true",
+        help="Whether to enable inputs_embeds or not.",
+    )
+
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+
+    quant_parser_group = parser.add_mutually_exclusive_group()
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autogptq",
+        action="store_true",
+        help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_inc",
+        action="store_true",
+        help="Load a Huggingface quantized checkpoint using INC.",
+    )
+    quant_parser_group.add_argument(
+        "--local_quantized_inc_model_path",
+        type=str,
+        default=None,
+        help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
 
     args = parser.parse_args()
@@ -324,11 +352,26 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
     return args
+
+
+def prepare_generation_embedding(model, model_name, input_tokens):
+    batch_size = input_tokens["input_ids"].size(0)
+
+    inputs_embeds = model.get_input_embeddings()(input_tokens["input_ids"])
+
+    if inputs_embeds.size(0) != batch_size:
+        inputs_embeds = inputs_embeds.expand(batch_size, -1, -1)
+
+    attention_mask = input_tokens["attention_mask"]
+    return {"inputs_embeds": inputs_embeds, "attention_mask": attention_mask}
 
 
 def main():
@@ -435,9 +478,22 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
+
+            input_data = {}
+            if args.input_embeds:
+                inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
+                if inputs_embeds is not None:
+                    input_data.update(inputs_embeds)
+                    input_data.update(input_tokens)
+                else:
+                    args.input_embeds = False
+                    input_data.update(input_tokens)
+            else:
+                input_data.update(input_tokens)
+
             iteration_times = []
             outputs = model.generate(
-                **input_tokens,
+                **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
@@ -526,8 +582,10 @@ def main():
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
 
-        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+        stats = "Input embeds" if args.input_embeds else "Input tokens"
+        stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+        if args.show_graphs_count:
+            stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
         print()
         print("Stats:")

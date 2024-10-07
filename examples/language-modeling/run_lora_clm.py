@@ -30,7 +30,17 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AdaLoraConfig, AdaptionPromptConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
+from peft import (
+    AdaLoraConfig,
+    AdaptionPromptConfig,
+    IA3Config,
+    LNTuningConfig,
+    LoraConfig,
+    TaskType,
+    VeraConfig,
+    get_peft_model,
+    tuners,
+)
 from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
@@ -161,6 +171,10 @@ class ModelArguments:
                 " It is applicable only when use_flash_attention is True."
             )
         },
+    )
+    flash_attention_fp8: bool = field(
+        default=False,
+        metadata={"help": ("Whether to enable flash attention in FP8.")},
     )
     use_fused_rope: bool = field(
         default=True,
@@ -349,7 +363,7 @@ class FinetuneArguments:
         default="lora",
         metadata={
             "help": ("The PEFT type to use."),
-            "choices": ["lora", "ia3", "adalora", "llama-adapter"],
+            "choices": ["lora", "ia3", "adalora", "llama-adapter", "vera", "ln_tuning"],
         },
     )
     ia3_target_modules: List[str] = field(
@@ -367,6 +381,14 @@ class FinetuneArguments:
     adapter_len: int = field(
         default=10,
         metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
+    )
+    vera_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the vera method."},
+    )
+    ln_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the ln method."},
     )
 
 
@@ -491,6 +513,7 @@ def main():
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
         "token": model_args.token,
+        "flash_attention_fp8": model_args.flash_attention_fp8,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -687,6 +710,11 @@ def main():
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
             model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+
+            if model_args.flash_attention_fp8:
+                import habana_frameworks.torch.hpu as hthpu
+
+                assert hthpu.get_device_name() == "GAUDI3", "Flash attention in FP8 is supported only on Gaudi3"
         if not model_args.use_fused_rope:
             model.generation_config.use_fused_rope = False
 
@@ -701,8 +729,16 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True, add_bos_token=True):
-        add_eos_token_o = tokenizer.add_eos_token
-        add_bos_token_o = tokenizer.add_bos_token
+        if hasattr(tokenizer, "add_eos_token"):
+            add_eos_token_o = tokenizer.add_eos_token
+        else:
+            add_eos_token_o = None
+
+        if hasattr(tokenizer, "add_bos_token"):
+            add_bos_token_o = tokenizer.add_bos_token
+        else:
+            add_bos_token_o = None
+
         if not data_args.dataset_concatenation:
             tokenizer.add_eos_token = add_eos_token
             padding = "max_length"
@@ -717,8 +753,12 @@ def main():
             return_tensors=None,
         )
         # restore original value
-        tokenizer.add_eos_token = add_eos_token_o
-        tokenizer.add_bos_token = add_bos_token_o
+        if add_eos_token_o is not None:
+            tokenizer.add_eos_token = add_eos_token_o
+
+        if add_bos_token_o is not None:
+            tokenizer.add_bos_token = add_bos_token_o
+
         for i in range(len(results["input_ids"])):
             if (
                 results["input_ids"][i][-1] != tokenizer.eos_token_id
@@ -872,6 +912,15 @@ def main():
 
             tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
             tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
+        elif finetune_args.peft_type == "vera":
+            peft_config = VeraConfig(
+                target_modules=finetune_args.vera_target_modules, task_type=TaskType.CAUSAL_LM, init_weights=False
+            )
+        elif finetune_args.peft_type == "ln_tuning":
+            peft_config = LNTuningConfig(
+                target_modules=finetune_args.ln_target_modules,
+                task_type=TaskType.CAUSAL_LM,
+            )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)

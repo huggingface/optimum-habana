@@ -240,13 +240,25 @@ class ExampleTestMeta(type):
             or "prompt_tuning" in example_name
             or "peft_poly" in example_name
             or example_name == "run_sequence_classification"
+            or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
+            return False
+        elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
             return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
-        elif "falcon" in model_name and task_name in ("llama-adapter", "databricks/databricks-dolly-15k"):
+        elif "llama" in model_name and "trl-sft-qwen" in task_name:
+            return False
+        elif "falcon" in model_name and task_name in (
+            "llama-adapter",
+            "databricks/databricks-dolly-15k",
+            "vera",
+            "ia3",
+            "adalora",
+            "ln_tuning",
+        ):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -261,6 +273,8 @@ class ExampleTestMeta(type):
             return True
         elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
             # CodeLlama is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "Qwen2-72B" in model_name and IS_GAUDI2 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -432,6 +446,8 @@ class ExampleTestMeta(type):
                 env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+            elif "Qwen2-72B" in model_name:
+                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
             elif fsdp:
                 if "llama" in model_name:
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
@@ -818,6 +834,11 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
     DATASET_NAME = "lvwerra/stack-exchange-paired"
 
 
+class DeepspeedSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True):
+    TASK_NAME = "trl-sft-qwen"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
+
+
 class MultiCardSFTChatExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
     TASK_NAME = "trl-sft-chat"
     DATASET_NAME = "philschmid/dolly-15k-oai-style"
@@ -898,4 +919,32 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True, fp8=True
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingVeraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "vera"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingLnExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ln_tuning"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingIA3ExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "ia3"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingAdaloraExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "adalora"
     DATASET_NAME = "tatsu-lab/alpaca"

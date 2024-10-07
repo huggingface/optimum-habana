@@ -135,6 +135,10 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
+    if args.global_rank == 0 and not args.torch_compile and args.show_graphs_count:
+        os.environ.setdefault("GRAPH_VISUALIZATION", "true")
+        shutil.rmtree(".graph_dumps", ignore_errors=True)
+
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
@@ -173,51 +177,42 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode"]:
+    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom"]:
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
+    elif model.config.model_type in ["gpt_neox"]:
+        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
     else:
         model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
 
 
 def setup_quantization(model, args):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import FP8Config, convert, prepare
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
+    try:
+        from neural_compressor.torch.quantization import FP8Config, convert, prepare
+    except ImportError:
+        raise ImportError(
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
+        )
 
-        config = FP8Config.from_json_file(args.quant_config)
-        if config.measure:
-            model = prepare(model, config)
-        elif config.quantize:
-            model = convert(model, config)
-    else:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
+    config = FP8Config.from_json_file(args.quant_config)
+    if config.measure:
+        model = prepare(model, config)
+    if config.quantize:
+        model = convert(model, config)
 
     return model
 
 
 def finalize_quantization(model):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import finalize_calibration
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
-
-        finalize_calibration(model)
-    else:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+    try:
+        from neural_compressor.torch.quantization import finalize_calibration
+    except ImportError:
+        raise ImportError(
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
+        )
+    finalize_calibration(model)
 
 
 def setup_model(args, model_dtype, model_kwargs, logger):
@@ -242,10 +237,32 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
-    elif args.load_quantized_model:
+    elif args.load_quantized_model_with_autogptq:
+        from transformers import GPTQConfig
+
+        quantization_config = GPTQConfig(bits=4, use_exllama=False)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
+    elif args.load_quantized_model_with_inc:
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
+    elif args.local_quantized_inc_model_path:
+        org_model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            **model_kwargs,
+        )
+
+        from neural_compressor.torch.quantization import load
+
+        model = load(
+            model_name_or_path=args.local_quantized_inc_model_path,
+            format="default",
+            device="hpu",
+            original_model=org_model,
+            **model_kwargs,
+        )
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -415,7 +432,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2", "starcoder2", "gemma"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
@@ -619,8 +636,7 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
-
-    if args.load_quantized_model:
+    if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:

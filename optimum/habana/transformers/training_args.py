@@ -97,6 +97,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        use_compiled_autograd (`bool`, *optional*, defaults to `False`):
+            Whether to use compiled autograd for training. Currently only for summarization models.
+        compile_dynamic (`bool|None`, *optional*, defaults to `None`):
+            Set value of 'dynamic' parameter for torch.compile.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -154,6 +158,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "Whether to use HPU graphs for performing training. It will speed up training but may not be compatible with some operations."
         },
+    )
+
+    use_compiled_autograd: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use compiled autograd for training. Currently only for summarization models.")},
+    )
+
+    compile_dynamic: Optional[bool | None] = field(
+        default=None,
+        metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -581,8 +595,8 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
-        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0 or 0 < self.warmup_steps <= 1:
-            raise ValueError("warmup_steps must be either 0 or > 1")
+        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0:
+            raise ValueError("warmup_steps must be of type int and must be 0 or a positive integer.")
 
         # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563
         # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
@@ -654,7 +668,7 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
         # accelerate integration for FSDP
-        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
+        if len(self.fsdp) > 0:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,
