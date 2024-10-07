@@ -458,8 +458,12 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         if training:
-            rope_q = FusedRoPE.apply(q.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            rope_k = FusedRoPE.apply(k.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+            rope_q = FusedRoPE.apply(
+                q.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
+            )
+            rope_k = FusedRoPE.apply(
+                k.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
+            )
         else:
             if q.dtype == torch.bfloat16:
                 rope_q = FusedRoPE.apply(
