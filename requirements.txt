@@ -104,7 +104,7 @@ torchmetrics==1.4.0.post0
 torchsde==0.2.6
 tqdm==4.66.4
 trampoline==0.1.2
-transformers==4.45.1
+transformers==4.45.2
 typing_extensions==4.12.2
 tzdata==2024.1
 urllib3==1.26.19
