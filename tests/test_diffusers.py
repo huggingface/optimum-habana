@@ -1538,6 +1538,45 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_stable_diffusion_3_batch_sizes(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig()
+
+        sd_pipe = GaudiStableDiffusion3Pipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test batch_size > 1 where batch_size is a divider of the total number of generated images
+        batch_size = 3
+        num_images_per_prompt = batch_size**2
+        images = sd_pipe(
+            prompt,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (64, 64, 3))
+
+        # Test batch_size when it is not a divider of the total number of generated images for a single prompt
+        num_images_per_prompt = 7
+        images = sd_pipe(
+            prompt,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (64, 64, 3))
+
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
     """
