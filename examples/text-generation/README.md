@@ -513,7 +513,7 @@ python run_lm_eval.py \
 
 ### Loading 4 Bit Checkpoints from Neural Compressor (INC)
 
-You can load a pre-quantized 4-bit checkpoint with the argument `--quantized_inc_model_path`, supplied with the original model with the argument `--model_name_or_path`.
+You can load a pre-quantized 4-bit checkpoint with the argument `--local_quantized_inc_model_path`, supplied with the original model with the argument `--model_name_or_path`.
 Currently, only uint4 checkpoints and single-device configurations are supported.
 **Note:** In this process, you can load a checkpoint that has been quantized using INC.
 More information on enabling 4-bit inference in SynapseAI is available here:
@@ -536,7 +536,7 @@ python run_lm_eval.py \
 --attn_softmax_bf16 \
 --bucket_size=128 \
 --bucket_internal \
---quantized_inc_model_path <local_model_path_from_inc> \
+--local_quantized_inc_model_path <local_model_path_from_inc> \
 ```
 
 ### Using Habana Flash Attention
