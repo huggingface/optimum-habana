@@ -128,7 +128,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
@@ -151,9 +150,17 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         )
 
         self.to(self._device)
-    
+
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds):
+    def _split_inputs_into_batches(
+        cls,
+        batch_size,
+        latents,
+        prompt_embeds,
+        negative_prompt_embeds,
+        pooled_prompt_embeds,
+        negative_pooled_prompt_embeds,
+    ):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
@@ -198,9 +205,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     for _ in range(num_dummy_samples)
                 )
                 negative_pooled_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-           
-           
-            
+
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)
         # if self.do_classifier_free_guidance:
@@ -216,10 +221,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
         prompt_embeds_batches = torch.stack(prompt_embeds_batches)
 
-        
         if pooled_prompt_embeds is not None:
             if negative_pooled_prompt_embeds is not None:
-
                 # For classifier free guidance, we need to do two forward passes.
                 # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing two forward passes
@@ -234,9 +237,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             pooled_prompt_embeds_batches = None
 
         return latents_batches, prompt_embeds_batches, pooled_prompt_embeds_batches, num_dummy_samples
-
-
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -378,12 +378,14 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
-        quant_mode=kwargs["quant_mode"]
+        quant_mode = kwargs["quant_mode"]
         if quant_mode == "measure" or quant_mode == "quantize":
             import os
-            quant_config_path = os.getenv('QUANT_CONFIG')
+
+            quant_config_path = os.getenv("QUANT_CONFIG")
             htcore.hpu_set_env()
             from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
             config = FP8Config.from_json_file(quant_config_path)
             if config.measure:
                 self.transformer = prepare(self.transformer, config)
@@ -479,8 +481,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
-            num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
-        )
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
 
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
@@ -489,15 +491,17 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             )
 
             hb_profiler.start()
-            
+
             # 6. Split Input data to batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, pooled_prompt_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
-                batch_size,
-                latents,
-                prompt_embeds,
-                negative_prompt_embeds,
-                pooled_prompt_embeds,
-                negative_pooled_prompt_embeds
+            latents_batches, text_embeddings_batches, pooled_prompt_embeddings_batches, num_dummy_samples = (
+                self._split_inputs_into_batches(
+                    batch_size,
+                    latents,
+                    prompt_embeds,
+                    negative_prompt_embeds,
+                    pooled_prompt_embeds,
+                    negative_pooled_prompt_embeds,
+                )
             )
 
             outputs = {
@@ -509,7 +513,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             # 7. Denoising loop
             for j in self.progress_bar(range(num_batches)):
-
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 text_embeddings_batch = text_embeddings_batches[0]
@@ -521,14 +524,14 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     # Reset scheduler step index for next batch
                     self.scheduler.timesteps = timesteps
                     self.scheduler._init_step_index(timesteps[0])
-                
+
                 # The throughput is calculated from the 4th iteration
                 # because compilation occurs in the first 2-3 iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
                 if use_warmup_inference_steps:
                     t0_inf = time.time()
-                
+
                 for i in range(len(timesteps)):
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
@@ -539,9 +542,11 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         t1 += t1_inf - t0_inf
                     if self.interrupt:
                         continue
-                    
+
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep_batch = timestep.expand(latent_model_input.shape[0])
 
@@ -582,13 +587,15 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                         _pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", None)
                         _negative_pooled_prompt_embeds = callback_outputs.pop("negative_pooled_prompt_embeds", None)
                         if _pooled_prompt_embeds is not None and _negative_pooled_prompt_embeds is not None:
-                            pooled_prompt_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _pooled_prompt_embeds])
-                    
+                            pooled_prompt_embeddings_batch = torch.cat(
+                                [_negative_pooled_prompt_embeds, _pooled_prompt_embeds]
+                            )
+
                     hb_profiler.step()
 
                     if not self.use_hpu_graphs:
                         htcore.mark_step(sync=True)
-                    
+
                 if output_type == "latent":
                     image = latents_batch
 
@@ -596,7 +603,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     latents_batch = (latents_batch / self.vae.config.scaling_factor) + self.vae.config.shift_factor
                     image = self.vae.decode(latents_batch, return_dict=False)[0]
                     image = self.image_processor.postprocess(image, output_type=output_type)
-                
+
                 outputs["images"].append(image)
 
             # End of Denoising loop
@@ -604,9 +611,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             hb_profiler.stop()
 
             if use_warmup_inference_steps:
-                t1 = warmup_inference_steps_time_adjustment(
-                    t1, t1_inf, num_inference_steps, throughput_warmup_steps
-                )
+                t1 = warmup_inference_steps_time_adjustment(t1, t1_inf, num_inference_steps, throughput_warmup_steps)
             ht.hpu.synchronize()
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
@@ -622,6 +627,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             if quant_mode == "measure":
                 from neural_compressor.torch.quantization import finalize_calibration
+
                 finalize_calibration(self.transformer)
 
             # 8 Output Images
@@ -660,7 +666,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
 
-
     @torch.no_grad()
     def transformer_hpu(
         self,
@@ -668,7 +673,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         timestep,
         text_embeddings_batch,
         pooled_prompt_embeddings_batch,
-        joint_attention_kwargs
+        joint_attention_kwargs,
     ):
         if self.use_hpu_graphs:
             return self.capture_replay(
@@ -702,7 +707,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             timestep,
             encoder_hidden_states,
             pooled_prompt_embeddings_batch,
-            joint_attention_kwargs
+            joint_attention_kwargs,
         ]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)

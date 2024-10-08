@@ -409,7 +409,7 @@ def main():
             image = np.concatenate([image, image, image], axis=2)
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
-    
+
     kwargs_call["quant_mode"] = args.quant_mode
 
     # Instantiate a Stable Diffusion pipeline class
