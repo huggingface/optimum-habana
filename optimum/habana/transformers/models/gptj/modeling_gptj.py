@@ -582,51 +582,55 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         token_idx=None,
         **kwargs,
     ):
-        reuse_cache = kwargs.get("reuse_cache")
-        # Omit tokens covered by past_key_values
-        if past_key_values:
-            if token_idx is not None:
-                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
-                input_ids = torch.index_select(input_ids, 1, idx)
-            else:
-                past_length = past_key_values[0][0].shape[2]
+        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
+        # Exception 1: when passing input_embeds, input_ids may be missing entries
+        # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
 
-                # Some generation methods already pass only the last input ID
-                if input_ids.shape[1] > past_length:
-                    remove_prefix_length = past_length
-                else:
-                    # Default to old behavior: keep only final ID
-                    remove_prefix_length = input_ids.shape[1] - 1
-
-                input_ids = input_ids[:, remove_prefix_length:]
+        if past_key_values is not None:
+            if inputs_embeds is not None:  # Exception 1
+                input_ids = input_ids[:, -cache_position.shape[0] :]
+            elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                input_ids = input_ids[:, cache_position]
 
             if token_type_ids is not None:
-                if token_idx is not None:
-                    token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
-                else:
-                    token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
-        elif reuse_cache and token_idx is not None:
-            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
-            input_ids = input_ids[:, :token_idx]
-            attention_mask = attention_mask[:, :token_idx]
+                token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
-                else:
-                    position_ids = position_ids[:, -input_ids.shape[1] :]
+                position_ids = position_ids[:, -input_ids.shape[1] :]
                 # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
                 position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
-        if inputs_embeds is not None and past_key_values is None:
+        if inputs_embeds is not None and cache_position[0] == 0
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
+        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
+            if inputs_embeds is not None:
+                batch_size, sequence_length = inputs_embeds.shape
+                device = inputs_embeds.device
+            else:
+                batch_size, sequence_length = input_ids.shape
+                device = input_ids.device
+
+            dtype = self.lm_head.weight.dtype
+            min_dtype = torch.finfo(dtype).min
+
+            attention_mask = _prepare_4d_causal_attention_mask_with_cache_position(
+                attention_mask,
+                sequence_length=sequence_length,
+                target_length=past_key_values.get_max_length(),
+                dtype=dtype,
+                device=device,
+                min_dtype=min_dtype,
+                cache_position=cache_position,
+                batch_size=batch_size,
+            )
 
         model_inputs.update(
             {
@@ -634,11 +638,11 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                 "cache_position": cache_position,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
-                "attention_mask": attention_mask,
                 "token_type_ids": token_type_ids,
-                "token_idx": token_idx,
-                "reuse_cache": reuse_cache,
-                "cache_idx": kwargs.get("cache_idx"),
+                "attention_mask": attention_mask,
+                # "token_idx": token_idx,
+                # "reuse_cache": reuse_cache,
+                # "cache_idx": kwargs.get("cache_idx"),
             }
         )
 
@@ -659,9 +663,9 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        token_idx: Optional[torch.Tensor] = None,
-        reuse_cache: Optional[bool] = False,
-        cache_idx: Optional[int] = None,
+        # token_idx: Optional[torch.Tensor] = None,
+        # reuse_cache: Optional[bool] = False,
+        # cache_idx: Optional[int] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -684,9 +688,9 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
-            token_idx=token_idx,
-            reuse_cache=reuse_cache,
-            cache_idx=cache_idx,
+            # token_idx=token_idx,
+            # reuse_cache=reuse_cache,
+            # cache_idx=cache_idx,
         )
         hidden_states = transformer_outputs[0]
 
