@@ -49,6 +49,7 @@ from ...modeling_attn_mask_utils import (
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
 
+
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
@@ -260,6 +261,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
