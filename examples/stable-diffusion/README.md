@@ -296,6 +296,9 @@ python text_to_image_generation.py \
 ```
 
 Here is how to generate SD3 images with a single prompt with FP8 precision:
+
+Note : Run the below command in Measure mode to generate stats for quantization, which is done by setting --quant_mode to 'measure' and use 'measure_config.json' file instead of 'quantize_config.json' for QUANT_CONFIG.
+
 ```bash
 QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json \
 PT_HPU_WEIGHT_SHARING=0 \
