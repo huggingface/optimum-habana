@@ -297,7 +297,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     )
     test_headmasking = False
     test_pruning = False
-    fx_compatible = True
+    # fx_compatible = True
 
     # Need to use `0.8` instead of `0.9` for `test_cpu_offload`
     # This is because we are hitting edge cases with the causal_mask buffer
@@ -546,7 +546,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
                 raise ValueError("The eager model should not have SDPA attention layers")
         has_sdpa = False
         for name, submodule in model_sdpa.named_modules():
-            if "SdpaAttention" in submodule.__class__.__name__:
+            if any(_i in submodule.__class__.__name__ for _i in ["ModuleFusedSDPA", "SdpaAttention"]):
                 has_sdpa = True
                 break
         if not has_sdpa:

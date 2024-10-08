@@ -41,10 +41,10 @@
                 "multi_card": {
                     "learning_rate": 8e-5,
                     "train_batch_size": 32,
-                    "eval_wer": 1.3541597337770384,
-                    "train_runtime": 315.288,
-                    "train_samples_per_second": 276.962,
-                    "eval_samples_per_second": 20.138,
+                    "eval_wer": 0.3806988352745424,
+                    "train_runtime": 312.5894,
+                    "train_samples_per_second": 280.111,
+                    "eval_samples_per_second": 19.073,
                     "extra_arguments": [
                         "--dataset_config_name hi",
                         "--language hindi",

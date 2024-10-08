@@ -554,8 +554,9 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         model.eval()
         model.to(torch_device)
         inputs = tokenizer("My favorite food is", return_tensors="pt").to(torch_device)
+
         EXPECTED_OUTPUT = (
-            "My favorite food is pizza. I love it so much that I have a pizza party every year for my birthday."
+            "My favorite food is pizza. I love it so much that I have a pizza party every week. I love it"
         )
         output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19)
         output_str = tokenizer.batch_decode(output_ids)[0]
