@@ -13,7 +13,7 @@ if is_accelerate_available():
 def gaudi_DetrConvModel_forward(self, pixel_values, pixel_mask):
     """
     Copied from modeling_detr: https://github.com/huggingface/transformers/blob/main/src/transformers/models/detr/modeling_detr.py#L398
-    The modications are:
+    The modifications are:
         - Use CPU to calculate the position_embeddings and transfer back to HPU
     """
 
@@ -50,7 +50,7 @@ def gaudi_DetrHungarianMatcher_forward(self, outputs, targets):
     """
     Copied from https://github.com/huggingface/transformers/tree/v4.40.2
     https://github.com/huggingface/transformers/blob/4fdf58afb72b0754da30037fc800b6044e7d9c99/src/transformers/models/detr/modeling_detr.py#L2287
-    The modications are:
+    The modifications are:
         - Convert cost_matrix on HPU to float32 before moving it to CPU
     """
     batch_size, num_queries = outputs["logits"].shape[:2]
@@ -65,7 +65,7 @@ def gaudi_DetrHungarianMatcher_forward(self, outputs, targets):
 
     # Compute the classification cost. Contrary to the loss, we don't use the NLL,
     # but approximate it in 1 - proba[target class].
-    # The 1 is a constant that doesn't change the matching, it can be ommitted.
+    # The 1 is a constant that doesn't change the matching, it can be omitted.
     class_cost = -out_prob[:, target_ids]
 
     # HPU Eager mode requires tensors to be on the same device
@@ -91,7 +91,7 @@ def gaudi_DetrLoss_loss_labels(self, outputs, targets, indices, num_boxes):
     """
     Copied from https://github.com/huggingface/transformers/tree/v4.40.2
     https://github.com/huggingface/transformers/blob/4fdf58afb72b0754da30037fc800b6044e7d9c99/src/transformers/models/detr/modeling_detr.py#L2074
-    The modications are:
+    The modifications are:
         - Move cross entropy computation to CPU
     """
     if "logits" not in outputs:
