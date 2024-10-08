@@ -512,7 +512,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         model = SwinModel.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
 
         image_processor = self.default_image_processor
-        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        image = Image.open("./tests/resource/img/000000039769.png")
         inputs = image_processor(images=image, size={"height": 481, "width": 481}, return_tensors="pt")
         pixel_values = inputs.pixel_values.to(torch_device)
 
