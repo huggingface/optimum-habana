@@ -94,6 +94,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "phi",
     "mixtral",
     "gemma",
+    "gemma2",
     "blip_text_model",
     "seamless_m4t",
     "starcoder2",
@@ -935,6 +936,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.GenerateEncoderDecoderOutput`],
                     - [`transformers.generation.GenerateBeamEncoderDecoderOutput`]
         """
+
         if iteration_times is not None:
             hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
             hb_gen_time.start()
@@ -1051,14 +1053,18 @@ class GaudiGenerationMixin(GenerationMixin):
                     "starcoder2",
                     "qwen2_moe",
                     "gemma",
+                    "gemma2",
                 ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma and starcoder2 at the moment"
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2 and starcoder2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
                 ), "please set bucket_internal along with reuse_cache and bucket_size"
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
+
+        if self.config.model_type == "gemma2":
+            generation_config.cache_implementation = None
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -1155,6 +1161,7 @@ class GaudiGenerationMixin(GenerationMixin):
         input_ids_length = input_ids.shape[1]
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         has_default_min_length = kwargs.get("min_length") is None and generation_config.min_length is not None
+
         generation_config = self._prepare_generated_length(
             generation_config=generation_config,
             has_default_max_length=has_default_max_length,
@@ -1239,6 +1246,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gptj",
                 "starcoder2",
                 "gemma",
+                "gemma2",
                 "qwen2_moe",
             ]:
                 if self.config.max_position_embeddings < calculated_max_length:
