@@ -75,7 +75,7 @@ def gaudi_EosTokenCriteria_call(
     if kwargs["needs_tensor_output"]:
         return is_done.byte()
     else:
-        return torch.all(is_done).item()
+        return is_done # torch.all(is_done).item()
 
 
 def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
