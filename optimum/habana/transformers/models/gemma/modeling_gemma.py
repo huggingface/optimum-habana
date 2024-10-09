@@ -601,12 +601,13 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-            attention_mask,
-            input_ids.shape if input_ids is not None else (batch_size, seq_length),
-            inputs_embeds,
-            past_seen_tokens,
-        )
+        if attention_mask.dim() != 4:
+            attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+                attention_mask,
+                input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                inputs_embeds,
+                past_seen_tokens,
+            )
         # embed positions
         hidden_states = inputs_embeds
 
