@@ -7,8 +7,8 @@
                 "multi_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 2,
-                    "train_runtime": 240,
-                    "train_samples_per_second": 14,
+                    "train_runtime": 286,
+                    "train_samples_per_second": 11.8,
                     "eval_accuracy": 0.6,
                     "extra_arguments": [
                         "--bf16",

@@ -35,11 +35,12 @@ from transformers.models.phi.modeling_phi import (
     PhiModel,
     apply_rotary_pos_emb,
 )
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)
@@ -136,6 +137,7 @@ class GaudiPhiAttention(PhiAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -202,15 +204,15 @@ class GaudiPhiAttention(PhiAttention):
 
         # Partial rotary embedding
         query_rot, query_pass = (
-            query_states[..., : self.rotary_emb.dim],
-            query_states[..., self.rotary_emb.dim :],
+            query_states[..., : self.rotary_ndims],
+            query_states[..., self.rotary_ndims :],
         )
         key_rot, key_pass = (
-            key_states[..., : self.rotary_emb.dim],
-            key_states[..., self.rotary_emb.dim :],
+            key_states[..., : self.rotary_ndims],
+            key_states[..., self.rotary_ndims :],
         )
         # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
-        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
+        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos[position_ids], sin[position_ids])
 
         # [batch_size, seq_length, num_heads, head_dim]
         query_states = torch.cat((query_rot, query_pass), dim=-1)
@@ -532,6 +534,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
@@ -575,11 +578,18 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                 hidden_states = hidden_states.index_select(1, token_idx - 1)
             else:
                 hidden_states = hidden_states[:, -1, :]
-        logits = self.lm_head(hidden_states)
-        logits = logits.float()
+        if labels is None and not is_torchdynamo_compiling():
+            logger.warning_once(
+                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+            )
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        # TODO: remove the float() operation in v4.46
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
@@ -612,6 +622,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        num_logits_to_keep=None,
         token_idx=None,
         **kwargs,
     ):
@@ -627,7 +638,8 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
@@ -649,12 +661,19 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
+            model_inputs = {
+                "input_ids": input_ids.clone(memory_format=torch.contiguous_format)
+            }  # `contiguous()` needed for compilation use cases
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
         model_inputs.update(
             {
@@ -669,4 +688,5 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                 "cache_idx": kwargs.get("cache_idx"),
             }
         )
+
         return model_inputs

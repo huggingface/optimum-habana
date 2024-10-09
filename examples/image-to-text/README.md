@@ -40,7 +40,6 @@ python3 run_pipeline.py \
     --model_name_or_path Salesforce/blip-image-captioning-large \
     --image_path "https://ankur3107.github.io/assets/images/image-captioning-example.png" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -49,7 +48,6 @@ To run Llava-1.5-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -58,7 +56,6 @@ To run Llava-1.5-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-13b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -67,7 +64,6 @@ To run Llava-v1.6-mistral-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -76,7 +72,6 @@ To run Llava-v1.6-vicuna-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -86,7 +81,6 @@ To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-34b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -96,7 +90,6 @@ To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -106,7 +99,6 @@ To run idefics2 inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -122,7 +114,6 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -132,7 +123,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -143,7 +133,6 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -153,7 +142,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -163,7 +151,6 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -173,7 +160,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16
 ```
 
@@ -187,7 +173,6 @@ python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
@@ -200,7 +185,6 @@ python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
@@ -215,7 +199,6 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
@@ -227,7 +210,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --use_kv_cache \
     --bf16 \
     --use_flash_attention \
     --flash_attention_recompute
