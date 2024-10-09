@@ -19,6 +19,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
+            ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
         ],
         "fp8": [
             ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
