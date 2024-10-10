@@ -30,7 +30,7 @@ google-auth==2.32.0
 google-auth-oauthlib==0.4.6
 greenlet==3.1.1
 grpcio==1.65.2
-huggingface-hub==0.25.1
+huggingface-hub==0.25.2
 humanfriendly==10.0
 identify==2.6.0
 idna==3.7
@@ -50,7 +50,7 @@ ninja==1.11.1.1
 nodeenv==1.9.1
 numpy==1.23.5
 oauthlib==3.2.2
-optimum==1.17.1
+optimum==1.23.0
 optuna==4.0.0
 packaging==24.1
 pandas==2.0.1
@@ -98,7 +98,7 @@ tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
 threadpoolctl==3.5.0
 timm==1.0.9
-tokenizers==0.20.0
+tokenizers==0.20.1
 tomli==2.0.2
 torchmetrics==1.4.0.post0
 torchsde==0.2.6
