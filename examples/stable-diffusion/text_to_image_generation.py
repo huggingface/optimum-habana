@@ -322,10 +322,6 @@ def main():
         )
     elif args.scheduler == "ddim":
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
-    elif args.scheduler == "flow_match_euler_discrete":
-        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
-            args.model_name_or_path, subfolder="scheduler", **kwargs
-        )
     else:
         scheduler = None
 
