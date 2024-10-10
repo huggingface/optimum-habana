@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
+from diffusers.models.attention_processor import Attention
+import torch.nn.functional as F
 import math
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -50,6 +52,7 @@ class GaudiFluxPipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+    throughput: float
 
 
 EXAMPLE_DOC_STRING = """
@@ -72,6 +75,187 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("flux.png")
         ```
 """
+
+# GaudiFluxSingleAttnProcessor2_0 and GaudiFluxAttnProcessor2_0 are based on FluxSingleAttnProcessor2_0 and FluxAttnProcessor2_0
+# from //github.com/huggingface/diffusers/blob/v0.30.3/src/diffusers/models/attention_processor.py and have been
+# modified to support FusedSDPA
+
+
+def apply_rope(xq, xk, freqs_cis):
+    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
+    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
+    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
+    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]
+    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)
+
+
+class GaudiFluxSingleAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
+        query = attn.to_q(hidden_states)
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Apply RoPE if needed
+        if image_rotary_emb is not None:
+            # YiYi to-do: update uising apply_rotary_emb
+            # from ..embeddings import apply_rotary_emb
+            # query = apply_rotary_emb(query, image_rotary_emb)
+            # key = apply_rotary_emb(key, image_rotary_emb)
+            query, key = apply_rope(query, key, image_rotary_emb)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        from habana_frameworks.torch.hpex.kernels import FusedSDPA
+        import habana_frameworks.torch.hpu as ht
+        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, 'fast', None)
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        return hidden_states
+
+
+class GaudiFluxAttnProcessor2_0:
+    """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("FluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+        input_ndim = hidden_states.ndim
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+        context_input_ndim = encoder_hidden_states.ndim
+        if context_input_ndim == 4:
+            batch_size, channel, height, width = encoder_hidden_states.shape
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size = encoder_hidden_states.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # `context` projections.
+        encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+        encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+        encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+        encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+            batch_size, -1, attn.heads, head_dim
+        ).transpose(1, 2)
+
+        if attn.norm_added_q is not None:
+            encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+        if attn.norm_added_k is not None:
+            encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+        # attention
+        query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
+        key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+        value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+        if image_rotary_emb is not None:
+            # YiYi to-do: update uising apply_rotary_emb
+            # from ..embeddings import apply_rotary_emb
+            # query = apply_rotary_emb(query, image_rotary_emb)
+            # key = apply_rotary_emb(key, image_rotary_emb)
+            query, key = apply_rope(query, key, image_rotary_emb)
+
+        from habana_frameworks.torch.hpex.kernels import FusedSDPA
+        import habana_frameworks.torch.hpu as ht
+        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, 'fast', None)
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        encoder_hidden_states, hidden_states = (
+            hidden_states[:, : encoder_hidden_states.shape[1]],
+            hidden_states[:, encoder_hidden_states.shape[1]:],
+        )
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states = encoder_hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        return hidden_states, encoder_hidden_states
 
 
 class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
@@ -138,12 +322,96 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             tokenizer_2=tokenizer_2,
             transformer=transformer,
         )
+
+        for block in self.transformer.single_transformer_blocks:
+            block.attn.processor = GaudiFluxSingleAttnProcessor2_0()
+        for block in self.transformer.transformer_blocks:
+            block.attn.processor = GaudiFluxAttnProcessor2_0()
+
         self.to(self._device)
-        if use_habana:
-            import habana_frameworks.torch as ht
-            self.ht = ht
         if use_hpu_graphs:
-            transformer = self.ht.hpu.wrap_in_hpu_graph(transformer)
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+            transformer = wrap_in_hpu_graph(transformer)
+
+    @classmethod
+    def _split_inputs_into_batches(
+        cls, batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance
+    ):
+        # Use torch.split to generate num_batches batches of size batch_size
+        latents_batches = list(torch.split(latents, batch_size))
+        prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
+        if pooled_prompt_embeds is not None:
+            pooled_prompt_embeds_batches = list(torch.split(pooled_prompt_embeds, batch_size))
+        if text_ids is not None:
+            text_ids_batches = list(torch.split(text_ids, batch_size))
+        if latent_image_ids is not None:
+            latent_image_ids_batches = list(torch.split(latent_image_ids, batch_size))
+        if guidance is not None:
+            guidance_batches = list(torch.split(guidance, batch_size))
+
+        # If the last batch has less samples than batch_size, pad it with dummy samples
+        num_dummy_samples = 0
+        if latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+
+            # Pad latents_batches
+            sequence_to_stack = (latents_batches[-1],) + tuple(
+                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            latents_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad prompt_embeds_batches
+            sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
+                torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad pooled_prompt_embeds if necessary
+            if pooled_prompt_embeds is not None:
+                sequence_to_stack = (pooled_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(pooled_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                pooled_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad text_ids_batches if necessary
+            if text_ids is not None:
+                sequence_to_stack = (text_ids_batches[-1],) + tuple(
+                    torch.zeros_like(text_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                text_ids_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad latent_image_ids if necessary
+            if latent_image_ids is not None:
+                sequence_to_stack = (latent_image_ids_batches[-1],) + tuple(
+                    torch.zeros_like(latent_image_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                latent_image_ids_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad guidance if necessary
+            if guidance is not None:
+                sequence_to_stack = (guidance_batches[-1],) + tuple(
+                    torch.zeros_like(guidance_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                guidance_batches[-1] = torch.vstack(sequence_to_stack)
+
+        # Stack batches in the same tensor
+        latents_batches = torch.stack(latents_batches)
+        prompt_embeds_batches = torch.stack(prompt_embeds_batches)
+        pooled_prompt_embeds_batches = torch.stack(pooled_prompt_embeds_batches)
+        text_ids_batches = torch.stack(text_ids_batches)
+        latent_image_ids_batches = torch.stack(latent_image_ids_batches)
+        guidance_batches = torch.stack(guidance_batches)
+
+        return (
+            latents_batches,
+            prompt_embeds_batches,
+            pooled_prompt_embeds_batches,
+            text_ids_batches,
+            latent_image_ids_batches,
+            guidance_batches,
+            num_dummy_samples,
+        )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -156,6 +424,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
         guidance_scale: float = 3.5,
+        batch_size: int = 1,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -169,7 +438,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         max_sequence_length: int = 512,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        **kwargs
+        **kwargs,
     ):
         r"""
         Adapted from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/flux/pipeline_flux.py#L531
@@ -245,6 +514,31 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
         """
+        import habana_frameworks.torch as ht
+        import habana_frameworks.torch.core as htcore
+
+        quant_mode = kwargs["quant_mode"]
+
+        if quant_mode == "quantize-mixed":
+            import copy
+
+            transformer_bf16 = copy.deepcopy(self.transformer).to(self._execution_device)
+
+        if quant_mode == "measure" or quant_mode.startswith("quantize"):
+            import os
+
+            quant_config_path = os.getenv("QUANT_CONFIG")
+
+            htcore.hpu_set_env()
+
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+            config = FP8Config.from_json_file(quant_config_path)
+            if config.measure:
+                self.transformer = prepare(self.transformer, config)
+            elif config.quantize:
+                self.transformer = convert(self.transformer, config)
+            htcore.hpu_initialize(self.transformer, mark_only_scales_as_const=True)
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -267,14 +561,16 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
+            num_prompts = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            num_prompts = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            num_prompts = prompt_embeds.shape[0]
+        num_batches = math.ceil((num_images_per_prompt * num_prompts) / batch_size)
 
         device = self._execution_device
 
+        # 3. Run text encoder
         (
             prompt_embeds,
             pooled_prompt_embeds,
@@ -292,7 +588,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_image_ids = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            num_prompts * num_images_per_prompt,
             num_channels_latents,
             height,
             width,
@@ -320,7 +616,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             sigmas,
             mu=mu,
         )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
         # handle guidance
@@ -330,14 +625,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         else:
             guidance = None
 
-        # 5-1. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            num_prompts = 1
-        elif prompt is not None and isinstance(prompt, list):
-            num_prompts = len(prompt)
-        else:
-            num_prompts = prompt_embeds.shape[0]
-        num_batches = math.ceil((num_images_per_prompt * num_prompts) / batch_size)
         logger.info(
             f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
             f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
@@ -346,7 +633,11 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
         throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+        use_warmup_inference_steps = (
+            num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+        )
 
+        ht.hpu.synchronize()
         t0 = time.time()
         t1 = t0
 
@@ -354,83 +645,177 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             warmup=profiling_warmup_steps,
             active=profiling_steps,
             record_shapes=False,
-            with_stack=True
         )
         hb_profiler.start()
 
+        # 5.1. Split Input data to batches (HPU-specific step)
+        (
+            latents_batches,
+            text_embeddings_batches,
+            pooled_prompt_embeddings_batches,
+            text_ids_batches,
+            latent_image_ids_batches,
+            guidance_batches,
+            num_dummy_samples,
+        ) = self._split_inputs_into_batches(
+            batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance
+        )
+
+        outputs = {
+            "images": [],
+        }
+
         # 6. Denoising loop
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                # because compilation occurs in the first two iterations
-                if i == throughput_warmup_steps:
-                    # clac acc time `end - t1`
-                    torch.hpu.synchronize()
+        for j in range(num_batches):
+            # The throughput is calculated from the 4th iteration
+            # because compilation occurs in the first 2-3 iterations
+            if j == throughput_warmup_steps:
+                ht.hpu.synchronize()
+                t1 = time.time()
+
+            latents_batch = latents_batches[0]
+            latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+            text_embeddings_batch = text_embeddings_batches[0]
+            text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+            pooled_prompt_embeddings_batch = pooled_prompt_embeddings_batches[0]
+            pooled_prompt_embeddings_batches = torch.roll(pooled_prompt_embeddings_batches, shifts=-1, dims=0)
+            text_ids_batch = text_ids_batches[0]
+            text_ids_batches = torch.roll(text_ids_batches, shifts=-1, dims=0)
+            latent_image_ids_batch = latent_image_ids_batches[0]
+            latent_image_ids_batches = torch.roll(latent_image_ids_batches, shifts=-1, dims=0)
+            guidance_batch = guidance_batches[0]
+            guidance_batches = torch.roll(guidance_batches, shifts=-1, dims=0)
+
+            if hasattr(self.scheduler, "_init_step_index"):
+                # Reset scheduler step index for next batch
+                self.scheduler.timesteps = timesteps
+                self.scheduler._init_step_index(timesteps[0])
+
+            # Mixed quantization
+            quant_mixed_step = len(timesteps)
+            if quant_mode == "quantize-mixed":
+                # 10% of steps use higher precision in mixed quant mode
+                quant_mixed_step = quant_mixed_step - (quant_mixed_step // 10)
+                print(f"Use FP8  Transformer at steps 0 to {quant_mixed_step - 1}")
+                print(f"Use BF16 Transformer at steps {quant_mixed_step} to {len(timesteps) - 1}")
+
+            for i in self.progress_bar(range(len(timesteps))):
+                if use_warmup_inference_steps and i == throughput_warmup_steps and j == num_batches - 1:
+                    ht.hpu.synchronize()
                     t1 = time.time()
+
                 if self.interrupt:
                     continue
 
+                timestep = timesteps[0]
+                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = timestep.expand(latents_batch.shape[0]).to(latents_batch.dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latents,
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                if i >= quant_mixed_step:
+                    # Mixed quantization
+                    noise_pred = transformer_bf16(
+                        hidden_states=latents_batch,
+                        timestep=timestep / 1000,
+                        guidance=guidance_batch,
+                        pooled_projections=pooled_prompt_embeddings_batch,
+                        encoder_hidden_states=text_embeddings_batch,
+                        txt_ids=text_ids_batch,
+                        img_ids=latent_image_ids_batch,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                else:
+                    noise_pred = self.transformer(
+                        hidden_states=latents_batch,
+                        timestep=timestep / 1000,
+                        guidance=guidance_batch,
+                        pooled_projections=pooled_prompt_embeddings_batch,
+                        encoder_hidden_states=text_embeddings_batch,
+                        txt_ids=text_ids_batch,
+                        img_ids=latent_image_ids_batch,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents_dtype = latents_batch.dtype
+                latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, return_dict=False)[0]
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                if latents_batch.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents_batch = latents_batch.to(latents_dtype)
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                if profiling_warmup_steps and profiling_steps:
-                    torch.hpu.synchronize()
                 hb_profiler.step()
-                self.ht.core.mark_step(sync=True)
+                # htcore.mark_step(sync=True)
 
-            hb_profiler.stop()
-            # clac acc time `end - t1`
-            torch.hpu.synchronize()
+            if not output_type == "latent":
+                latents_batch = self._unpack_latents(latents_batch, height, width, self.vae_scale_factor)
+                latents_batch = (latents_batch / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+                image = self.vae.decode(latents_batch, return_dict=False)[0]
+                image = self.image_processor.postprocess(image, output_type=output_type)
+            else:
+                image = latents_batch
+
+            outputs["images"].append(image)
+            # htcore.mark_step(sync=True)
+
+        # 7. Stage after denoising
+        hb_profiler.stop()
+
+        if quant_mode == "measure":
+            from neural_compressor.torch.quantization import finalize_calibration
+
+            finalize_calibration(self.transformer)
+
+        ht.hpu.synchronize()
+        speed_metrics_prefix = "generation"
+        if use_warmup_inference_steps:
             t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
-            speed_metrics_prefix = "generation"
-            speed_measures = speed_metrics(
-                split=speed_metrics_prefix,
-                start_time=t0,
-                num_samples=num_batches * batch_size,
-                num_steps=num_batches * batch_size * num_inference_steps,
-                start_time_after_warmup=t1,
-            )
-            logger.info(f"Speed metrics: {speed_measures}")
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=t0,
+            num_samples=batch_size
+            if t1 == t0 or use_warmup_inference_steps
+            else (num_batches - throughput_warmup_steps) * batch_size,
+            num_steps=batch_size * num_inference_steps
+            if use_warmup_inference_steps
+            else (num_batches - throughput_warmup_steps) * batch_size * num_inference_steps,
+            start_time_after_warmup=t1,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
 
-        if output_type == "latent":
-            image = latents
+        # 8 Output Images
+        if num_dummy_samples > 0:
+            # Remove dummy generations if needed
+            outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
-        else:
-            latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
-            latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-            image = self.vae.decode(latents, return_dict=False)[0]
-            image = self.image_processor.postprocess(image, output_type=output_type)
+        # Process generated images
+        for i, image in enumerate(outputs["images"][:]):
+            if i == 0:
+                outputs["images"].clear()
+
+            if output_type == "pil" and isinstance(image, list):
+                outputs["images"] += image
+            elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                if len(outputs["images"]) == 0:
+                    outputs["images"] = image
+                else:
+                    outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
+            else:
+                if len(outputs["images"]) == 0:
+                    outputs["images"] = image
+                else:
+                    outputs["images"] = torch.cat((outputs["images"], image), 0)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return outputs["images"]
 
-        return GaudiFluxPipelineOutput(images=image)
+        return GaudiFluxPipelineOutput(
+            images=outputs["images"],
+            throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
+        )

@@ -286,6 +286,18 @@ def main():
         action="store_true",
         help="Use rescale_betas_zero_snr for controlling image brightness",
     )
+    parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        type=str,
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+    )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
     args = parser.parse_args()
 
     # Select stable diffuson pipeline based on input
@@ -310,6 +322,10 @@ def main():
         )
     elif args.scheduler == "ddim":
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
+    elif args.scheduler == "flow_match_euler_discrete":
+        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
     else:
         scheduler = None
 
@@ -408,7 +424,10 @@ def main():
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
 
+    kwargs_call["quant_mode"] = args.quant_mode
+
     # Instantiate a Stable Diffusion pipeline class
+    import habana_frameworks.torch.core as htcore
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -557,6 +576,14 @@ def main():
             raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
 
         pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
+
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:
