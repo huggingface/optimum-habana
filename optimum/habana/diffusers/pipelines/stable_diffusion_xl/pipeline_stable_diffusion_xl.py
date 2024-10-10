@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -38,11 +39,61 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.attention_processor import (
+    AttentionProcessor,
+    AttnProcessor2_0,
+    ScaledDotProductAttention,
+)
+from ...models.unet_2d_condition import gaudi_unet_2d_condition_model_forward
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    r"""
+    Sets the attention processor to use to compute attention.
+    Parameters:
+        processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+            The instantiated processor class or a dictionary of processor classes that will be set as the processor
+            for **all** `Attention` layers.
+
+            If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+            processor. This is strongly recommended when setting trainable attention processors.
+
+    """
+    count = len(self.attn_processors.keys())
+
+    if isinstance(processor, dict) and len(processor) != count:
+        raise ValueError(
+            f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+            f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+        )
+
+    def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+        if hasattr(module, "set_processor"):
+            if os.environ.get("PATCH_SDPA") is not None:
+                setattr(module, "attention_module", ScaledDotProductAttention())
+                module.set_processor(processor(module.attention_module))
+            else:
+                module.set_processor(processor.pop(f"{name}.processor"))
+
+        for sub_name, child in module.named_children():
+            fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+    for name, module in self.named_children():
+        fn_recursive_attn_processor(name, module, processor)
+
+
+# Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+def set_default_attn_processor_hpu(self):
+    """
+    Disables custom attention processors and sets the default attention implementation from HPU.
+    """
+    processor = AttnProcessor2_0
+    set_attn_processor_hpu(self, processor)
 
 
 @dataclass
@@ -138,6 +189,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             force_zeros_for_empty_prompt,
         )
 
+        if self.use_hpu_graphs:
+            self.unet.set_default_attn_processor = set_default_attn_processor_hpu
+            self.unet.forward = gaudi_unet_2d_condition_model_forward
         self.to(self._device)
 
     def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -793,6 +847,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                     hb_profiler.step()
 
+                if self.use_hpu_graphs:
+                    self.ht.core.hpu.default_stream().synchronize()
+
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
                         t1, t1_inf, num_inference_steps, throughput_warmup_steps
@@ -879,14 +936,16 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         added_cond_kwargs,
     ):
         if self.use_hpu_graphs:
-            return self.capture_replay(
+            return self.unet(
+                self.unet,
                 latent_model_input,
                 timestep,
-                encoder_hidden_states,
-                timestep_cond,
-                cross_attention_kwargs,
-                added_cond_kwargs,
-            )
+                encoder_hidden_states=encoder_hidden_states,
+                timestep_cond=timestep_cond,
+                cross_attention_kwargs=cross_attention_kwargs,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False,
+            )[0]
         else:
             return self.unet(
                 latent_model_input,
