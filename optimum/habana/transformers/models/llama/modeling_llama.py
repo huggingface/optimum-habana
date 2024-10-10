@@ -662,11 +662,8 @@ class GaudiLlamaAttention(LlamaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
             if q_len == 1:
                 # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
                 attn_output = self.fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
@@ -675,13 +672,14 @@ class GaudiLlamaAttention(LlamaAttention):
                     0.0,
                     False,
                     None,
-                    softmax_mode,
-                    use_recompute,
+                    "None",
+                    False,
                     None,
                     "None",
                 )
             else:
                 # first token
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states,
