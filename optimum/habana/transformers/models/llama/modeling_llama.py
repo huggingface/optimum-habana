@@ -366,20 +366,21 @@ class ModuleFusedSDPA(torch.nn.Module):
         value,
         attn_mask,
         dropout_p,
-        is_casual,
+        is_causal,
         scale,
         softmax_mode,
         recompute_mode,
         valid_sequence_lengths,
         padding_side="left",
     ):
+        #print('xxx', valid_sequence_lengths)
         return self._hpu_kernel_fsdpa.apply(
             query,
             key,
             value,
             attn_mask,
             dropout_p,
-            is_casual,
+            is_causal,
             scale,
             softmax_mode,
             recompute_mode,
@@ -531,7 +532,7 @@ class GaudiLlamaAttention(LlamaAttention):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: Optional[torch.Tensor] = None,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
@@ -661,9 +662,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        if use_flash_attention and FusedSDPA is not None:
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
+        if use_flash_attention and FusedSDPA is not None:            
             if q_len == 1:
                 # next token
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
@@ -675,13 +674,14 @@ class GaudiLlamaAttention(LlamaAttention):
                     0.0,
                     False,
                     None,
-                    softmax_mode,
-                    use_recompute,
+                    "None",
+                    False,
                     None,
                     "None",
                 )
             else:
                 # first token
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states,
@@ -840,6 +840,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -860,6 +861,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
             flash_attention_recompute,
             flash_attention_causal_mask,
             flash_attention_fast_softmax,
+            valid_sequence_lengths,
             cache_idx,
             **kwargs,
         )
@@ -905,7 +907,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: Optional[torch.Tensor] = None,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
@@ -975,7 +977,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: Optional[torch.Tensor] = None,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -1509,7 +1511,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and has_fused_rope:
         # TODO: remove `.clone()` when it is fixed in SynapseAI
+        #breakpoint()
         if k.dtype == torch.bfloat16:
+            print('XXXXX', q.shape, cos.unsqueeze(0).unsqueeze(0).clone().shape, sin.unsqueeze(0).unsqueeze(0).clone().shape, position_ids.shape)
             return FusedRoPE.apply(
                 q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
             ), FusedRoPE.apply(
