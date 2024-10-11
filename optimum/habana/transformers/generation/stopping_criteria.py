@@ -79,7 +79,7 @@ def gaudi_EosTokenCriteria_call(
         return torch.all(is_done).item()
 
 
-def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
+def needs_tensor_output(ignore_eos, eos_token_id) -> bool:
     return not ignore_eos and eos_token_id is not None
 
 
@@ -87,7 +87,7 @@ def gaudi_StoppingCriteriaList_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:
     kwargs["needs_tensor_output"] = needs_tensor_output(
-        kwargs.get("token_idx", None), kwargs.get("ignore_eos", True), kwargs.get("eos_token_id", None)
+        kwargs.get("ignore_eos", True), kwargs.get("eos_token_id", None)
     )
     is_done = (
         torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
