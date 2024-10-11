@@ -280,7 +280,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
-            model = wrap_in_hpu_graph(model)
+            model = wrap_in_hpu_graph(model, max_graphs=args.max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
