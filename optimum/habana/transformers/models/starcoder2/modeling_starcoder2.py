@@ -630,13 +630,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if (
-                lazy_mode
-                and not self.training
-                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-            ):
-                htcore.mark_step()
-
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
