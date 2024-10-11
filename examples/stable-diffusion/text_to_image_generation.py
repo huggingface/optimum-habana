@@ -303,7 +303,7 @@ def main():
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3"]
-    flux_models = ["FLUX.1-dev", "FLUX.1-schnell"]
+    flux_models = ["FLUX.1-dev", "FLUX.1-schnell","OpenFLUX.1"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
     flux = True if any(model in args.model_name_or_path for model in flux_models) else False
