@@ -850,6 +850,24 @@ class GaudiTrainer(Trainer):
             # Gradient clipping
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
+
+        # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
+        _should_update_inputs: bool = (
+            hasattr(self.model, "generation_config") and self.model.generation_config is not None
+        ) and (self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"])
+
+        if _should_update_inputs:
+            _inputs_update: dict = {}
+            if self.model.generation_config.attn_softmax_bf16:
+                _inputs_update["attn_softmax_bf16"] = True
+            if self.model.generation_config.use_flash_attention:
+                _inputs_update["use_flash_attention"] = True
+            if self.model.generation_config.flash_attention_recompute:
+                _inputs_update["flash_attention_recompute"] = True
+            if self.model.generation_config.flash_attention_causal_mask:
+                _inputs_update["flash_attention_causal_mask"] = True
+            _should_update_inputs = len(_inputs_update) > 0
+
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
         if args.eval_on_start:
@@ -950,16 +968,8 @@ class GaudiTrainer(Trainer):
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
-                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
-                        if self.model.generation_config.attn_softmax_bf16:
-                            inputs["attn_softmax_bf16"] = True
-                        if self.model.generation_config.use_flash_attention:
-                            inputs["use_flash_attention"] = True
-                        if self.model.generation_config.flash_attention_recompute:
-                            inputs["flash_attention_recompute"] = True
-                        if self.model.generation_config.flash_attention_causal_mask:
-                            inputs["flash_attention_causal_mask"] = True
+                if _should_update_inputs:
+                    inputs.update(_inputs_update)
 
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
