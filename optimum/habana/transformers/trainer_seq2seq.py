@@ -85,7 +85,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         Loads a `~generation.GaudiGenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
 
         Args:
-            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig`]):
+            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig]`):
                 `GaudiSeq2SeqTrainingArguments.generation_config` argument.
 
         Returns:
@@ -338,7 +338,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_new_tokens + 1)
 
         # Different processes may have different generation work in eager mode, hence this sync
-        if not self.args.use_lazy_mode and self.args.local_rank != -1:
+        if not self.args.use_lazy_mode and self.args.local_rank != -1 and not self.args.torch_compile_backend:
             torch.distributed.barrier()
 
         with torch.no_grad():

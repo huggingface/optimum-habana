@@ -482,7 +482,7 @@ class GaudiTrainer(Trainer):
 
         # do_train is not a reliable argument, as it might not be set and .train() still called, so
         # the following is a workaround:
-        if (args.fp16_full_eval or args.bf16_full_eval) and not args.do_train:
+        if args.bf16_full_eval and not args.do_train and not self.is_model_parallel:
             self._move_model_to_device(self.model, args.device)
 
         if "model_path" in kwargs:
@@ -675,14 +675,9 @@ class GaudiTrainer(Trainer):
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
-            if args.gradient_checkpointing_kwargs is None:
-                gradient_checkpointing_kwargs = {}
-            else:
-                gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs
-
             import transformers.modeling_utils
 
-            if args.deepspeed and args.use_lazy_mode:
+            if args.deepspeed:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import (
                     CheckpointFunction,
                     non_reentrant_checkpoint,
@@ -713,7 +708,7 @@ class GaudiTrainer(Trainer):
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
                 transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
 
-            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
+            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
             if self.accelerator.state.is_fp8_enabled:
@@ -817,7 +812,7 @@ class GaudiTrainer(Trainer):
             self.state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
             self.compare_trainer_and_checkpoint_args(self.args, self.state)
             self._load_callback_state()
-            epochs_trained = self.state.global_step // num_update_steps_per_epoch
+            epochs_trained = int(self.state.global_step // num_update_steps_per_epoch)
             if not args.ignore_data_skip:
                 steps_trained_in_current_epoch = self.state.global_step % (num_update_steps_per_epoch)
                 steps_trained_in_current_epoch *= args.gradient_accumulation_steps
@@ -1041,6 +1036,8 @@ class GaudiTrainer(Trainer):
                                 args.max_grad_norm,
                             )
 
+                    self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
+
                     optimizer_was_run = True
                     self.optimizer.step()
 
@@ -1068,7 +1065,7 @@ class GaudiTrainer(Trainer):
                     break
             if step < 0:
                 logger.warning(
-                    "There seems to be not a single sample in your epoch_iterator, stopping training at step"
+                    "There seems not to be a single sample in your epoch_iterator, stopping training at step"
                     f" {self.state.global_step}! This is expected if you're using an IterableDataset and set"
                     f" num_steps ({max_steps}) higher than the number of available samples."
                 )
@@ -1366,8 +1363,16 @@ class GaudiTrainer(Trainer):
 
         # Save the Trainer state
         if self.args.should_save:
-            # Update the `TrainerControl` state to where we are currently
-            self.state.stateful_callbacks["TrainerControl"] = self.control.state()
+            # Update `ExportableState` callbacks and `TrainerControl` state to where we are currently
+            for cb in [
+                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
+            ]:
+                cb_name = cb.__class__.__name__
+                cb_state = cb.state()
+                if isinstance(self.state.stateful_callbacks[cb_name], list):
+                    self.state.stateful_callbacks[cb_name].append(cb_state)
+                else:
+                    self.state.stateful_callbacks[cb_name] = cb_state
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
 
         if self.args.push_to_hub:
@@ -1579,6 +1584,9 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
+        # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+        #     self.optimizer.train()
+
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
@@ -1816,6 +1824,8 @@ class GaudiTrainer(Trainer):
                 self.deepspeed = self.model_wrapped
 
         model.eval()
+        # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+        #     self.optimizer.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs_for_inference and not self.is_in_train:
@@ -2223,6 +2233,8 @@ class GaudiTrainer(Trainer):
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
         model.eval()
+        # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+        #     self.optimizer.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs_for_inference and not self.is_in_train:
@@ -2440,23 +2452,20 @@ class GaudiTrainer(Trainer):
         self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
 
         # post accelerator creation setup
-        # copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L3991
-        # post accelerator creation setup
         if self.is_fsdp_enabled:
             fsdp_plugin = self.accelerator.state.fsdp_plugin
             fsdp_plugin.limit_all_gathers = self.args.fsdp_config.get(
                 "limit_all_gathers", fsdp_plugin.limit_all_gathers
             )
-            if is_accelerate_available("0.23.0"):
-                fsdp_plugin.activation_checkpointing = self.args.fsdp_config.get(
-                    "activation_checkpointing", fsdp_plugin.activation_checkpointing
+            fsdp_plugin.activation_checkpointing = self.args.fsdp_config.get(
+                "activation_checkpointing", fsdp_plugin.activation_checkpointing
+            )
+            if fsdp_plugin.activation_checkpointing and self.args.gradient_checkpointing:
+                raise ValueError(
+                    "The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg "
+                    "can't be set to True simultaneously. Please use FSDP's activation_checkpointing logic "
+                    "when using FSDP."
                 )
-                if fsdp_plugin.activation_checkpointing and self.args.gradient_checkpointing:
-                    raise ValueError(
-                        "The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg "
-                        "can't be set to True simultaneously. Please use FSDP's activation_checkpointing logic "
-                        "when using FSDP."
-                    )
 
         if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
             self.propagate_args_to_deepspeed()
@@ -2470,10 +2479,15 @@ class GaudiTrainer(Trainer):
             wrapper = "DeepSpeed" if self.is_deepspeed_enabled else "FSDP"
             raise ValueError(f"{wrapper} can't be used with `save_only_model` along with `load_best_model_at_end`.")
 
-        # `auto_find_batch_size` isn't yet supported with DeepSpeed/FSDP
-        if (self.is_deepspeed_enabled or self.is_fsdp_enabled) and self.args.auto_find_batch_size:
-            wrapper = "DeepSpeed" if self.is_deepspeed_enabled else "FSDP"
-            raise NotImplementedError(f"`{wrapper}` doesn't support `auto_find_batch_size`.")
+        # `auto_find_batch_size` isn't supported yet with DeepSpeed Zero-3
+        if (
+            self.is_deepspeed_enabled
+            and self.accelerator.state.deepspeed_plugin.zero_stage == 3
+            and self.args.auto_find_batch_size
+        ):
+            raise ValueError(
+                "`auto_find_batch_size` isn't supported yet with DeepSpeed Zero-3. Please consider using Zero-2, Zero-1, or FSDP"
+            )
 
     def propagate_args_to_deepspeed(self, auto_find_batch_size=False):
         """

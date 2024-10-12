@@ -34,6 +34,7 @@ class ScriptArguments:
     streaming: Optional[bool] = field(default=True, metadata={"help": "whether to stream the dataset"})
     shuffle_buffer: Optional[int] = field(default=5000, metadata={"help": "the shuffle buffer size"})
     num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
+    num_buckets: Optional[int] = field(default=-1, metadata={"help": "whether to use bucketing for SFTTrainer"})
     validation_split_percentage: Optional[int] = field(
         default=5,
         metadata={
@@ -114,7 +115,7 @@ if __name__ == "__main__":
         if args.dataset_name:
             dataset = load_dataset(
                 args.dataset_name,
-                data_dir=args.subset,
+                data_dir=None if args.subset == "None" else args.subset,
                 split=args.split,
                 token=script_args.token,
                 num_proc=args.num_workers if not args.streaming else None,
@@ -188,6 +189,7 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             args=training_args,
             formatting_func=formatting_func,
+            num_buckets=script_args.num_buckets,
         )
         train_result = trainer.train()
         trainer.save_model(training_args.output_dir)

@@ -139,8 +139,7 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--profiling_record_shapes",
-        default=False,
-        type=bool,
+        action="store_true",
         help="Record shapes when enabling profiling.",
     )
     parser.add_argument(
