@@ -1,2 +1,2 @@
-datasets==2.21.0
+datasets
 peft
