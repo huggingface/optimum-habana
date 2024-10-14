@@ -252,7 +252,7 @@ class GaudiTrainer(Trainer):
                         "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
                     )
 
-            if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
+            if self.use_hpu_amp and "PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST" not in os.environ:
                 self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.args.use_lazy_mode:
