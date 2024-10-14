@@ -24,7 +24,7 @@ def unify_measurements(measurement_group, measurements_dir_path, output_path, gr
     # save all the jsons paths in the given measurement group
     for measurement in measurement_group:
         measurement_path = find_measurement_path(measurement, measurements_dir_path, groups_size)
-        if measurement_path is None:
+        if measurement_path is not None:
             measurements_paths.append(measurement_path)
         group_name += measurement
     # save all the jsons content in the given measurement group
