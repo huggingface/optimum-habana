@@ -201,8 +201,6 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         latents_batches = torch.stack(latents_batches)
         prompt_embeds_batches = torch.stack(prompt_embeds_batches)
         pooled_prompt_embeds_batches = torch.stack(pooled_prompt_embeds_batches)
-        text_ids_batches = torch.stack(text_ids_batches)
-        latent_image_ids_batches = torch.stack(latent_image_ids_batches)
         guidance_batches = torch.stack(guidance_batches)
 
         return (
