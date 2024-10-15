@@ -108,6 +108,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_moe",
     "gemma",
     "whisper",
+    "mllama",
 ]
 
 
@@ -1103,6 +1104,12 @@ class GaudiGenerationMixin(GenerationMixin):
                                 (0, generation_config.max_new_tokens),
                                 value=0,
                             )
+                    if model_kwargs.get("cross_attention_mask") is not None:
+                        model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
+                            model_kwargs["cross_attention_mask"],
+                            (0, 0, 0, 0, 0, generation_config.max_new_tokens),
+                            value=0,
+                        )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 token_idx = 1
