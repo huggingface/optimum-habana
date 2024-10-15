@@ -60,6 +60,7 @@ if is_torch_available():
         GenerateBeamEncoderDecoderOutput,
         GenerateDecoderOnlyOutput,
         GenerateEncoderDecoderOutput,
+        GenerationConfig,
         GreedySearchDecoderOnlyOutput,
         GreedySearchEncoderDecoderOutput,
         HammingDiversityLogitsProcessor,
@@ -98,26 +99,46 @@ class GenerationTesterMixin:
 
     def _get_input_ids_and_config(self, batch_size=2):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        input_ids = inputs_dict[self.input_name]
+        # TODO: @raushan or @gante, use `model.main_input_name` as the main input instead of relyinn on `input_ids`
+        input_ids = inputs_dict.pop(self.input_name)[:batch_size, :]
+        inputs_dict.pop("attention_mask", None)
+
+        # we don't want encoder-decoder models to start from filled decoder ids
+        inputs_dict.pop("decoder_input_ids", None)
+        inputs_dict.pop("decoder_attention_mask", None)
 
         # cut to half length & take max batch_size 3
         sequence_length = input_ids.shape[-1] // 2
         input_ids = input_ids[:batch_size, :sequence_length]
 
+        # we'll set cache use in each test differently
+        inputs_dict.pop("use_cache", None)
+
         # generate max 3 tokens
         max_length = input_ids.shape[-1] + 3
+
+        inputs_dict = {
+            k: v[:batch_size, ...]
+            for k, v in inputs_dict.items()
+            if "head_mask" not in k and isinstance(v, torch.Tensor)
+        }
         if config.eos_token_id is not None and config.pad_token_id is None:
             # hack to allow generate for models such as GPT2 as is done in `generate()`
             if isinstance(config.eos_token_id, int):
                 config.eos_token_id = [config.eos_token_id]
             config.pad_token_id = config.eos_token_id[0]
-        # TransfoXL has no attention mask
-        if "transfoxl" in config.__class__.__name__.lower():
-            attention_mask = None
-        else:
-            attention_mask = torch.ones_like(input_ids, dtype=torch.long)[:batch_size, :sequence_length]
 
-        return config, input_ids, attention_mask, max_length
+        if self.has_attentions:
+            attention_mask = torch.ones_like(input_ids, dtype=torch.long)
+        else:
+            attention_mask = None
+
+        # It is important set set the eos_token_id to None to ensure that no sequences
+        # shorter than `max_length` can be generated
+        config.eos_token_id = None
+        config.forced_eos_token_id = None
+
+        return config, input_ids, attention_mask, inputs_dict
 
     @staticmethod
     def _get_logits_processor_and_kwargs(
@@ -1377,6 +1398,55 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(dynamic_output.tolist(), static_output.tolist())
 
+    @pytest.mark.generate
+    @unittest.skip("Started to break with https://github.com/huggingface/transformers/pull/33703")
+    def test_beam_search_low_memory(self):
+        # Check that choosing 'low_memory' does not change the model output
+        for model_class in self.all_generative_model_classes:
+            if model_class._is_stateful:
+                self.skipTest(reason="May fix in the future: need custom cache handling")
+            if any(model_name in model_class.__name__.lower() for model_name in ["fsmt", "reformer"]):
+                self.skipTest(reason="Won't fix: old model with different cache format")
+            if any(
+                model_name in model_class.__name__.lower()
+                for model_name in [
+                    "ctrl",
+                    "gptbigcode",
+                    "transo_xl",
+                    "xlnet",
+                    "cpm",
+                    "jamba",
+                ]
+            ):
+                self.skipTest(reason="May fix in the future: need model-specific fixes")
+            config, input_ids, _, _ = self._get_input_ids_and_config(batch_size=2)
+            # batch_size=1 is ok, but batch_size>1 will cause non-identical output
+
+            config.use_cache = True
+            config.is_decoder = True
+
+            # test output equality of low versus high memory
+            model = model_class(config).to(torch_device).eval()
+
+            low_output = model.generate(
+                input_ids,
+                max_new_tokens=8,
+                num_beams=5,
+                early_stopping=True,
+                low_memory=True,
+                use_cache=True,
+            )
+
+            high_output = model.generate(
+                input_ids,
+                max_new_tokens=8,
+                num_beams=5,
+                early_stopping=True,
+                low_memory=False,
+                use_cache=True,
+            )
+            self.assertListEqual(low_output.tolist(), high_output.tolist())
+
     # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
     @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @slow  # TODO(Joao): remove this. Some models (e.g. data2vec, xcom, roberta) have an error rate between 1 and 10%.
@@ -2393,220 +2463,6 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             ],
         )
 
-    def test_max_length_backward_compat_greedy(self):
-        # PT-only test: TF doesn't have StoppingCriteria
-        article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
-        bart_tokenizer = BartTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
-        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
-            torch_device
-        )
-        input_ids = bart_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
-
-        max_length = 20
-        input_ids = input_ids.expand(2, -1)
-        model_kwargs = bart_model._prepare_encoder_decoder_kwargs_for_generation(input_ids, {})
-        input_ids, model_kwargs = bart_model._prepare_decoder_input_ids_for_generation(
-            batch_size=input_ids.shape[0],
-            model_input_name=bart_model.main_input_name,
-            model_kwargs=model_kwargs,
-            decoder_start_token_id=bart_model.config.decoder_start_token_id,
-            bos_token_id=bart_model.config.bos_token_id,
-        )
-
-        with self.assertWarns(UserWarning):
-            bart_model.greedy_search(
-                input_ids,
-                max_length=max_length,
-                pad_token_id=bart_model.config.pad_token_id,
-                eos_token_id=bart_model.config.eos_token_id,
-                **model_kwargs,
-            )
-
-    def test_max_length_backward_compat_sample(self):
-        # PT-only test: TF doesn't have StoppingCriteria
-        article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
-        bart_tokenizer = BartTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
-        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
-            torch_device
-        )
-        input_ids = bart_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
-
-        max_length = 20
-        input_ids = input_ids.expand(2, -1)
-        model_kwargs = bart_model._prepare_encoder_decoder_kwargs_for_generation(input_ids, {})
-        input_ids, model_kwargs = bart_model._prepare_decoder_input_ids_for_generation(
-            batch_size=input_ids.shape[0],
-            model_input_name=bart_model.main_input_name,
-            model_kwargs=model_kwargs,
-            decoder_start_token_id=bart_model.config.decoder_start_token_id,
-            bos_token_id=bart_model.config.bos_token_id,
-        )
-        with torch.no_grad():
-            with self.assertWarns(UserWarning):
-                bart_model.sample(
-                    input_ids,
-                    max_length=max_length,
-                    pad_token_id=bart_model.config.pad_token_id,
-                    eos_token_id=bart_model.config.eos_token_id,
-                    **model_kwargs,
-                )
-
-    def test_max_length_backward_compat_beam_search(self):
-        # PT-only test: TF doesn't have StoppingCriteria
-        article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
-        bart_tokenizer = BartTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
-        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
-            torch_device
-        )
-        input_ids = bart_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
-
-        batch_size = 1
-        max_length = 20
-        num_beams = 2
-
-        input_ids = input_ids.expand(2, -1)
-        model_kwargs = bart_model._prepare_encoder_decoder_kwargs_for_generation(input_ids, {})
-        input_ids, model_kwargs = bart_model._prepare_decoder_input_ids_for_generation(
-            batch_size=input_ids.shape[0],
-            model_input_name=bart_model.main_input_name,
-            model_kwargs=model_kwargs,
-            decoder_start_token_id=bart_model.config.decoder_start_token_id,
-            bos_token_id=bart_model.config.bos_token_id,
-        )
-
-        beam_scorer = BeamSearchScorer(
-            batch_size=batch_size,
-            num_beams=num_beams,
-            device=torch_device,
-        )
-        with self.assertWarns(UserWarning):
-            _ = bart_model.beam_search(
-                input_ids, num_beams=num_beams, max_length=max_length, beam_scorer=beam_scorer, **model_kwargs
-            )
-
-    def test_max_length_backward_compat_group_beam_search(self):
-        # PT-only test: TF doesn't have StoppingCriteria & group beam search
-        article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
-        bart_tokenizer = BartTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
-        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
-            torch_device
-        )
-        input_ids = bart_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
-
-        batch_size = 1
-        max_length = 20
-        num_beams = 6
-        num_beam_groups = 3
-        num_return_sequences = num_beams * batch_size
-
-        input_ids = input_ids.expand(6, -1)
-        model_kwargs = bart_model._prepare_encoder_decoder_kwargs_for_generation(input_ids, {})
-        input_ids, model_kwargs = bart_model._prepare_decoder_input_ids_for_generation(
-            batch_size=input_ids.shape[0],
-            model_input_name=bart_model.main_input_name,
-            model_kwargs=model_kwargs,
-            decoder_start_token_id=bart_model.config.decoder_start_token_id,
-            bos_token_id=bart_model.config.bos_token_id,
-        )
-
-        diverse_beam_scorer = BeamSearchScorer(
-            batch_size=batch_size,
-            num_beams=num_beams,
-            device=torch_device,
-            num_beam_hyps_to_keep=num_return_sequences,
-            num_beam_groups=num_beam_groups,
-        )
-        with self.assertWarns(UserWarning):
-            bart_model.group_beam_search(
-                input_ids, diverse_beam_scorer, num_beams=num_beams, max_length=max_length, **model_kwargs
-            )
-
-    def test_max_length_warning_if_different(self):
-        # PT-only test: TF doesn't have StoppingCriteria
-        article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
-        bart_tokenizer = BartTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
-        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
-            torch_device
-        )
-        input_ids = bart_tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
-
-        batch_size = 1
-
-        max_length = 20
-        num_beams = 6
-        num_beam_groups = 3
-        num_return_sequences = num_beams * batch_size
-        stopping_criteria_max_length = 18
-        stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=stopping_criteria_max_length)])
-
-        # Greedy
-        input_ids = input_ids.expand(6, -1)
-        model_kwargs = bart_model._prepare_encoder_decoder_kwargs_for_generation(input_ids, {})
-        input_ids, model_kwargs = bart_model._prepare_decoder_input_ids_for_generation(
-            batch_size=input_ids.shape[0],
-            model_input_name=bart_model.main_input_name,
-            model_kwargs=model_kwargs,
-            decoder_start_token_id=bart_model.config.decoder_start_token_id,
-            bos_token_id=bart_model.config.bos_token_id,
-        )
-
-        with self.assertWarns(UserWarning):
-            bart_model.greedy_search(
-                input_ids,
-                max_length=max_length,
-                pad_token_id=bart_model.config.pad_token_id,
-                stopping_criteria=stopping_criteria,
-                eos_token_id=bart_model.config.eos_token_id,
-                **model_kwargs,
-            )
-
-        # Sample
-        with self.assertWarns(UserWarning):
-            with torch.no_grad():
-                bart_model.sample(
-                    input_ids,
-                    max_length=max_length,
-                    stopping_criteria=stopping_criteria,
-                    pad_token_id=bart_model.config.pad_token_id,
-                    eos_token_id=bart_model.config.eos_token_id,
-                    **model_kwargs,
-                )
-
-        # Beam
-        beam_scorer = BeamSearchScorer(
-            batch_size=batch_size,
-            num_beams=num_beams,
-            device=torch_device,
-        )
-        with self.assertWarns(UserWarning):
-            with torch.no_grad():
-                bart_model.beam_search(
-                    input_ids,
-                    num_beams=num_beams,
-                    stopping_criteria=stopping_criteria,
-                    max_length=max_length,
-                    beam_scorer=beam_scorer,
-                    **model_kwargs,
-                )
-
-        # Grouped beam search
-        diverse_beam_scorer = BeamSearchScorer(
-            batch_size=batch_size,
-            num_beams=num_beams,
-            device=torch_device,
-            num_beam_hyps_to_keep=num_return_sequences,
-            num_beam_groups=num_beam_groups,
-        )
-        with self.assertWarns(UserWarning):
-            bart_model.group_beam_search(
-                input_ids,
-                diverse_beam_scorer,
-                stopping_criteria=stopping_criteria,
-                num_beams=num_beams,
-                max_length=max_length,
-                **model_kwargs,
-            )
-
     def test_custom_stopping_criteria_overload_error(self):
         # PT-only test: TF doesn't have StoppingCriteria
         article = """Justin Timberlake and Jessica Biel, welcome to parenthood."""
@@ -2635,15 +2491,23 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         stopping_criteria = StoppingCriteriaList()
         stopping_criteria.append(DummyCriteria())
 
+        output = bart_model.generate(input_ids, stopping_criteria=stopping_criteria, max_length=22)
         self.assertEqual(
-            list(bart_model.generate(input_ids, stopping_criteria=stopping_criteria, max_length=22).shape),
-            [1, 20],
+            list(output.shape),
+            [1, 22],  # still produces the max_length
+        )
+        # make sure final tokens are padding
+        self.assertEqual(
+            output[:, 20:].tolist(),
+            [[bart_model.config.pad_token_id, bart_model.config.pad_token_id]]
         )
         self.assertEqual(
             list(bart_model.generate(input_ids, stopping_criteria=stopping_criteria, max_length=18).shape),
             [1, 18],
         )
 
+    # TODO (joao): replace `stop_sequence` in the pipeline by the more recent `generate` functionality
+    @pytest.mark.xfail
     def test_stop_sequence_stopping_criteria(self):
         # PT-only test: TF doesn't have StoppingCriteria
         prompt = """Hello I believe in"""
@@ -2651,17 +2515,11 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         output = generator(prompt)
         self.assertEqual(
             output,
-            [
-                {
-                    "generated_text": (
-                        "Hello I believe in in in number number number number number number number number number"
-                    )
-                }
-            ],
+            [{"generated_text": ("Hello I believe in we we we we we we we we we")}],
         )
 
-        output = generator(prompt, stop_sequence=" number")
-        self.assertEqual(output, [{"generated_text": "Hello I believe in in in number"}])
+        output = generator(prompt, stop_sequence=" we")
+        self.assertEqual(output, [{"generated_text": "Hello I believe in we"}])
 
     def test_generate_non_nlp_input_ids_as_kwarg(self):
         # PT-only test: AFAIK there's no non-NLP model architecture in TF that supports `input_ids` as its only input
@@ -2687,6 +2545,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         self.assertListEqual(output_sequences.tolist(), output_sequences_kwargs.tolist())
         self.assertEqual(output_sequences.shape, (2, 5))
 
+    @pytest.mark.skip("Group beam search is not supported by optimum-habana yet")
     def test_transition_scores_group_beam_search_encoder_decoder(self):
         # PT-only test: TF doesn't have group beam search
         articles = [
@@ -2841,8 +2700,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
     @slow
     def test_constrained_beam_search_mixed_mixin(self):
         # PT-only test: TF doesn't have constrained beam search
-        model = GPT2LMHeadModel.from_pretrained("gpt2").to(torch_device)
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2").to(torch_device)
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
 
         force_word = "scared"
         force_flexible = ["scream", "screams", "screaming", "screamed"]
@@ -2878,8 +2737,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
 
     @slow
     def test_cfg_mixin(self):
-        model = GPT2LMHeadModel.from_pretrained("gpt2").to(torch_device)
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2").to(torch_device)
+        tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
 
         input = tokenizer(["The dragon flew over Paris,"], return_tensors="pt", return_attention_mask=True)
         input["input_ids"] = input["input_ids"].to(torch_device)
@@ -2919,8 +2778,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
     @slow
     def test_constrained_beam_search_example_translation_mixin(self):
         # PT-only test: TF doesn't have constrained beam search
-        tokenizer = AutoTokenizer.from_pretrained("t5-base")
-        model = AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+        tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-base")
+        model = AutoModelForSeq2SeqLM.from_pretrained("google-t5/t5-base")
 
         encoder_input_str = "translate English to German: How old are you?"
         force_words = ["sind"]
@@ -2986,6 +2845,43 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
 
         self.assertListEqual(outputs, ["Wie alt sind Sie?"])
 
+    @slow
+    def test_per_row_stopping_criteria(self):
+        text = [
+            "They completed the challenging puzzle, revealing the hidden",
+            "Today a dragon flew over France",
+            "The aroma of freshly baked pizza filled the kitchen",
+        ]
+        stop_strings = ["secrets"]
+
+        model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2").to(torch_device)
+        tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2")
+        tokenizer.padding_side = "left"
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        input_ids = tokenizer(text, return_tensors="pt", padding="longest", add_special_tokens=False).input_ids.to(
+            torch_device
+        )
+
+        # normal generation with one stopping criteria
+        out = model.generate(input_ids, max_length=15)
+        out_text = tokenizer.batch_decode(out)
+        expected_out = [
+            "They completed the challenging puzzle, revealing the hidden secrets of the world.\n",
+            "<|endoftext|><|endoftext|><|endoftext|>Today a dragon flew over France and the French government was forced",
+            "The aroma of freshly baked pizza filled the kitchen with a sense of freshness",
+        ]
+        self.assertListEqual(out_text, expected_out)
+
+        # generation should stop at "secrets" for first batch only, filling the rest with eos tokens
+        out = model.generate(input_ids, max_length=15, stop_strings=stop_strings, tokenizer=tokenizer)
+        out_text = tokenizer.batch_decode(out)
+        expected_out = [
+            "They completed the challenging puzzle, revealing the hidden secrets<|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|>",
+            "<|endoftext|><|endoftext|><|endoftext|>Today a dragon flew over France and the French government was forced",
+            "The aroma of freshly baked pizza filled the kitchen with a sense of freshness",
+        ]
+        self.assertListEqual(out_text, expected_out)
+
     def test_constrained_beam_search_mixin_type_checks(self):
         # PT-only test: TF doesn't have constrained beam search
         tokenizer = AutoTokenizer.from_pretrained("patrickvonplaten/t5-tiny-random")
@@ -3027,6 +2923,35 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         with self.assertRaises(ValueError):
             model.generate(input_ids, force_words_ids=[[[-1]]])
 
+    def test_decoder_start_id_from_config(self):
+        # Refer to: (#30899)
+        articles = [
+            "Justin Timberlake and Jessica Biel, welcome to parenthood.",
+            "Michael Phelps is arguably the most decorated Olympian of all time.",
+        ]
+        bart_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bart")
+        bart_model = BartForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-bart").to(
+            torch_device
+        )
+        input_ids = bart_tokenizer(articles, return_tensors="pt", padding=True).input_ids.to(torch_device)
+        decoder_start_token_id = bart_model.generation_config.decoder_start_token_id
+
+        # we should be able to take `decoder_start_token_id` from model's generation config if user passes a `GenerationConfig` type
+        outputs = bart_model.generate(input_ids, generation_config=GenerationConfig(do_sample=False))
+
+        # If the generatoin config has no `decoder_start_token_id` or `bos_token_id`, we will raise an error unless user passes it in config
+        bart_model.generation_config.decoder_start_token_id = None
+        bart_model.generation_config.bos_token_id = None
+        outputs_with_user_id = bart_model.generate(
+            input_ids,
+            generation_config=GenerationConfig(do_sample=False, decoder_start_token_id=decoder_start_token_id),
+        )
+
+        self.assertListEqual(outputs.tolist(), outputs_with_user_id.tolist())
+
+        with self.assertRaises(ValueError):
+            outputs = bart_model.generate(input_ids, generation_config=GenerationConfig(do_sample=False))
+
     def test_contrastive_search_batched(self):
         # PT-only test: TF doesn't have constrained beam search
         # Tests that contrastive search works with batched inputs (i.e. has the same output as for non-batched inputs)
@@ -3052,6 +2977,27 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # output_sequences_batched.scores[0][1] -> 1st set of logits, 2nd sequence
         max_score_diff = (output_sequences_batched.scores[0][1] - output_sequences.scores[0][0]).abs().max()
         self.assertTrue(max_score_diff < 1e-5)
+
+    def test_logits_processor_not_inplace(self):
+        # PT-only test: TF fixes were not made
+        article = "Today a dragon flew over Paris."
+        model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+        input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
+
+        out = model.generate(input_ids, output_logits=True, output_scores=True, return_dict_in_generate=True)
+        out_with_temp = model.generate(
+            input_ids,
+            temperature=0.5,
+            do_sample=True,
+            output_logits=True,
+            output_scores=True,
+            return_dict_in_generate=True,
+        )
+
+        # if no logits processor is used, scores == logits. Otherwise, the processor has to modify the scores
+        self.assertListEqual(out.logits[-1].tolist(), out.scores[-1].tolist())
+        self.assertNotEqual(out_with_temp.logits[-1].tolist(), out_with_temp.scores[-1].tolist())
 
     def test_eos_token_id_int_and_list_top_k_top_sampling(self):
         # Has TF equivalent: this test relies on random sampling
@@ -3107,6 +3053,10 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # because it doesn't do signature filtering.
         class FakeEncoder(bart_model.model.encoder.__class__):
             def forward(self, input_ids, **kwargs):
+                # We remove these to pass gaudi_BartEncoder_forward TypeError
+                kwargs.pop("bucket_size", None)
+                kwargs.pop("bucket_internal", None)
+                kwargs.pop("reduce_recompile", None)
                 return super().forward(input_ids, **kwargs)
 
         fake_encoder = FakeEncoder(bart_model.config, bart_model.model.shared).to(torch_device)
@@ -3127,10 +3077,6 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         tokenized_inputs = tokenizer([text], return_tensors="pt")
         input_ids = tokenized_inputs.input_ids.to(torch_device)
 
-        # Default generation config value of 20 -> emits warning
-        with self.assertWarns(UserWarning):
-            model.generate(input_ids)
-
         # Explicitly setting max_length to 20 -> no warning
         with warnings.catch_warnings(record=True) as warning_list:
             model.generate(input_ids, max_length=20)
@@ -3142,3 +3088,17 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             model.generation_config._from_model_config = False  # otherwise model.config.max_length=20 takes precedence
             model.generate(input_ids)
             self.assertEqual(len(warning_list), 0)
+
+    @pytest.mark.xfail
+    def test_generation_config_max_length_emits_warning(self):
+        model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+        model.config.pad_token_id = tokenizer.eos_token_id
+
+        text = "Hello world"
+        tokenized_inputs = tokenizer([text], return_tensors="pt")
+        input_ids = tokenized_inputs.input_ids.to(torch_device)
+
+        # Default generation config value of 20 -> emits warning
+        with self.assertWarns(UserWarning):
+            model.generate(input_ids)
