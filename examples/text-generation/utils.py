@@ -24,6 +24,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
@@ -41,6 +42,7 @@ from optimum.habana.utils import (
     get_habana_frameworks_version,
     set_seed,
 )
+
 
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
