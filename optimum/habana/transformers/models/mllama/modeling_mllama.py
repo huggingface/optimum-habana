@@ -788,7 +788,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         **kwargs,
     ):
         """
-        Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2208
+        Copied from MllamaForConditionalGeneration::prepare_inputs_for_generation: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2208
         The only differences are:
             - add token_idx handling
         """
@@ -848,3 +848,30 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             model_inputs["aspect_ratio_mask"] = aspect_ratio_mask
 
         return model_inputs
+
+    def _update_model_kwargs_for_generation(self, outputs, model_kwargs, is_encoder_decoder, **kwargs):
+        """
+        Copied from MllamaForConditionalGeneration::_update_model_kwargs_for_generation: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2274
+        The only differences are:
+            - add token_idx handling
+        """
+        cross_attention_mask_prev = model_kwargs.get("cross_attention_mask", None)
+        model_kwargs = super()._update_model_kwargs_for_generation(
+            outputs=outputs,
+            model_kwargs=model_kwargs,
+            is_encoder_decoder=is_encoder_decoder,
+            **kwargs,
+        )
+
+        # add cross-attn mask for new token
+        if cross_attention_mask_prev is not None:
+            token_idx = model_kwargs.get("token_idx", None)
+            if token_idx is None:
+                model_kwargs["cross_attention_mask"] = torch.cat(
+                    [cross_attention_mask_prev, cross_attention_mask_prev[:, -1:, ...]], dim=1
+                )
+            else:
+                model_kwargs["cross_attention_mask"][:, token_idx - 1, ...] = cross_attention_mask_prev[
+                    :, token_idx - 2, ...
+                ].clone()
+        return model_kwargs
