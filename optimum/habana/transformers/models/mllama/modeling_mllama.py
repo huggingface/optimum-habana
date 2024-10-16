@@ -412,8 +412,6 @@ class GaudiMllamaTextModel(MllamaTextModel):
                 past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             else:
                 past_seen_tokens = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-            if token_idx is not None and past_key_values is not None:
-                past_seen_tokens = token_idx
             cache_position = torch.arange(
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
