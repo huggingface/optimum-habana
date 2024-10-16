@@ -697,6 +697,9 @@ class GaudiGemmaModel(GemmaModel):
 
 
 class GaudiGemmaForCausalLM(GemmaForCausalLM):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
