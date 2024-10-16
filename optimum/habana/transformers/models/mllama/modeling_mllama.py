@@ -49,6 +49,7 @@ def _prepare_cross_attention_mask(
     cross_attention_mask: torch.Tensor,
     num_vision_tokens: int,
     dtype: str,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from _prepare_cross_attention_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L99
@@ -57,7 +58,6 @@ def _prepare_cross_attention_mask(
     """
     # reshape so it can be used by attn module
     batch_size, text_total_length, *_ = cross_attention_mask.shape
-    pad_idx = torch.nonzero(cross_attention_mask)[-1][1]
     cross_attention_mask = cross_attention_mask.repeat_interleave(num_vision_tokens, dim=3)
     cross_attention_mask = cross_attention_mask.view(batch_size, text_total_length, -1)
     cross_attention_mask = cross_attention_mask.unsqueeze(1)
@@ -74,9 +74,12 @@ def _prepare_cross_attention_mask(
     full_text_row_masked_out_mask = (
         (cross_attention_mask != negative_inf_value).any(dim=-1).type_as(cross_attention_mask)[..., None]
     )
-    full_text_row_masked_out_mask2 = full_text_row_masked_out_mask.clone()
-    full_text_row_masked_out_mask2[:, :, pad_idx + 1 :, :] = 1
-    cross_attention_mask *= full_text_row_masked_out_mask2
+    if token_idx is not None:
+        full_text_row_masked_out_mask2 = full_text_row_masked_out_mask.clone()
+        full_text_row_masked_out_mask2[:, :, token_idx:, :] = 1
+        cross_attention_mask *= full_text_row_masked_out_mask2
+    else:
+        cross_attention_mask *= full_text_row_masked_out_mask
 
     return cross_attention_mask, full_text_row_masked_out_mask
 
@@ -131,7 +134,7 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
                         key_states = torch.cat((past_key_value[0], key_states), dim=2)
                         value_states = torch.cat((past_key_value[1], value_states), dim=2)
             if use_cache and not isinstance(past_key_value, Cache):
-                past_key_value = (key_states, value_states)
+                past_key_value = [key_states, value_states]
         elif cache_position[0] != 0:
             if isinstance(past_key_value, Cache):
                 key_states, value_states = (
@@ -213,7 +216,7 @@ class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
                     key_states = torch.cat((past_key_value[0], key_states), dim=2)
                     value_states = torch.cat((past_key_value[1], value_states), dim=2)
         if use_cache and not isinstance(past_key_value, Cache):
-            past_key_value = (key_states, value_states)
+            past_key_value = [key_states, value_states]
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -740,6 +743,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 cross_attention_mask,
                 num_vision_tokens=self.vision_model.num_patches,
                 dtype=self.dtype,
+                token_idx=token_idx,
             )
         else:
             full_text_row_masked_out_mask = None
@@ -789,8 +793,10 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         Copied from MllamaForConditionalGeneration::prepare_inputs_for_generation: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2208
         The only differences are:
             - add token_idx handling
+            - add bucket_internal handling
         """
         token_idx = kwargs.get("token_idx", None)
+        bucket_internal = kwargs.get("bucket_internal", None)
         if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
@@ -798,6 +804,11 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 input_ids = input_ids[:, -cache_position.shape[0] :]
             elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
                 input_ids = input_ids[:, cache_position]
+        elif bucket_internal and token_idx is not None:
+            # for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
+            cache_position = cache_position[:token_idx]
 
         # TODO: we have no attention_mask so this won't work, check if we really won't need attention mask and find another way
         if attention_mask is not None and position_ids is None:
