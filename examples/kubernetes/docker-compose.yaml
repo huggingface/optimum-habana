@@ -5,30 +5,30 @@ services:
         http_proxy: ${http_proxy:-""}
         https_proxy: ${https_proxy:-""}
         no_proxy: ${no_proxy:-""}
-        GAUDI_SW_VER: ${GAUDI_SW_VER:-1.17.0}
+        GAUDI_SW_VER: ${GAUDI_SW_VER:-1.18.0}
         OS: ${OS:-ubuntu22.04}
-        OPTIMUM_HABANA_VER:  ${OPTIMUM_HABANA_VER:-1.13.0}
-        TORCH_VER: ${TORCH_VER:-2.3.1}
+        OPTIMUM_HABANA_VER:  ${OPTIMUM_HABANA_VER:-1.14.0}
+        TORCH_VER: ${TORCH_VER:-2.4.0}
         REGISTRY: ${REGISTRY}
         REPO: ${REPO}
       context: .
       labels:
-        org.opencontainers.base.name: "vault.habana.ai/gaudi-docker/${GAUDI_SW_VER:-1.17.0}/${OS:-ubuntu22.04}/habanalabs/pytorch-installer-${TORCH_VER:-2.3.1}:latest"
+        org.opencontainers.base.name: "vault.habana.ai/gaudi-docker/${GAUDI_SW_VER:-1.18.0}/${OS:-ubuntu22.04}/habanalabs/pytorch-installer-${TORCH_VER:-2.3.1}:latest"
         org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators"
-        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.17.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}
+        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.18.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}
     command: >
       sh -c "python -c 'from optimum import habana; print(\"optimum-habana:\", habana.__version__)'"
-    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.17.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}
+    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.18.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}
     pull_policy: always
   optimum-habana-examples:
     build:
       labels:
-        org.opencontainers.base.name: "${REGISTRY}/${REPO}:gaudi-${GAUDI_SW_VER:-1.17.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}"
+        org.opencontainers.base.name: "${REGISTRY}/${REPO}:gaudi-${GAUDI_SW_VER:-1.18.0}-optimum-habana-${OPTIMUM_HABANA_VER:-1.13.0}"
         org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators Examples"
-        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.17.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.13.0}
+        org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.18.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.13.0}
       target: optimum-habana-examples
     command: >
       sh -c "python -c 'from optimum import habana; print(\"optimum-habana:\", habana.__version__)'"
     extends: optimum-habana
-    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.17.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.13.0}
+    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.18.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.13.0}
 
