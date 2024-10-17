@@ -177,7 +177,7 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom"]:
+    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom", "gpt2"]:
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
