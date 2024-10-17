@@ -99,14 +99,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "starcoder2",
     "persimmon",
     "qwen2",
-    "starcoder2",
     "llava",
     "llava_next",
     "stablelm",
     "mamba",
     "deci",
     "qwen2_moe",
-    "gemma",
     "whisper",
 ]
 
