@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.17.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.18.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):

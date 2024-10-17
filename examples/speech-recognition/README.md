@@ -141,7 +141,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
