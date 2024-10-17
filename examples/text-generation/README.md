@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
 ```
 
 
@@ -214,6 +214,22 @@ python run_generation.py \
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
+### Use PEFT models for generation
+
+You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
+
+For example:
+```bash
+python run_generation.py \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--bf16 \
+--max_new_tokens 100 \
+--prompt "Here is my prompt" \
+--peft_model yard1/llama-2-7b-sql-lora-test
+```
 
 ### Using growing bucket optimization
 
