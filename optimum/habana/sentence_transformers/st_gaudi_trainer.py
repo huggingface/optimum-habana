@@ -263,6 +263,8 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         from sentence_transformers import SentenceTransformer
 
         for name, child in loss.named_children():
+            if _is_peft_model(child):
+                child = child.get_base_model()
             if name == "model" and isinstance(child, SentenceTransformer):
                 loss.model = model
             elif isinstance(child, torch.nn.Module):
