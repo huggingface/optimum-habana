@@ -316,12 +316,6 @@ def setup_parser(parser):
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
 
-    parser.add_argument(
-        "--run_partial_dataset",
-        action="store_true",
-        help="Run the inference with dataset for specified --n_iterations(default:5)",
-    )
-
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
         "--load_quantized_model_with_autogptq",

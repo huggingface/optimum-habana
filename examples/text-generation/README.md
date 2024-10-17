@@ -576,7 +576,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --attn_softmax_bf16 \
 --bucket_size=128 \
 --bucket_internal \
---batch_size 10 \
+--batch_size 8 \
 --max_input_tokens 40960 \
 --max_new_tokens 5120 \
 --use_flash_attention \

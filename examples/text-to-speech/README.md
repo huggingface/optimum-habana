@@ -36,5 +36,4 @@ python3 run_pipeline.py \
 ```
 Models that have been validated:
   - [microsoft/speecht5_tts](https://huggingface.co/microsoft/speecht5_tts)
-  - [facebook/hf-seamless-m4t-medium](https://huggingface.co/facebook/hf-seamless-m4t-medium)
   - [facebook/mms-tts-eng](https://huggingface.co/facebook/mms-tts-eng)
