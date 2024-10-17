@@ -118,6 +118,7 @@ class GaudiAccelerator(Accelerator):
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
         dynamo_backend: GaudiDynamoBackend | str | None = None,
+        dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
     ):
@@ -310,6 +311,7 @@ class GaudiAccelerator(Accelerator):
                 FutureWarning,
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
+        self.dynamic = dynamic
 
         # Mixed precision attributes
         self.scaler = None
@@ -776,7 +778,7 @@ class GaudiAccelerator(Accelerator):
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                engine.compile()
+                engine.compile(compile_kwargs={"dynamic": self.dynamic})
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:

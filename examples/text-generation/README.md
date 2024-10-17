@@ -470,6 +470,10 @@ cards 0-3 and cards 4-7 will be unified in two different measurement files. All 
 More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
 
+> [!NOTE]
+> unify_measurements.py does not support PCQ mode. (default: PTQ)
+
+
 
 ### CPU memory reduction on single card
 
@@ -502,7 +506,7 @@ python run_generation.py \
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
-You can load pre-quantized 4bit models with the argument `--load_quantized_model`.
+You can load pre-quantized 4bit models with the argument `--load_quantized_model_with_inc`.
 Currently, uint4 checkpoints and single device are supported.
 More information on enabling 4 bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html.
@@ -524,7 +528,35 @@ python run_lm_eval.py \
 --attn_softmax_bf16 \
 --bucket_size=128 \
 --bucket_internal \
---load_quantized_model
+--load_quantized_model_with_inc
+```
+
+### Loading 4 Bit Checkpoints from Neural Compressor (INC)
+
+You can load a pre-quantized 4-bit checkpoint with the argument `--local_quantized_inc_model_path`, supplied with the original model with the argument `--model_name_or_path`.
+Currently, only uint4 checkpoints and single-device configurations are supported.
+**Note:** In this process, you can load a checkpoint that has been quantized using INC.
+More information on enabling 4-bit inference in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html?highlight=inference%20using%20int4#enabling-and-running-uint4-in-pytorch-models.
+
+Below is an example of loading a llama7b model with a 4bit checkpoint quantized in INC.
+Please note that the model checkpoint name is denoted as `<local_model_path_from_inc>`.
+Additionally, the following environment variables are used for performance optimizations and are planned to be removed in future versions:
+`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+```bash
+SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
+python run_lm_eval.py \
+-o acc_load_uint4_model.txt \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--attn_softmax_bf16 \
+--bucket_size=128 \
+--bucket_internal \
+--local_quantized_inc_model_path <local_model_path_from_inc> \
 ```
 
 ### Using Habana Flash Attention
@@ -555,6 +587,37 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-sdpa).
 
+### Running with UINT4 weight quantization using AutoGPTQ
+
+
+Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
+Currently, the support is for UINT4 inference of pre-quantized models only.
+
+You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
+`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
+and by adding the argument `--load_quantized_model_with_autogptq`.
+
+***Note:***
+Setting the above environment variables improves performance. These variables will be removed in future releases.
+ 
+
+Here is an example to run a quantized model <quantized_gptq_model>:
+```bash
+SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false \
+ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
+--attn_softmax_bf16 \
+--model_name_or_path <quantized_gptq_model> \
+--use_hpu_graphs \
+--limit_hpu_graphs \
+--use_kv_cache \
+--bucket_size 128 \
+--bucket_internal \
+--trim_logits \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--load_quantized_model_with_autogptq
+```
 
 ## Language Model Evaluation Harness
 
@@ -574,6 +637,8 @@ First, you should install the requirements:
 pip install -r requirements_lm_eval.txt
 ```
 
+> [!NOTE]
+> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
 ### Examples
 
