@@ -1,0 +1,2 @@
+from .image_processing_idefics2 import Gaudi2Idefics2ImageProcessor
+from .modeling_idefics2 import GaudiIdefics2ForConditionalGeneration, GaudiIdefics2Model, GaudiIdefics2VisionEmbeddings
