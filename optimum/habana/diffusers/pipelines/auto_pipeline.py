@@ -33,6 +33,8 @@ from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipe
 from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
+from .stable_diffusion_3.pipeline_stable_diffusion_3 import GaudiStableDiffusion3Pipeline
+from .flux.pipeline_flux import GaudiFluxPipeline
 
 
 GAUDI_PREFIX_NAME = "Gaudi"
@@ -42,6 +44,8 @@ GAUDI_AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", GaudiStableDiffusionPipeline),
         ("stable-diffusion-xl", GaudiStableDiffusionXLPipeline),
         ("stable-diffusion-controlnet", GaudiStableDiffusionControlNetPipeline),
+        ("stable-diffusion-3", GaudiStableDiffusion3Pipeline),
+        ("flux", GaudiFluxPipeline),
     ]
 )
 
