@@ -555,6 +555,34 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-sdpa).
 
+### Store KV Cache on CPU
+Keeping key/value cache on CPU (host) side can decrease hpu vram in spite of it may damage generation latency. It's a practical solution in long context serving scenario with a large LLM on single card.
+
+You can add `--kv_cache_on_host` arg to enable it. [Pytorch SDPA operator](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) will be automatically used to generate next token for saving data transfer time. First token is not be affected.
+
+For exmaple:
+```bash
+python run_generation.py \
+--model_name_or_path 01-ai/Yi-34B-Chat \
+--use_kv_cache \
+--bf16 \
+--attn_softmax_bf16 \
+--reuse_cache \
+--do_sample \
+--dataset_name emozilla/pg19-test \
+--batch_size 1 \
+--max_input_tokens 11200 \
+--column_name "text" \
+--dataset_max_samples 1 \
+--warmup 0 \
+--n_iterations 1 \
+--max_new_tokens 5000 \
+--kv_cache_on_host
+```
+
+> [!NOTE]
+> 1. `--kv_cache_on_host` only supports llama model for now. And it can not work with `--use_hpu_grapgs` and FP8 data type.
+> 2. Try to use it when you only meet HPU workspace allocation error (`OOM`) since it will increase latency.
 
 ## Language Model Evaluation Harness
 
