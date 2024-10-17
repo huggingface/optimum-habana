@@ -64,8 +64,8 @@ class GaudiStarcoder2MLP(Starcoder2MLP):
         x = self.c_fc(x)
         x = self.act(x)
         x = self.c_proj(x)
-        output = F.dropout(x, p=self.residual_dropout, training=self.training)
-        return output
+        x = F.dropout(x, p=self.residual_dropout, training=self.training)
+        return x
 
     def mlp_all_reduce(self, x):
         if hasattr(self.c_proj, "all_reduce"):
