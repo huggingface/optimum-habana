@@ -310,6 +310,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable inputs_embeds or not.",
     )
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
 
     parser.add_argument(
         "--run_partial_dataset",
@@ -727,6 +732,8 @@ def main():
                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
             )
             print(separator)
+            if args.run_partial_dataset and args.n_iterations == i + 1:
+                break
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
