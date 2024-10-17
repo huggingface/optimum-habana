@@ -239,14 +239,20 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is None:
                 decoder_input_ids = torch.cat([decoder_start_token_id, decoder_input_ids], dim=-1)
             else:
-                max_length = max_new_tokens + 2 if max_new_tokens is not None else self.generation_config.max_length
+                decoder_input_ids_len = decoder_input_ids.shape[-1]
+                max_length = (
+                    max_new_tokens + decoder_input_ids_len + 1
+                    if max_new_tokens is not None
+                    else self.generation_config.max_length
+                )
                 if max_length != decoder_start_token_id.shape[-1]:
                     decoder_start_token_id = torch.nn.functional.pad(
                         decoder_start_token_id,
                         (0, max_length - decoder_start_token_id.shape[-1]),
                         value=pad_token_id,
                     )
-                decoder_input_ids = decoder_start_token_id.index_copy(1, token_idx, decoder_input_ids)
+                decoder_start_token_id[:, 1 : 1 + decoder_input_ids_len, ...] = decoder_input_ids
+                decoder_input_ids = decoder_start_token_id
                 token_idx.add_(1)
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
@@ -1105,11 +1111,14 @@ class GaudiGenerationMixin(GenerationMixin):
                             )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
-                token_idx = 1
+                if model_kwargs.get("decoder_input_ids", None) is None:
+                    token_idx = 1
+                else:
+                    token_idx = model_kwargs["decoder_input_ids"].shape[-1]
                 model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                 if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
                     max_length = (
-                        generation_config.max_new_tokens + 1
+                        generation_config.max_new_tokens + token_idx
                         if generation_config.max_new_tokens is not None
                         else generation_config.max_length
                     )
