@@ -454,6 +454,10 @@ cards 0-3 and cards 4-7 will be unified in two different measurement files. All 
 More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
 
+> [!NOTE]
+> unify_measurements.py does not support PCQ mode. (default: PTQ)
+
+
 
 ### CPU memory reduction on single card
 
