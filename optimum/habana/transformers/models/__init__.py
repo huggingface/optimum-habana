@@ -146,6 +146,7 @@ from .mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionModel,
 )
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,

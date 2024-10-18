@@ -18,12 +18,13 @@ import math
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mllama.configuration_mllama import MllamaConfig, MllamaTextConfig
 from transformers.models.mllama.modeling_mllama import (
     MllamaCrossAttentionDecoderLayer,
@@ -33,12 +34,18 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaTextCrossAttention,
     MllamaTextModel,
     MllamaTextSelfAttention,
+    MllamaVisionModel,
     _prepare_4d_causal_attention_mask_with_cache_position,
+    _prepare_aspect_ratio_attention_mask,
     apply_rotary_pos_emb,
     repeat_kv,
 )
 from transformers.utils import (
     logging,
+)
+
+from ...modeling_attn_mask_utils import (
+    _gaudi_prepare_4d_causal_attention_mask,
 )
 
 
@@ -101,6 +108,7 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         The only differences are:
             - add token_idx support
             - add support if past_key_value is not Cache
+            - cache position is None
         """
         """Input shape: Batch x Time x Channel"""
         bsz, q_len, _ = hidden_states.size()
@@ -135,14 +143,13 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
                         value_states = torch.cat((past_key_value[1], value_states), dim=2)
             if use_cache and not isinstance(past_key_value, Cache):
                 past_key_value = [key_states, value_states]
-        elif cache_position[0] != 0:
-            if isinstance(past_key_value, Cache):
-                key_states, value_states = (
-                    past_key_value.key_cache[self.layer_idx],
-                    past_key_value.value_cache[self.layer_idx],
-                )
-            else:
-                key_states, value_states = (past_key_value[0], past_key_value[1])
+        elif not isinstance(past_key_value, Cache) and past_key_value is not None:
+            key_states, value_states = (past_key_value[0], past_key_value[1])
+        elif cache_position is not None and cache_position[0] != 0:
+            key_states, value_states = (
+                past_key_value.key_cache[self.layer_idx],
+                past_key_value.value_cache[self.layer_idx],
+            )
         else:
             raise ValueError(
                 "Cross attention layer can't find neither `cross_attn_states` nor cached values for key/values!"
@@ -409,21 +416,37 @@ class GaudiMllamaTextModel(MllamaTextModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         hidden_states = inputs_embeds
-
-        if cache_position is None:
-            if isinstance(past_key_values, Cache):
-                past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-            else:
-                past_seen_tokens = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-            cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+        if isinstance(past_key_values, Cache):
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        else:
+            past_seen_tokens = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+        ignore_cache_position = True  # Ignoring cache position for HPU, or else hpu graph may has issue
+        if ignore_cache_position is False:
+            if cache_position is None:
+                cache_position = torch.arange(
+                    past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+                )
+            if position_ids is None:
+                position_ids = cache_position.unsqueeze(0)
+            causal_mask = self._update_causal_mask(
+                attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
             )
-        if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
-
-        causal_mask = self._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-        )
+        else:
+            if position_ids is None:
+                position_ids = torch.arange(
+                    past_seen_tokens,
+                    inputs_embeds.shape[1] + past_seen_tokens,
+                    dtype=torch.long,
+                    device=inputs_embeds.device,
+                )
+                position_ids = position_ids.unsqueeze(0)
+            cache_position = None
+            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+                attention_mask,
+                input_ids.shape,
+                inputs_embeds,
+                past_seen_tokens,
+            )
 
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
@@ -673,7 +696,8 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
 class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
-        config._attn_implementation = "eager"
+        # sdpa is better for vision model in HPU
+        config._attn_implementation = "sdpa"
         super(GaudiMllamaForConditionalGeneration, self).__init__(config)
 
     def forward(
@@ -696,6 +720,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2077
@@ -748,9 +773,13 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         else:
             full_text_row_masked_out_mask = None
 
-        if cross_attention_mask is not None and cache_position is not None:
-            cross_attention_mask = cross_attention_mask[:, :, cache_position]
-            full_text_row_masked_out_mask = full_text_row_masked_out_mask[:, :, cache_position]
+        if cross_attention_mask is not None:
+            if cache_position is not None:
+                cross_attention_mask = cross_attention_mask[:, :, cache_position]
+                full_text_row_masked_out_mask = full_text_row_masked_out_mask[:, :, cache_position]
+            elif token_idx is not None and past_key_values is not None:
+                cross_attention_mask = torch.index_select(cross_attention_mask, -2, token_idx - 1)
+                full_text_row_masked_out_mask = torch.index_select(full_text_row_masked_out_mask, -2, token_idx - 1)
 
         outputs = self.language_model(
             input_ids=input_ids,
@@ -808,7 +837,8 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             # for the 1st token we can slice the inputs till token idx for the fwd pass.
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
-            cache_position = cache_position[:token_idx]
+            if cross_attention_mask is not None:
+                cross_attention_mask = cross_attention_mask[:, :token_idx, ...]
 
         # TODO: we have no attention_mask so this won't work, check if we really won't need attention mask and find another way
         if attention_mask is not None and position_ids is None:
@@ -834,8 +864,8 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         if num_logits_to_keep is not None:
             model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
-        if token_idx is not None and past_key_values:
-            cache_position = torch.arange(token_idx - 1, token_idx - 1 + input_ids.shape[1], device=input_ids.device)
+        # keep cache_position implementation as None for HPU
+        cache_position = None
 
         model_inputs.update(
             {
@@ -875,12 +905,154 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         # add cross-attn mask for new token
         if cross_attention_mask_prev is not None:
             token_idx = model_kwargs.get("token_idx", None)
-            if token_idx is None:
-                model_kwargs["cross_attention_mask"] = torch.cat(
-                    [cross_attention_mask_prev, cross_attention_mask_prev[:, -1:, ...]], dim=1
-                )
-            else:
-                model_kwargs["cross_attention_mask"][:, token_idx - 1, ...] = cross_attention_mask_prev[
-                    :, token_idx - 2, ...
-                ].clone()
+            if token_idx is not None:
+                mask = cross_attention_mask_prev[:, token_idx - 2 : token_idx - 1, ...]
+                cross_attention_mask_prev.index_copy_(1, token_idx - 1, mask)
+                model_kwargs["cross_attention_mask"] = cross_attention_mask_prev
         return model_kwargs
+
+
+class GaudiMllamaVisionModel(MllamaVisionModel):
+    def forward(
+        self,
+        pixel_values: torch.Tensor,
+        aspect_ratio_ids: torch.Tensor,
+        aspect_ratio_mask: torch.Tensor,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[BaseModelOutput, Tuple[torch.Tensor, ...]]:
+        """
+        Copied from MllamaVisionModel::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1425
+        The only differences are:
+            - optimize perf of stage "Collect intermediate layer outputs from encoder output"
+        """
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        batch_size, num_concurrent_media, num_tiles, num_channels, height, width = pixel_values.shape
+
+        pixel_values = pixel_values.reshape(batch_size * num_concurrent_media * num_tiles, num_channels, height, width)
+        aspect_ratio_ids = aspect_ratio_ids.reshape(batch_size * num_concurrent_media, -1)
+
+        # Patch embedding
+        patch_embeds = self.patch_embedding(pixel_values.to(self.dtype).to(self.device))
+        hidden_state = patch_embeds.flatten(2).transpose(1, 2)
+
+        # Tile embeddings
+        _, num_patches, dim = hidden_state.shape
+        hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, -1, dim)
+        hidden_state = self.pre_tile_positional_embedding(hidden_state, aspect_ratio_ids)
+
+        # Add cls token
+        hidden_state = hidden_state.reshape(batch_size * num_concurrent_media * num_tiles, num_patches, dim)
+        hidden_state = self.apply_class_embedding(hidden_state)
+        num_patches += 1
+
+        # Position embeddings
+        hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, num_patches, dim)
+        hidden_state = self.gated_positional_embedding(hidden_state, aspect_ratio_ids)
+
+        hidden_state = self.layernorm_pre(hidden_state)
+
+        # Compute the number of tokens to pad
+        num_padding_patches = (8 - (hidden_state.shape[-2] % 8)) % 8
+        # Compute padding tuple for pad function
+        padding = (0, 0, 0, num_padding_patches)  # (pad_left, pad_right, pad_left for dim -2, pad_right for dim -2)
+        # Pad the tensor
+        hidden_state = F.pad(hidden_state, padding, mode="constant", value=0)
+        slice_index = -num_padding_patches if num_padding_patches > 0 else None
+
+        # Prepare attention mask
+        attention_mask = aspect_ratio_mask.reshape(batch_size * num_concurrent_media, -1)
+        attention_mask = _prepare_aspect_ratio_attention_mask(
+            aspect_ratio_mask=attention_mask,
+            num_patches=self.num_patches,
+            target_length=hidden_state.shape[2],
+            dtype=self.dtype,
+        )
+
+        # Apply encoder
+        hidden_state = hidden_state.view(batch_size * num_concurrent_media, -1, dim)
+        output = self.transformer(
+            hidden_state,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            output_attentions=output_attentions,
+        )
+        hidden_state = output[0]
+
+        hidden_state = self.layernorm_post(hidden_state)
+
+        # Apply global encoder
+        hidden_state = hidden_state.reshape(
+            batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, dim
+        )
+        hidden_state = self.post_tile_positional_embedding(hidden_state, aspect_ratio_ids)
+        hidden_state = hidden_state.reshape(
+            batch_size * num_concurrent_media, num_tiles * (num_patches + num_padding_patches), dim
+        )
+        global_output = self.global_transformer(
+            hidden_state,
+            attention_mask=attention_mask,
+            output_hidden_states=output_hidden_states,
+            output_attentions=output_attentions,
+        )
+        hidden_state = global_output[0]
+
+        # Remove padding form hidden state
+        hidden_state = hidden_state.reshape(
+            batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, dim
+        )
+        hidden_state = hidden_state[:, :, :slice_index]
+        hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
+
+        # Collect intermediate layer outputs from encoder output
+        all_intermediate_hidden_states = output[1]
+        intermediate_hidden_states = [
+            hidden_state
+            for idx, hidden_state in enumerate(all_intermediate_hidden_states)
+            if idx in self.intermediate_layers_indices
+        ]
+        intermediate_hidden_states = torch.stack(intermediate_hidden_states, dim=-1)
+
+        """
+        intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
+        intermediate_hidden_states = intermediate_hidden_states[..., self.intermediate_layers_indices]
+        """
+
+        # Remove padding from intermediate hidden states
+        intermediate_hidden_states = intermediate_hidden_states.reshape(
+            batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, -1
+        )
+        intermediate_hidden_states = intermediate_hidden_states[:, :, :slice_index]
+        intermediate_hidden_states = intermediate_hidden_states.reshape(
+            batch_size, num_concurrent_media, num_tiles, num_patches, -1
+        )
+
+        # Concatenate final hidden state and intermediate hidden states
+        hidden_state = torch.cat([hidden_state, intermediate_hidden_states], dim=-1)
+
+        if output_hidden_states:
+            hidden_states = tuple(all_intermediate_hidden_states) + tuple(global_output[1])
+        else:
+            hidden_states = None
+
+        if output_attentions:
+            # global transformer in contrast to `self.transformer` doesn't always return hidden states so we might go index out-of-range
+            global_attn = tuple(global_output[2]) if output_hidden_states else tuple(global_output[1])
+            attentions = tuple(output[2]) + global_attn
+        else:
+            attentions = None
+
+        if not return_dict:
+            return tuple(v for v in [hidden_state, hidden_states, attentions] if v is not None)
+
+        return BaseModelOutput(
+            last_hidden_state=hidden_state,
+            hidden_states=hidden_states,
+            attentions=attentions,
+        )
