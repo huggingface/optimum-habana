@@ -1187,7 +1187,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(low_output.tolist(), high_output.tolist())
 
-    # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
     @pytest.mark.generate
     @parameterized.expand([("random",), ("same",)])
     @is_flaky()  # Read NOTE (1) below. If there are API issues, all attempts will fail.
@@ -1274,8 +1273,6 @@ class GenerationTesterMixin:
             for output in (output_greedy, output_assisted):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    # TODO [sasarkar] it is supported now. Enable this test, or delete it if its not applicable
-    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @is_flaky()
     @pytest.mark.generate
     def test_prompt_lookup_decoding_matches_greedy_search(self):
