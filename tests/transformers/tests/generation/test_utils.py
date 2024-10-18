@@ -3040,8 +3040,6 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         with self.assertRaises(ValueError):
             model.generate(input_ids, force_words_ids=[[[-1]]])
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_batched_decoder_start_id(self):
         # PT-only test: TF doesn't support batched_decoder_start_id
         articles = [
