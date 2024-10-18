@@ -397,7 +397,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         pooled_prompt_embeds_batches = torch.stack(pooled_prompt_embeds_batches)
         text_ids_batches = torch.stack(text_ids_batches)
         latent_image_ids_batches = torch.stack(latent_image_ids_batches)
-        guidance_batches = torch.stack(guidance_batches)
+        guidance_batches = torch.stack(guidance_batches) if guidance is not None else None
 
         return (
             latents_batches,
@@ -679,8 +679,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             text_ids_batches = torch.roll(text_ids_batches, shifts=-1, dims=0)
             latent_image_ids_batch = latent_image_ids_batches[0]
             latent_image_ids_batches = torch.roll(latent_image_ids_batches, shifts=-1, dims=0)
-            guidance_batch = guidance_batches[0]
-            guidance_batches = torch.roll(guidance_batches, shifts=-1, dims=0)
+            guidance_batch = None if guidance_batches is None else guidance_batches[0]
+            guidance_batches = None if guidance_batches is None else torch.roll(guidance_batches, shifts=-1, dims=0)
 
             if hasattr(self.scheduler, "_init_step_index"):
                 # Reset scheduler step index for next batch
@@ -745,6 +745,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
                 hb_profiler.step()
                 # htcore.mark_step(sync=True)
+                if num_batches > throughput_warmup_steps:
+                    ht.hpu.synchronize()
 
             if not output_type == "latent":
                 latents_batch = self._unpack_latents(latents_batch, height, width, self.vae_scale_factor)
