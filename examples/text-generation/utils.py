@@ -691,7 +691,7 @@ def local_load_remaining_pretrained_weight(self,model):
             "model": model,
             "state_dict": state_dict,
             "start_prefix": "",
-            "expected_keys": list(state_dict.keys()),
+            "expected_keys": self.loaded_state_dict_keys,
             "device_map": {"": self.device},
             "offload_folder": offload_folder,
             "state_dict_folder": tempfile.mkdtemp() if offload_state_dict else None,
