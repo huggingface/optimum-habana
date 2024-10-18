@@ -1140,8 +1140,6 @@ class GenerationTesterMixin:
 
     @pytest.mark.generate
     @unittest.skip("Started to break with https://github.com/huggingface/transformers/pull/33703")
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail    
     def test_beam_search_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
         for model_class in self.all_generative_model_classes:
@@ -2678,6 +2676,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
 
         self.assertTrue(torch.allclose(transition_scores_sum, outputs.sequences_scores, atol=1e-3))
 
+    # TODO [gustavo] Enable this test to Optimum-habana
+    @pytest.mark.xfail
     def test_beam_search_low_memory(self):
         tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
         model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2")
