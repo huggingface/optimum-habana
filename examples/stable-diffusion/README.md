@@ -315,7 +315,9 @@ python text_to_image_generation.py \
 
 ### FLUX.1
 
-FLUX.1 was was introduced by Black Forest Labs [here](https://blackforestlabs.ai/announcing-black-forest-labs/)
+FLUX.1 was introduced by Black Forest Labs [here](https://blackforestlabs.ai/announcing-black-forest-labs/).
+
+Here is how to run FLUX.1-schnell model (fast version of FLUX.1):
 
 ```bash
 python text_to_image_generation.py \
@@ -323,7 +325,33 @@ python text_to_image_generation.py \
     --prompts "A cat holding a sign that says hello world" \
     --num_images_per_prompt 10 \
     --batch_size 1 \
-    --num_inference_steps 28 \
+    --num_inference_steps 4 \
+    --image_save_dir /tmp/flux_1_images \
+    --scheduler flow_match_euler_discrete\
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+Before running FLUX.1-dev model, you need to:
+
+1. Agree to the Terms and Conditions for using FLUX.1-dev model at [HuggingFace model page](https://huggingface.co/black-forest-labs/FLUX.1-dev)
+2. Authenticate with HuggingFace using your HF Token. For authentication, run:
+
+```bash
+huggingface-cli login
+```
+
+Here is how to run FLUX.1-dev model:
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path black-forest-labs/FLUX.1-dev \
+    --prompts "A cat holding a sign that says hello world" \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
     --scheduler flow_match_euler_discrete\
     --use_habana \
