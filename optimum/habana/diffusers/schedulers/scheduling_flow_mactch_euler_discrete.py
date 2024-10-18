@@ -17,7 +17,7 @@ class GaudiFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
 
         # return indices[pos].item()
 
-        masked = (schedule_timesteps == timestep)
+        masked = schedule_timesteps == timestep
         tmp = masked.cumsum(dim=0)
         pos = (tmp == 0).sum().item()
         if masked.sum() > 1:

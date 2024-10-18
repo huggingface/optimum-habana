@@ -20,6 +20,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn.functional as F
+from diffusers.models.attention_processor import Attention
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
@@ -73,11 +75,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-#GaudiFluxSingleAttnProcessor2_0 and GaudiFluxAttnProcessor2_0 are based on FluxSingleAttnProcessor2_0 and FluxAttnProcessor2_0
-#from //github.com/huggingface/diffusers/blob/v0.30.3/src/diffusers/models/attention_processor.py and have been
-#modified to support FusedSDPA 
-import torch.nn.functional as F
-from diffusers.models.attention_processor import Attention
 
 def apply_rope(xq, xk, freqs_cis):
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
@@ -85,6 +82,7 @@ def apply_rope(xq, xk, freqs_cis):
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
     xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]
     return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)
+
 
 class GaudiFluxSingleAttnProcessor2_0:
     r"""
@@ -142,8 +140,8 @@ class GaudiFluxSingleAttnProcessor2_0:
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         from habana_frameworks.torch.hpex.kernels import FusedSDPA
-        import habana_frameworks.torch.hpu as ht
-        hidden_states = FusedSDPA.apply(query, key, value,      None,      0.0, False,    None,      'fast',   None)
+
+        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, "fast", None)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -230,9 +228,9 @@ class GaudiFluxAttnProcessor2_0:
             query, key = apply_rope(query, key, image_rotary_emb)
 
         from habana_frameworks.torch.hpex.kernels import FusedSDPA
-        import habana_frameworks.torch.hpu as ht
-        hidden_states = FusedSDPA.apply(query, key, value,      None,      0.0, False,    None,      'fast',   None)
-        
+
+        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, "fast", None)
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -253,6 +251,7 @@ class GaudiFluxAttnProcessor2_0:
             encoder_hidden_states = encoder_hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         return hidden_states, encoder_hidden_states
+
 
 class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
     r"""
@@ -323,7 +322,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             block.attn.processor = GaudiFluxSingleAttnProcessor2_0()
         for block in self.transformer.transformer_blocks:
             block.attn.processor = GaudiFluxAttnProcessor2_0()
-        
+
         self.to(self._device)
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph

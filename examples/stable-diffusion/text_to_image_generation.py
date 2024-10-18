@@ -27,7 +27,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
-    GaudiFlowMatchEulerDiscreteScheduler
+    GaudiFlowMatchEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
 
@@ -429,7 +429,6 @@ def main():
     kwargs_call["quant_mode"] = args.quant_mode
 
     # Instantiate a Stable Diffusion pipeline class
-    import habana_frameworks.torch.core as htcore
     if sdxl:
         # SDXL pipelines
         if controlnet:
