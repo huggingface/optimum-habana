@@ -1,10 +1,11 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 import torch.utils.checkpoint
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
-from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, torch_utils, unscale_lora_layers
+
+from optimum.habana.diffusers.utils.torch_utils import gaudi_fourier_filter
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,7 +39,8 @@ def gaudi_unet_2d_condition_model_forward(
     # However, the upsampling interpolation output size can be forced to fit any upsampling size
     # on the fly if necessary.
     default_overall_up_factor = 2**self.num_upsamplers
-
+    orig_fourier_filter = torch_utils.fourier_filter
+    torch_utils.fourier_filter = gaudi_fourier_filter
     # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
     forward_upsample_size = False
     upsample_size = None
@@ -92,6 +94,9 @@ def gaudi_unet_2d_condition_model_forward(
     timesteps = timesteps.expand(sample.shape[0])
 
     t_emb = self.time_proj(timesteps)
+
+    import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
 
     # `Timesteps` does not contain any weights and will always return f32 tensors
@@ -345,6 +350,8 @@ def gaudi_unet_2d_condition_model_forward(
     if USE_PEFT_BACKEND:
         # remove `lora_scale` from each PEFT layer
         unscale_lora_layers(self, lora_scale)
+
+    torch_utils.fourier_filter = orig_fourier_filter
 
     if not return_dict:
         return (sample,)

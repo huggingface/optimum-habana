@@ -2185,7 +2185,7 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(
                 outputs_from_embeds[:, inputs_embeds.shape[1] :].tolist(),
-                outputs_from_embeds_wo_ids[:, 1:].tolist(),
+                outputs_from_embeds_wo_ids.tolist(),
             )
 
     def _check_outputs(self, output, input_ids, config, use_cache=False, num_return_sequences=1):

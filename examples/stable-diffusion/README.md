@@ -21,6 +21,14 @@ This directory contains a script that showcases how to perform text-to-image gen
 Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser and Robin Rombach and the Stability AI team.
 
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
+
 ## Text-to-image Generation
 
 ### Single Prompt
@@ -298,7 +306,6 @@ It is a type of model for controlling StableDiffusion by conditioning the model 
 
 Here is how to generate images conditioned by canny edge model:
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
@@ -315,7 +322,6 @@ python text_to_image_generation.py \
 
 Here is how to generate images conditioned by canny edge model and with multiple prompts:
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
@@ -332,7 +338,6 @@ python text_to_image_generation.py \
 
 Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
 ```bash
-pip install -r requirements.txt
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
@@ -351,7 +356,6 @@ python ../gaudi_spawn.py \
 
 Here is how to generate images conditioned by open pose model:
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
@@ -369,7 +373,6 @@ python text_to_image_generation.py \
 
 Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
 ```bash
-pip install -r requirements.txt
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
@@ -434,7 +437,6 @@ Here is how to generate images with one prompt and one image.
 Take instruct-pix2pix as an example.
 
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "timbrooks/instruct-pix2pix" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -460,7 +462,6 @@ python image_to_image_generation.py \
 
 Here is how to generate images with several prompts and one image.
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "timbrooks/instruct-pix2pix" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -486,7 +487,6 @@ python image_to_image_generation.py \
 
 Here is how to generate SDXL images with a single prompt and one image:
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
@@ -506,7 +506,6 @@ python image_to_image_generation.py \
 
 Here is how to generate images with one image, it does not accept prompt input
 ```bash
-pip install -r requirements.txt
 python image_to_image_generation.py \
     --model_name_or_path "lambdalabs/sd-image-variations-diffusers" \
     --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \
@@ -553,6 +552,67 @@ python unconditional_image_generation.py \
     --output_dir "/tmp/"
 ```
 
+## Additional inference techniques
+
+Here is how to run the diffusers examples of inference techniques. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/overview_techniques).
+
+### Controlling brightness
+
+Here is how to run the example of controlling brightness. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path ptx0/pseudo-journey-v2 \
+    --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
+    --num_images_per_prompt 1 \
+    --batch_size 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --image_save_dir /tmp/stable_diffusion_images_brightness \
+    --seed 33 \
+    --use_zero_snr \
+    --guidance_scale 0.7 \
+    --timestep_spacing trailing
+```
+
+### Prompt weighting
+
+Here is how to run the example of prompt weighting. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "a red cat playing with a ball+++" "a red cat playing with a ball---" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana --use_hpu_graphs \
+    --image_save_dir /tmp/stable_diffusion_images_compel \
+    --seed 33 \
+    --bf16 \
+    --num_inference_steps 20 \
+    --use_compel
+```
+
+### Controlling image quality
+
+Here is how to run the example of improving image quality. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/image_quality).
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "A squirrel eating a burger" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana \
+    --image_save_dir /tmp/stable_diffusion_images_freeu \
+    --seed 33 \
+    --use_freeu \
+    --bf16
+```
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
@@ -604,3 +664,38 @@ python image_to_video_generation.py \
 
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
+
+### Image-to-video ControlNet
+
+Here is how to generate video conditioned by depth:
+
+```
+python image_to_video_generation.py \
+    --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
+    --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
+    --control_image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_0.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_1.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_2.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_3.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_4.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_5.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_6.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_7.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_8.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_9.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_10.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_11.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_12.png?raw=true" \
+             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_13.png?raw=true" \
+    --image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/chair.png?raw=true" \
+    --video_save_dir SVD_controlnet \
+    --save_frames_as_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --num_frames 14 \
+    --motion_bucket_id=14 \
+    --width=512 \
+    --height=512
+```

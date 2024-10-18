@@ -1,6 +1,6 @@
 from .modeling_mpt import (
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
 )
