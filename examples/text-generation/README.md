@@ -282,7 +282,7 @@ You will also need to add `--torch_compile` and `--parallel_strategy="tp"` in yo
 Here is an example:
 ```bash
 PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-2-70b-hf  \
+--model_name_or_path meta-llama/Llama-2-7b-hf  \
 --trim_logits \
 --use_kv_cache \
 --attn_softmax_bf16 \
