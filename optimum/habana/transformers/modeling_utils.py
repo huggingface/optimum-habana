@@ -120,6 +120,7 @@ from .models import (
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
+    GaudiDynamicMoeBlock,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -170,7 +171,6 @@ from .models import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
@@ -486,7 +486,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
-    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock = GaudiDynamicMoeBlock
+
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
     transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig
