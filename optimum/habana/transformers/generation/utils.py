@@ -108,6 +108,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_moe",
     "gemma",
     "whisper",
+    "mllama",
 ]
 
 
@@ -323,11 +324,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+        kv_cache_len = model_kwargs.get("kv_cache_len", 0)
         if model_kwargs["past_key_values"]:
             if model_kwargs.get("mqa_model", False):
                 for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    if torch.is_tensor(
-                        model_kwargs["past_key_values"][i]
+                    if (
+                        torch.is_tensor(model_kwargs["past_key_values"][i])
+                        and model_kwargs["past_key_values"][i].shape[-2] == kv_cache_len - pad_amount
                     ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
                         model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
                             model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
@@ -337,8 +340,9 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 for i in range(len(model_kwargs["past_key_values"])):  # layer
                     for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
-                        if torch.is_tensor(
-                            model_kwargs["past_key_values"][i][j]
+                        if (
+                            torch.is_tensor(model_kwargs["past_key_values"][i][j])
+                            and model_kwargs["past_key_values"][i][j].shape[-2] == kv_cache_len - pad_amount
                         ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
                             model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
                                 model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
@@ -1103,6 +1107,12 @@ class GaudiGenerationMixin(GenerationMixin):
                                 (0, generation_config.max_new_tokens),
                                 value=0,
                             )
+                    if model_kwargs.get("cross_attention_mask") is not None:
+                        model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
+                            model_kwargs["cross_attention_mask"],
+                            (0, 0, 0, 0, 0, generation_config.max_new_tokens),
+                            value=0,
+                        )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 token_idx = 1
