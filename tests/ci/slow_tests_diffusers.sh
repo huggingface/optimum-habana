@@ -1,5 +1,8 @@
 #!/bin/bash
 
+hl-smi
+hl-smi -q
+
 python -m pip install --upgrade pip
 export RUN_SLOW=true
 make test_installs
