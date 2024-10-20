@@ -458,6 +458,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
+
+            if model_kwargs.get("cross_attention_mask") is not None:
+                model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
+                    model_kwargs["cross_attention_mask"],
+                    (0, 0, 0, 0, 0, pad_amount),
+                    value=0,
+                )
+
             if reduce_recompile and params["passnum"] == 0:
                 position_ids_cpu = model_kwargs["attention_mask"].long().cumsum(-1) - 1
                 position_ids_cpu.masked_fill_(model_kwargs["attention_mask"] == 0, 1)
@@ -500,14 +508,20 @@ class GaudiGenerationMixin(GenerationMixin):
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                             # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
-                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
-                            assert (
-                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
-                                == num_virtual_tokens
-                            )
-                            tmp_lst[j] = torch.nn.functional.pad(
-                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
-                            )
+                            if (
+                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)]
+                                == params["allocated_space"] - pad_amount
+                            ):
+                                num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
+                                assert (
+                                    model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
+                                    == num_virtual_tokens
+                                )
+                                tmp_lst[j] = torch.nn.functional.pad(
+                                    model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                                )
+                            else:
+                                tmp_lst[j] = model_kwargs["past_key_values"][i][j]
                         new_kv[i] = tuple(tmp_lst)
                     model_kwargs["past_key_values"] = tuple(new_kv)
 
