@@ -1,0 +1,6 @@
+{
+    "method": "HOOKS",
+    "mode": "QUANTIZE",
+    "scale_method": "maxabs_hw_opt_weight",
+    "dump_stats_path": "quantization/stable-diffusion-3/measure_all/fp8"
+}
