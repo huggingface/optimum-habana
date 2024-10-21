@@ -517,45 +517,42 @@ class FusedMoE(nn.Module):
 
         self.top_k = config.num_experts_per_tok
         self.num_experts = config.num_local_experts
+        self.tp_size = 1
+        if is_deepspeed_available():
+                from deepspeed import comm as dist
+                if dist.is_initialized():
+                    self.tp_size = dist.get_world_size()
         self.intermediate_size = config.intermediate_size
+        self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
         self.hpu_static_fused_moe = DynamicFusedMOE(self.num_experts)
 
-        self.create_weights(
-            layer=self,
-            num_experts=self.num_experts,
-            hidden_size=config.hidden_size,
-            intermediate_size=self.intermediate_size,
-            params_dtype=params_dtype,
-            weight_loader=self.weight_loader)
-    
+        # Fused gate_up_proj (column parallel)
+        self.w13_weight = torch.nn.Parameter(torch.empty(self.num_experts,
+                                                    2 * self.intermediate_size_per_partition,
+                                                    config.hidden_size,
+                                                    dtype=params_dtype,
+                                                    device="hpu" if self.tp_size > 1 else None),
+                                                    requires_grad=False)
+        self.register_parameter("w13_weight", self.w13_weight)
+        setattr(self.w13_weight, "weight_loader", self.weight_loader)
+        # down_proj (row parallel)
+        self.w2_weight = torch.nn.Parameter(torch.empty(self.num_experts,
+                                                         config.hidden_size,
+                                                    self.intermediate_size_per_partition,
+                                                    dtype=params_dtype,
+                                                    device="hpu" if self.tp_size > 1 else None),
+                                                    requires_grad=False)
+        self.register_parameter("w2_weight", self.w2_weight)
+        setattr(self.w2_weight, "weight_loader", self.weight_loader)
+
 
     def forward(self, hidden_states, router_logits):
-        return self.hpu_static_fused_moe(hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k)
+        final_hidden_states =  self.hpu_static_fused_moe(hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k)
+        if self.tp_size > 1:
+            from deepspeed import comm as dist 
+            dist.all_reduce(final_hidden_states)
+        return final_hidden_states
     
-    def create_weights(self, layer: torch.nn.Module, num_experts: int,
-                        hidden_size: int, intermediate_size: int,
-                        params_dtype: torch.dtype, **extra_weight_attrs):
-            # Fused gate_up_proj (column parallel)
-            w13_weight = torch.nn.Parameter(torch.empty(num_experts,
-                                                        2 * intermediate_size,
-                                                        hidden_size,
-                                                        dtype=params_dtype),
-                                            requires_grad=False)
-            layer.register_parameter("w13_weight", w13_weight)
-            for key, value in extra_weight_attrs.items():
-                setattr(w13_weight, key, value)
-
-
-            # down_proj (row parallel)
-            w2_weight = torch.nn.Parameter(torch.empty(num_experts,
-                                                    hidden_size,
-                                                    intermediate_size,
-                                                    dtype=params_dtype),
-                                        requires_grad=False)
-            layer.register_parameter("w2_weight", w2_weight)
-            for key, value in extra_weight_attrs.items():
-                setattr(w2_weight, key, value)
-
     def weight_loader(self, param: torch.nn.Parameter,
                       loaded_weight: torch.Tensor, weight_name: str,
                       shard_id: int, expert_id: int):
@@ -586,8 +583,12 @@ class FusedMoE(nn.Module):
                 param_data[expert_id] = loaded_weight
         # Weights
         else:
-            shard_size = self.intermediate_size
-            shard = slice(0,  shard_size)
+            tp_rank = 0
+            if self.tp_size > 1:
+                from deepspeed import comm as dist
+                tp_rank = dist.get_rank() 
+            shard_size = self.intermediate_size_per_partition
+            shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
 
             # w1, gate_proj case: Load into first shard of w13.
             if shard_id == 0:
@@ -657,7 +658,6 @@ class GaudiDynamicMoeBlock(nn.Module):
         self.jitter_noise = config.router_jitter_noise
 
         self.experts_param_mapping = FusedMoE.make_expert_params_mapping("w1", "w2", "w3", self.num_experts)
-        #  self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
         self.experts = FusedMoE(config)
 
   
@@ -668,7 +668,6 @@ class GaudiDynamicMoeBlock(nn.Module):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
-        residual_router_logits = router_logits.clone()
         if is_deepspeed_available() and (not self.training):
             from deepspeed import comm as dist
 
@@ -678,7 +677,7 @@ class GaudiDynamicMoeBlock(nn.Module):
                 router_logits = torch.cat(output_tensors, dim=1)
 
         final_hidden_states = self.experts(hidden_states, router_logits)
-        return final_hidden_states.view(orig_shape), residual_router_logits
+        return final_hidden_states.view(orig_shape), router_logits
     
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
         params_dict = dict(self.experts.named_parameters())
@@ -708,7 +707,6 @@ class GaudiDynamicMoeBlock(nn.Module):
                 param = params_dict[name]
                 weight_loader = getattr(param, "weight_loader")
                 weight_loader(param, loaded_weight)
-        # print(error_msgs)         
         
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
     def __init__(self, config: MixtralConfig, layer_idx: int):
@@ -1016,7 +1014,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
         )
-
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
