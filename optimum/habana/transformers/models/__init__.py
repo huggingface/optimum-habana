@@ -45,6 +45,12 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .cohere import (
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
+)
 from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
