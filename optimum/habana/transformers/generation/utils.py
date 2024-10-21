@@ -199,19 +199,20 @@ class GaudiGenerationMixin(GenerationMixin):
         # 2. `decoder_start_token_id` must have shape (batch_size, 1)
         if device is None:
             device = self.device
-        if token_idx is None:
-            if decoder_start_token_id.ndim == 1:
-                if decoder_start_token_id.shape[0] != batch_size:
-                    raise ValueError(
-                        f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
-                    )
-                decoder_start_token_id = decoder_start_token_id.view(-1, 1)
-            else:
-                decoder_start_token_id = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+        if decoder_start_token_id.ndim == 1:
+            if decoder_start_token_id.shape[0] != batch_size:
+                raise ValueError(
+                    f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
                 )
+            decoder_start_token_id = decoder_start_token_id.view(-1, 1)
         else:
-            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            decoder_start_token_id = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
+        if token_idx is not None:
+            # creating padded decoder_input_ids to achieve static shapes.
+            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_start_token_id = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
