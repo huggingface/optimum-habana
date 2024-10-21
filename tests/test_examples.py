@@ -201,6 +201,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         ["t5"],
     ),
+    "run_image2text_lora_finetune": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["idefics2"],
+    ),
 }
 
 
@@ -230,16 +235,21 @@ class ExampleTestMeta(type):
             "meta-llama/LlamaGuard-7b",
         ]
 
+        case_only_in_gaudi2 = [
+            "sft",
+            "dpo",
+            "reward_modeling",
+            "ppo",
+            "prompt_tuning",
+            "peft_poly",
+            "run_sequence_classification",
+            "run_image2text_lora_finetune",
+        ]
+
         if (fsdp or fp8) and not IS_GAUDI2:
             return False
         elif (
-            "sft" in example_name
-            or "dpo" in example_name
-            or "reward_modeling" in example_name
-            or "ppo" in example_name
-            or "prompt_tuning" in example_name
-            or "peft_poly" in example_name
-            or example_name == "run_sequence_classification"
+            any(case in example_name for case in case_only_in_gaudi2)
             or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
             return False
@@ -920,6 +930,16 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
     DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardImageToTextModelingLoRAExampleTester(
+    ExampleTesterBase,
+    metaclass=ExampleTestMeta,
+    example_name="run_image2text_lora_finetune",
+    multi_card=True,
+):
+    TASK_NAME = "image2text_lora_finetune"
+    DATASET_NAME = "nielsr/docvqa_1200_examples"
 
 
 class MultiCardCausalLanguageModelingVeraExampleTester(
