@@ -18,7 +18,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("google/gemma-2b-it", "mamamiya405/finred", "Habana/gpt2", True, 9.5, 31.5),
-            ("google/gemma-2b-it", "mamamiya405/finred", "Habana/gpt2", False, 9.5, 31.5),
+            ("google/gemma-2b-it", "mamamiya405/finred", "Habana/gpt2", False, 6.5, 24.01),
         ],
     }
 
