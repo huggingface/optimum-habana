@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -26,6 +27,7 @@ from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
 from diffusers.utils import BaseOutput, replace_example_docstring
+from habana_frameworks.torch.hpex.kernels import apply_rotary_pos_emb as FusedRoPE
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from optimum.utils import logging
@@ -76,12 +78,53 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def apply_rope(xq, xk, freqs_cis):
+def apply_orig_rope(xq, xk, freqs_cis):
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
     xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]
     return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)
+
+
+def apply_fused_rope(xq, xk, freqs_cis):
+    cos = freqs_cis[..., 0, 0].type_as(xq)
+    sin = freqs_cis[..., 1, 0].type_as(xq)
+    cos_ = torch.cat((cos, cos), dim=-1)
+    sin_ = torch.cat((sin, sin), dim=-1)
+
+    xq0 = xq[..., 0::2]
+    xq1 = xq[..., 1::2]
+    xq_ = torch.cat((xq0, xq1), dim=-1)
+
+    xk0 = xk[..., 0::2]
+    xk1 = xk[..., 1::2]
+    xk_ = torch.cat((xk0, xk1), dim=-1)
+
+    xq_out_ = FusedRoPE(xq_, cos_, sin_)
+    xk_out_ = FusedRoPE(xk_, cos_, sin_)
+
+    sh = xq_out_.shape
+    xq_out = xq_out_.view(*sh[:-1], 2, sh[-1] // 2)
+    dims = list(range(xq_out.ndimension()))
+    dims[-1], dims[-2] = dims[-2], dims[-1]
+    xq_out = xq_out.permute(*dims).contiguous().view(sh)
+
+    sh = xk_out_.shape
+    xk_out = xk_out_.view(*sh[:-1], 2, sh[-1] // 2)
+    dims = list(range(xk_out.ndimension()))
+    dims[-1], dims[-2] = dims[-2], dims[-1]
+    xk_out = xk_out.permute(*dims).contiguous().view(sh)
+
+    return xq_out, xk_out
+
+
+def apply_rope(xq, xk, freqs_cis):
+    rope_opt = os.getenv("GAUDI_FLUX_FUSED_ROPE")
+
+    if rope_opt in ["0", "False"]:
+        return apply_orig_rope(xq, xk, freqs_cis)
+    else:
+        return apply_fused_rope(xq, xk, freqs_cis)
 
 
 class GaudiFluxSingleAttnProcessor2_0:
@@ -512,17 +555,23 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
-        quant_mode = kwargs["quant_mode"]
+        quant_mode = kwargs.get("quant_mode", None)
 
         if quant_mode == "quantize-mixed":
             import copy
 
             transformer_bf16 = copy.deepcopy(self.transformer).to(self._execution_device)
 
-        if quant_mode == "measure" or quant_mode.startswith("quantize"):
+        if quant_mode in ("measure", "quantize", "quantize-mixed"):
             import os
 
             quant_config_path = os.getenv("QUANT_CONFIG")
+            if not quant_config_path:
+                raise ImportError(
+                    "Error: QUANT_CONFIG path is not defined. Please define path to quantization configuration JSON file."
+                )
+            elif not os.path.isfile(quant_config_path):
+                raise ImportError(f"Error: QUANT_CONFIG path '{quant_config_path}' is not valid")
 
             htcore.hpu_set_env()
 
