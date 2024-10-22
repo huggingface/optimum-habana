@@ -273,6 +273,7 @@ Now let's get our dataset. For this example we will use some dog images: https:/
 Let's first download it locally:
 
 ```python
+import os
 from huggingface_hub import snapshot_download
 
 local_dir = "./dog"
