@@ -1561,7 +1561,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
-            quant_mode="disable"
+            quant_mode="disable",
         ).images
         self.assertEqual(len(images), num_images_per_prompt)
         self.assertEqual(images[-1].shape, (32, 32, 3))
@@ -1574,7 +1574,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
-            quant_mode="disable"
+            quant_mode="disable",
         ).images
 
         self.assertEqual(len(images), num_images_per_prompt)
