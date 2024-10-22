@@ -281,6 +281,12 @@ snapshot_download(
     local_dir=local_dir, repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
+
+# check if .cache folder exists and remove it.
+cache_folder = os.path.join(local_dir, ".cache")
+if os.path.exists(cache_folder):
+    import shutil
+    shutil.rmtree(cache_folder)
 ```
 
 ### Full model finetune
