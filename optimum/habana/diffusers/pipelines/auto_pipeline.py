@@ -29,8 +29,10 @@ from diffusers.pipelines import (
 from huggingface_hub.utils import validate_hf_hub_args
 
 from .controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
+from .flux.pipeline_flux import GaudiFluxPipeline
 from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
+from .stable_diffusion_3.pipeline_stable_diffusion_3 import GaudiStableDiffusion3Pipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 
@@ -42,6 +44,8 @@ GAUDI_AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", GaudiStableDiffusionPipeline),
         ("stable-diffusion-xl", GaudiStableDiffusionXLPipeline),
         ("stable-diffusion-controlnet", GaudiStableDiffusionControlNetPipeline),
+        ("stable-diffusion-3", GaudiStableDiffusion3Pipeline),
+        ("flux", GaudiFluxPipeline),
     ]
 )
 
