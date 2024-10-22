@@ -451,6 +451,31 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --reuse_cache
 ```
 
+Here is an example to measure the tensor quantization statistics on gemma with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
+--model_name_or_path google/gemma-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--reuse_cache \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for gemma with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
+--model_name_or_path google/gemma-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--reuse_cache \
+--bf16
+```
+
 
 ### Running FP8 models on single device
 
