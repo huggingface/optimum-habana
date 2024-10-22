@@ -723,6 +723,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -751,6 +752,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
             return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -862,6 +864,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
                 "attention_mask": attention_mask,
                 "num_logits_to_keep": num_logits_to_keep,
                 "token_idx": token_idx,
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16", False),
             }
         )
         return model_inputs
