@@ -83,7 +83,7 @@ def _test_language_modeling(
 
         with open(Path(tmp_dir) / "eval_results.json") as fp:
             results = json.load(fp)
-        
+
         assert results["eval_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline_eval
 
 
