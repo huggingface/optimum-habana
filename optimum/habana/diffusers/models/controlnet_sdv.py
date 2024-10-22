@@ -13,18 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders.single_file_model import FromOriginalModelMixin
 from diffusers.models import UNetSpatioTemporalConditionModel
 from diffusers.models.attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
 )
 from diffusers.models.embeddings import (
     TimestepEmbedding,
@@ -549,6 +545,7 @@ class ControlNetSDVModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             controlnet.mid_block.load_state_dict(unet.mid_block.state_dict())
 
         return controlnet
+
 
 def zero_module(module):
     for p in module.parameters():

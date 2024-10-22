@@ -6332,7 +6332,7 @@ class GaudiFluxPipelineTester(TestCase):
         text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         # HF issue with T5EncoderModel from tiny-random-t5
         # text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        #text_encoder_3 = None
+        # text_encoder_3 = None
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -6379,7 +6379,6 @@ class GaudiFluxPipelineTester(TestCase):
             "width": 8,
             "max_sequence_length": 48,
             "output_type": "np",
-            "quant_mode": "disable",
         }
         return inputs
 
@@ -6453,7 +6452,6 @@ class GaudiFluxPipelineTester(TestCase):
             guidance_scale=5.0,
             output_type="np",
             generator=generator,
-            quant_mode="disable"
         )
 
         image = outputs.images[0]
@@ -6462,7 +6460,7 @@ class GaudiFluxPipelineTester(TestCase):
             [
                 [0.18554688, 0.203125, 0.23242188],
                 [0.17773438, 0.20117188, 0.23242188],
-                [0.18359375, 0.20703125, 0.2265625 ],
+                [0.18359375, 0.20703125, 0.2265625],
                 [0.18554688, 0.2109375, 0.23828125],
                 [0.18359375, 0.2109375, 0.23632812],
                 [0.18164062, 0.21289062, 0.23632812],
@@ -6474,9 +6472,9 @@ class GaudiFluxPipelineTester(TestCase):
             dtype=np.float32,
         )
 
-        # check quality
+        # Check if expected image slice value matches to what we get after denoising
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
         assert max_diff < 1e-4
 
-        # check performance
+        # Check expected performance of FLUX.1 schnell model
         self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_THROUGHPUT)
