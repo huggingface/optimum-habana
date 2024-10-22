@@ -1420,6 +1420,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "output_type": "np",
+            "quant_mode": "disable",
         }
         return inputs
 
@@ -1560,9 +1561,10 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
+            quant_mode="disable"
         ).images
         self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (64, 64, 3))
+        self.assertEqual(images[-1].shape, (32, 32, 3))
 
         # Test batch_size when it is not a divider of the total number of generated images for a single prompt
         num_images_per_prompt = 7
@@ -1572,10 +1574,11 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
+            quant_mode="disable"
         ).images
 
         self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (64, 64, 3))
+        self.assertEqual(images[-1].shape, (32, 32, 3))
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
