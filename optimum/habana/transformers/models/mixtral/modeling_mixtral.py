@@ -43,7 +43,6 @@ from transformers.models.mixtral.modeling_mixtral import (
     MixtralModel,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
-    MixtralBlockSparseTop2MLP
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
@@ -449,37 +448,35 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
 
     return final_hidden_states, router_logits
 
-class DynamicFusedMOE(torch.nn.Module):
 
+class DynamicFusedMOE(torch.nn.Module):
     def __init__(self, num_total_experts):
         super().__init__()
         self.num_total_experts = num_total_experts
 
     def forward(self, hidden_states, w12, w3, score, topk):
-        routing_weights, selected_experts = calculate_routing_tensors(
-                score, topk, hidden_states.dtype)
+        routing_weights, selected_experts = calculate_routing_tensors(score, topk, hidden_states.dtype)
         # pre-processing for custom op inputs
         experts_range = range(self.num_total_experts)
-        w12_list = [w12[i,:,:].squeeze() for i in experts_range]
-        w3_list = [w3[i,:,:].squeeze() for i in experts_range]
+        w12_list = [w12[i, :, :].squeeze() for i in experts_range]
+        w3_list = [w3[i, :, :].squeeze() for i in experts_range]
         final_hidden_states = torch.ops.hpu.mixture_of_experts(
-                hidden_states=hidden_states,
-                expert_routing_table=selected_experts,
-                router_weights=routing_weights,
-                w12=w12_list,
-                w3=w3_list,
-                permuted_weights=True,
-                activation="silu",
-                experts_min=0,
-                experts_max=7
+            hidden_states=hidden_states,
+            expert_routing_table=selected_experts,
+            router_weights=routing_weights,
+            w12=w12_list,
+            w3=w3_list,
+            permuted_weights=True,
+            activation="silu",
+            experts_min=0,
+            experts_max=7,
         )
         return final_hidden_states.view(-1, hidden_states.shape[1])
 
+
 def calculate_routing_tensors(score, topk, hidden_states_dtype):
     routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
-    routing_weights, selected_experts = torch.topk(routing_weights,
-                                                   topk,
-                                                   dim=-1)
+    routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
     routing_weights = routing_weights.to(hidden_states_dtype)
     return routing_weights, selected_experts
@@ -487,24 +484,8 @@ def calculate_routing_tensors(score, topk, hidden_states_dtype):
 
 class FusedMoE(nn.Module):
     """FusedMoE layer for MoE models.
-
-    This layer contains both MergedColumnParallel weights (gate_up_proj /
-    w13) and RowParallelLinear weights (down_proj/ w2).
-
-    Note: Mixtral uses w1, w2, and w3 for gate, up, and down_proj. We
-    copy that naming convention here and handle any remapping in the
-    load_weights function in each model implementation.
-
-    Args:
-        num_experts: Number of experts in the model
-        top_k: Number of experts selected for each token
-        hidden_size: Input hidden state size of the transformer
-        intermediate_size: Intermediate size of the experts
-        params_dtype: Data type for the parameters.
-        reduce_results: Whether to all all_reduce on the output of the layer
-        renomalize: Whether to renormalize the logits in the fused_moe kernel
-        quant_config: Quantization configure.
-    """
+    Based on implementation from vllm:
+    https://github.com/HabanaAI/vllm-fork/blob/84922944da5b65fa43bbdc465650911cbef9de72/vllm/hpu/ops.py#L282"""
 
     def __init__(
         self,
@@ -519,128 +500,49 @@ class FusedMoE(nn.Module):
         self.num_experts = config.num_local_experts
         self.tp_size = 1
         if is_deepspeed_available():
-                from deepspeed import comm as dist
-                if dist.is_initialized():
-                    self.tp_size = dist.get_world_size()
+            from deepspeed import comm as dist
+
+            if dist.is_initialized():
+                self.tp_size = dist.get_world_size()
+
         self.intermediate_size = config.intermediate_size
         self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
         self.hpu_static_fused_moe = DynamicFusedMOE(self.num_experts)
 
         # Fused gate_up_proj (column parallel)
-        self.w13_weight = torch.nn.Parameter(torch.empty(self.num_experts,
-                                                    2 * self.intermediate_size_per_partition,
-                                                    config.hidden_size,
-                                                    dtype=params_dtype,
-                                                    device="hpu" if self.tp_size > 1 else None),
-                                                    requires_grad=False)
+        self.w13_weight = torch.nn.Parameter(
+            torch.empty(
+                self.num_experts,
+                2 * self.intermediate_size_per_partition,
+                config.hidden_size,
+                dtype=params_dtype,
+                device="hpu" if self.tp_size > 1 else None,
+            ),
+            requires_grad=False,
+        )
         self.register_parameter("w13_weight", self.w13_weight)
-        setattr(self.w13_weight, "weight_loader", self.weight_loader)
         # down_proj (row parallel)
-        self.w2_weight = torch.nn.Parameter(torch.empty(self.num_experts,
-                                                         config.hidden_size,
-                                                    self.intermediate_size_per_partition,
-                                                    dtype=params_dtype,
-                                                    device="hpu" if self.tp_size > 1 else None),
-                                                    requires_grad=False)
+        self.w2_weight = torch.nn.Parameter(
+            torch.empty(
+                self.num_experts,
+                config.hidden_size,
+                self.intermediate_size_per_partition,
+                dtype=params_dtype,
+                device="hpu" if self.tp_size > 1 else None,
+            ),
+            requires_grad=False,
+        )
         self.register_parameter("w2_weight", self.w2_weight)
-        setattr(self.w2_weight, "weight_loader", self.weight_loader)
-
 
     def forward(self, hidden_states, router_logits):
-        final_hidden_states =  self.hpu_static_fused_moe(hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k)
+        final_hidden_states = self.hpu_static_fused_moe(
+            hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k
+        )
         if self.tp_size > 1:
-            from deepspeed import comm as dist 
+            from deepspeed import comm as dist
+
             dist.all_reduce(final_hidden_states)
         return final_hidden_states
-    
-    def weight_loader(self, param: torch.nn.Parameter,
-                      loaded_weight: torch.Tensor, weight_name: str,
-                      shard_id: int, expert_id: int):
-        param_data = param.data
-
-        # Input scales can be loaded directly and should be equal.
-        if "input_scale" in weight_name:
-            if param_data[expert_id] != 1 and (param_data[expert_id] -
-                                               loaded_weight).abs() > 1e-5:
-                raise ValueError(
-                    "input_scales of w1 and w3 of a layer "
-                    f"must be equal. But got {param_data[expert_id]} "
-                    f"vs. {loaded_weight}")
-            param_data[expert_id] = loaded_weight
-        # Weight scales
-        elif "weight_scale" in weight_name:
-            # If we are in merged column case (gate_up_proj)
-            #   shard_id 0 == gate_proj / w1
-            #   shard_id 2 == up_proj / w3
-            if shard_id == 0 or shard_id == 2:
-                # We have to keep the weight scales of w1 and w3 because
-                # we need to re-quantize w1/w3 weights after weight loading.
-                idx = 0 if shard_id == 0 else 1
-                param_data[expert_id][idx] = loaded_weight
-            # If we are in the row parallel case (down_proj)
-            #   shard_id 1 == down_proj / w2
-            else:
-                param_data[expert_id] = loaded_weight
-        # Weights
-        else:
-            tp_rank = 0
-            if self.tp_size > 1:
-                from deepspeed import comm as dist
-                tp_rank = dist.get_rank() 
-            shard_size = self.intermediate_size_per_partition
-            shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
-
-            # w1, gate_proj case: Load into first shard of w13.
-            if shard_id == 0:
-                param_data[expert_id,
-                           0:shard_size, :] = loaded_weight[shard, :]
-            # w3, up_proj case: Load into second shard of w13.
-            elif shard_id == 2:
-                param_data[expert_id, shard_size:2 *
-                           shard_size, :] = loaded_weight[shard, :]
-            # w2, down_proj case: Load into only shard of w2.
-            elif shard_id == 1:
-                param_data[expert_id, :, :] = loaded_weight[:, shard]
-            else:
-                raise ValueError(
-                    f"Shard id must be in [0,1,2] but got {shard_id}")
-            
-    @classmethod
-    def make_expert_params_mapping(
-            cls, ckpt_gate_proj_name: str, ckpt_down_proj_name: str,
-            ckpt_up_proj_name: str,
-            num_experts: int) -> List[Tuple[str, str, int, int]]:
-
-        gate_up = [ckpt_gate_proj_name, ckpt_up_proj_name] # w1, w3
-        gate_down_up = [
-            ckpt_gate_proj_name, ckpt_down_proj_name, ckpt_up_proj_name # w1, w2, w3
-        ]
-
-        return [
-            # These are the weight scales for the experts
-            # (param_name, weight_name, expert_id, shard_id)
-            ("w13_scale"
-             if weight_name in gate_up else "w2_scale",
-             f"experts.{expert_id}.{weight_name}.weight_scale", expert_id,
-             shard_id) for expert_id in range(num_experts)
-            for shard_id, weight_name in enumerate(gate_down_up)
-        ] + [
-            # These are the weights for the experts
-            # (param_name, weight_name, expert_id, shard_id)
-            ("w13_weight"
-             if weight_name in gate_up else "w2_weight",
-             f"experts.{expert_id}.{weight_name}.weight", expert_id, shard_id)
-            for expert_id in range(num_experts)
-            for shard_id, weight_name in enumerate(gate_down_up)
-        ] + [
-            # These are the weight scales for the experts
-            # (param_name, weight_name, expert_id, shard_id)
-            ("a13_scale"
-             if weight_name in gate_up else "a2_scale",
-             f"experts.{expert_id}.{weight_name}.input_scale", expert_id,
-             shard_id) for expert_id in range(num_experts)
-            for shard_id, weight_name in enumerate(gate_down_up)
-        ]
 
 
 class GaudiDynamicMoeBlock(nn.Module):
@@ -650,6 +552,13 @@ class GaudiDynamicMoeBlock(nn.Module):
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_tok
+        self.tp_size = 1
+        if is_deepspeed_available():
+            from deepspeed import comm as dist
+
+            if dist.is_initialized():
+                self.tp_size = dist.get_world_size()
+        self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
@@ -657,12 +566,10 @@ class GaudiDynamicMoeBlock(nn.Module):
         # Jitter parameters
         self.jitter_noise = config.router_jitter_noise
 
-        self.experts_param_mapping = FusedMoE.make_expert_params_mapping("w1", "w2", "w3", self.num_experts)
         self.experts = FusedMoE(config)
 
-  
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        _, _, hidden_dim = hidden_states.shape
         orig_shape = hidden_states.shape
 
         hidden_states = hidden_states.view(-1, hidden_dim)
@@ -678,36 +585,45 @@ class GaudiDynamicMoeBlock(nn.Module):
 
         final_hidden_states = self.experts(hidden_states, router_logits)
         return final_hidden_states.view(orig_shape), router_logits
-    
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
+        gate_up = ["w1", "w3"]
+        gate_down_up = ["w1", "w2", "w3"]
         params_dict = dict(self.experts.named_parameters())
         for name, loaded_weight in state_dict.items():
-            if "rotary_emb.inv_freq" in name or not name.startswith(prefix) or name.endswith("gate.weight"):    
+            if "rotary_emb.inv_freq" in name or not name.startswith(prefix) or name.endswith("gate.weight"):
                 continue
-            for mapping in self.experts_param_mapping:
-                param_name, weight_name, expert_id, shard_id = mapping
-                if weight_name not in name:
-                    continue
-                # name = name.replace(weight_name, param_name)
-                # Skip layers on other devices.
-                param = params_dict[param_name]
-                weight_loader = param.weight_loader
-                weight_loader(param,
-                                loaded_weight,
-                                weight_name,
-                                shard_id=shard_id,
-                                expert_id=expert_id)
-                break
-            else:
-                # Remapping the name of FP8 kv-scale.
-                # name = maybe_remap_kv_scale_name(name, params_dict)
-                if name is None:
-                    continue
 
-                param = params_dict[name]
-                weight_loader = getattr(param, "weight_loader")
-                weight_loader(param, loaded_weight)
-        
+            _, expert_id, weight_name, _ = name.strip(prefix).split(".")
+            param_name = "w13_weight" if weight_name in gate_up else "w2_weight"
+            shard_id = gate_down_up.index(weight_name)
+            expert_id = int(expert_id)
+            param_data = params_dict[param_name].data
+
+            tp_rank = 0
+            if self.tp_size > 1:
+                from deepspeed import comm as dist
+
+                tp_rank = dist.get_rank()
+
+            shard_size = self.intermediate_size_per_partition
+            shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
+
+            # w1, gate_proj case: Load into first shard of w13.
+            if shard_id == 0:
+                param_data[expert_id, 0:shard_size, :] = loaded_weight[shard, :]
+            # w3, up_proj case: Load into second shard of w13.
+            elif shard_id == 2:
+                param_data[expert_id, shard_size : 2 * shard_size, :] = loaded_weight[shard, :]
+            # w2, down_proj case: Load into only shard of w2.
+            elif shard_id == 1:
+                param_data[expert_id, :, :] = loaded_weight[:, shard]
+            else:
+                raise ValueError(f"Shard id must be in [0,1,2] but got {shard_id}")
+
+
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
     def __init__(self, config: MixtralConfig, layer_idx: int):
         super().__init__(config, layer_idx)
@@ -1156,4 +1072,3 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             }
         )
         return model_inputs
-    
