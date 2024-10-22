@@ -155,12 +155,16 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             transformer = wrap_in_hpu_graph(transformer)
 
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, pooled_prompt_embeds, guidance):
+    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
         if pooled_prompt_embeds is not None:
             pooled_prompt_embeds_batches = list(torch.split(pooled_prompt_embeds, batch_size))
+        if text_ids is not None and text_ids.ndim == 3:
+            text_ids_batches = list(torch.split(text_ids, batch_size))
+        if latent_image_ids is not None and latent_image_ids.ndim == 3:
+            latent_image_ids_batches = list(torch.split(latent_image_ids, batch_size))
         if guidance is not None:
             guidance_batches = list(torch.split(guidance, batch_size))
         else:
@@ -190,6 +194,20 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 )
                 pooled_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
 
+            # Pad text_ids_batches if necessary
+            if text_ids is not None and text_ids.ndim == 3:
+                sequence_to_stack = (text_ids_batches[-1],) + tuple(
+                    torch.zeros_like(text_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                text_ids_batches[-1] = torch.vstack(sequence_to_stack)
+
+            # Pad latent_image_ids if necessary
+            if latent_image_ids is not None and latent_image_ids.ndim == 3:
+                sequence_to_stack = (latent_image_ids_batches[-1],) + tuple(
+                    torch.zeros_like(latent_image_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                latent_image_ids_batches[-1] = torch.vstack(sequence_to_stack)
+
             # Pad guidance if necessary
             if guidance is not None:
                 sequence_to_stack = (guidance_batches[-1],) + tuple(
@@ -201,12 +219,18 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         latents_batches = torch.stack(latents_batches)
         prompt_embeds_batches = torch.stack(prompt_embeds_batches)
         pooled_prompt_embeds_batches = torch.stack(pooled_prompt_embeds_batches)
+        if text_ids is not None and text_ids.ndim == 3:
+            text_ids_batches = torch.stack(text_ids_batches)
+        if latent_image_ids is not None and latent_image_ids.ndim == 3:
+            latent_image_ids_batches = torch.stack(latent_image_ids_batches)
         guidance_batches = torch.stack(guidance_batches)
 
         return (
             latents_batches,
             prompt_embeds_batches,
             pooled_prompt_embeds_batches,
+            text_ids_batches if text_ids.ndim == 3 else text_ids,
+            latent_image_ids_batches if latent_image_ids.ndim == 3 else latent_image_ids,
             guidance_batches,
             num_dummy_samples,
         )
@@ -451,10 +475,12 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             latents_batches,
             text_embeddings_batches,
             pooled_prompt_embeddings_batches,
+            text_ids_batches,
+            latent_image_ids_batches,
             guidance_batches,
             num_dummy_samples,
         ) = self._split_inputs_into_batches(
-            batch_size, latents, prompt_embeds, pooled_prompt_embeds, guidance
+            batch_size, latents, prompt_embeds, pooled_prompt_embeds, text_ids, latent_image_ids, guidance
         )
 
         outputs = {
@@ -475,7 +501,13 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
             pooled_prompt_embeddings_batch = pooled_prompt_embeddings_batches[0]
             pooled_prompt_embeddings_batches = torch.roll(pooled_prompt_embeddings_batches, shifts=-1, dims=0)
-            guidance_batch = None if guidance_batches[0].isnan() else guidance_batches[0]
+            if text_ids.ndim == 3:
+                text_ids_batch = text_ids_batches[0]
+                text_ids_batches = torch.roll(text_ids_batches, shifts=-1, dims=0)
+            if latent_image_ids.ndim == 3:
+                latent_image_ids_batch = latent_image_ids_batches[0]
+                latent_image_ids_batches = torch.roll(latent_image_ids_batches, shifts=-1, dims=0)
+            guidance_batch = None if guidance_batches[0].isnan().any() else guidance_batches[0]
             guidance_batches = torch.roll(guidance_batches, shifts=-1, dims=0)
 
             if hasattr(self.scheduler, "_init_step_index"):
@@ -512,8 +544,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                         guidance=guidance_batch,
                         pooled_projections=pooled_prompt_embeddings_batch,
                         encoder_hidden_states=text_embeddings_batch,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
+                        txt_ids=text_ids_batch if text_ids.ndim == 3 else text_ids,
+                        img_ids=latent_image_ids_batch if latent_image_ids.ndim ==3 else latent_image_ids,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -524,8 +556,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                         guidance=guidance_batch,
                         pooled_projections=pooled_prompt_embeddings_batch,
                         encoder_hidden_states=text_embeddings_batch,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
+                        txt_ids=text_ids_batch if text_ids.ndim == 3 else text_ids,
+                        img_ids=latent_image_ids_batch if latent_image_ids.ndim == 3 else latent_image_ids,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
