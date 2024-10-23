@@ -2953,7 +2953,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                if self.config.eos_token_id:
+                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
@@ -3089,6 +3090,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if return_dict_in_generate:
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
+
+            if self.generation_config.static_shapes:
+                raise NotImplementedError("sequence_scores is not implemented for static_shapes")
 
             if self.config.is_encoder_decoder:
                 return GenerateBeamEncoderDecoderOutput(

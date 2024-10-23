@@ -65,8 +65,6 @@ if is_torch_available():
         BeamSampleEncoderDecoderOutput,
         BeamSearchDecoderOnlyOutput,
         BeamSearchEncoderDecoderOutput,
-        BeamSearchScorer,
-        ConstrainedBeamSearchScorer,
         DisjunctiveConstraint,
         GenerateBeamDecoderOnlyOutput,
         GenerateBeamEncoderDecoderOutput,
