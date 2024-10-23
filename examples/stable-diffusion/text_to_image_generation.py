@@ -425,6 +425,12 @@ def main():
                 args.model_name_or_path,
                 **kwargs,
             )
+            if args.use_habana and args.use_hpu_graphs:
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                pipeline.to(torch.device("hpu"))
+                pipeline.unet.set_default_attn_processor(pipeline.unet)
+                pipeline.unet = wrap_in_hpu_graph(pipeline.unet)
             if args.lora_id:
                 pipeline.load_lora_weights(args.lora_id)
 
