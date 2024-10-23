@@ -282,7 +282,7 @@ You will also need to add `--torch_compile` and `--parallel_strategy="tp"` in yo
 Here is an example:
 ```bash
 PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-2-70b-hf  \
+--model_name_or_path meta-llama/Llama-2-7b-hf  \
 --trim_logits \
 --use_kv_cache \
 --attn_softmax_bf16 \
@@ -451,6 +451,31 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --reuse_cache
 ```
 
+Here is an example to measure the tensor quantization statistics on gemma with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
+--model_name_or_path google/gemma-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--reuse_cache \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for gemma with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
+--model_name_or_path google/gemma-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--reuse_cache \
+--bf16
+```
+
 
 ### Running FP8 models on single device
 
@@ -592,6 +617,10 @@ For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Mo
 
 Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
 Currently, the support is for UINT4 inference of pre-quantized models only.
+
+```bash
+BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
+```
 
 You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
 `SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
