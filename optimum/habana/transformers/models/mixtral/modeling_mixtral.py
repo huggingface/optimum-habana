@@ -486,6 +486,7 @@ class FusedMoE(nn.Module):
     """FusedMoE layer for MoE models.
     Based on implementation from vllm:
     https://github.com/HabanaAI/vllm-fork/blob/84922944da5b65fa43bbdc465650911cbef9de72/vllm/hpu/ops.py#L282"""
+
     def __init__(
         self,
         config: MixtralConfig,
@@ -902,7 +903,10 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     """
 
     # We want to don't raise an error for unitialized weights
-    _keys_to_ignore_on_load_missing = [r"model.layers.\d+.block_sparse_moe.experts.w2_weight", r"model.layers.\d+.block_sparse_moe.experts.w13_weight"]    
+    _keys_to_ignore_on_load_missing = [
+        r"model.layers.\d+.block_sparse_moe.experts.w2_weight",
+        r"model.layers.\d+.block_sparse_moe.experts.w13_weight",
+    ]
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -932,6 +936,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
         )
+
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
