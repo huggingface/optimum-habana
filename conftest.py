@@ -22,7 +22,6 @@ from os.path import abspath, dirname, join
 
 import _pytest
 import pytest
-
 from transformers.testing_utils import HfDoctestModule, HfDocTestParser
 
 
@@ -98,6 +97,7 @@ class Secret:
     def __str___(self):
         return "*******"
 
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers", "is_pt_tf_cross_test: mark test to run only when PT and TF interactions are tested"
@@ -111,15 +111,18 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "agent_tests: mark the agent tests that are run on their specific schedule")
     config.addinivalue_line("markers", "not_device_test: mark the tests always running on cpu")
 
+
 def pytest_collection_modifyitems(items):
     for item in items:
         if any(test_name in item.nodeid for test_name in NOT_DEVICE_TESTS):
             item.add_marker(pytest.mark.not_device_test)
 
+
 def pytest_addoption(parser):
     from transformers.testing_utils import pytest_addoption_shared
 
     pytest_addoption_shared(parser)
+
 
 def pytest_terminal_summary(terminalreporter):
     from transformers.testing_utils import pytest_terminal_summary_main
@@ -128,10 +131,12 @@ def pytest_terminal_summary(terminalreporter):
     if make_reports:
         pytest_terminal_summary_main(terminalreporter, id=make_reports)
 
+
 def pytest_sessionfinish(session, exitstatus):
     # If no tests are collected, pytest exists with code 5, which makes the CI fail.
     if exitstatus == 5:
         session.exitstatus = 0
+
 
 def pytest_generate_tests(metafunc):
     # This is called for every test. Only get/set command line arguments
@@ -139,6 +144,7 @@ def pytest_generate_tests(metafunc):
     option_value = Secret(metafunc.config.option.token)
     if "token" in metafunc.fixturenames:
         metafunc.parametrize("token", [option_value])
+
 
 # Doctest custom flag to ignore output.
 IGNORE_RESULT = doctest.register_optionflag("IGNORE_RESULT")

@@ -2,10 +2,11 @@
 Framework agnostic tests for generate()-related methods.
 """
 
-import pytest
 import numpy as np
+import pytest
 from transformers import AutoTokenizer
 from transformers.testing_utils import slow
+
 
 torch_device = "hpu"
 
@@ -676,7 +677,6 @@ class GenerationIntegrationTestsMixin:
             token == eos_token_id for token in generated_tokens[0][expectation:]
         )
         self.assertTrue(unpadded_correct_condition or padded_correct_condition or static_shape_condition)
-
 
         eos_token_id = [873, 198]
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)

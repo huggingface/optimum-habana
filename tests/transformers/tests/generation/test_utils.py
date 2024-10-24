@@ -16,14 +16,14 @@
 
 import copy
 import inspect
+import tempfile
 import unittest
 import warnings
 
 import numpy as np
 import pytest
 from parameterized import parameterized
-
-from transformers import is_torch_available, pipeline
+from transformers import is_torch_available, pipeline, set_seed
 from transformers.testing_utils import (
     is_flaky,
     require_accelerate,
@@ -34,7 +34,6 @@ from transformers.testing_utils import (
     require_torch_multi_accelerator,
     require_torch_multi_gpu,
     slow,
-    torch_device,
 )
 
 from optimum.habana.checkpoint_utils import model_is_optimized
@@ -46,11 +45,13 @@ from .test_framework_agnostic import GenerationIntegrationTestsMixin
 
 if is_torch_available():
     import torch
+    import torch.nn.functional as F
     from transformers import (
         AutoModelForCausalLM,
         AutoModelForSeq2SeqLM,
         AutoModelForSpeechSeq2Seq,
         AutoModelForVision2Seq,
+        AutoProcessor,
         AutoTokenizer,
         BartForCausalLM,
         BartForConditionalGeneration,
@@ -59,7 +60,9 @@ if is_torch_available():
         GPT2Tokenizer,
         ImageGPTForCausalImageModeling,
         SpeechEncoderDecoderModel,
+        T5ForConditionalGeneration,
     )
+    from transformers.cache_utils import DynamicCache, EncoderDecoderCache, QuantoQuantizedCache, StaticCache
     from transformers.generation import (
         BeamSampleDecoderOnlyOutput,
         BeamSampleEncoderDecoderOutput,
@@ -77,10 +80,13 @@ if is_torch_available():
         MaxLengthCriteria,
         MinLengthLogitsProcessor,
         PhrasalConstraint,
+        PromptLookupCandidateGenerator,
         SampleDecoderOnlyOutput,
         SampleEncoderDecoderOutput,
         StoppingCriteria,
         StoppingCriteriaList,
+        WatermarkDetector,
+        WatermarkingConfig,
     )
     from transformers.generation.utils import _speculative_sampling
 
@@ -442,7 +448,7 @@ class GenerationTesterMixin:
         )
 
         return output_generate
-       
+
     @pytest.mark.generate
     def test_greedy_generate(self):
         for model_class in self.all_generative_model_classes:
@@ -2591,17 +2597,14 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             [1, 22],  # still produces the max_length
         )
         # make sure final tokens are padding
-        self.assertEqual(
-            output[:, 20:].tolist(),
-            [[bart_model.config.pad_token_id, bart_model.config.pad_token_id]]
-        )
+        self.assertEqual(output[:, 20:].tolist(), [[bart_model.config.pad_token_id, bart_model.config.pad_token_id]])
 
         self.assertEqual(
             list(bart_model.generate(input_ids, stopping_criteria=stopping_criteria, max_length=18).shape),
             [1, 18],
         )
 
-    # TODO (joao): replace `stop_sequence` in the pipeline by the more recent `generate` functionality        
+    # TODO (joao): replace `stop_sequence` in the pipeline by the more recent `generate` functionality
     # TODO [gustavo] Enable this test to Optimum-habana
     @pytest.mark.xfail
     def test_stop_sequence_stopping_criteria(self):
