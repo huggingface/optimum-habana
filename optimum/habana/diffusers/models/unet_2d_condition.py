@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 import torch.utils.checkpoint
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
@@ -95,6 +94,9 @@ def gaudi_unet_2d_condition_model_forward(
     timesteps = timesteps.expand(sample.shape[0])
 
     t_emb = self.time_proj(timesteps)
+
+    import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
 
     # `Timesteps` does not contain any weights and will always return f32 tensors

@@ -55,3 +55,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.flash_attention_causal_mask = kwargs.get("flash_attention_causal_mask", None)
         self.flash_attention_fast_softmax = kwargs.get("flash_attention_fast_softmax", None)
         self.use_fused_rope = kwargs.get("use_fused_rope", None)
+        self.valid_sequence_lengths = kwargs.get("valid_sequence_lengths", None)

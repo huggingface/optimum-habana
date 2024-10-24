@@ -177,7 +177,7 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom"]:
+    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom", "gpt2"]:
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
@@ -189,41 +189,30 @@ def get_torch_compiled_model(model):
 
 
 def setup_quantization(model, args):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import FP8Config, convert, prepare
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
+    try:
+        from neural_compressor.torch.quantization import FP8Config, convert, prepare
+    except ImportError:
+        raise ImportError(
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
+        )
 
-        config = FP8Config.from_json_file(args.quant_config)
-        if config.measure:
-            model = prepare(model, config)
-        elif config.quantize:
-            model = convert(model, config)
-    else:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
+    config = FP8Config.from_json_file(args.quant_config)
+    if config.measure:
+        model = prepare(model, config)
+    if config.quantize:
+        model = convert(model, config)
 
     return model
 
 
 def finalize_quantization(model):
-    if os.getenv("USE_INC", "1") != "0":
-        try:
-            from neural_compressor.torch.quantization import finalize_calibration
-        except ImportError:
-            raise ImportError(
-                "Module neural_compressor is missing. Please use a newer Synapse version to use quantization, or set the environment variable to USE_INC=0"
-            )
-
-        finalize_calibration(model)
-    else:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+    try:
+        from neural_compressor.torch.quantization import finalize_calibration
+    except ImportError:
+        raise ImportError(
+            "Module neural_compressor is missing. Please use a newer Synapse version to use quantization."
+        )
+    finalize_calibration(model)
 
 
 def setup_model(args, model_dtype, model_kwargs, logger):
@@ -248,10 +237,38 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
-    elif args.load_quantized_model:
+    elif args.load_quantized_model_with_autogptq:
+        from transformers import GPTQConfig
+
+        quantization_config = GPTQConfig(bits=4, use_exllama=False)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
+    elif args.load_quantized_model_with_inc:
+        # TODO: This will be removed in v1.19 Synapse release
+        # Override neural_compressor _load_remaining_pretrained_weight for the Transformer 4.45 release.
+        import neural_compressor.torch.algorithms.weight_only.save_load as nc_sl
+
+        nc_sl.WOQModelLoader._load_remaining_pretrained_weight = local_load_remaining_pretrained_weight
+
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
+    elif args.local_quantized_inc_model_path:
+        org_model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            **model_kwargs,
+        )
+
+        from neural_compressor.torch.quantization import load
+
+        model = load(
+            model_name_or_path=args.local_quantized_inc_model_path,
+            format="default",
+            device="hpu",
+            original_model=org_model,
+            **model_kwargs,
+        )
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -508,16 +525,22 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.padding_side = "left"
 
     if model.config.model_type == "llama":
-        # unwind broken decapoda-research config
-        model.generation_config.pad_token_id = 0
-        model.generation_config.bos_token_id = 1
-        model.generation_config.eos_token_id = 2
+        if model.generation_config.pad_token_id is None:
+            if isinstance(model.generation_config.eos_token_id, int):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id
+            elif isinstance(model.generation_config.eos_token_id, list):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id[0]
         if assistant_model is not None:
-            assistant_model.generation_config.pad_token_id = 0
-            assistant_model.generation_config.bos_token_id = 1
-            assistant_model.generation_config.eos_token_id = 2
+            if assistant_model.generation_config.pad_token_id is None:
+                if isinstance(assistant_model.generation_config.eos_token_id, int):
+                    assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id
+                elif isinstance(assistant_model.generation_config.eos_token_id, list):
+                    assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id[0]
         tokenizer.bos_token_id = model.generation_config.bos_token_id
-        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        if isinstance(model.generation_config.eos_token_id, int):
+            tokenizer.eos_token_id = model.generation_config.eos_token_id
+        elif isinstance(model.generation_config.eos_token_id, list):
+            tokenizer.eos_token_id = model.generation_config.eos_token_id[0]
         tokenizer.pad_token_id = model.generation_config.pad_token_id
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
@@ -579,6 +602,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
+    generation_config.valid_sequence_lengths = None
 
     return generation_config
 
@@ -624,8 +648,7 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
-
-    if args.load_quantized_model:
+    if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
     if args.trust_remote_code:
@@ -651,3 +674,47 @@ def initialize_model(args, logger):
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, assistant_model, tokenizer, generation_config
+
+
+# TODO:This will be removed from Synapse v1.19 release.
+# This is to override _load_remaining_pretrained_weight for Transformer 4.45 release.
+def local_load_remaining_pretrained_weight(self, model):
+    from transformers.modeling_utils import _load_state_dict_into_meta_model, load_state_dict
+
+    resolved_archive_file = self.kwargs.pop("resolved_archive_file", None)
+    torch_dtype = self.kwargs.pop("torch_dtype", torch.float32)
+    dtype_orig = self.kwargs.pop("dtype_orig", None)
+    offload_folder = self.kwargs.pop("offload_folder", None)
+    offload_state_dict = self.kwargs.pop("offload_state_dict", False)
+
+    # restore default dtype
+    if dtype_orig is not None:
+        torch.set_default_dtype(dtype_orig)
+
+    if not isinstance(resolved_archive_file, list):
+        resolved_archive_file = [resolved_archive_file]
+    for shard_file in resolved_archive_file:
+        state_dict = load_state_dict(shard_file)
+
+        params_dict = {
+            "model": model,
+            "state_dict": state_dict,
+            "start_prefix": "",
+            "expected_keys": self.loaded_state_dict_keys,
+            "device_map": {"": self.device},
+            "offload_folder": offload_folder,
+            "state_dict_folder": tempfile.mkdtemp() if offload_state_dict else None,
+            "state_dict_index": {} if offload_state_dict else None,
+            "dtype": torch_dtype,
+            "keep_in_fp32_modules": [],
+        }
+
+        _load_state_dict_into_meta_model(**params_dict)
+
+    # make sure token embedding weights are still tied if needed
+    model.tie_weights()
+
+    # Set model in evaluation mode to deactivate DropOut modules by default
+    model.eval()
+
+    return model

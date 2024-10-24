@@ -294,19 +294,9 @@ def setup_parser(parser):
         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
     )
     parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
-    )
-    parser.add_argument(
-        "--load_quantized_model",
-        action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
     )
     parser.add_argument(
         "--parallel_strategy",
@@ -319,6 +309,34 @@ def setup_parser(parser):
         "--input_embeds",
         action="store_true",
         help="Whether to enable inputs_embeds or not.",
+    )
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+
+    quant_parser_group = parser.add_mutually_exclusive_group()
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autogptq",
+        action="store_true",
+        help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_inc",
+        action="store_true",
+        help="Load a Huggingface quantized checkpoint using INC.",
+    )
+    quant_parser_group.add_argument(
+        "--local_quantized_inc_model_path",
+        type=str,
+        default=None,
+        help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
 
     args = parser.parse_args()
@@ -333,6 +351,9 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
@@ -438,6 +459,13 @@ def main():
                     max_length=args.max_input_tokens,
                     truncation=True,
                 )
+
+                def compute_valid_sequence_lengths_tensor(input_tokens):
+                    attn_mask = input_tokens["attention_mask"]
+                    return torch.sum(attn_mask, dim=1)
+
+                valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
+                generation_config.valid_sequence_lengths = valid_sequence_lengths
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -698,6 +726,8 @@ def main():
                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
             )
             print(separator)
+            if args.run_partial_dataset and args.n_iterations == i + 1:
+                break
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration

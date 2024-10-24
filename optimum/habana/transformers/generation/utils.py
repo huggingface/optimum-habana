@@ -99,14 +99,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "starcoder2",
     "persimmon",
     "qwen2",
-    "starcoder2",
     "llava",
     "llava_next",
     "stablelm",
     "mamba",
     "deci",
     "qwen2_moe",
-    "gemma",
     "whisper",
 ]
 
@@ -1218,6 +1216,8 @@ class GaudiGenerationMixin(GenerationMixin):
             True if generation_config.flash_attention_fast_softmax else False
         )
         model_kwargs["num_virtual_tokens"] = num_virtual_tokens
+        if generation_config.valid_sequence_lengths is not None:
+            model_kwargs["valid_sequence_lengths"] = generation_config.valid_sequence_lengths
 
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[1] + num_virtual_tokens
@@ -2557,6 +2557,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if streamer is not None:
             streamer.end()
+
+        if batch_size > 1 and has_eos_stopping_criteria:
+            eos_token_id = generation_config.eos_token_id
+            idx_bs = generation_config.max_length
+            for i in range(batch_size):
+                for idx in range(len(input_ids[i])):
+                    if input_ids[i][idx] == eos_token_id:
+                        idx_bs = idx
+                    if idx > idx_bs:
+                        input_ids[i][idx] = pad_token_id
+                idx_bs = generation_config.max_length
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
