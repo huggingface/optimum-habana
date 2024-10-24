@@ -92,7 +92,6 @@ class GaudiDETRTester(TestCase):
             results = processor.post_process_object_detection(outputs, target_sizes=target_sizes, threshold=0.9)[0]
             boxes = results["boxes"]
             self.assertEqual(len(boxes), self.get_expected_num_boxes())
-            print(f"boxes = {boxes}")
             expected_location = self.get_expected_loc(mode="autocast")
             self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 5)
 
@@ -107,7 +106,6 @@ class GaudiDETRTester(TestCase):
         target_sizes = torch.Tensor([image.size[::-1]])
         results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
         boxes = results[0]["boxes"]
-        print(f"boxes = {boxes}")
         self.assertEqual(len(boxes), 5)
         expected_location = self.get_expected_loc()
         self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 1)
