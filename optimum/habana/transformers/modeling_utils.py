@@ -489,6 +489,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
+    # We need this workaround until moe op in hpu is supporting fp8
     if os.environ.get("QUANT_CONFIG"):
         transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
             gaudi_mixtral_block_sparse_moe_forward

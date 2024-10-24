@@ -22,7 +22,7 @@
 
 import contextlib
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, OrderedDict, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -454,7 +454,9 @@ class DynamicFusedMOE(torch.nn.Module):
         super().__init__()
         self.num_total_experts = num_total_experts
 
-    def forward(self, hidden_states, w12, w3, score, topk):
+    def forward(
+        self, hidden_states: torch.Tensor, w12: torch.Tensor, w3: torch.Tensor, score: torch.Tensor, topk: int
+    ) -> torch.Tensor:
         routing_weights, selected_experts = calculate_routing_tensors(score, topk, hidden_states.dtype)
         # pre-processing for custom op inputs
         experts_range = range(self.num_total_experts)
@@ -474,7 +476,9 @@ class DynamicFusedMOE(torch.nn.Module):
         return final_hidden_states.view(-1, hidden_states.shape[1])
 
 
-def calculate_routing_tensors(score, topk, hidden_states_dtype):
+def calculate_routing_tensors(
+    score: torch.Tensor, topk: int, hidden_states_dtype: torch.dtype
+) -> Tuple[torch.Tensor, torch.Tensor]:
     routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
     routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
@@ -510,7 +514,7 @@ class FusedMoE(nn.Module):
         self.hpu_static_fused_moe = DynamicFusedMOE(self.num_experts)
 
         # Fused gate_up_proj (column parallel)
-        self.w13_weight = torch.nn.Parameter(
+        self.w13_weight = nn.Parameter(
             torch.empty(
                 self.num_experts,
                 2 * self.intermediate_size_per_partition,
@@ -522,7 +526,7 @@ class FusedMoE(nn.Module):
         )
         self.register_parameter("w13_weight", self.w13_weight)
         # down_proj (row parallel)
-        self.w2_weight = torch.nn.Parameter(
+        self.w2_weight = nn.Parameter(
             torch.empty(
                 self.num_experts,
                 config.hidden_size,
@@ -534,7 +538,7 @@ class FusedMoE(nn.Module):
         )
         self.register_parameter("w2_weight", self.w2_weight)
 
-    def forward(self, hidden_states, router_logits):
+    def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor) -> torch.Tensor:
         final_hidden_states = self.hpu_static_fused_moe(
             hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k
         )
@@ -587,8 +591,15 @@ class GaudiDynamicMoeBlock(nn.Module):
         return final_hidden_states.view(orig_shape), router_logits
 
     def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
+        self,
+        state_dict: OrderedDict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: Dict[str, str],
+        strict: bool,
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
+    ) -> None:
         gate_up = ["w1", "w3"]
         gate_down_up = ["w1", "w2", "w3"]
         params_dict = dict(self.experts.named_parameters())
