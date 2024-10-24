@@ -42,6 +42,9 @@ from .integrations.awq import (
 )
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    ArcticConfig,
+    ArcticForCausalLM,
+    ArcticTokenizer,
     BaichuanConfig,
     BaichuanForCausalLM,
     BaichuanTokenizer,
@@ -832,3 +835,7 @@ def adapt_transformers_to_gaudi():
     transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
+
+    transformers.AutoConfig.register("arctic", ArcticConfig)
+    transformers.AutoModelForCausalLM.register(ArcticConfig, ArcticForCausalLM)
+    transformers.AutoTokenizer.register(ArcticConfig, ArcticTokenizer)
