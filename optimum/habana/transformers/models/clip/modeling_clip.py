@@ -86,7 +86,7 @@ class GaudiCLIPAttention(CLIPAttention):
         - add new args use_flash_attention to enable FusedSDPA
         - add new args flash_attention_recompute
         """
-        bsz, tgt_len, embed_dim = hidden_states.size()
+        bsz, tgt_len, _ = hidden_states.size()
         attn_weights_reshaped = None
         # get query proj
         query_states = self.q_proj(hidden_states) * self.scale
