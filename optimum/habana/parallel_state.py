@@ -27,6 +27,8 @@ _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = None
 _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
 _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = None
 
+_TRAINING_MODE = None
+
 # These values enable us to change the mpu sizes on the fly.
 _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = None
 _MPU_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
@@ -214,6 +216,7 @@ def initialize_model_parallel(
         if rank in ranks:
             _SEQUENCE_PARALLEL_GROUP = group
     _SEQUENCE_PARALLEL_WORLD_SIZE = sequence_parallel_size
+    _TRAINING_MODE = True
 
     # Build the sequence data parallel groups.
     global _SEQUENCE_DATA_PARALLEL_GROUP
@@ -314,6 +317,26 @@ def is_unitialized():
     return _DATA_PARALLEL_GROUP is None
 
 
+def is_training_mode():
+    """Useful for code segments that may be accessed with or without mpu initialization"""
+    global _TRAINING_MODE
+    if _TRAINING_MODE is True:
+        return True
+    else:
+        return False
+
+
+def set_training_mode():
+    """Useful for code segments that may be accessed with or without mpu initialization"""
+    global _TRAINING_MODE
+    _TRAINING_MODE = True
+
+
+def set_eval_mode():
+    global _TRAINING_MODE
+    _TRAINING_MODE = False
+
+
 def model_parallel_is_initialized():
     """Check if model and data parallel groups are initialized."""
     if _TENSOR_MODEL_PARALLEL_GROUP is None or _PIPELINE_MODEL_PARALLEL_GROUP is None or _DATA_PARALLEL_GROUP is None:
@@ -378,7 +401,11 @@ def get_sequence_parallel_world_size():
     global _SEQUENCE_PARALLEL_WORLD_SIZE
     if _SEQUENCE_PARALLEL_WORLD_SIZE is not None:
         return _SEQUENCE_PARALLEL_WORLD_SIZE
-    return torch.distributed.get_world_size(group=get_sequence_parallel_group())
+    # Context Parallelism is not yet supported for eval
+    if is_training_mode():
+        return torch.distributed.get_world_size(group=get_sequence_parallel_group())
+    else:
+        return 1
 
 
 def get_sequence_data_parallel_world_size():
@@ -414,7 +441,11 @@ def get_sequence_parallel_rank():
     global _SEQUENCE_PARALLEL_RANK
     if _SEQUENCE_PARALLEL_RANK is not None:
         return _SEQUENCE_PARALLEL_RANK
-    return torch.distributed.get_rank(group=get_sequence_parallel_group())
+    # Context Parallelism is not yet supported for eval
+    if is_training_mode():
+        return torch.distributed.get_rank(group=get_sequence_parallel_group())
+    else:
+        return 0
 
 
 def get_sequence_data_parallel_rank():

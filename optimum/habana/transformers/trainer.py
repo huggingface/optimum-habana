@@ -1722,6 +1722,7 @@ class GaudiTrainer(Trainer):
         2. use throughput_warmup_steps in evaluation throughput calculation
         """
         # handle multipe eval datasets
+        self.accelerator.mpu.set_eval_mode()
         override = eval_dataset is not None
         eval_dataset = eval_dataset if override else self.eval_dataset
         if isinstance(eval_dataset, dict):
@@ -1777,7 +1778,7 @@ class GaudiTrainer(Trainer):
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-
+        self.accelerator.mpu.set_training_mode()
         return output.metrics
 
     def evaluation_loop(

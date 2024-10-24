@@ -437,6 +437,13 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
+def GaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
+
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -474,10 +481,11 @@ class GaudiLlamaAttention(LlamaAttention):
         )
         # https://github.com/microsoft/DeepSpeed/issues/4359
         # for all2all comm, Distributed Attention cares about sequence (s) and number of heads (h) dimensions. In HPU, they are at 1 and 2 indices
+        self.fused_scaled_dot_product_attention_distributed = None
         if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
             from deepspeed.sequence.layer import DistributedAttention
 
-            self.fused_scaled_dot_product_attention = DistributedAttention(
+            self.fused_scaled_dot_product_attention_distributed = DistributedAttention(
                 self.fused_scaled_dot_product_attention, parallel_state.get_sequence_parallel_group(), 1, 2
             )
 
@@ -683,11 +691,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-
+        fused_scaled_dot_product_attention = GaudiDistributedAttention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
         if use_flash_attention and FusedSDPA is not None:
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -706,7 +716,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 # first token
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -720,7 +730,7 @@ class GaudiLlamaAttention(LlamaAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -1229,7 +1239,12 @@ class GaudiLlamaModel(LlamaModel):
             if (
                 lazy_mode
                 and not self.training
-                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+                and (
+                    torch.distributed.is_initialized() is False
+                    or torch.distributed.get_world_size() == 1
+                    or seq_length == 32768
+                )
+                # Added seq_length check workaround for now as recipe goes OOM. Will remove once we add CP to eval - JIRA: SW-207491
             ):
                 htcore.mark_step()
 
