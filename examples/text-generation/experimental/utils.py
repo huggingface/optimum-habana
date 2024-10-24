@@ -179,11 +179,9 @@ def patch_scoped_linear_all_reduce(model):
 def get_torch_compiled_model(model):
     if model.config.model_type in ["gpt_bigcode"]:
         # For gpt_bigcode model_type, model.transformer is used instead of model.model
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = torch.compile(model.transformer, backend="hpu_backend")
     else:
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = torch.compile(model.model, backend="hpu_backend")
     return model
 
 
