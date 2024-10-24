@@ -308,6 +308,7 @@ from .siglip import (
     GaudiSiglipVisionModel,
     GaudiSiglipVisionTransformer,
 )
+from .snowflake import ArcticConfig, ArcticForCausalLM, ArcticTokenizer
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,

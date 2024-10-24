@@ -43,6 +43,9 @@ from .integrations.awq import (
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    ArcticConfig,
+    ArcticForCausalLM,
+    ArcticTokenizer,
     BaichuanConfig,
     BaichuanForCausalLM,
     BaichuanTokenizer,
@@ -868,3 +871,7 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for RT-DETR model on Gaudi
     transformers.loss.loss_rt_detr.RTDetrHungarianMatcher.forward = gaudi_RTDetrHungarianMatcher_forward
+
+    transformers.AutoConfig.register("arctic", ArcticConfig)
+    transformers.AutoModelForCausalLM.register(ArcticConfig, ArcticForCausalLM)
+    transformers.AutoTokenizer.register(ArcticConfig, ArcticTokenizer)
