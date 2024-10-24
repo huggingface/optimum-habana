@@ -16,10 +16,12 @@
 # tests directory-specific settings - this file is run automatically
 # by pytest before any tests are run
 import doctest
+import sys
 import warnings
+from os.path import abspath, dirname, join
 
-import pytest
 import _pytest
+import pytest
 
 from transformers.testing_utils import HfDoctestModule, HfDocTestParser
 
@@ -120,6 +122,11 @@ def pytest_terminal_summary(terminalreporter):
     make_reports = terminalreporter.config.getoption("--make-reports")
     if make_reports:
         pytest_terminal_summary_main(terminalreporter, id=make_reports)
+
+def pytest_sessionfinish(session, exitstatus):
+    # If no tests are collected, pytest exists with code 5, which makes the CI fail.
+    if exitstatus == 5:
+        session.exitstatus = 0
 
 def pytest_generate_tests(metafunc):
     # This is called for every test. Only get/set command line arguments
