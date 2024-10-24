@@ -33,7 +33,7 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate >= 0.33.0, < 0.34.0",
-    "diffusers @ git+https://github.com/huggingface/diffusers.git@main",
+    "diffusers == 0.31.0",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers[train] == 3.0.1",
 ]
