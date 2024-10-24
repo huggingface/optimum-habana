@@ -17,6 +17,7 @@
 ###############################################################################
 
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -307,7 +308,8 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -374,7 +376,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
