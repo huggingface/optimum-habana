@@ -478,7 +478,6 @@ LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 	--world_size 8 --use_mpi run_lora_clm.py \
 	--model_name_or_path meta-llama/Llama-2-7b-hf \
 	--dataset_name tatsu-lab/alpaca \
-	--bf16 True \
 	--output_dir ./model_lora_llama \
 	--num_train_epochs 3 \
 	--per_device_train_batch_size 16 \
