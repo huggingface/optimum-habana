@@ -42,6 +42,8 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
     """
     Recursively converts the linear layer of a model to their `transformers_engine` counterpart.
     """
+    from optimum.habana.transformers.models.llama.modeling_llama import ModuleFusedSDPA
+
     if not is_fp8_available():
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")
     for name, module in model.named_children():
@@ -75,6 +77,24 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
                 new_module.bias.copy_(module.bias)
 
             setattr(model, name, new_module)
+        elif isinstance(module, ModuleFusedSDPA) and module.flash_attention_fp8 and to_transformer_engine:
+            from habana_frameworks.torch.hpex.experimental.transformer_engine import (
+                FusedAttention as TE_FusedAttention,
+            )
+
+            class TE_ModuleFusedSDPA(torch.nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self._hpu_kernel_fsdpa = TE_FusedAttention(
+                        scale=module.scale,
+                        attention_dropout=module.attention_dropout,
+                        enable_recompute=module.enable_recompute,
+                    )
+
+                def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
+                    return self._hpu_kernel_fsdpa(query, key, value, attn_mask, is_causal, softmax_mode)
+
+            setattr(model, name, TE_ModuleFusedSDPA())
         else:
             _convert_model(module, to_transformer_engine=to_transformer_engine, _convert_linear=_convert_linear)
 
