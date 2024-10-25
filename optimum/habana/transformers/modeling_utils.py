@@ -821,4 +821,3 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("arctic", ArcticConfig)
     transformers.AutoModelForCausalLM.register(ArcticConfig, ArcticForCausalLM)
     transformers.AutoTokenizer.register(ArcticConfig, ArcticTokenizer)
-
