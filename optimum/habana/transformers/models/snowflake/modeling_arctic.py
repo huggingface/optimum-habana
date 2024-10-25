@@ -17,24 +17,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch Arctic model. Copied from https://huggingface.co/Snowflake/snowflake-arctic-instruct/tree/be318cae5aba5291208f27d30991a5150500887d."""
+"""PyTorch Arctic model. Copied from https://huggingface.co/Snowflake/snowflake-arctic-instruct/tree/be318cae5aba5291208f27d30991a5150500887d."""
+
 import copy
 import inspect
-import time
 import math
-import warnings
 import re
+import warnings
 from typing import List, Optional, Tuple, Union
 
-import deepspeed
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-
+from transformers import GenerationMixin
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
@@ -55,12 +55,13 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.utils.import_utils import is_torch_fx_available
+
 from .configuration_arctic import ArcticConfig
-from transformers.integrations.deepspeed import is_deepspeed_available
-from transformers.utils.versions import require_version
+
 
 if is_deepspeed_available():
-    from deepspeed.moe.layer import MoE 
+    from deepspeed.moe.layer import MoE
+
     # Note that below will crash if there is an available deepspeed that does not have ds_linear.
     try:
         import deepspeed.linear as ds_linear
@@ -101,8 +102,9 @@ QUANTIZATION_CONFIG = "ds_quantization_config"
 #         if raise_error:
 #             raise ValueError(f"DeepSpeed is required for this feature, {error_msg}")
 #     else:
-        
+
 #     return available_and_valid
+
 
 def load_balancing_loss_func(
     gate_logits: torch.Tensor, num_experts: torch.Tensor = None, top_k=4, attention_mask: Optional[torch.Tensor] = None
@@ -305,7 +307,7 @@ class ArcticAttention(nn.Module):
     and "Generating Long Sequences with Sparse Transformers".
     """
 
-    def __init__(self, config: ArcticConfig, layer_idx: Optional[int] = None,  **kwargs):
+    def __init__(self, config: ArcticConfig, layer_idx: Optional[int] = None, **kwargs):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -332,35 +334,50 @@ class ArcticAttention(nn.Module):
                 f" and `num_heads`: {self.num_heads})."
             )
 
-        deepspeed_quantization = kwargs.get(DEEPSPEED_QUANTIZATION_CONFIG)
         deepspeed_lora_config = kwargs.get(DEEPSPEED_LORA_CONFIG)
         quantization_config = kwargs.get(QUANTIZATION_CONFIG, None)
 
-        self.q_proj = get_arctic_linear(self.hidden_size, self.num_heads * self.head_dim, bias=False,
-                                     use_deepspeed_implementation=self.use_deepspeed_implementation,
-                                     ds_optimized_lora_config=deepspeed_lora_config, 
-                                     ds_optimized_quantization_config=quantization_config, 
-                                     ds_optimized_base_weight_sharding=True,
-                                     dtype=torch.bfloat16)
-        self.k_proj = get_arctic_linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False,
-                                     use_deepspeed_implementation=self.use_deepspeed_implementation,                                     
-                                     ds_optimized_lora_config=deepspeed_lora_config, 
-                                     ds_optimized_quantization_config=quantization_config, 
-                                     ds_optimized_base_weight_sharding=True,
-                                     dtype=torch.bfloat16)
-        self.v_proj = get_arctic_linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False,
-                                     use_deepspeed_implementation=self.use_deepspeed_implementation,
-                                     ds_optimized_lora_config=deepspeed_lora_config, 
-                                     ds_optimized_quantization_config=quantization_config, 
-                                     ds_optimized_base_weight_sharding=True,
-                                     dtype=torch.bfloat16)
-        self.o_proj = get_arctic_linear(self.hidden_size, self.hidden_size, bias=False,
-                                     use_deepspeed_implementation=self.use_deepspeed_implementation,
-                                     ds_optimized_lora_config=deepspeed_lora_config, 
-                                     ds_optimized_quantization_config=quantization_config, 
-                                     ds_optimized_base_weight_sharding=True,
-                                     dtype=torch.bfloat16)
-        
+        self.q_proj = get_arctic_linear(
+            self.hidden_size,
+            self.num_heads * self.head_dim,
+            bias=False,
+            use_deepspeed_implementation=self.use_deepspeed_implementation,
+            ds_optimized_lora_config=deepspeed_lora_config,
+            ds_optimized_quantization_config=quantization_config,
+            ds_optimized_base_weight_sharding=True,
+            dtype=torch.bfloat16,
+        )
+        self.k_proj = get_arctic_linear(
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=False,
+            use_deepspeed_implementation=self.use_deepspeed_implementation,
+            ds_optimized_lora_config=deepspeed_lora_config,
+            ds_optimized_quantization_config=quantization_config,
+            ds_optimized_base_weight_sharding=True,
+            dtype=torch.bfloat16,
+        )
+        self.v_proj = get_arctic_linear(
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
+            bias=False,
+            use_deepspeed_implementation=self.use_deepspeed_implementation,
+            ds_optimized_lora_config=deepspeed_lora_config,
+            ds_optimized_quantization_config=quantization_config,
+            ds_optimized_base_weight_sharding=True,
+            dtype=torch.bfloat16,
+        )
+        self.o_proj = get_arctic_linear(
+            self.hidden_size,
+            self.hidden_size,
+            bias=False,
+            use_deepspeed_implementation=self.use_deepspeed_implementation,
+            ds_optimized_lora_config=deepspeed_lora_config,
+            ds_optimized_quantization_config=quantization_config,
+            ds_optimized_base_weight_sharding=True,
+            dtype=torch.bfloat16,
+        )
+
         self.rotary_emb = ArcticRotaryEmbedding(
             self.head_dim,
             max_position_embeddings=self.max_position_embeddings,
@@ -746,14 +763,17 @@ class ArcticFlashAttention2(ArcticAttention):
             (max_seqlen_in_batch_q, max_seqlen_in_batch_k),
         )
 
-def get_arctic_linear(input_dim, 
-                   output_dim, 
-                   bias=False,
-                   use_deepspeed_implementation=False,
-                   ds_optimized_lora_config=None, 
-                   ds_optimized_quantization_config=None, 
-                   ds_optimized_base_weight_sharding=False,
-                   dtype=torch.bfloat16):
+
+def get_arctic_linear(
+    input_dim,
+    output_dim,
+    bias=False,
+    use_deepspeed_implementation=False,
+    ds_optimized_lora_config=None,
+    ds_optimized_quantization_config=None,
+    ds_optimized_base_weight_sharding=False,
+    dtype=torch.bfloat16,
+):
     """Can return deepspeed optimized linear if available.
     Args:
         input_dim, output_dim, bias, dtype: self explanatory (same as from nn.Linear)
@@ -765,8 +785,12 @@ def get_arctic_linear(input_dim,
     if is_deepspeed_available():
         if ds_optimized_lora_config is not None:
             ds_optimized_lora_config: ds_linear.LoRAConfig = copy.deepcopy(ds_optimized_lora_config)
-            ds_optimized_lora_config.base_weight_sharding = torch.distributed.get_world_size() if ds_optimized_base_weight_sharding else 1
-        return ds_linear.OptimizedLinear(input_dim, output_dim, bias, ds_optimized_lora_config, ds_optimized_quantization_config, dtype=dtype)
+            ds_optimized_lora_config.base_weight_sharding = (
+                torch.distributed.get_world_size() if ds_optimized_base_weight_sharding else 1
+            )
+        return ds_linear.OptimizedLinear(
+            input_dim, output_dim, bias, ds_optimized_lora_config, ds_optimized_quantization_config, dtype=dtype
+        )
     return nn.Linear(input_dim, output_dim, bias=bias, dtype=dtype)
 
 
@@ -866,12 +890,15 @@ MIXTRAL_ATTENTION_CLASSES = {
 
 
 class ArcticMLP(nn.Module):
-    def __init__(self, config: ArcticConfig, 
-                 use_deepspeed_implementation=False,
-                 ds_optimized_lora_config=None,
-                 ds_optimized_quantization_config=None,
-                 shard_base_weights_if_doing_lora=False, 
-                 is_residual_mlp=False):
+    def __init__(
+        self,
+        config: ArcticConfig,
+        use_deepspeed_implementation=False,
+        ds_optimized_lora_config=None,
+        ds_optimized_quantization_config=None,
+        shard_base_weights_if_doing_lora=False,
+        is_residual_mlp=False,
+    ):
         """MLP class for Arctic supporting vanilla linear layers as well as some deepspeed optimizations.
 
         ds_optimized_lora_config: config of type ds_linear.LoRAConfig that contains lora specific parameter if we want to add lora to this layer.
@@ -879,28 +906,40 @@ class ArcticMLP(nn.Module):
         ds_optimized_base_weight_sharding: bool. If true, the base weight for lora (provided ds_optimized_lora_config is not None) will be sharded across all available gpus
         in a tensor parallel way.
         is_residual_mlp: bool. If true, this is MLP inside arctic residual layer which has ffn_dim the same as full intermediate_size.
-        """        
+        """
         super(ArcticMLP, self).__init__()
         self.hidden_dim = config.hidden_size
-        self.ffn_dim = config.intermediate_size if not is_residual_mlp else self.hidden_dim  
-        self.w1 = get_arctic_linear(self.hidden_dim, self.ffn_dim, False,
-                                 use_deepspeed_implementation=use_deepspeed_implementation,
-                                 ds_optimized_lora_config=ds_optimized_lora_config, 
-                                 ds_optimized_quantization_config=ds_optimized_quantization_config, 
-                                 ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
-                                 dtype=torch.bfloat16)
-        self.w2 = get_arctic_linear(self.ffn_dim, self.hidden_dim, False,
-                                 use_deepspeed_implementation=use_deepspeed_implementation,                                 
-                                 ds_optimized_lora_config=ds_optimized_lora_config, 
-                                 ds_optimized_quantization_config=ds_optimized_quantization_config, 
-                                 ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
-                                 dtype=torch.bfloat16)
-        self.w3 = get_arctic_linear(self.hidden_dim, self.ffn_dim, False,
-                                 use_deepspeed_implementation=use_deepspeed_implementation,                                 
-                                 ds_optimized_lora_config=ds_optimized_lora_config, 
-                                 ds_optimized_quantization_config=ds_optimized_quantization_config, 
-                                 ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
-                                 dtype=torch.bfloat16)
+        self.ffn_dim = config.intermediate_size if not is_residual_mlp else self.hidden_dim
+        self.w1 = get_arctic_linear(
+            self.hidden_dim,
+            self.ffn_dim,
+            False,
+            use_deepspeed_implementation=use_deepspeed_implementation,
+            ds_optimized_lora_config=ds_optimized_lora_config,
+            ds_optimized_quantization_config=ds_optimized_quantization_config,
+            ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
+            dtype=torch.bfloat16,
+        )
+        self.w2 = get_arctic_linear(
+            self.ffn_dim,
+            self.hidden_dim,
+            False,
+            use_deepspeed_implementation=use_deepspeed_implementation,
+            ds_optimized_lora_config=ds_optimized_lora_config,
+            ds_optimized_quantization_config=ds_optimized_quantization_config,
+            ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
+            dtype=torch.bfloat16,
+        )
+        self.w3 = get_arctic_linear(
+            self.hidden_dim,
+            self.ffn_dim,
+            False,
+            use_deepspeed_implementation=use_deepspeed_implementation,
+            ds_optimized_lora_config=ds_optimized_lora_config,
+            ds_optimized_quantization_config=ds_optimized_quantization_config,
+            ds_optimized_base_weight_sharding=shard_base_weights_if_doing_lora,
+            dtype=torch.bfloat16,
+        )
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, hidden_states):
@@ -915,53 +954,64 @@ class ArcticMoE(nn.Module):
 
         self.hidden_dim = config.hidden_size
         self.num_experts = config.num_local_experts
-        self.layer_id = layer_id  
+        self.layer_id = layer_id
         self.top_k = config.num_experts_per_tok
-        self.is_moe_layer = (layer_id+1) % config.moe_layer_frequency == 0
+        self.is_moe_layer = (layer_id + 1) % config.moe_layer_frequency == 0
 
         self.use_deepspeed_implementation = USE_DEEPSPEED_MOE_ARG in kwargs and kwargs[USE_DEEPSPEED_MOE_ARG]
         if self.use_deepspeed_implementation and MoE is None:
             raise ValueError("Deepspeed is not installed")
         quantization_config = kwargs.get(QUANTIZATION_CONFIG, None)
         deepspeed_lora = kwargs.get(DEEPSPEED_LORA_CONFIG)
-        if not self.is_moe_layer: # dense, not MoE
-            self.mlp = ArcticMLP(config,
-                              use_deepspeed_implementation=self.use_deepspeed_implementation,
-                              ds_optimized_quantization_config=quantization_config,
-                              ds_optimized_lora_config=deepspeed_lora,
-                              shard_base_weights_if_doing_lora=True)
+        if not self.is_moe_layer:  # dense, not MoE
+            self.mlp = ArcticMLP(
+                config,
+                use_deepspeed_implementation=self.use_deepspeed_implementation,
+                ds_optimized_quantization_config=quantization_config,
+                ds_optimized_lora_config=deepspeed_lora,
+                shard_base_weights_if_doing_lora=True,
+            )
         else:
-            if self.use_deepspeed_implementation: # DeepSpeed's MoE         
+            if self.use_deepspeed_implementation:  # DeepSpeed's MoE
                 moe_expert_parallel_size = kwargs.get(MOE_EXPERT_PARALLEL_SIZE_ARG, 1)
-                self.mlp = MoE(self.hidden_dim,
-                                # base weight sharding false for all deepspeed moe calls because it is already sharded
-                                ArcticMLP(config, 
-                                       use_deepspeed_implementation=True,
-                                       ds_optimized_quantization_config=quantization_config,
-                                       ds_optimized_lora_config=deepspeed_lora,
-                                       shard_base_weights_if_doing_lora=False),
-                                num_experts=config.num_local_experts,
-                                ep_size=moe_expert_parallel_size,
-                                k=config.num_experts_per_tok,
-                                use_residual=False,
-                                capacity_factor=config.moe_train_capacity_factor,
-                                eval_capacity_factor=config.moe_eval_capacity_factor,
-                                enable_expert_tensor_parallelism=config.enable_expert_tensor_parallelism,
-                                min_capacity=config.moe_min_capacity,
-                                drop_tokens=config.moe_token_dropping
-                                )
+                self.mlp = MoE(
+                    self.hidden_dim,
+                    # base weight sharding false for all deepspeed moe calls because it is already sharded
+                    ArcticMLP(
+                        config,
+                        use_deepspeed_implementation=True,
+                        ds_optimized_quantization_config=quantization_config,
+                        ds_optimized_lora_config=deepspeed_lora,
+                        shard_base_weights_if_doing_lora=False,
+                    ),
+                    num_experts=config.num_local_experts,
+                    ep_size=moe_expert_parallel_size,
+                    k=config.num_experts_per_tok,
+                    use_residual=False,
+                    capacity_factor=config.moe_train_capacity_factor,
+                    eval_capacity_factor=config.moe_eval_capacity_factor,
+                    enable_expert_tensor_parallelism=config.enable_expert_tensor_parallelism,
+                    min_capacity=config.moe_min_capacity,
+                    drop_tokens=config.moe_token_dropping,
+                )
             else:
                 # "local" MoE implementation
                 self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
-                self.experts = nn.ModuleList([ArcticMLP(config,
-                                                     use_deepspeed_implementation=self.use_deepspeed_implementation,                                       
-                                                     ds_optimized_quantization_config=quantization_config,
-                                                     ds_optimized_lora_config=deepspeed_lora,
-                                                     shard_base_weights_if_doing_lora=True) for i in range(self.num_experts)])
+                self.experts = nn.ModuleList(
+                    [
+                        ArcticMLP(
+                            config,
+                            use_deepspeed_implementation=self.use_deepspeed_implementation,
+                            ds_optimized_quantization_config=quantization_config,
+                            ds_optimized_lora_config=deepspeed_lora,
+                            shard_base_weights_if_doing_lora=True,
+                        )
+                        for i in range(self.num_experts)
+                    ]
+                )
 
         # if torch.distributed.get_rank() == 0:
         #     deepspeed.runtime.utils.see_memory_usage("", force=True)
-
 
     # Similar in behavior to transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward but more efficient.
     def _moe_foreward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -983,7 +1033,8 @@ class ArcticMoE(nn.Module):
         # Matching between experts, tokens, and their top-k rank. For every i,
         # expert_idx[i] is the rank topk_idx[i] expert for token_idx[i].
         expert_idx, token_idx, topk_idx = torch.where(
-            selected_experts == torch.arange(
+            selected_experts
+            == torch.arange(
                 self.num_experts,
                 device=selected_experts.device,
             ).view((self.num_experts, 1, 1))
@@ -1014,7 +1065,9 @@ class ArcticMoE(nn.Module):
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
             # torch.distributed.barrier()
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-        return final_hidden_states, load_balancing_loss_func((router_logits, ), self.num_experts, self.top_k) # ZY: let's directly output the loss to align what we have in ds
+        return final_hidden_states, load_balancing_loss_func(
+            (router_logits,), self.num_experts, self.top_k
+        )  # ZY: let's directly output the loss to align what we have in ds
 
     def forward(self, hidden_states: torch.Tensor):
         if self.is_moe_layer:
@@ -1035,21 +1088,25 @@ class ArcticDecoderLayer(nn.Module):
         self.hidden_size = config.hidden_size
         self.self_attn = MIXTRAL_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx, **kwargs)
         self.block_sparse_moe = ArcticMoE(config, layer_id=layer_idx, **kwargs)
-        self.input_layernorm = ArcticRMSNorm(config.hidden_size, eps=config.rms_norm_eps) 
+        self.input_layernorm = ArcticRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = ArcticRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.use_deepspeed_implementation = USE_DEEPSPEED_MOE_ARG in kwargs and kwargs[USE_DEEPSPEED_MOE_ARG]
 
-        self.parallel_attn_mlp_res = config.parallel_attn_mlp_res and self.block_sparse_moe.is_moe_layer # add residual only when it is moe layer
+        self.parallel_attn_mlp_res = (
+            config.parallel_attn_mlp_res and self.block_sparse_moe.is_moe_layer
+        )  # add residual only when it is moe layer
         deepspeed_quantization = kwargs.get(DEEPSPEED_QUANTIZATION_CONFIG)
         deepspeed_lora = kwargs.get(DEEPSPEED_LORA_CONFIG)
         if self.parallel_attn_mlp_res:
-            self.residual_layernorm = ArcticRMSNorm(config.hidden_size, eps=config.rms_norm_eps) 
-            self.residual_mlp =  ArcticMLP(config,
-                                        use_deepspeed_implementation=self.use_deepspeed_implementation,
-                                        is_residual_mlp=True,
-                                        ds_optimized_quantization_config=deepspeed_quantization,
-                                        ds_optimized_lora_config=deepspeed_lora,
-                                        shard_base_weights_if_doing_lora=True) # for the residual layer. always shard the base weight if doing deepspeed lora.
+            self.residual_layernorm = ArcticRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.residual_mlp = ArcticMLP(
+                config,
+                use_deepspeed_implementation=self.use_deepspeed_implementation,
+                is_residual_mlp=True,
+                ds_optimized_quantization_config=deepspeed_quantization,
+                ds_optimized_lora_config=deepspeed_lora,
+                shard_base_weights_if_doing_lora=True,
+            )  # for the residual layer. always shard the base weight if doing deepspeed lora.
 
     def forward(
         self,
@@ -1095,7 +1152,7 @@ class ArcticDecoderLayer(nn.Module):
         hidden_states = residual_input + hidden_states
 
         residual_attn = hidden_states
-        
+
         if self.parallel_attn_mlp_res:
             # Note the architecture here is that the MOE layers reads the **pre-attention** input while there is a "normal" transformer residual part.
             # This is to achieve better parallelization.
@@ -1106,7 +1163,7 @@ class ArcticDecoderLayer(nn.Module):
             hidden_states = self.residual_mlp(hidden_states)
             residual_residual = residual_attn + hidden_states
             # parallel mlp moe part
-            hidden_states = self.post_attention_layernorm(residual_input) # parallel attn mlp has the same input
+            hidden_states = self.post_attention_layernorm(residual_input)  # parallel attn mlp has the same input
             hidden_states, gate_loss = self.block_sparse_moe(hidden_states)
             hidden_states = residual_residual + hidden_states
         else:
@@ -1181,6 +1238,7 @@ class ArcticPreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
+
 
 MIXTRAL_INPUTS_DOCSTRING = r"""
     Args:
@@ -1406,7 +1464,7 @@ class ArcticModel(ArcticPreTrainedModel):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                if hasattr(layer_outputs[2 if output_attentions else 1], 'to_legacy_cache'):
+                if hasattr(layer_outputs[2 if output_attentions else 1], "to_legacy_cache"):
                     next_decoder_cache = layer_outputs[2 if output_attentions else 1]
                 else:
                     if next_decoder_cache is None:
@@ -1426,8 +1484,12 @@ class ArcticModel(ArcticPreTrainedModel):
 
         next_cache = None
         if use_cache:
-            next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache and hasattr(next_decoder_cache, 'to_legacy_cache') else next_decoder_cache
-        torch.cuda.empty_cache()        
+            next_cache = (
+                next_decoder_cache.to_legacy_cache()
+                if use_legacy_cache and hasattr(next_decoder_cache, "to_legacy_cache")
+                else next_decoder_cache
+            )
+        torch.cuda.empty_cache()
 
         if not return_dict:
             return tuple(
@@ -1443,13 +1505,18 @@ class ArcticModel(ArcticPreTrainedModel):
             router_logits=all_router_losses,
         )
 
-class ArcticForCausalLM(ArcticPreTrainedModel):
+
+class ArcticForCausalLM(ArcticPreTrainedModel, GenerationMixin):
     # TODO(jeffra): update _keys_to_ignore_on_load_unexpected with expert keys not relevant for this rank
-    _keys_to_ignore_on_load_unexpected = [r"model\.layers\.\d+\.block_sparse_moe\.experts\.\d+\.w\d+\.weight"
-                                          r"model\.layers\.\d+\.block_sparse_moe\.gate\.weight"]
-    _keys_to_ignore_on_load_missing = [r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.experts\.deepspeed_experts\.\d+\.w\d+\.weight",
-                                       r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.gate\.wg\.weight"]
-    _tied_weights_keys = []#["lm_head.weight"]
+    _keys_to_ignore_on_load_unexpected = [
+        r"model\.layers\.\d+\.block_sparse_moe\.experts\.\d+\.w\d+\.weight"
+        r"model\.layers\.\d+\.block_sparse_moe\.gate\.weight"
+    ]
+    _keys_to_ignore_on_load_missing = [
+        r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.experts\.deepspeed_experts\.\d+\.w\d+\.weight",
+        r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.gate\.wg\.weight",
+    ]
+    _tied_weights_keys = []  # ["lm_head.weight"]
 
     def __init__(self, config, **kwargs):
         super().__init__(config)
@@ -1485,10 +1552,9 @@ class ArcticForCausalLM(ArcticPreTrainedModel):
     def get_decoder(self):
         return self.model
 
-
     def _expert_number_from_param_name(self, param_name):
         # example param_name: model.layers.1.block_sparse_moe.experts.10.w1.weight
-        pattern = r'experts\.(\d+)\.'
+        pattern = r"experts\.(\d+)\."
         m = re.search(pattern, param_name)
         if m:
             return int(m[1])
@@ -1502,75 +1568,87 @@ class ArcticForCausalLM(ArcticPreTrainedModel):
             return state_dict
 
         # when trying to construct the deepspeed checkpoint we don't want to gather everything
-        if not getattr(self, '_gather_expert_params', False):
+        if not getattr(self, "_gather_expert_params", False):
             return state_dict
 
         rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
         world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
 
         # non-lora experts
-        pattern = r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.experts\.deepspeed_experts\.\d+\.w\d+\.weight"
+        pattern = (
+            r"model\.layers\.\d+\.block_sparse_moe\.mlp\.deepspeed_moe\.experts\.deepspeed_experts\.\d+\.w\d+\.weight"
+        )
         expert_params = [s for s in state_dict.keys() if re.search(pattern, s)]
 
         for param_name in expert_params:
-            param_tensor = state_dict[param_name].to('cuda')
+            param_tensor = state_dict[param_name].to("cuda")
             output = [torch.zeros_like(param_tensor) for _ in range(world_size)]
             torch.distributed.gather(param_tensor, gather_list=output if rank == 0 else None, dst=0, group=None)
             # rename from local rank to global rank
             for gather_rank, gather_param in enumerate(output):
                 experts_per_rank = self.num_experts // self.moe_expert_parallel_size
                 new_expert_number = gather_rank * experts_per_rank + self._expert_number_from_param_name(param_name)
-                new_param_name = re.sub(r'(experts\.)(\d+)(\.)', rf'\g<1>{new_expert_number}\3', param_name)
+                new_param_name = re.sub(r"(experts\.)(\d+)(\.)", rf"\g<1>{new_expert_number}\3", param_name)
                 state_dict[new_param_name] = gather_param
                 if rank == 0:
                     print(f"adding to state_dict and renaming: {param_name} -> {new_param_name}")
-    
-        # Handle custom LoRA implementation  
+
+        # Handle custom LoRA implementation
         # TODO(rajhans): the part below is untested and shows up when doing lora training. Should not affect inference.
         if self.is_deepspeed_lora:
-            for param_name in list(state_dict.keys()):  # Use list to avoid RuntimeError due to changing size during iteration  
-                if param_name.endswith("base_weight"):  
-                    base_weight = state_dict[param_name].to('cuda')
-                    
-                    # If the base weight is sharded, gather weights from multiple ranks and concatenate 
-                    # except if the weights are from deespeed_moe which is not sharded (due to EP). 
-                    if self.shard_base_weights_if_doing_lora and 'deepspeed_moe.experts.deepspeed_experts' not in param_name:
-                        gathered_weights = [torch.zeros_like(base_weight, 
-                                                             device=base_weight.device, dtype=base_weight.dtype) for _ in range(world_size)]
-                        torch.distributed.gather(base_weight, gather_list=gathered_weights if rank == 0 else None, dst=0, group=None)  
+            for param_name in list(
+                state_dict.keys()
+            ):  # Use list to avoid RuntimeError due to changing size during iteration
+                if param_name.endswith("base_weight"):
+                    base_weight = state_dict[param_name].to("cuda")
+
+                    # If the base weight is sharded, gather weights from multiple ranks and concatenate
+                    # except if the weights are from deespeed_moe which is not sharded (due to EP).
+                    if (
+                        self.shard_base_weights_if_doing_lora
+                        and "deepspeed_moe.experts.deepspeed_experts" not in param_name
+                    ):
+                        gathered_weights = [
+                            torch.zeros_like(base_weight, device=base_weight.device, dtype=base_weight.dtype)
+                            for _ in range(world_size)
+                        ]
+                        torch.distributed.gather(
+                            base_weight, gather_list=gathered_weights if rank == 0 else None, dst=0, group=None
+                        )
                         base_weight = torch.cat(gathered_weights, dim=1)
 
-
-                    ## The part below is useful if we want to output HF transformer path weights, but commenting it for now 
-                    # Merge the LoRA weights into the base weights  
-                    # lora_weight_1 = state_dict.get(param_name.replace("base_weight", "lora_weight_1.weight"))  
-                    # lora_weight_2 = state_dict.get(param_name.replace("base_weight", "lora_weight_2.weight"))  
+                    ## The part below is useful if we want to output HF transformer path weights, but commenting it for now
+                    # Merge the LoRA weights into the base weights
+                    # lora_weight_1 = state_dict.get(param_name.replace("base_weight", "lora_weight_1.weight"))
+                    # lora_weight_2 = state_dict.get(param_name.replace("base_weight", "lora_weight_2.weight"))
                     # if lora_weight_1 is not None and lora_weight_2 is not None:
                     #     lora_weights = torch.matmul(lora_weight_2, lora_weight_1)
                     #     base_weight += lora_weights
                     # else:
-                    #     raise ValueError                  
+                    #     raise ValueError
 
-                    # # Rename the base weight to weight  
-                    # new_param_name = param_name.replace("base_weight", "weight")  
-                    # state_dict[new_param_name] = base_weight  
-                    
-                    # Remove the base weight from the state dict  
-                    # del state_dict[param_name]    
-        return state_dict      
+                    # # Rename the base weight to weight
+                    # new_param_name = param_name.replace("base_weight", "weight")
+                    # state_dict[new_param_name] = base_weight
 
+                    # Remove the base weight from the state dict
+                    # del state_dict[param_name]
+        return state_dict
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         if not self.use_deepspeed_moe:
             return super()._load_from_state_dict(
                 state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
             )
 
         world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
-        #TODO(jeffra): currently assumes fine-tuning only on one node, fix for world_size != ep size
+        # TODO(jeffra): currently assumes fine-tuning only on one node, fix for world_size != ep size
         if self.moe_expert_parallel_size > 1:
-            assert self.moe_expert_parallel_size == world_size, \
-                    f"currently only support expert parallel size equal to world size but {self.moe_expert_parallel_size=} and {world_size=}"
+            assert (
+                self.moe_expert_parallel_size == world_size
+            ), f"currently only support expert parallel size equal to world size but {self.moe_expert_parallel_size=} and {world_size=}"
 
         rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
         num_local_experts = self.num_experts // self.moe_expert_parallel_size
@@ -1583,7 +1661,7 @@ class ArcticForCausalLM(ArcticPreTrainedModel):
         #   model.layers.1.block_sparse_moe.mlp.deepspeed_moe.gate.wg.weight
         #   model.layers.1.block_sparse_moe.mlp.deepspeed_moe.experts.deepspeed_experts.10.w1.weight
 
-        gate_pattern = r'model\.layers\.\d+\.block_sparse_moe\.gate\.weight'
+        gate_pattern = r"model\.layers\.\d+\.block_sparse_moe\.gate\.weight"
 
         expert_params_to_keep = []
         expert_params_to_remove = []
@@ -1600,30 +1678,30 @@ class ArcticForCausalLM(ArcticPreTrainedModel):
 
         # drop all experts in the state_dict that we don't need locally
         for param_name in expert_params_to_remove:
-            print(f'{rank=} dropping {param_name}')
+            print(f"{rank=} dropping {param_name}")
             del state_dict[param_name]
 
         # rename remaining experts to align with the local config
         for param_name in expert_params_to_keep:
             # adjust expert number wrt expert parallelism
             new_expert_number = self._expert_number_from_param_name(param_name) % num_local_experts
-            new_param_name = re.sub(r'(experts\.)(\d+)(\.)', rf'\g<1>{new_expert_number}\3', param_name)
+            new_param_name = re.sub(r"(experts\.)(\d+)(\.)", rf"\g<1>{new_expert_number}\3", param_name)
 
             # use deepspeed moe param path
-            split_param_name = new_param_name.split('.')
-            idx = split_param_name.index('experts')
-            ds_moe_path = "mlp.deepspeed_moe.experts.deepspeed_experts".split('.')
-            new_param_name = split_param_name[0:idx] + ds_moe_path + split_param_name[idx+1:]
+            split_param_name = new_param_name.split(".")
+            idx = split_param_name.index("experts")
+            ds_moe_path = "mlp.deepspeed_moe.experts.deepspeed_experts".split(".")
+            new_param_name = split_param_name[0:idx] + ds_moe_path + split_param_name[idx + 1 :]
             new_param_name = ".".join(new_param_name)
 
-            print(f'Deepspeed {rank=}, renaming {param_name} -> {new_param_name}')
+            print(f"Deepspeed {rank=}, renaming {param_name} -> {new_param_name}")
             state_dict[new_param_name] = state_dict.pop(param_name)
 
         # rename gate params
-        ds_suffix = "mlp.deepspeed_moe.gate.wg.weight".split('.')
+        ds_suffix = "mlp.deepspeed_moe.gate.wg.weight".split(".")
         for param_name in gate_params:
-            new_param_name = '.'.join(param_name.split('.')[:4] + ds_suffix)
-            print(f'Gating: {rank=}, renaming {param_name} -> {new_param_name}')
+            new_param_name = ".".join(param_name.split(".")[:4] + ds_suffix)
+            print(f"Gating: {rank=}, renaming {param_name} -> {new_param_name}")
             state_dict[new_param_name] = state_dict.pop(param_name)
 
         # If deepspeed lora is enabled, then we need to rename weight to base_weight.
@@ -1642,12 +1720,14 @@ class ArcticForCausalLM(ArcticPreTrainedModel):
 
                 shape_local = local_state_dict[param_name].shape
                 shape_incoming = incoming_param.shape
-                if 'deepspeed_moe' in incoming_param_name:
+                if "deepspeed_moe" in incoming_param_name:
                     assert shape_local == shape_incoming, "deepspeed moe weights are never sharded"
                 else:
-                    assert shape_incoming[1] == shape_local[1] * world_size, "weights should be sharded equally across world size"
-                    incoming_param = incoming_param[:, rank*shape_local[1]: (rank+1)*shape_local[1]]
-                print(f'Deepspeed lora: {rank=}, renaming {incoming_param_name} -> {param_name}')
+                    assert (
+                        shape_incoming[1] == shape_local[1] * world_size
+                    ), "weights should be sharded equally across world size"
+                    incoming_param = incoming_param[:, rank * shape_local[1] : (rank + 1) * shape_local[1]]
+                print(f"Deepspeed lora: {rank=}, renaming {incoming_param_name} -> {param_name}")
                 state_dict[param_name] = incoming_param
                 del state_dict[incoming_param_name]
 
