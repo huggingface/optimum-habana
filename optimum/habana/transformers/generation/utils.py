@@ -2953,7 +2953,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                if self.config.eos_token_id:
+                if self.config.eos_token_id is not None:
                     beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
