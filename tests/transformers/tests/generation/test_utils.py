@@ -138,7 +138,7 @@ class GenerationTesterMixin:
         else:
             attention_mask = None
 
-        # It is important set set the eos_token_id to None to ensure that no sequences
+        # It is important set the eos_token_id to None to ensure that no sequences
         # shorter than `max_length` can be generated
         config.eos_token_id = None
         config.forced_eos_token_id = None
