@@ -449,25 +449,29 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     return final_hidden_states, router_logits
 
 
-class DynamicFusedMOE(torch.nn.Module):
+class DynamicFusedMoE(nn.Module):
+    """DynamicFusedMoE layer for MoE models.
+    Based on implementation from vllm:
+    https://github.com/HabanaAI/vllm-fork/blob/84922944da5b65fa43bbdc465650911cbef9de72/vllm/hpu/ops.py#L282"""
+
     def __init__(self, num_total_experts):
         super().__init__()
         self.num_total_experts = num_total_experts
 
     def forward(
-        self, hidden_states: torch.Tensor, w12: torch.Tensor, w3: torch.Tensor, score: torch.Tensor, topk: int
+        self, hidden_states: torch.Tensor, w13: torch.Tensor, w2: torch.Tensor, score: torch.Tensor, topk: int
     ) -> torch.Tensor:
         routing_weights, selected_experts = calculate_routing_tensors(score, topk, hidden_states.dtype)
         # pre-processing for custom op inputs
         experts_range = range(self.num_total_experts)
-        w12_list = [w12[i, :, :].squeeze() for i in experts_range]
-        w3_list = [w3[i, :, :].squeeze() for i in experts_range]
+        w13_list = [w13[i, :, :].squeeze() for i in experts_range]
+        w2_list = [w2[i, :, :].squeeze() for i in experts_range]
         final_hidden_states = torch.ops.hpu.mixture_of_experts(
             hidden_states=hidden_states,
             expert_routing_table=selected_experts,
             router_weights=routing_weights,
-            w12=w12_list,
-            w3=w3_list,
+            w12=w13_list,
+            w3=w2_list,
             permuted_weights=True,
             activation="silu",
             experts_min=0,
@@ -487,10 +491,6 @@ def calculate_routing_tensors(
 
 
 class FusedMoE(nn.Module):
-    """FusedMoE layer for MoE models.
-    Based on implementation from vllm:
-    https://github.com/HabanaAI/vllm-fork/blob/84922944da5b65fa43bbdc465650911cbef9de72/vllm/hpu/ops.py#L282"""
-
     def __init__(
         self,
         config: MixtralConfig,
@@ -511,7 +511,7 @@ class FusedMoE(nn.Module):
 
         self.intermediate_size = config.intermediate_size
         self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
-        self.hpu_static_fused_moe = DynamicFusedMOE(self.num_experts)
+        self.hpu_fused_moe = DynamicFusedMoE(self.num_experts)
 
         # Fused gate_up_proj (column parallel)
         self.w13_weight = nn.Parameter(
@@ -521,10 +521,8 @@ class FusedMoE(nn.Module):
                 config.hidden_size,
                 dtype=params_dtype,
                 device="hpu" if self.tp_size > 1 else None,
-            ),
-            requires_grad=False,
+            )
         )
-        self.register_parameter("w13_weight", self.w13_weight)
         # down_proj (row parallel)
         self.w2_weight = nn.Parameter(
             torch.empty(
@@ -533,13 +531,11 @@ class FusedMoE(nn.Module):
                 self.intermediate_size_per_partition,
                 dtype=params_dtype,
                 device="hpu" if self.tp_size > 1 else None,
-            ),
-            requires_grad=False,
+            )
         )
-        self.register_parameter("w2_weight", self.w2_weight)
 
     def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor) -> torch.Tensor:
-        final_hidden_states = self.hpu_static_fused_moe(
+        final_hidden_states = self.hpu_fused_moe(
             hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k
         )
         if self.tp_size > 1:
@@ -913,7 +909,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
 
-    # We want to don't raise an error for unitialized weights
+    # We don't want to raise an error for unitialized weights
     _keys_to_ignore_on_load_missing = [
         r"model.layers.\d+.block_sparse_moe.experts.w2_weight",
         r"model.layers.\d+.block_sparse_moe.experts.w13_weight",
