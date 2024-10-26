@@ -283,6 +283,9 @@ def main():
             with amp_autocast():
                 output = model(input)
 
+            if device == torch.device("hpu") and not(graph_mode):
+                htcore.mark_step()
+
             if use_probs:
                 output = output.softmax(-1)
 
