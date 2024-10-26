@@ -126,6 +126,12 @@ Current checkpoints:
 
 ## Inference
 
+# graph_mode
+python inference.py --data-dir='./download_ds/imagenette2-320' --device='hpu' --graph_mode
+
+# lazy mode
+python inference.py --data-dir='./download_ds/imagenette2-320' --device='hpu'
+
 To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
 
 For instance, you can run inference with ViT on Cifar10 on 1 Gaudi card with the following command:
