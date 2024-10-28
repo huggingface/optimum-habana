@@ -22,7 +22,6 @@ This directory contains the scripts that showcases how to inference/fine-tune th
 - [timm/resnet18.a1_in1k](https://huggingface.co/timm/resnet18.a1_in1k)
 - [timm/resnet18.fb_swsl_ig1b_ft_in1k](https://huggingface.co/timm/resnet18.fb_swsl_ig1b_ft_in1k)
 - [timm/wide_resnet50_2.racm_in1k](https://huggingface.co/timm/wide_resnet50_2.racm_in1k)
-- [timm/efficientformerv2_s2.snap_dist_in1k](https://huggingface.co/timm/efficientformerv2_s2.snap_dist_in1k)
 - [timm/efficientnet_b3.ra2_in1k](https://huggingface.co/timm/efficientnet_b3.ra2_in1k)
 - [timm/efficientnet_lite0.ra_in1k](https://huggingface.co/timm/efficientnet_lite0.ra_in1k)
 - [timm/efficientnet_b0.ra_in1k](https://huggingface.co/timm/efficientnet_b0.ra_in1k)
@@ -140,51 +139,26 @@ Current checkpoints:
 
 
 
-## Inference
+## Single-HPU inference
 
-# graph_mode
-python inference.py --data-dir='./download_ds/imagenette2-320' --device='hpu' --graph_mode
+Here we show how to fine-tune the [imagenette2-320 dataset](https://www.kaggle.com/datasets/xbinchen/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
-# lazy mode
-python inference.py --data-dir='./download_ds/imagenette2-320' --device='hpu'
-
-To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
-
-For instance, you can run inference with ViT on Cifar10 on 1 Gaudi card with the following command:
+### hpu with graph_mode
 ```bash
-python run_image_classification.py \
-    --model_name_or_path google/vit-base-patch16-224-in21k \
-    --dataset_name cifar10 \
-    --output_dir /tmp/outputs/ \
-    --remove_unused_columns False \
-    --image_column_name img \
-    --do_eval \
-    --per_device_eval_batch_size 64 \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/vit \
-    --dataloader_num_workers 1 \
-    --bf16
+python inference.py \
+    --data-dir='./download_ds/imagenette2-320' \
+    --device='hpu' \
+    --model resnet50.a1_in1k \
+    --graph_mode
 ```
 
-## TIMM/FastViT Examples
-
-This directory contains an example script that demonstrates using FastViT with graph mode.
-
-### Single-HPU inference
-
+### hpu with lazy mode
 ```bash
-python3 run_timm_example.py \
-    --model_name_or_path "timm/fastvit_t8.apple_in1k" \
-    --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png" \
-    --warmup 3 \
-    --n_iterations 20 \
-    --use_hpu_graphs \
-    --bf16 \
-    --print_result
+python inference.py \
+    --data-dir='./download_ds/imagenette2-320' 
+    --device='hpu' \
+    --model resnet50.a1_in1k
 ```
-Models that have been validated:
-  - [timm/fastvit_t8.apple_dist_in1k](https://huggingface.co/timm/fastvit_t8.apple_dist_in1k)
-  - [timm/fastvit_t8.apple_in1k](https://huggingface.co/timm/fastvit_t8.apple_in1k)
-  - [timm/fastvit_sa12.apple_in1k](https://huggingface.co/timm/fastvit_sa12.apple_in1k)
+
+Models that have been validated same as training lists supported as above. 
+
