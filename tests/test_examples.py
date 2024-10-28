@@ -228,6 +228,7 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
+            "huggyllama/llama-7b",
         ]
 
         if (fsdp or fp8) and not IS_GAUDI2:
@@ -246,7 +247,11 @@ class ExampleTestMeta(type):
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
-        elif "falcon" in model_name and task_name in ("llama-adapter", "databricks/databricks-dolly-15k"):
+        elif "falcon" in model_name and task_name in (
+            "llama-adapter",
+            "databricks/databricks-dolly-15k",
+            "tatsu-lab/alpaca_cp",
+        ):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -279,6 +284,8 @@ class ExampleTestMeta(type):
         elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+            return True
+        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
             return True
 
         return False
@@ -900,4 +907,11 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True, fp8=True
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingLoRACPExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", deepspeed=True
+):
+    TASK_NAME = "tatsu-lab/alpaca_cp"
     DATASET_NAME = "tatsu-lab/alpaca"
