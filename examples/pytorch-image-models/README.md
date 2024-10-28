@@ -46,7 +46,7 @@ pip install .
 
 Here we show how to fine-tune the [imagenette2-320 dataset](https://www.kaggle.com/datasets/xbinchen/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
-1) training with hpu lazy mode
+### training with hpu lazy mode
    
 ```bash
 python train_hpu_lazy.py \
@@ -54,7 +54,7 @@ python train_hpu_lazy.py \
     --device 'hpu' \
     --model resnet50.a1_in1k
 ```
-2) training with hpu graph mode
+### training with hpu graph mode
 
 ```bash
 python train_hpu_graph.py \
@@ -95,6 +95,7 @@ Current checkpoints:
 
 Here we show how to fine-tune the [imagenette2-320 dataset](https://www.kaggle.com/datasets/xbinchen/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
+### training with hpu lazy mode
 ```bash
 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_lazy.py \
@@ -102,7 +103,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --device 'hpu' \
     --model resnet50.a1_in1k
 ```
-2) training with hpu graph mode
+### training with hpu graph mode
 
 ```bash
 torchrun --nnodes 1 --nproc_per_node 2 \
