@@ -180,5 +180,5 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if not return_dict:
             return (image,)
 
-        throughput = (end_time - start_time) / batch_size
+        throughput = batch_size / (end_time - start_time)
         return GaudiDDPMPipelineOutput(images=image, throughput=throughput)
