@@ -27,6 +27,7 @@ from .generation import (
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
+from .modeling_rope_utils import GAUDI_ROPE_INIT_FUNCTIONS
 from .models import (
     DeciLMConfig,
     DeciLMForCausalLM,
@@ -213,6 +214,9 @@ def adapt_transformers_to_gaudi():
 
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
+
+    # This change shall be removed once OH-fork is upgraded to transformers==4.45
+    transformers.modeling_rope_utils.ROPE_INIT_FUNCTIONS = GAUDI_ROPE_INIT_FUNCTIONS
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
