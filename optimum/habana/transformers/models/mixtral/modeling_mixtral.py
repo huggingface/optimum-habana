@@ -397,7 +397,7 @@ class GaudiMixtralAttention(MixtralAttention):
         return attn_output, attn_weights, past_key_value
 
 
-def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, use_dynamic_moe: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
@@ -422,29 +422,50 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    final_hidden_states = torch.zeros(
-        (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-
-    padded_weights = torch.zeros(
-        (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-    padded_weights.scatter_(-1, selected_experts, routing_weights)
-    padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
-    padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
-
-    # Loop over all available experts in the model and perform the computation on each expert
-    for expert_idx in range(self.num_experts):
-        expert_layer = self.experts[expert_idx]
-        padded_weight = padded_weights[expert_idx]
-        current_state_static = hidden_states.reshape(-1, hidden_dim)
-        current_hidden_states_static = (
-            expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+    # Currently, dynamic MoE kernel have accuracy issue when top_k * bs * seq > 4096
+    if not use_dynamic_moe or self.top_k * batch_size * sequence_length > 4096:
+        final_hidden_states = torch.zeros(
+            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
         )
-        final_hidden_states += current_hidden_states_static
-        # support long sequences exceeding 8192
-        if not self.training and sequence_length > 8192:
-            htcore.mark_step()
+
+        padded_weights = torch.zeros(
+            (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+        padded_weights.scatter_(-1, selected_experts, routing_weights)
+        padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
+        padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+
+        # Loop over all available experts in the model and perform the computation on each expert
+        for expert_idx in range(self.num_experts):
+            expert_layer = self.experts[expert_idx]
+            padded_weight = padded_weights[expert_idx]
+            current_state_static = hidden_states.reshape(-1, hidden_dim)
+            current_hidden_states_static = (
+                expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+            )
+            final_hidden_states += current_hidden_states_static
+            # support long sequences exceeding 8192
+            if not self.training and sequence_length > 8192:
+                htcore.mark_step()
+    else:
+        # pre-processing for custom op inputs
+        experts_range = range(self.num_experts)
+        w1_list = [self.experts[i].w1.weight.squeeze() for i in experts_range]
+        w2_list = [self.experts[i].w2.weight.squeeze() for i in experts_range]
+        w3_list = [self.experts[i].w3.weight.squeeze() for i in experts_range]
+
+        final_hidden_states = torch.ops.hpu.mixture_of_experts(
+                hidden_states=hidden_states,
+                expert_routing_table=selected_experts,
+                router_weights=routing_weights,
+                w1=w1_list,
+                w2=w3_list, # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+                w3=w2_list,
+                permuted_weights=True,
+                activation="silu",
+                experts_min=0,
+                experts_max=7
+        )
 
     return final_hidden_states, router_logits
 
@@ -470,6 +491,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        use_dynamic_moe: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -504,7 +526,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states, router_logits = self.block_sparse_moe(hidden_states)
+        hidden_states, router_logits = self.block_sparse_moe(hidden_states, use_dynamic_moe=use_dynamic_moe)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
@@ -545,6 +567,7 @@ class GaudiMixtralModel(MixtralModel):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        use_dynamic_moe: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Union[Tuple, MoeModelOutputWithPast]:
         """
@@ -674,6 +697,7 @@ class GaudiMixtralModel(MixtralModel):
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     flash_attention_recompute=flash_attention_recompute,
+                    use_dynamic_moe=use_dynamic_moe,
                     cache_idx=cache_idx,
                 )
 
@@ -749,6 +773,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
+        use_dynamic_moe: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -777,6 +802,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             flash_attention_recompute=flash_attention_recompute,
+            use_dynamic_moe=use_dynamic_moe,
             cache_idx=cache_idx,
         )
 
@@ -894,6 +920,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 "token_idx": token_idx,
                 "reuse_cache": reuse_cache,
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "use_dynamic_moe": kwargs.get("use_dynamic_moe"),
                 "cache_idx": kwargs.get("cache_idx"),
             }
         )

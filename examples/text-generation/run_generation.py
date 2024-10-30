@@ -338,6 +338,11 @@ def setup_parser(parser):
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
+    parser.add_argument(
+        "--use_dynamic_moe",
+        action="store_true",
+        help="Whether to use dynamic MoE kernel.",
+    )
 
     args = parser.parse_args()
 
@@ -502,6 +507,7 @@ def main():
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
                 profiling_record_shapes=args.profiling_record_shapes,
+                use_dynamic_moe=args.use_dynamic_moe,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
             logger.info(f"Time to first token = {first_token_time*1000}ms")
@@ -688,6 +694,7 @@ def main():
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 profiling_record_shapes=args.profiling_record_shapes,
+                use_dynamic_moe=args.use_dynamic_moe,
             ).cpu()
             return prompt, outputs
 
