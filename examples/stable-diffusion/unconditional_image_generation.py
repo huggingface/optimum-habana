@@ -109,7 +109,7 @@ def main():
     kwargs_call = {"throughput_warmup_steps": args.throughput_warmup_steps}
 
     pipeline = GaudiDDPMPipeline.from_pretrained(model_name, **kwargs)
-    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps)
+    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps, **kwargs_call)
 
     if args.output_dir:
         logger.info(f"Generating outputs to {args.output_dir}")
