@@ -29,6 +29,8 @@ from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipe
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.utils import logging
 
+from ....utils import speed_metrics
+
 
 logger = logging.get_logger(__name__)
 
@@ -149,8 +151,14 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if self.use_habana:
             self.unet = self.unet.to(self._device)
 
+        throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+
         start_time = time.time()
+        time_after_warmup = start_time
         for i in self.progress_bar(num_inference_steps):
+            if i == throughput_warmup_steps:
+                time_after_warmup = time.time()
+
             timestep = timesteps[0]
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
@@ -172,7 +180,16 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-        end_time = time.time()
+
+        speed_metrics_prefix = "generation"
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=start_time,
+            num_samples=batch_size,
+            num_steps=batch_size * len(num_inference_steps),
+            start_time_after_warmup=time_after_warmup,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -180,5 +197,5 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if not return_dict:
             return (image,)
 
-        throughput = batch_size / (end_time - start_time)
+        throughput = speed_measures["generation_samples_per_second"]
         return GaudiDDPMPipelineOutput(images=image, throughput=throughput)
