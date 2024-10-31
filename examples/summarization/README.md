@@ -209,7 +209,7 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --deepspeed ds_flan_t5_z3_config_bf16.json
 ```
 
-Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO2 to fine-tune t5-large:
+Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO2 to fine-tune t5-large:
 ```bash
 MASTER_ADDR=127.0.0.1 MASTER_PORT=12345 PT_HPU_LOG_MOD_MASK=0 PT_HPU_LOG_TYPE_MASK=0 PT_HPU_LAZY_MODE=0 \
 python ../gaudi_spawn.py \
