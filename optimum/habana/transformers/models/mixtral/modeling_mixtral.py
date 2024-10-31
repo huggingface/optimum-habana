@@ -464,7 +464,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, us
                 permuted_weights=True,
                 activation="silu",
                 experts_min=0,
-                experts_max=7
+                experts_max=self.num_experts
         )
 
     return final_hidden_states, router_logits
