@@ -326,29 +326,35 @@ class GaudiGenerationMixin(GenerationMixin):
         return input_ids, model_kwargs
 
     def _pad_past_key_values(self, model_kwargs):
+        # Early return if no past key values to pad
+        past_key_values = model_kwargs.get("past_key_values")
+        if not past_key_values:
+            return
+
+        # Determine if the model is MQA or not
+        is_mqa_model = model_kwargs.get("mqa_model", False)
+        lazy_mode = model_kwargs.get("lazy_mode", False)
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
-        if model_kwargs["past_key_values"]:
-            if model_kwargs.get("mqa_model", False):
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    if torch.is_tensor(
-                        model_kwargs["past_key_values"][i]
-                    ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
-                        model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
-                        )
-                        if model_kwargs.get("lazy_mode", False):
+
+        # For MQA models, past_key_values is a tensor
+        if is_mqa_model:
+            for layer in past_key_values:  # Iterate over layers
+                if torch.is_tensor(layer):
+                    # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
+                    layer = torch.nn.functional.pad(layer, (0, 0, 0, pad_amount))
+                    # Mark step if lazy mode is enabled
+                    if lazy_mode:
+                        self.htcore_generation.mark_step()
+        # For Non-MQA models, the past_key_values is a list of lists (k and v)
+        else:
+            for layer in past_key_values:  # Iterate over layers
+                for k_or_v in layer:  # Iterate over k and v
+                    if torch.is_tensor(k_or_v):
+                        # tensor(batch_size, n_heads, kv_cache_len, head_dim)
+                        k_or_v = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                        # Mark step if lazy mode is enabled
+                        if lazy_mode:
                             self.htcore_generation.mark_step()
-            else:
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
-                        if torch.is_tensor(
-                            model_kwargs["past_key_values"][i][j]
-                        ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
-                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
-                                model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
-                            )
-                            if model_kwargs.get("lazy_mode", False):
-                                self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
         if model_kwargs["past_key_values"]:
