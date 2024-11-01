@@ -167,12 +167,12 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         max_steps: int,  # current stopping criteria
         batch_size: int,
-        pad_token_id: int,
-        device: str,
-        dtype: str = bool,
+        device: Union[str, torch.device],
+        dtype: torch.dtype = torch.bool,
     ) -> torch.Tensor:
-        x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
+        decoder_attention_mask = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
+        index = torch.tensor(0, device=device)
+        return decoder_attention_mask.index_fill(1, index, 1)  # First position with 1
 
     def _prepare_decoder_input_ids_for_generation(
         self,
@@ -1123,7 +1123,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
                         max_length,
                         inputs_tensor.shape[0],
-                        generation_config.pad_token_id,
                         inputs_tensor.device,
                     )
 
