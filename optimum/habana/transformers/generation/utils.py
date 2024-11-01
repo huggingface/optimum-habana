@@ -70,7 +70,7 @@ from .configuration_utils import GaudiGenerationConfig
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
-    from transformers.streamers import BaseStreamer
+    from transformers.generation.streamers import BaseStreamer
     from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
     from .candidate_generator import GaudiCandidateGenerator
