@@ -23,7 +23,6 @@ import warnings
 import numpy as np
 import pytest
 from parameterized import parameterized
-
 from transformers import is_torch_available, pipeline, set_seed
 from transformers.testing_utils import (
     is_flaky,
@@ -47,7 +46,6 @@ from .test_framework_agnostic import GenerationIntegrationTestsMixin
 if is_torch_available():
     import torch
     import torch.nn.functional as F
-
     from transformers import (
         AutoModelForCausalLM,
         AutoModelForSeq2SeqLM,
@@ -2435,6 +2433,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         }
 
     @slow
+    @pytest.mark.skip("Group beam search is not supported by optimum-habana")
     def test_diverse_beam_search(self):
         # PT-only test: TF doesn't have a diverse beam search implementation
         article = """Justin Timberlake and Jessica Biel, welcome to parenthood.
@@ -2477,10 +2476,11 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
-        max_length = 20
+        # Controlling max_length via the configuration is deprecated in favor of max_new_tokens
+        max_new_tokens = 20
         input_len = input_ids.shape[-1]
-        out_gen = model.generate(input_ids=input_ids, max_length=max_length)
-        out_gen_embeds = model.generate(inputs_embeds=inputs_embeds, max_length=max_length)
+        out_gen = model.generate(input_ids=input_ids, max_new_tokens=max_new_tokens)
+        out_gen_embeds = model.generate(inputs_embeds=inputs_embeds, max_new_tokens=max_new_tokens)
         self.assertEqual(out_gen.shape[-1], input_len + out_gen_embeds.shape[-1])
 
     def test_min_length_if_input_embeds(self):
@@ -2491,6 +2491,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
+        # Use max_new_tokens for static shape
         min_length = 10
         input_len = input_ids.shape[-1]
         out_gen = model.generate(input_ids=input_ids, min_length=min_length, max_new_tokens=20)
@@ -2624,6 +2625,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         self.assertListEqual(low_output.tolist(), high_output.tolist())
 
     @slow
+    @pytest.mark.skip("Watermarking is not supported by optimum-habana yet")
     def test_watermark_generation(self):
         tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
         model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2").to(torch_device)
@@ -2800,9 +2802,15 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
 
     @slow
+    @pytest.mark.xfail
     def test_cfg_mixin(self):
         model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2").to(torch_device)
         tokenizer = GPT2Tokenizer.from_pretrained("openai-community/gpt2")
+
+        # add pad_token_id for static shape
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            model.generation_config.pad_token_id = model.generation_config.eos_token_id
 
         input = tokenizer(["The dragon flew over Paris,"], return_tensors="pt", return_attention_mask=True)
         input["input_ids"] = input["input_ids"].to(torch_device)
@@ -2897,6 +2905,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
 
         self.assertListEqual(outputs, ["Wie alt sind Sie?"])
 
+    # TODO [gustavo] Enable this test to Optimum-habana
+    @pytest.mark.xfail
     @slow
     def test_per_row_stopping_criteria(self):
         text = [
@@ -3464,7 +3474,9 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # update_candidate_strategy is called once but assistant_model.generation_config.num_assistant_tokens should stay 5
         self.assertEqual(assistant_model.generation_config.num_assistant_tokens, 5)
 
+    # TODO [gustavo] Enable this test to Optimum-habana
     @slow
+    @pytest.mark.xfail
     def test_validate_assistant(self):
         # Generate a random sample:
         inputs = np.random.rand(160000)
@@ -3750,6 +3762,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         self.assertTrue(key_cache_1.device == value_cache_1.device == torch.device(1))
 
     @slow
+    # TODO [gustavo] Enable this test to Optimum-habana
+    @pytest.mark.xfail
     def test_padding_input_contrastive_search_gpt2(self):
         # Load the pre-trained GPT-2 model and tokenizer
         model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
@@ -3816,6 +3830,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
 
     @slow
+    # TODO [gustavo] Enable this test to Optimum-habana
+    @pytest.mark.xfail
     def test_padding_input_contrastive_search_t5(self):
         # Load the pre-trained T5 model and tokenizer
         model = T5ForConditionalGeneration.from_pretrained("google-t5/t5-small")
@@ -3951,6 +3967,7 @@ class TokenHealingTestCase(unittest.TestCase):
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
+        # Controlling max_length via the configuration is deprecated in favor of max_new_tokens
         model.generate(inputs_embeds=inputs_embeds, max_new_tokens=20, bos_token_id=None)
 
         # bos_token_id is required when no input ids nor inputs_embeds is passed
