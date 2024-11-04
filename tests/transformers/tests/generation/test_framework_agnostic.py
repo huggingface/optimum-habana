@@ -638,7 +638,6 @@ class GenerationIntegrationTestsMixin:
 
         expectation = model.config.max_length  # static shape should give max_length
         eos_token_id = 225
-
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
         self.assertTrue(expectation == len(generated_tokens[0]))
 
