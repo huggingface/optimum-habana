@@ -46,6 +46,7 @@ from .test_framework_agnostic import GenerationIntegrationTestsMixin
 if is_torch_available():
     import torch
     import torch.nn.functional as F
+
     from transformers import (
         AutoModelForCausalLM,
         AutoModelForSeq2SeqLM,
