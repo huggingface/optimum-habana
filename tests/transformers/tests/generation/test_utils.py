@@ -1514,10 +1514,11 @@ class GenerationTesterMixin:
                     input_ids,
                     attention_mask=attention_mask,
                     num_beams=1,
-                    output_attentions=True,
+                    output_attentions=self.has_attentions,
                     return_dict_in_generate=True,
                     remove_invalid_values=True,
                     **{name: mask},
+                    **inputs_dict,
                 )
                 # We check the state of decoder_attentions and cross_attentions just from the last step
                 attn_weights = out[attn_name] if attn_name == attention_names[0] else out[attn_name][-1]
@@ -1734,71 +1735,6 @@ class GenerationTesterMixin:
             self.assertListEqual(
                 outputs_from_embeds.sequences[:, inputs_embeds.shape[1] :].tolist(),
                 outputs_from_embeds_wo_ids.sequences.tolist(),
-            )
-
-    def _check_outputs(self, output, input_ids, config, use_cache=False, num_return_sequences=1):
-        batch_size, seq_length = input_ids.shape
-        num_sequences_in_output = batch_size * num_return_sequences
-        gen_len = (
-            output.sequences.shape[-1] - 1 if config.is_encoder_decoder else output.sequences.shape[-1] - seq_length
-        )
-
-        # scores
-        self._check_scores(num_sequences_in_output, output.scores, length=gen_len, config=config)
-
-        # Attentions
-        if config.is_encoder_decoder:
-            # encoder
-            self._check_encoder_attention_for_generate(output.encoder_attentions, batch_size, config, seq_length)
-            # decoder
-            self._check_attentions_for_generate(
-                num_sequences_in_output,
-                output.decoder_attentions,
-                min_length=1,
-                max_length=output.sequences.shape[-1],
-                config=config,
-                use_cache=use_cache,
-            )
-        else:
-            # if use_cache first input is equal to no use_cache, so skip here
-            attentions = output.attentions if not use_cache else output.attentions[1:]
-            min_length = seq_length if not use_cache else seq_length + 1
-            self._check_attentions_for_generate(
-                num_sequences_in_output,
-                attentions=attentions,
-                min_length=min_length,
-                max_length=output.sequences.shape[-1],
-                config=config,
-                use_cache=use_cache,
-            )
-
-        # Hidden States
-        if config.is_encoder_decoder:
-            # encoder
-            self._check_encoder_hidden_states_for_generate(
-                output.encoder_hidden_states, batch_size, config, seq_length
-            )
-
-            # decoder
-            self._check_hidden_states_for_generate(
-                num_sequences_in_output,
-                output.decoder_hidden_states,
-                min_length=1,
-                max_length=output.sequences.shape[-1],
-                config=config,
-                use_cache=use_cache,
-            )
-        else:
-            # if use_cache first input is equal to no use_cache, so skip here
-            hidden_states = output.hidden_states if not use_cache else output.hidden_states[1:]
-            min_length = seq_length if not use_cache else seq_length + 1
-            self._check_hidden_states_for_generate(
-                num_sequences_in_output,
-                hidden_states,
-                min_length=min_length,
-                max_length=output.sequences.shape[-1],
-                config=config,
-                use_cache=use_cache,
             )
 
     @pytest.mark.generate
