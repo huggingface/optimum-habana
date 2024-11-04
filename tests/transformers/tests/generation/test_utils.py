@@ -739,7 +739,7 @@ class GenerationTesterMixin:
                         beam_kwargs=beam_kwargs,
                     )
 
-                    torch.testing.assert_close(output_generate[:, input_embeds.shape[1] :], output_generate2)
+            torch.testing.assert_close(output_generate[:, input_embeds.shape[1] :], output_generate2)
 
     @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
     @pytest.mark.generate
