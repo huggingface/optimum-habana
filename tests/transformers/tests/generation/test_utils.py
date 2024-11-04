@@ -23,6 +23,7 @@ import warnings
 import numpy as np
 import pytest
 from parameterized import parameterized
+
 from transformers import is_torch_available, pipeline, set_seed
 from transformers.testing_utils import (
     is_flaky,
@@ -100,11 +101,6 @@ class GenerationTesterMixin:
     all_generative_model_classes = ()
     input_name = "input_ids"
     max_new_tokens = 3
-
-    def _update_default_model_kwargs(self, model_kwargs):
-        model_kwargs["limit_hpu_graphs"] = False
-        model_kwargs["reuse_cache"] = False
-        model_kwargs["bucket_size"] = -1
 
     def _get_input_ids_and_config(self, batch_size=2):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
@@ -748,6 +744,7 @@ class GenerationTesterMixin:
                     torch.testing.assert_close(output_generate[:, input_embeds.shape[1] :], output_generate2)
 
     @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
+    @pytest.mark.generate
     def test_beam_sample_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, inputs_dict = self._get_input_ids_and_config()
@@ -2480,10 +2477,10 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
-        max_new_tokens = 20
+        max_length = 20
         input_len = input_ids.shape[-1]
-        out_gen = model.generate(input_ids=input_ids, max_new_tokens=max_new_tokens)
-        out_gen_embeds = model.generate(inputs_embeds=inputs_embeds, max_new_tokens=max_new_tokens)
+        out_gen = model.generate(input_ids=input_ids, max_length=max_length)
+        out_gen_embeds = model.generate(inputs_embeds=inputs_embeds, max_length=max_length)
         self.assertEqual(out_gen.shape[-1], input_len + out_gen_embeds.shape[-1])
 
     def test_min_length_if_input_embeds(self):
@@ -3152,7 +3149,8 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         tokenized_inputs = tokenizer([text], return_tensors="pt")
         input_ids = tokenized_inputs.input_ids.to(torch_device)
 
-        # # Default generation config value of 20 -> emits warning
+        # Default generation config value of 20 -> emits warning
+        # NOTE: in OH we do not have this warning
         # with self.assertWarns(UserWarning):
         #     model.generate(input_ids)
 
