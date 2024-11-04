@@ -2491,7 +2491,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         input_ids = tokenizer(article, return_tensors="pt").input_ids.to(torch_device)
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
-        # Use max_new_tokens for static shape
+        # Controlling max_length via the configuration is deprecated in favor of max_new_tokens
         min_length = 10
         input_len = input_ids.shape[-1]
         out_gen = model.generate(input_ids=input_ids, min_length=min_length, max_new_tokens=20)
