@@ -106,6 +106,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deci",
     "qwen2_moe",
     "whisper",
+    "qwen2_vl",
 ]
 
 

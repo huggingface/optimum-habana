@@ -28,6 +28,7 @@ from .generation import (
 )
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    GAUDI_QWEN2_VL_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
     GaudiBloomForCausalLM,
@@ -117,6 +118,10 @@ from .models import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLForConditionalGeneration,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -601,6 +606,15 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
     transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
+
+    # Optimization for Qwen2-VL on Gaudi
+
+    transformers.models.qwen2_vl.modeling_qwen2_vl.QWEN2_VL_ATTENTION_CLASSES = GAUDI_QWEN2_VL_ATTENTION_CLASSES
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLDecoderLayer = GaudiQwen2VLDecoderLayer
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLSdpaAttention = GaudiQwen2VLSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLModel = GaudiQwen2VLModel
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = GaudiQwen2VLForConditionalGeneration
+
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)

@@ -250,3 +250,10 @@ from .whisper import (
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
 )
+from .qwen2_vl import (
+    GAUDI_QWEN2_VL_ATTENTION_CLASSES,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+)
