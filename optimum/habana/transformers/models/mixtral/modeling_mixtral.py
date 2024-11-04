@@ -422,7 +422,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, us
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    # Currently, dynamic MoE kernel have accuracy issue when top_k * bs * seq > 4096
+    # Currently, dynamic MoE kernel have accuracy issue when top_k * bs * seq > 4096, will remove this criteria in 1.19
     if not use_dynamic_moe or self.top_k * batch_size * sequence_length > 4096:
         final_hidden_states = torch.zeros(
             (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
@@ -464,7 +464,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, us
                 permuted_weights=True,
                 activation="silu",
                 experts_min=0,
-                experts_max=self.num_experts
+                experts_max=self.num_experts - 1
         )
 
     return final_hidden_states, router_logits
