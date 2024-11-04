@@ -256,6 +256,30 @@ Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For exa
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
 
 
+### Using Beam Search
+
+Restriction: Currently beam search is only enabled for the models with model type of `llama` or `qwen2` if `reuse_cache` is not enabled. The group beam search and constrained beam search is not supported by optimum-habana yet. 
+
+Here is an example:
+```bash
+python run_generation.py \
+--model_name_or_path Qwen/Qwen2-7b-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--use_flash_attention \
+--max_input_tokens 128 \
+--max_new_tokens 128 \
+--batch_size 4 \
+--limit_hpu_graphs \
+--reuse_cache \
+--bucket_internal \
+--bucket_size 128 \
+--bf16 \
+--num_beams 3
+```
+
+
 ### Running with torch.compile
 
 > [!NOTE]
