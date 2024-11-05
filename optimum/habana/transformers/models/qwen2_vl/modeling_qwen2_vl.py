@@ -168,6 +168,9 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
             is_causal=is_causal,
         )
 
+        if attn_output.device.type == 'hpu':
+            torch.hpu.synchronize()
+
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
@@ -480,12 +483,14 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         **kwargs,
     ):
         token_idx = kwargs.get("token_idx", None)
-        MAX_STATIC_HPU_SEQ_LEN = 1024
-        if input_ids.device.type == "hpu":
-            input_ids = torch.nn.functional.pad(input_ids, (0, MAX_STATIC_HPU_SEQ_LEN-input_ids.shape[1]), value=self.generation_config.pad_token_id)
-            attention_mask = torch.nn.functional.pad(attention_mask, (0, MAX_STATIC_HPU_SEQ_LEN-attention_mask.shape[1]), value=self.generation_config.pad_token_id)
+        # print(input_ids.shape)
 
-        breakpoint()
+        # MAX_STATIC_HPU_SEQ_LEN = 4096
+        # if input_ids.device.type == "hpu":
+        #     input_ids = torch.nn.functional.pad(input_ids, (0, MAX_STATIC_HPU_SEQ_LEN-input_ids.shape[1]), value=self.generation_config.pad_token_id)
+        #     attention_mask = torch.nn.functional.pad(attention_mask, (0, MAX_STATIC_HPU_SEQ_LEN-attention_mask.shape[1]), value=self.generation_config.pad_token_id)
+
+        # print(input_ids[0][token_idx-1])
 
         # Overwritten -- in specific circumstances we don't want to forward image inputs to the model
 
