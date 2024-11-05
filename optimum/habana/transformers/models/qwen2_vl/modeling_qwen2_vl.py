@@ -29,7 +29,7 @@ import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss, LayerNorm
 
 from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, SlidingWindowCache, StaticCache
+from transformers.cache_utils import Cache, SlidingWindowCache, StaticCache, DynamicCache
 from transformers.generation import GenerationMixin
 from transformers.modeling_attn_mask_utils import (
     AttentionMaskConverter,
@@ -263,6 +263,9 @@ class GaudiQwen2VLModel(Qwen2VLModel):
                 )
                 use_cache = False
 
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache()
+
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
@@ -463,36 +466,50 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
 
     def prepare_inputs_for_generation(
         self,
-        input_ids,
-        past_key_values=None,
-        attention_mask=None,
+        input_ids, # torch.Size([1, 665])
+        past_key_values=None, 
+        attention_mask=None, # torch.Size([1, 665])
         inputs_embeds=None,
-        cache_position=None,
+        cache_position=None,    # torch.Size([665])
         position_ids=None,
         use_cache=True,
-        pixel_values=None,
+        pixel_values=None, # torch.Size([2304, 1176])
         pixel_values_videos=None,
-        image_grid_thw=None,
+        image_grid_thw=None, # tensor([[ 1, 48, 48]], device='hpu:0')
         video_grid_thw=None,
         **kwargs,
     ):
+        token_idx = kwargs.get("token_idx", None)
+        MAX_STATIC_HPU_SEQ_LEN = 1024
+        if input_ids.device.type == "hpu":
+            input_ids = torch.nn.functional.pad(input_ids, (0, MAX_STATIC_HPU_SEQ_LEN-input_ids.shape[1]), value=self.generation_config.pad_token_id)
+            attention_mask = torch.nn.functional.pad(attention_mask, (0, MAX_STATIC_HPU_SEQ_LEN-attention_mask.shape[1]), value=self.generation_config.pad_token_id)
+
+        breakpoint()
+
         # Overwritten -- in specific circumstances we don't want to forward image inputs to the model
 
         # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
         # Exception 1: when passing input_embeds, input_ids may be missing entries
         # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
-        if past_key_values is not None:
-            if inputs_embeds is not None:  # Exception 1
-                input_ids = input_ids[:, -cache_position.shape[0] :]
-            elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
-                input_ids = input_ids[:, cache_position]
+        # if past_key_values is not None:
+        #     if inputs_embeds is not None:  # Exception 1
+        #         input_ids = input_ids[:, -cache_position.shape[0] :]
+        #     elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+        #         input_ids = input_ids[:, cache_position]
+
+        if past_key_values:
+            if token_idx:
+                input_ids = input_ids[:, token_idx-1].unsqueeze(-1)
+            else:
+                input_ids = input_ids[:, -1].unsqueeze(-1)
 
         rope_deltas = kwargs.get("rope_deltas", None)
         if attention_mask is not None and position_ids is None:
             if cache_position is None or (cache_position is not None and cache_position[0] == 0):
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids, image_grid_thw, video_grid_thw, attention_mask
-                )
+                ) # torch.Size([3, 1, 1024]) tensor([[-975]], device='hpu:0')
             else:
                 batch_size, seq_length = input_ids.shape
                 delta = (
@@ -513,29 +530,29 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         else:
             model_inputs = {"input_ids": input_ids, "inputs_embeds": None}
 
-        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-            if model_inputs["inputs_embeds"] is not None:
-                batch_size, sequence_length, _ = inputs_embeds.shape
-                device = inputs_embeds.device
-            else:
-                batch_size, sequence_length = input_ids.shape
-                device = input_ids.device
+        # if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
+        #     if model_inputs["inputs_embeds"] is not None:
+        #         batch_size, sequence_length, _ = inputs_embeds.shape
+        #         device = inputs_embeds.device
+        #     else:
+        #         batch_size, sequence_length = input_ids.shape
+        #         device = input_ids.device
 
-            attention_mask = self.model._prepare_4d_causal_attention_mask_with_cache_position(
-                attention_mask,
-                sequence_length=sequence_length,
-                target_length=past_key_values.get_max_cache_shape(),
-                dtype=self.lm_head.weight.dtype,
-                device=device,
-                cache_position=cache_position,
-                batch_size=batch_size,
-                config=self.config,
-                past_key_values=past_key_values,
-            )
+        #     attention_mask = self.model._prepare_4d_causal_attention_mask_with_cache_position(
+        #         attention_mask,
+        #         sequence_length=sequence_length,
+        #         target_length=past_key_values.get_max_cache_shape(),
+        #         dtype=self.lm_head.weight.dtype,
+        #         device=device,
+        #         cache_position=cache_position,
+        #         batch_size=batch_size,
+        #         config=self.config,
+        #         past_key_values=past_key_values,
+        #     )
 
         model_inputs.update(
             {
-                "position_ids": position_ids,
+                "position_ids": position_ids, # torch.Size([3, 1, 1024])
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
@@ -544,6 +561,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 "image_grid_thw": image_grid_thw,
                 "video_grid_thw": video_grid_thw,
                 "rope_deltas": rope_deltas,
+                "token_idx": token_idx,
             }
         )
         return model_inputs

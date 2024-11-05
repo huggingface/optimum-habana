@@ -827,7 +827,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # Use tuples by default (.i.e. legacy format).
         else:
-            return
+            model_kwargs[cache_name] = (
+                DynamicCache()
+                if not requires_cross_attention_cache
+                else EncoderDecoderCache(DynamicCache(), DynamicCache())
+            )
 
     @torch.no_grad()
     def generate(
