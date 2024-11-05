@@ -54,7 +54,6 @@ def _test_language_modeling(
         "--gradient_checkpointing",
         "--bf16",
         f"--num_train_epochs {num_train_epochs}",
-        f"--use_lazy_mode {use_lazy_mode}",
     ]
 
     with TemporaryDirectory() as tmp_dir:
