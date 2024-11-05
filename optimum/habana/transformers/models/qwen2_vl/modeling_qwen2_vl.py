@@ -460,3 +460,29 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             attentions=outputs.attentions,
             rope_deltas=rope_deltas,
         )
+
+    def prepare_inputs_for_generation(
+        self,
+        decoder_input_ids,
+        past_key_values=None,
+        use_cache=None,
+        encoder_outputs=None,
+        attention_mask=None,
+        decoder_attention_mask=None,
+        cache_position=None,
+        **kwargs,
+    ):
+        breakpoint()
+        token_idx = kwargs.get("token_idx", None)
+        # if token_idx and token_idx >= forced_decoder_ids_length + 1:
+        #     decoder_input_ids = torch.index_select(decoder_input_ids, 1, token_idx - 1)
+        return {
+            "encoder_outputs": encoder_outputs,
+            "past_key_values": past_key_values,
+            "decoder_input_ids": decoder_input_ids,
+            "use_cache": use_cache,
+            "decoder_attention_mask": decoder_attention_mask,
+            # "decoder_position_ids": decoder_position_ids,
+            "cache_position": cache_position,
+            "token_idx": token_idx,
+        }
