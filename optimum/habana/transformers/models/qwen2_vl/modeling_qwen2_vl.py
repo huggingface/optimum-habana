@@ -52,7 +52,7 @@ from transformers.utils import (
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     Qwen2VLSdpaAttention,
     Qwen2VLAttention,
-    Qwen2VLFlashAttention,
+    Qwen2VLFlashAttention2,
     apply_multimodal_rotary_pos_emb,
     repeat_kv,
     Qwen2VLDecoderLayer,
@@ -178,7 +178,7 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
 # Now only support the default GaudiQwen2VLSdpaAttention
 GAUDI_QWEN2_VL_ATTENTION_CLASSES = {
     "eager": Qwen2VLAttention,
-    "flash_attention_2": Qwen2VLFlashAttention,
+    "flash_attention_2": Qwen2VLFlashAttention2,
     "sdpa": GaudiQwen2VLSdpaAttention,
 }
 
