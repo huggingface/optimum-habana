@@ -216,6 +216,8 @@ def initialize_model_parallel(
         if rank in ranks:
             _SEQUENCE_PARALLEL_GROUP = group
     _SEQUENCE_PARALLEL_WORLD_SIZE = sequence_parallel_size
+
+    global _TRAINING_MODE
     _TRAINING_MODE = True
 
     # Build the sequence data parallel groups.
