@@ -466,6 +466,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, us
                 experts_min=0,
                 experts_max=self.num_experts - 1
         )
+        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
 
     return final_hidden_states, router_logits
 
