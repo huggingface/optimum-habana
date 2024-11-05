@@ -397,7 +397,7 @@ class GaudiMixtralAttention(MixtralAttention):
         return attn_output, attn_weights, past_key_value
 
 
-def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, use_dynamic_moe: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, use_dynamic_moe: bool = False, act_fn: str = "silu") -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
@@ -462,7 +462,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor, us
                 w2=w3_list, # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
                 w3=w2_list,
                 permuted_weights=True,
-                activation="silu",
+                activation=act_fn,
                 experts_min=0,
                 experts_max=self.num_experts - 1
         )
@@ -526,8 +526,9 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
 
         # Fully Connected
         residual = hidden_states
+        act_hidden = self.self_attn.config.hidden_act
         hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states, router_logits = self.block_sparse_moe(hidden_states, use_dynamic_moe=use_dynamic_moe)
+        hidden_states, router_logits = self.block_sparse_moe(hidden_states, use_dynamic_moe=use_dynamic_moe, act_fn=act_hidden)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
