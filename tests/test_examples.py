@@ -305,6 +305,8 @@ class ExampleTestMeta(type):
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
             return True
+        elif "gemma" in model_name and IS_GAUDI2:
+            return True
 
         return False
 
