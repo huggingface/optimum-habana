@@ -45,6 +45,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen2-7B", 512, False, 9669.45787),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122),
+            ("deepseek-ai/DeepSeek-V2-Lite", 1, True, 0),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),

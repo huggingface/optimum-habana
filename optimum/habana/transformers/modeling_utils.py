@@ -30,6 +30,9 @@ from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+    DeepseekTokenizerFast,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -604,3 +607,8 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
+    transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
+    transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
+    transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+
