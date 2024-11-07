@@ -109,6 +109,12 @@ from .gptj import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
 )
+from .idefics2 import (
+    Gaudi2Idefics2ImageProcessor,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
+)
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,

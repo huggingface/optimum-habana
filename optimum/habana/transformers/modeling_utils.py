@@ -30,6 +30,7 @@ from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
+    Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -66,6 +67,9 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -413,6 +417,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
         GaudiLlavaNextForConditionalGeneration
     )
+
+    # Optimization for idefics2 on Gaudi
+    transformers.models.idefics2.modeling_idefics2.Idefics2ForConditionalGeneration = (
+        GaudiIdefics2ForConditionalGeneration
+    )
+    transformers.models.idefics2.modeling_idefics2.Idefics2Model = GaudiIdefics2Model
+    transformers.models.idefics2.image_processing_idefics2.Idefics2ImageProcessor = Gaudi2Idefics2ImageProcessor
+    transformers.models.idefics2.modeling_idefics2.Idefics2VisionEmbeddings = GaudiIdefics2VisionEmbeddings
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
