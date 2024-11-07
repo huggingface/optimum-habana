@@ -108,6 +108,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "cohere",
     "qwen2_moe",
     "whisper",
+    "idefics2",
 ]
 
 
