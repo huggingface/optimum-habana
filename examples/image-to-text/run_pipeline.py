@@ -207,7 +207,7 @@ def main():
                 ],
             }
         ]
-        if model_type = "paligemma":
+        if model_type == "paligemma":
             args.prompt = "caption es"
         else:
             args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)

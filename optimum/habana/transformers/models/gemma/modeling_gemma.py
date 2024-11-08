@@ -134,7 +134,7 @@ class KVCache(torch.nn.Module):
 class GaudiGemmaAttention(GemmaAttention):
     def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
