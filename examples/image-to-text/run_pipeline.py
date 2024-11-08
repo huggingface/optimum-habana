@@ -23,7 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
+from transformers import AutoConfig, AutoProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -185,17 +185,15 @@ def main():
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type == "llava":
+    if args.image_path is None and model_type in ["llava", "idefics2"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next"):
-        if model_type == "llava":
-            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
-        elif model_type == "llava_next":
-            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+
+    if args.prompt is None and model_type in ["llava", "idefics2", "llava_next"]:
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         conversation = [
             {
                 "role": "user",
@@ -263,6 +261,17 @@ def main():
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
+
+    # delete once pipeline integrate AutoProcessor as preprocess engine
+    if model_type in ["idefics2"]:
+        from transformers.image_utils import load_image
+
+        def preprocess(self, image, prompt=None, timeout=None):
+            image = load_image(image, timeout=timeout)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            return model_inputs
+
+        generator.__class__.preprocess = preprocess
 
     # warm up
     for i in range(args.warmup):
