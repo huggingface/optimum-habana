@@ -64,6 +64,9 @@ from .falcon import (
     GaudiFalconModel,
     gaudi_falcon_linear_forward,
 )
+from .falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+)
 from .gemma import (
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
