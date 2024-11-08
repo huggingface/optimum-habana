@@ -297,6 +297,46 @@ class MistralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     test_headmasking = False
     test_pruning = False
 
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_beam_search_generate(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_beam_search_generate_dict_output(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_beam_search_generate_dict_outputs_use_cache(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_attention_outputs(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_constrained_beam_search_generate(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_constrained_beam_search_generate_dict_output(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_contrastive_generate_dict_outputs_use_cache(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_greedy_generate_dict_outputs(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_greedy_generate_dict_outputs_use_cache(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mistral")
+    def test_sample_generate_dict_output(self):
+        pass
+
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79245/workflows/9490ef58-79c2-410d-8f51-e3495156cf9c/jobs/1012146
     def is_pipeline_test_to_skip(
         self, pipeline_test_casse_name, config_class, model_architecture, tokenizer_name, processor_name
