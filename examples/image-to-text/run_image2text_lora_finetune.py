@@ -251,11 +251,9 @@ class FinetuneArguments:
 
 
 class MyDataCollator:
-    def __init__(self, processor, max_seq_length):
+    def __init__(self, processor, max_seq_length, image_token_id):
         self.processor = processor
-        self.image_token_id = processor.tokenizer.additional_special_tokens_ids[
-            processor.tokenizer.additional_special_tokens.index("<image>")
-        ]
+        self.image_token_id = image_token_id
         self.max_seq_length = max_seq_length
 
     def __call__(self, examples):
@@ -458,8 +456,15 @@ def main():
             if col not in (data_args.input_column_names + data_args.output_column_names)
         ]
     )
-
-    data_collator = MyDataCollator(processor, max_seq_length=data_args.max_seq_length)
+    if hasattr(config, "image_token_id"):
+        # idefics
+        image_token_id = config.image_token_id
+    elif hasattr(config, "image_token_index"):
+        # mllama
+        image_token_id = config.image_token_index
+    else:
+        raise ValueError("Please provide value for image_token_id")
+    data_collator = MyDataCollator(processor, max_seq_length=data_args.max_seq_length, image_token_id=image_token_id)
 
     gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True
