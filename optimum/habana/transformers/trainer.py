@@ -137,6 +137,40 @@ if is_deepspeed_available():
 if is_accelerate_available("0.28.0"):
     from accelerate.utils import DataLoaderConfiguration
 
+
+def _get_input_update_settings(model) -> Tuple[bool, Dict]:
+    """
+    Determines whether the input settings need to be updated.
+
+    Currently (attn_softmax_bf16, use_flash_attention, flash_attention_recompute,
+    flash_attention_causal_mask) are enabled only for llama, qwen2, starcoder2 and gemma
+
+    Args:
+        model: The model instance for which the input update settings are being evaluated
+
+    Returns:
+        Tuple[bool, Dict]: A flag indicating whether the input settings should be updated.
+        A dictionary containing the specific input settings that need to be updated, if any
+    """
+    should_update_inputs: bool = (getattr(model, "generation_config", None) is not None) and (
+        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma")
+    )
+
+    inputs_update: Dict = {}
+    if should_update_inputs:
+        if model.generation_config.attn_softmax_bf16:
+            inputs_update["attn_softmax_bf16"] = True
+        if model.generation_config.use_flash_attention:
+            inputs_update["use_flash_attention"] = True
+        if model.generation_config.flash_attention_recompute:
+            inputs_update["flash_attention_recompute"] = True
+        if model.generation_config.flash_attention_causal_mask:
+            inputs_update["flash_attention_causal_mask"] = True
+        should_update_inputs = len(inputs_update) > 0
+
+    return should_update_inputs, inputs_update
+
+
 if TYPE_CHECKING:
     import optuna
 
@@ -852,21 +886,7 @@ class GaudiTrainer(Trainer):
         )
 
         # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
-        _should_update_inputs: bool = (getattr(self.model, "generation_config", None) is not None) and (
-            self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]
-        )
-
-        if _should_update_inputs:
-            _inputs_update: dict = {}
-            if self.model.generation_config.attn_softmax_bf16:
-                _inputs_update["attn_softmax_bf16"] = True
-            if self.model.generation_config.use_flash_attention:
-                _inputs_update["use_flash_attention"] = True
-            if self.model.generation_config.flash_attention_recompute:
-                _inputs_update["flash_attention_recompute"] = True
-            if self.model.generation_config.flash_attention_causal_mask:
-                _inputs_update["flash_attention_causal_mask"] = True
-            _should_update_inputs = len(_inputs_update) > 0
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model)
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -1800,21 +1820,7 @@ class GaudiTrainer(Trainer):
         observed_num_examples = 0
 
         # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
-        _should_update_inputs: bool = (getattr(self.model, "generation_config", None) is not None) and (
-            self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]
-        )
-
-        if _should_update_inputs:
-            _inputs_update: dict = {}
-            if self.model.generation_config.attn_softmax_bf16:
-                _inputs_update["attn_softmax_bf16"] = True
-            if self.model.generation_config.use_flash_attention:
-                _inputs_update["use_flash_attention"] = True
-            if self.model.generation_config.flash_attention_recompute:
-                _inputs_update["flash_attention_recompute"] = True
-            if self.model.generation_config.flash_attention_causal_mask:
-                _inputs_update["flash_attention_causal_mask"] = True
-            _should_update_inputs = len(_inputs_update) > 0
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model)
 
         # set a default dtype of logits
         logits_dtype: str = "float32"
