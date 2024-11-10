@@ -340,20 +340,20 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # For MQA models, past_key_values is a tensor
         if is_mqa_model:
-            for layer in past_key_values:  # Iterate over layers
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
                 if torch.is_tensor(layer):
                     # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
-                    layer = torch.nn.functional.pad(layer, (0, 0, 0, pad_amount))
+                    past_key_values[i] = torch.nn.functional.pad(layer, (0, 0, 0, pad_amount))
                     # Mark step if lazy mode is enabled
                     if lazy_mode:
                         self.htcore_generation.mark_step()
         # For Non-MQA models, the past_key_values is a list of lists (k and v)
         else:
-            for layer in past_key_values:  # Iterate over layers
-                for k_or_v in layer:  # Iterate over k and v
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                for j, k_or_v in enumerate(layer):  # Iterate over k and v
                     if torch.is_tensor(k_or_v):
                         # tensor(batch_size, n_heads, kv_cache_len, head_dim)
-                        k_or_v = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                        past_key_values[i][j] = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
                         # Mark step if lazy mode is enabled
                         if lazy_mode:
                             self.htcore_generation.mark_step()
