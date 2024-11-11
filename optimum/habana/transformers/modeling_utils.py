@@ -33,6 +33,7 @@ from .models import (
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
     DeepseekTokenizerFast,
+    Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -43,6 +44,8 @@ from .models import (
     GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
     GaudiFalconAttention,
     GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
@@ -67,6 +70,9 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -153,6 +159,8 @@ from .models import (
     gaudi_check_and_enable_sdpa,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
     gaudi_esm_for_protein_folding_forward,
@@ -413,6 +421,14 @@ def adapt_transformers_to_gaudi():
         GaudiLlavaNextForConditionalGeneration
     )
 
+    # Optimization for idefics2 on Gaudi
+    transformers.models.idefics2.modeling_idefics2.Idefics2ForConditionalGeneration = (
+        GaudiIdefics2ForConditionalGeneration
+    )
+    transformers.models.idefics2.modeling_idefics2.Idefics2Model = GaudiIdefics2Model
+    transformers.models.idefics2.image_processing_idefics2.Idefics2ImageProcessor = Gaudi2Idefics2ImageProcessor
+    transformers.models.idefics2.modeling_idefics2.Idefics2VisionEmbeddings = GaudiIdefics2VisionEmbeddings
+
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
     transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
@@ -612,3 +628,8 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
 
+    # Optimization for cohere on Gaudi
+    transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
+    transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
+    transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
+    transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
