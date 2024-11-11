@@ -30,9 +30,9 @@ from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
+    DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
-    DeepseekTokenizerFast,
     Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -627,9 +627,12 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+<<<<<<< HEAD
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
     transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
     transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
     transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
+=======
+>>>>>>> 0c670e9 (fix style)

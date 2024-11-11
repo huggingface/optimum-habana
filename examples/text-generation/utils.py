@@ -380,7 +380,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 
 
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
-
     logger.info("Multi-device ep run.")
 
     assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
@@ -396,14 +395,14 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
     logger.info("Creating Model")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-    config.update({'ep_size': args.world_size})
+    config.update({"ep_size": args.world_size})
 
     model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            config = config,
-            torch_dtype=model_dtype,
-            **model_kwargs,
-        )
+        args.model_name_or_path,
+        config=config,
+        torch_dtype=model_dtype,
+        **model_kwargs,
+    )
 
     model = model.eval().to(args.device)
 
@@ -416,6 +415,7 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         model = get_torch_compiled_model(model)
 
     return model, args.assistant_model
+
 
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
