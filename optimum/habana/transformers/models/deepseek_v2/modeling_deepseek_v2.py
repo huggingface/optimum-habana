@@ -53,6 +53,7 @@ import torch.distributed as dist
 import numpy as np
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+from ....distributed.tensorparallel import _all_reduce
 
 logger = logging.get_logger(__name__)
 
@@ -520,10 +521,10 @@ class DeepseekV2MoE(nn.Module):
                 [
                     (
                         DeepseekV2MLP(
-                            config, intermediate_size=config.moe_intermediate_size
+                                config, intermediate_size=config.moe_intermediate_size
                         )
-                        if i >= self.ep_rank * self.experts_per_rank
-                        and i < (self.ep_rank + 1) * self.experts_per_rank
+                        if i >= self.ep_rank * self.experts_per_rank and
+                           i < (self.ep_rank + 1) * self.experts_per_rank
                         else None
                     )
                     for i in range(config.n_routed_experts)
@@ -572,7 +573,7 @@ class DeepseekV2MoE(nn.Module):
 
     @torch.no_grad()
     def moe_infer(self, x, topk_ids, topk_weight):
-        final_out = torch.zeros_like(x)
+        out = torch.zeros_like(x)
 
         seq_len, hidden_dim = x.shape
         num_experts = len(self.experts)
@@ -583,13 +584,17 @@ class DeepseekV2MoE(nn.Module):
         padded_weights = padded_weights.permute(1, 0).unsqueeze(-1)
 
         # Loop over all available experts in the model and perform the computation on each expert
-        for expert_idx in range(num_experts):
+        for i in range(self.experts_per_rank):
+            expert_idx = i + self.ep_rank * self.experts_per_rank
             expert = self.experts[expert_idx]
             padded_weight = padded_weights[expert_idx]
             x_static = expert(x) * padded_weight
-            final_out += x_static
+            out += x_static
 
-        return final_out
+        if self.ep_size > 1:
+            out = _all_reduce(out)
+
+        return out
 
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv

@@ -301,9 +301,9 @@ def setup_parser(parser):
     parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
     )
     parser.add_argument(
         "--input_embeds",
