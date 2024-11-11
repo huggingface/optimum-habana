@@ -76,7 +76,18 @@ def initialize_distributed_model(args, model, logger, model_dtype):
     ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
-    ds_inference_kwargs["injection_policy"] = {}
+    if model.config.model_type == "mllama":
+        from transformers.models.mllama.modeling_mllama import (
+            MllamaCrossAttentionDecoderLayer,
+            MllamaSelfAttentionDecoderLayer,
+        )
+
+        ds_inference_kwargs["injection_policy"] = {
+            MllamaSelfAttentionDecoderLayer: ("self_attn.o_proj", "mlp.down_proj"),
+            MllamaCrossAttentionDecoderLayer: ("cross_attn.o_proj", "mlp.down_proj"),
+        }
+    else:
+        ds_inference_kwargs["injection_policy"] = {}
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs).module
 
