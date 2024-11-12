@@ -106,6 +106,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deci",
     "cohere",
     "qwen2_moe",
+    "xglm",
     "whisper",
     "idefics2",
 ]
