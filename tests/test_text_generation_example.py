@@ -46,6 +46,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122),
             ("facebook/xglm-1.7B", 1, False, 357.46365062825083),
+            ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -67,6 +68,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
             ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, 1147.50),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
+        ],
+        "load_quantized_model_with_autogptq": [
+            ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 8, 1, 36.77314954096159),
@@ -111,6 +115,7 @@ else:
             ("state-spaces/mamba-130m-hf", 224, False, 794.542),
         ],
         "fp8": [],
+        "load_quantized_model_with_autogptq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
@@ -133,6 +138,7 @@ def _test_text_generation(
     world_size: int = 8,
     torch_compile: bool = False,
     fp8: bool = False,
+    load_quantized_model_with_autogptq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -244,6 +250,8 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
+    if load_quantized_model_with_autogptq:
+        command += ["--load_quantized_model_with_autogptq"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -330,6 +338,36 @@ def test_text_generation_fp8(
         deepspeed=deepspeed,
         world_size=world_size,
         fp8=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
+    MODELS_TO_TEST["load_quantized_model_with_autogptq"],
+)
+def test_text_generation_gptq(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=False,
+        load_quantized_model_with_autogptq=True,
         batch_size=batch_size,
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,
