@@ -23,7 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
+from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -34,6 +34,53 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def override_print(enable):
+    import builtins as __builtin__
+
+    builtin_print = __builtin__.print
+
+    def print(*args, **kwargs):
+        force = kwargs.pop("force", False)
+        if force or enable:
+            builtin_print(*args, **kwargs)
+
+    __builtin__.print = print
+
+
+def override_logger(logger, enable):
+    logger_info = logger.info
+
+    def info(*args, **kwargs):
+        force = kwargs.pop("force", False)
+        if force or enable:
+            logger_info(*args, **kwargs)
+
+    logger.info = info
+
+
+def initialize_distributed_model(args, model, logger, model_dtype):
+    override_print(args.global_rank == 0)
+    override_logger(logger, args.global_rank == 0)
+
+    import deepspeed
+
+    logger.info(f"Initializing DeepSpeed with world size: {args.world_size}")
+    deepspeed.init_distributed(
+        dist_backend="hccl",
+        verbose=args.global_rank == 0,
+    )
+    model.eval()
+
+    ds_inference_kwargs = {"dtype": model_dtype}
+    ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
+    ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+    ds_inference_kwargs["injection_policy"] = {}
+
+    model = deepspeed.init_inference(model, **ds_inference_kwargs).module
+
+    return model
 
 
 def setup_quantization(model, args):
@@ -129,21 +176,23 @@ def main():
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+
+    args.local_rank = int(os.getenv("LOCAL_RANK", "0"))
+    args.world_size = int(os.getenv("WORLD_SIZE", "0"))
+    args.global_rank = int(os.getenv("RANK", "0"))
+
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type == "llava":
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next"):
-        if model_type == "llava":
-            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
-        elif model_type == "llava_next":
-            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+    if args.prompt is None and model_type in ["llava", "idefics2", "llava_next", "mllama"]:
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         conversation = [
             {
                 "role": "user",
@@ -181,12 +230,36 @@ def main():
 
         htcore.hpu_set_env()
 
-    generator = pipeline(
-        "image-to-text",
-        model=args.model_name_or_path,
-        torch_dtype=model_dtype,
-        device="hpu",
-    )
+    if args.world_size > 1:
+        import deepspeed
+
+        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+            model = AutoModelForVision2Seq.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        if model_type == "mllama":
+            model.language_model = initialize_distributed_model(args, model.language_model, logger, model_dtype)
+        else:
+            model = initialize_distributed_model(args, model, logger, model_dtype)
+        generator = pipeline(
+            "image-to-text",
+            model=model,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
+    else:
+        generator = pipeline(
+            "image-to-text",
+            model=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
+        if args.use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+            generator.model = wrap_in_hpu_graph(generator.model)
+
     generate_kwargs = {
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
@@ -198,14 +271,20 @@ def main():
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
-    if args.use_hpu_graphs:
-        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-
-        generator.model = wrap_in_hpu_graph(generator.model)
-
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
+
+    # delete once pipeline integrate AutoProcessor as preprocess engine
+    if model_type in ["idefics2", "mllama"]:
+        from transformers.image_utils import load_image
+
+        def preprocess(self, image, prompt=None, timeout=None):
+            image = load_image(image, timeout=timeout)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            return model_inputs
+
+        generator.__class__.preprocess = preprocess
 
     # warm up
     for i in range(args.warmup):
