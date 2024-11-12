@@ -131,6 +131,33 @@ python ../gaudi_spawn.py \
 This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 
 
+### Multi-card Training with Deepspeed (chatglm3-6b)
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name THUDM/chatglm3-6b \
+    --tokenizer_name THUDM/chatglm3-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 6 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
+
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 
 The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
