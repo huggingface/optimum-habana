@@ -34,6 +34,7 @@ from transformers import (
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
     MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
+    MODEL_FOR_VISION_2_SEQ_MAPPING,
     MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
@@ -200,6 +201,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         ["t5"],
+    ),
+    "run_image2text_lora_finetune": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_VISION_2_SEQ_MAPPING,
+        ["mllama"],
     ),
 }
 
@@ -413,10 +419,9 @@ class ExampleTestMeta(type):
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
-
-            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
-                ".json"
-            )
+            path_to_baseline = BASELINE_DIRECTORY / Path(
+                model_name.split("/")[-1].replace("-", "_").replace(".", "_")
+            ).with_suffix(".json")
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
