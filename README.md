@@ -235,6 +235,7 @@ The following model architectures, tasks and device distributions have been vali
 | VideoMAE | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video classification](https://github.com/huggingface/optimum-habana/tree/main/examples/video-classification)</li> |
 | TableTransformer |   | <div style="text-align:left"><li>Single card</li></div> | <li>[table object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/table-detection) </li> |
 | DETR |   | <div style="text-align:left"><li>Single card</li></div> | <li>[object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/object-detection)</li> |
+| Mllama     | <div style="text-align:left"><li>LoRA</li></div> | :heavy_check_mark: | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 
 </div>
 
