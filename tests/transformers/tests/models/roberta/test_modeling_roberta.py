@@ -546,14 +546,12 @@ class RobertaModelIntegrationTest(TestCasePlus):
 
     @slow
     def test_inference_masked_lm(self):
-        self._compare_cpu_hpu(RobertaForMaskedLM.from_pretrained("FacebookAI/roberta-base"), atol=0.15)
+        self._compare_cpu_hpu(RobertaForMaskedLM.from_pretrained("roberta-base"), atol=0.15)
 
     @slow
     def test_inference_no_head(self):
-        self._compare_cpu_hpu(RobertaModel.from_pretrained("FacebookAI/roberta-base"), atol=0.05)
+        self._compare_cpu_hpu(RobertaModel.from_pretrained("roberta-base"), atol=0.05)
 
     @slow
     def test_inference_classification_head(self):
-        self._compare_cpu_hpu(
-            RobertaForSequenceClassification.from_pretrained("FacebookAI/roberta-large-mnli"), atol=0.02
-        )
+        self._compare_cpu_hpu(RobertaForSequenceClassification.from_pretrained("roberta-large-mnli"), atol=0.02)

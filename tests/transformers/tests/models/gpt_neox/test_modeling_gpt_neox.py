@@ -28,11 +28,7 @@ from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attenti
 
 
 torch_device = "hpu"
-
-
 adapt_transformers_to_gaudi()
-
-
 if is_torch_available():
     import torch
     from transformers import (
@@ -101,17 +97,13 @@ class GPTNeoXModelTester:
 
     def prepare_config_and_inputs(self):
         input_ids = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
-
         input_mask = None
         if self.use_input_mask:
             input_mask = random_attention_mask([self.batch_size, self.seq_length])
-
         token_labels = None
         if self.use_labels:
             token_labels = ids_tensor([self.batch_size, self.seq_length], self.num_labels)
-
         config = self.get_config()
-
         return config, input_ids, input_mask, token_labels
 
     def get_config(self):
@@ -133,9 +125,7 @@ class GPTNeoXModelTester:
 
     def prepare_config_and_inputs_for_decoder(self):
         config, input_ids, input_mask, token_labels = self.prepare_config_and_inputs()
-
         config.is_decoder = True
-
         return config, input_ids, input_mask, token_labels
 
     def create_and_check_model(self, config, input_ids, input_mask):
@@ -192,19 +182,15 @@ class GPTNeoXModelTester:
         model = GPTNeoXForCausalLM(config=config)
         model.to(torch_device)
         model.eval()
-
         # first forward pass
         outputs = model(input_ids, attention_mask=input_mask, use_cache=True)
         past_key_values = outputs.past_key_values
-
         # create hypothetical multiple next token and extent to next_input_ids
         next_tokens = ids_tensor((self.batch_size, 3), config.vocab_size)
         next_mask = ids_tensor((self.batch_size, 3), vocab_size=2)
-
         # append to next input_ids and
         next_input_ids = torch.cat([input_ids, next_tokens], dim=-1)
         next_attention_mask = torch.cat([input_mask, next_mask], dim=-1)
-
         output_from_no_past = model(next_input_ids, attention_mask=next_attention_mask, output_hidden_states=True)
         output_from_no_past = output_from_no_past["hidden_states"][0]
         output_from_past = model(
@@ -213,14 +199,11 @@ class GPTNeoXModelTester:
             past_key_values=past_key_values,
             output_hidden_states=True,
         )["hidden_states"][0]
-
         # select random slice
         random_slice_idx = ids_tensor((1,), output_from_past.shape[-1]).item()
         output_from_no_past_slice = output_from_no_past[:, -3:, random_slice_idx].detach()
         output_from_past_slice = output_from_past[:, :, random_slice_idx].detach()
-
         self.parent.assertTrue(output_from_past_slice.shape[1] == next_tokens.shape[1])
-
         # test that outputs are equal for slice
         self.parent.assertTrue(torch.allclose(output_from_past_slice, output_from_no_past_slice, atol=1e-3))
 
@@ -229,18 +212,15 @@ class GPTNeoXModelTester:
         model = GPTNeoXModel(config)
         model.to(torch_device)
         model.eval()
-
         # We want this for SDPA, eager works with a `None` attention mask
         assert (
             model.config._attn_implementation == "sdpa"
         ), "This test assumes the model to have the SDPA implementation for its attention calculations."
-
         # Prepare cache and non_cache input, needs a full attention mask
         cached_len = input_ids.shape[-1] // 2
         input_mask = torch.ones(size=input_ids.size()).to(torch_device)
         cache_inputs = {"input_ids": input_ids[:, :cached_len], "attention_mask": input_mask[:, :cached_len]}
         non_cache_inputs = {"input_ids": input_ids[:, cached_len:], "attention_mask": input_mask}
-
         # Cached forward once with the attention mask provided and the other time without it (which should assume full attention)
         cache_outputs = model(**cache_inputs)
         full_outputs_with_attention_mask = model(
@@ -249,7 +229,6 @@ class GPTNeoXModelTester:
         full_outputs_without_attention_mask = model(
             non_cache_inputs["input_ids"], past_key_values=cache_outputs.past_key_values
         ).last_hidden_state
-
         self.parent.assertTrue(
             torch.allclose(full_outputs_with_attention_mask, full_outputs_without_attention_mask, atol=1e-5)
         )
@@ -310,9 +289,7 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     def test_model_as_decoder_with_default_input_mask(self):
         # This regression test was failing with PyTorch < 1.3
         config, input_ids, input_mask, token_labels = self.model_tester.prepare_config_and_inputs_for_decoder()
-
         input_mask = None
-
         self.model_tester.create_and_check_model_as_decoder(config, input_ids, input_mask)
 
     def test_decoder_model_past_large_inputs(self):
@@ -349,14 +326,12 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
         short_input = ids_tensor([1, 10], config.vocab_size)
         long_input = ids_tensor([1, int(config.max_position_embeddings * 1.5)], config.vocab_size)
-
         set_seed(42)  # Fixed seed at init time so the two models get the same random weights
         original_model = GPTNeoXModel(config)
         original_model.to(torch_device)
         original_model.eval()
         original_short_output = original_model(short_input).last_hidden_state
         original_long_output = original_model(long_input).last_hidden_state
-
         set_seed(42)  # Fixed seed at init time so the two models get the same random weights
         config.rope_scaling = {"type": scaling_type, "factor": 10.0}
         scaled_model = GPTNeoXModel(config)
@@ -364,14 +339,12 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         scaled_model.eval()
         scaled_short_output = scaled_model(short_input).last_hidden_state
         scaled_long_output = scaled_model(long_input).last_hidden_state
-
         # Dynamic scaling does not change the RoPE embeddings until it receives an input longer than the original
         # maximum sequence length, so the outputs for the short input should match.
         if scaling_type == "dynamic":
             self.assertTrue(torch.allclose(original_short_output, scaled_short_output, atol=1e-5))
         else:
             self.assertFalse(torch.allclose(original_short_output, scaled_short_output, atol=1e-5))
-
         # The output should be different for long inputs
         self.assertFalse(torch.allclose(original_long_output, scaled_long_output, atol=1e-5))
 
@@ -384,10 +357,8 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         scaling_factor = 10
         short_input_length = 10
         long_input_length = int(config.max_position_embeddings * 1.5)
-
         # Inputs
         x = torch.randn(1, dtype=torch.float32, device=torch_device)  # used exlusively to get the dtype and the device
-
         # Sanity check original RoPE
         original_rope = GPTNeoXRotaryEmbedding(
             head_dim,
@@ -398,7 +369,6 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         original_cos_long, original_sin_long = original_rope(x, long_input_length)
         torch.testing.assert_close(original_cos_short, original_cos_long[:short_input_length, :])
         torch.testing.assert_close(original_sin_short, original_sin_long[:short_input_length, :])
-
         # Sanity check linear RoPE scaling
         # New position "x" should match original position with index "x/scaling_factor"
         linear_scaling_rope = GPTNeoXLinearScalingRotaryEmbedding(
@@ -415,7 +385,6 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
             original_position = int(new_position // scaling_factor)
             torch.testing.assert_close(linear_cos_long[new_position, :], original_cos_long[original_position, :])
             torch.testing.assert_close(linear_sin_long[new_position, :], original_sin_long[original_position, :])
-
         # Sanity check Dynamic NTK RoPE scaling
         # Scaling should only be observed after a long input is fed. We can observe that the frequencies increase
         # with scaling_factor (or that `inv_freq` decreases)
@@ -443,30 +412,23 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         which also overwrites the common test as the test is flaky on tiny models.
         """
         max_new_tokens = 30
-
         tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-1b")
-
         model_sdpa = GPTNeoXForCausalLM.from_pretrained(
             "EleutherAI/pythia-1b",
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
         ).to(torch_device)
-
         self.assertTrue(model_sdpa.config._attn_implementation == "sdpa")
-
         model_eager = GPTNeoXForCausalLM.from_pretrained(
             "EleutherAI/pythia-1b",
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
             attn_implementation="eager",
         ).to(torch_device)
-
         self.assertTrue(model_eager.config._attn_implementation == "eager")
-
         for name, submodule in model_eager.named_modules():
             if "SdpaAttention" in submodule.__class__.__name__:
                 raise ValueError("The eager model should not have SDPA attention layers")
-
         has_sdpa = False
         for name, submodule in model_sdpa.named_modules():
             if "SdpaAttention" in submodule.__class__.__name__:
@@ -474,22 +436,17 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
                 break
         if not has_sdpa:
             raise ValueError("The SDPA model should have SDPA attention layers")
-
         texts = [
             "hi here's a longer context, getting longer and",
             "Hello this is a very long sentence my friend, very long for real",
             "Today I am in Paris and",
         ]
-
         for padding_side in ["left", "right"]:
             tokenizer.padding_side = padding_side
             tokenizer.pad_token = tokenizer.eos_token
-
             inputs = tokenizer(texts, return_tensors="pt", padding=True).to(torch_device)
-
             res_eager = model_eager.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
             res_sdpa = model_sdpa.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-
             with self.subTest(f"{padding_side}"):
                 torch.testing.assert_close(
                     res_eager,
@@ -505,21 +462,17 @@ class GPTNeoXLanguageGenerationTest(unittest.TestCase):
         tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-410m-deduped")
         for checkpointing in [True, False]:
             model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/pythia-410m-deduped")
-
             if checkpointing:
                 model.gradient_checkpointing_enable()
             else:
                 model.gradient_checkpointing_disable()
             model.to(torch_device)
-
             inputs = tokenizer("My favorite food is", return_tensors="pt").to(torch_device)
             # The hub repo. is updated on 2023-04-04, resulting in poor outputs.
             # See: https://github.com/huggingface/transformers/pull/24193
             expected_output = "My favorite food is a good old-fashioned, old-fashioned, old-fashioned.\n\nI'm not sure"
-
             output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=20)
             output_str = tokenizer.batch_decode(output_ids)[0]
-
             self.assertEqual(output_str, expected_output)
 
     def pythia_integration_test(self):

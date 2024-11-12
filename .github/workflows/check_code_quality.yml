@@ -35,9 +35,13 @@ jobs:
         source venv/bin/activate
         ruff check . setup.py
         ruff format --check . setup.py
-    - name: Post comment to run make style
-      if: failure()
-      uses: peter-evans/create-or-update-comment@v4
+    - name: Store PR number if failure to post comment
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        PR_NUMBER: ${{ github.event.number }}
+      run: echo $PR_NUMBER > ./pr_number
+    - uses: actions/upload-artifact@v4
+      if: failure() && github.event_name == 'pull_request'
       with:
-        issue-number: ${{ github.event.number }}
-        body: The code quality check failed, please run `make style`.
+        name: pr-number
+        path: ./pr_number

@@ -30,11 +30,11 @@
 > 
 47,48c48,50
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.45.0.dev0")
+< check_min_version("4.46.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.43.0")
-> check_optimum_habana_min_version("1.12.0")
+> check_min_version("4.45.0")
+> check_optimum_habana_min_version("1.14.0.dev0")
 174,176d175
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
@@ -114,3 +114,7 @@
 >     trainer = GaudiTrainer(
 392a402
 >         gaudi_config=gaudi_config,
+397c407
+<         processing_class=feature_extractor,
+---
+>         tokenizer=feature_extractor,

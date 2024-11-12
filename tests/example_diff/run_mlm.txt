@@ -20,7 +20,7 @@
 > from optimum.habana.utils import set_seed
 56,57d51
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.45.0.dev0")
+< check_min_version("4.46.0.dev0")
 59c53,59
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
@@ -34,8 +34,8 @@
 61a62,69
 > 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.43.0")
-> check_optimum_habana_min_version("1.12.0")
+> check_min_version("4.45.0")
+> check_optimum_habana_min_version("1.14.0.dev0")
 > 
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
@@ -81,6 +81,10 @@
 >     trainer = GaudiTrainer(
 621a638
 >         gaudi_config=gaudi_config,
+625c642
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 627,630c644,645
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics

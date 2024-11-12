@@ -65,8 +65,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.43.0")
-check_optimum_habana_min_version("1.12.0")
+check_min_version("4.45.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -470,7 +470,6 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-        _attn_implementation=training_args.attn_implementation,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,

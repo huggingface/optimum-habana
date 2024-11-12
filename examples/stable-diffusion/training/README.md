@@ -43,7 +43,7 @@ Now we can launch the training using:
 
 ```bash
 python textual_inversion.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
   --train_data_dir ./cat \
   --learnable_property object \
   --placeholder_token "<cat-toy>" \
@@ -82,7 +82,7 @@ Then proceed to training with command:
 
 ```bash
 python train_controlnet.py \
- --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5\
+ --pretrained_model_name_or_path=CompVis/stable-diffusion-v1-4\
  --output_dir=/tmp/stable_diffusion1_5 \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
@@ -92,7 +92,8 @@ python train_controlnet.py \
  --train_batch_size=4 \
  --throughput_warmup_steps=3 \
  --use_hpu_graphs \
- --bf16
+ --bf16 \
+ --trust_remote_code
 ```
 
 ### Multi-card Run
@@ -100,7 +101,7 @@ python train_controlnet.py \
 You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
 python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
   --output_dir=/tmp/stable_diffusion1_5 \
   --dataset_name=fusing/fill50k \
   --resolution=512 \
@@ -110,7 +111,8 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --train_batch_size=4 \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs \
-  --bf16
+  --bf16 \
+  --trust_remote_code
 ```
 
 
@@ -124,7 +126,7 @@ from diffusers.utils import load_image
 import torch
 from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
-base_model_path = "runwayml/stable-diffusion-v1-5"
+base_model_path = "CompVis/stable-diffusion-v1-4"
 controlnet_path = "/tmp/stable_diffusion1_5"
 
 controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
@@ -271,6 +273,7 @@ Now let's get our dataset. For this example we will use some dog images: https:/
 Let's first download it locally:
 
 ```python
+import os
 from huggingface_hub import snapshot_download
 
 local_dir = "./dog"
@@ -279,13 +282,19 @@ snapshot_download(
     local_dir=local_dir, repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
+
+# check if .cache folder exists and remove it.
+cache_folder = os.path.join(local_dir, ".cache")
+if os.path.exists(cache_folder):
+    import shutil
+    shutil.rmtree(cache_folder)
 ```
 
 ### Full model finetune
 And launch the multi-card training using:
 ```bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="out"
@@ -325,7 +334,7 @@ use *1e-4* instead of the usual *5e-6*.___**
 Launch the multi-card training using:
 ```bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="out"
@@ -369,7 +378,7 @@ You could use text_to_image_generation.py to generate picture using the peft ada
 
 ```bash
 python ../text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5  \
+    --model_name_or_path CompVis/stable-diffusion-v1-4  \
     --prompts "a sks dog" \
     --num_images_per_prompt 5 \
     --batch_size 1 \

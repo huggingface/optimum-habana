@@ -232,7 +232,7 @@ class SwinModelTest(ModelTesterMixin, unittest.TestCase):
         else ()
     )
     pipeline_model_mapping = (
-        {"image-feature-extraction": SwinModel, "image-classification": SwinForImageClassification}
+        {"feature-extraction": SwinModel, "image-classification": SwinForImageClassification}
         if is_torch_available()
         else {}
     )
@@ -478,7 +478,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         model = SwinForImageClassification.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
         image_processor = self.default_image_processor
 
-        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        image = Image.open("./tests/resource/img/000000039769.png")
         inputs = image_processor(images=image, return_tensors="pt").to(torch_device)
 
         # forward pass
@@ -488,7 +488,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         # verify the logits
         expected_shape = torch.Size((1, 1000))
         self.assertEqual(outputs.logits.shape, expected_shape)
-        expected_slice = torch.tensor([-0.0948, -0.6454, -0.0921]).to(torch_device)
+        expected_slice = torch.tensor([-0.0949, -0.6437, -0.0894]).to(torch_device)
         self.assertTrue(torch.allclose(outputs.logits[0, :3], expected_slice, atol=1e-4))
 
     @slow
@@ -499,7 +499,7 @@ class SwinModelIntegrationTest(unittest.TestCase):
         model = SwinModel.from_pretrained("microsoft/swin-tiny-patch4-window7-224").to(torch_device)
 
         image_processor = self.default_image_processor
-        image = Image.open("./tests/fixtures/tests_samples/COCO/000000039769.png")
+        image = Image.open("./tests/resource/img/000000039769.png")
         inputs = image_processor(images=image, size={"height": 481, "width": 481}, return_tensors="pt")
         pixel_values = inputs.pixel_values.to(torch_device)
 

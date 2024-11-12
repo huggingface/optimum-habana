@@ -111,13 +111,14 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             "qwen2",
             "gptj",
             "starcoder2",
+            "gemma",
         ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
@@ -208,7 +209,8 @@ def main():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
-    results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+    with torch.no_grad():
+        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 

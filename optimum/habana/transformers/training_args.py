@@ -305,15 +305,6 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    # Use this to override default attn_implementation in transformers
-    attn_implementation: Optional[str] = field(
-        default="eager",
-        metadata={
-            "help": "choose whether to use scale dot product attention (SDPA) or not.",
-            "choices": ["eager", "sdpa"],
-        },
-    )
-
     fp8: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use fp8 for training."},
@@ -609,8 +600,8 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
-        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0 or 0 < self.warmup_steps <= 1:
-            raise ValueError("warmup_steps must be either 0 or > 1")
+        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0:
+            raise ValueError("warmup_steps must be of type int and must be 0 or a positive integer.")
 
         # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563
         # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
@@ -682,7 +673,7 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
         # accelerate integration for FSDP
-        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
+        if len(self.fsdp) > 0:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,

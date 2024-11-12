@@ -73,7 +73,7 @@ from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0")
+check_min_version("0.29.0")
 
 logger = get_logger(__name__, log_level="INFO")
 

@@ -15,8 +15,8 @@ from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
 
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.trl import GaudiSFTTrainer
+from optimum.habana import GaudiConfig
+from optimum.habana.trl import GaudiSFTConfig, GaudiSFTTrainer
 from optimum.habana.utils import set_seed
 
 
@@ -33,9 +33,8 @@ class ScriptArguments:
     size_valid_set: Optional[int] = field(default=4000, metadata={"help": "the size of the validation set"})
     streaming: Optional[bool] = field(default=True, metadata={"help": "whether to stream the dataset"})
     shuffle_buffer: Optional[int] = field(default=5000, metadata={"help": "the shuffle buffer size"})
-    max_seq_length: Optional[int] = field(default=1024, metadata={"help": "the max sequence length"})
     num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
-    packing: Optional[bool] = field(default=True, metadata={"help": "whether to use packing for SFTTrainer"})
+    num_buckets: Optional[int] = field(default=-1, metadata={"help": "whether to use bucketing for SFTTrainer"})
     validation_split_percentage: Optional[int] = field(
         default=5,
         metadata={
@@ -73,7 +72,7 @@ class ScriptArguments:
 
 
 if __name__ == "__main__":
-    parser = HfArgumentParser((ScriptArguments, GaudiTrainingArguments))
+    parser = HfArgumentParser((ScriptArguments, GaudiSFTConfig))
     script_args, training_args = parser.parse_args_into_dataclasses()
     if script_args.use_peft:
         peft_config = LoraConfig(
@@ -87,7 +86,7 @@ if __name__ == "__main__":
     else:
         peft_config = None
 
-    if training_args.group_by_length and script_args.packing:
+    if training_args.group_by_length and training_args.packing:
         raise ValueError("Cannot use both packing and group by length")
 
     set_seed(training_args.seed)
@@ -116,7 +115,7 @@ if __name__ == "__main__":
         if args.dataset_name:
             dataset = load_dataset(
                 args.dataset_name,
-                data_dir=args.subset,
+                data_dir=None if args.subset == "None" else args.subset,
                 split=args.split,
                 token=script_args.token,
                 num_proc=args.num_workers if not args.streaming else None,
@@ -187,11 +186,10 @@ if __name__ == "__main__":
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             peft_config=peft_config,
-            packing=script_args.packing,
-            max_seq_length=script_args.max_seq_length,
             tokenizer=tokenizer,
             args=training_args,
             formatting_func=formatting_func,
+            num_buckets=script_args.num_buckets,
         )
         train_result = trainer.train()
         trainer.save_model(training_args.output_dir)

@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.17.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.18.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -400,9 +400,3 @@ def get_device_name():
         return "gaudi2"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
-
-
-def is_gaudi3():
-    import habana_frameworks.torch as htorch
-
-    return htorch.hpu.get_device_name() == "GAUDI3"

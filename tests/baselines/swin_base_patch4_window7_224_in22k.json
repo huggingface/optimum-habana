@@ -49,9 +49,9 @@
                 "single_card": {
                     "learning_rate": 6e-5,
                     "train_batch_size": 160,
-                    "eval_accuracy": 0.9852,
-                    "train_runtime": 73.5918,
-                    "train_samples_per_second": 957.491,
+                    "eval_accuracy": 0.9850666666666666,
+                    "train_runtime": 77.8934,
+                    "train_samples_per_second": 826.766,
                     "extra_arguments": [
                         "--remove_unused_columns False",
                         "--image_column_name img",

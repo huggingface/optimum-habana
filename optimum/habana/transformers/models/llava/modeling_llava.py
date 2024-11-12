@@ -120,10 +120,13 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         image_offset: Optional[int] = None,
         tokens_pos: Optional[torch.LongTensor] = None,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
@@ -151,10 +154,14 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             # 1. Extra the input embeddings
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
+            image_features = None
             # 2. Merge text and images
             if pixel_values is not None and input_ids.shape[1] != 1:
                 image_outputs = self.vision_tower(
-                    pixel_values, output_hidden_states=True, use_flash_attention=use_flash_attention
+                    pixel_values,
+                    output_hidden_states=True,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
                 )
                 # this is not memory efficient at all (output_hidden_states=True) will save all the hidden stated.
                 selected_image_feature = image_outputs.hidden_states[vision_feature_layer]
@@ -182,9 +189,12 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                cache_position=cache_position,
+                # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
+                # num_logits_to_keep=num_logits_to_keep,
                 token_idx=token_idx + image_offset,
                 use_flash_attention=use_flash_attention,
-                flash_attention_recompute=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
             )
 
             if input_ids.shape[1] != 1 and pixel_values is not None:
@@ -206,6 +216,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 past_key_values=outputs.past_key_values,
                 hidden_states=outputs.hidden_states,
                 attentions=outputs.attentions,
+                image_hidden_states=image_features if pixel_values is not None else None,
             )
 
         else:
@@ -226,7 +237,15 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, pixel_values=None, attention_mask=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        inputs_embeds=None,
+        pixel_values=None,
+        attention_mask=None,
+        cache_position=None,
+        num_logits_to_keep=None,
+        **kwargs,
     ):
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
@@ -296,6 +315,11 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         else:
             model_inputs = {"input_ids": input_ids}
         use_flash_attention = kwargs.get("use_flash_attention", False)
+        flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
@@ -307,6 +331,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 "image_offset": image_offset,
                 "tokens_pos": tokens_pos,
                 "use_flash_attention": use_flash_attention,
+                "flash_attention_recompute": flash_attention_recompute,
             }
         )
 

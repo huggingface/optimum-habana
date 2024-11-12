@@ -137,6 +137,9 @@ The following command triggers the fine-tuning of [GPT-NeoX-20B](https://hugging
 Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
 It reaches a perplexity of 10.469.
 
+> [!NOTE]
+>  For GPT-NeoX-20B model, please switch to jemalloc in case of host OOM issues using ``` export LD_PRELOAD=<path>/libjemalloc.so.2 ```
+
 > Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
 
 ```bash
@@ -362,7 +365,7 @@ python run_clm.py \
 
 ## PEFT
 
-### LORA/ADALORA/IA3/LLAMA_ADAPTER
+### LORA/ADALORA/IA3/LLAMA_ADAPTER/VERA/LN_TUNING
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
 Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
@@ -535,6 +538,35 @@ python ../gaudi_spawn.py \
     --use_cache False
 ```
 
+- Multi-card finetuning of gemma2 using chat template:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 --use_mpi run_lora_clm.py \
+    --model_name_or_path google/gemma-2b-it \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
+    --do_train \
+    --do_eval \
+    --num_train_epochs 15 \
+    --output_dir ./output/2b_2hpu_16bs_15ep \
+    --save_total_limit 1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 3 \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --bf16 \
+    --logging_strategy epoch \
+    --evaluation_strategy epoch \
+    --lora_target_modules "q_proj" "o_proj" "k_proj" "v_proj" "gate_proj" "up_proj" "down_proj" \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --dataset_name mamamiya405/finred \
+    --chat_prompt True
+```
+
 - Multi-card finetuning of Falcon-40B:
 ```bash
 PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
@@ -691,7 +723,7 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py 
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`.
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`.
 
 #### Custom Files
 
@@ -836,7 +868,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --per_device_eval_batch_size 4 \
     --bf16 \
     --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training
+    --use_hpu_graphs_for_training \
+    --trust_remote_code
 ```
 
 
