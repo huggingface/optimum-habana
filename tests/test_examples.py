@@ -449,7 +449,7 @@ class ExampleTestMeta(type):
 
             env_variables = os.environ.copy()
             if "falcon" in model_name:
-                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(example_script.parent / "ops_bf16.txt")
             elif "flan" in model_name:
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
             elif "bloom" in model_name:
@@ -460,13 +460,15 @@ class ExampleTestMeta(type):
                 env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
             elif fsdp:
                 if "llama" in model_name:
-                    env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                    env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(
+                        example_script.parent / "ops_bf16.txt"
+                    )
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
             elif deepspeed and "gpt-neox-20b" in model_name:
                 env_variables["LD_PRELOAD"] = ""
 
             if fp8 and "llama" in model_name:
-                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(example_script.parent / "ops_bf16.txt")
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
