@@ -17,6 +17,7 @@
 ###############################################################################
 
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -61,17 +62,19 @@ logger = logging.get_logger(__name__)
 
 class GaudiStarcoder2MLP(Starcoder2MLP):
     def pre_mlp_forward(self, x):
-        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
-        output = self.down_proj(inputs)
-        return output
+        x = self.c_fc(x)
+        x = self.act(x)
+        x = self.c_proj(x)
+        x = F.dropout(x, p=self.residual_dropout, training=self.training)
+        return x
 
     def mlp_all_reduce(self, x):
-        if hasattr(self.down_proj, "all_reduce"):
-            self.down_proj.all_reduce(x)
+        if hasattr(self.c_proj, "all_reduce"):
+            self.c_proj.all_reduce(x)
 
     def post_mlp_forward(self, x):
-        if hasattr(self.down_proj, "post_all_reduce"):
-            return self.down_proj.post_all_reduce(x)
+        if hasattr(self.c_proj, "post_all_reduce"):
+            return self.c_proj.post_all_reduce(x)
         return x
 
 
@@ -305,7 +308,8 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -372,7 +376,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -431,13 +435,10 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
         )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        self.self_attn.attention_all_reduce(hidden_states)
+        hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
+        self.mlp.mlp_all_reduce(hidden_states)
+        hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
 
@@ -630,13 +631,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if (
-                lazy_mode
-                and not self.training
-                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-            ):
-                htcore.mark_step()
-
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 

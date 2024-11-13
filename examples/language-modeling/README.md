@@ -404,7 +404,7 @@ python3 run_lora_clm.py \
 ```
 - Single-card finetuning of Falcon-40B:
 ```bash
-LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
@@ -474,7 +474,7 @@ python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Llama2-7B with FP8:
 ```bash
-LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 	--world_size 8 --use_mpi run_lora_clm.py \
 	--model_name_or_path meta-llama/Llama-2-7b-hf \
 	--dataset_name tatsu-lab/alpaca \
@@ -569,7 +569,7 @@ python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Falcon-40B:
 ```bash
-LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -647,7 +647,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:
 
 ```bash
-LOWER_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --dataset_name tatsu-lab/alpaca \
@@ -690,7 +690,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   - Falcon-180B example command saves only the LoRA parameters at end
   - For inference we need to merge the pretrained model and LoRA weights
 ```bash
-DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-180B \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -868,7 +868,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --per_device_eval_batch_size 4 \
     --bf16 \
     --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training
+    --use_hpu_graphs_for_training \
+    --trust_remote_code
 ```
 
 

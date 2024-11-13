@@ -100,15 +100,17 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "starcoder2",
     "persimmon",
     "qwen2",
-    "starcoder2",
     "llava",
     "llava_next",
     "stablelm",
     "mamba",
     "deci",
+    "cohere",
     "qwen2_moe",
-    "gemma",
+    "xglm",
     "whisper",
+    "idefics2",
+    "mllama",
 ]
 
 
@@ -240,14 +242,20 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is None:
                 decoder_input_ids = torch.cat([decoder_start_token_id, decoder_input_ids], dim=-1)
             else:
-                max_length = max_new_tokens + 2 if max_new_tokens is not None else self.generation_config.max_length
+                decoder_input_ids_len = decoder_input_ids.shape[-1]
+                max_length = (
+                    max_new_tokens + decoder_input_ids_len + 1
+                    if max_new_tokens is not None
+                    else self.generation_config.max_length
+                )
                 if max_length != decoder_start_token_id.shape[-1]:
                     decoder_start_token_id = torch.nn.functional.pad(
                         decoder_start_token_id,
                         (0, max_length - decoder_start_token_id.shape[-1]),
                         value=pad_token_id,
                     )
-                decoder_input_ids = decoder_start_token_id.index_copy(1, token_idx, decoder_input_ids)
+                decoder_start_token_id[:, 1 : 1 + decoder_input_ids_len, ...] = decoder_input_ids
+                decoder_input_ids = decoder_start_token_id
                 token_idx.add_(1)
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
@@ -324,11 +332,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+        kv_cache_len = model_kwargs.get("kv_cache_len", 0)
         if model_kwargs["past_key_values"]:
             if model_kwargs.get("mqa_model", False):
                 for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    if torch.is_tensor(
-                        model_kwargs["past_key_values"][i]
+                    if (
+                        torch.is_tensor(model_kwargs["past_key_values"][i])
+                        and model_kwargs["past_key_values"][i].shape[-2] == kv_cache_len - pad_amount
                     ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
                         model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
                             model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
@@ -338,8 +348,9 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 for i in range(len(model_kwargs["past_key_values"])):  # layer
                     for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
-                        if torch.is_tensor(
-                            model_kwargs["past_key_values"][i][j]
+                        if (
+                            torch.is_tensor(model_kwargs["past_key_values"][i][j])
+                            and model_kwargs["past_key_values"][i][j].shape[-2] == kv_cache_len - pad_amount
                         ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
                             model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
                                 model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
@@ -455,6 +466,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
+
+            if model_kwargs.get("cross_attention_mask") is not None:
+                model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
+                    model_kwargs["cross_attention_mask"],
+                    (0, 0, 0, 0, 0, pad_amount),
+                    value=0,
+                )
+
             if reduce_recompile and params["passnum"] == 0:
                 position_ids_cpu = model_kwargs["attention_mask"].long().cumsum(-1) - 1
                 position_ids_cpu.masked_fill_(model_kwargs["attention_mask"] == 0, 1)
@@ -497,14 +516,20 @@ class GaudiGenerationMixin(GenerationMixin):
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                             # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
-                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
-                            assert (
-                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
-                                == num_virtual_tokens
-                            )
-                            tmp_lst[j] = torch.nn.functional.pad(
-                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
-                            )
+                            if (
+                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)]
+                                == params["allocated_space"] - pad_amount
+                            ):
+                                num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
+                                assert (
+                                    model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
+                                    == num_virtual_tokens
+                                )
+                                tmp_lst[j] = torch.nn.functional.pad(
+                                    model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                                )
+                            else:
+                                tmp_lst[j] = model_kwargs["past_key_values"][i][j]
                         new_kv[i] = tuple(tmp_lst)
                     model_kwargs["past_key_values"] = tuple(new_kv)
 
@@ -1109,13 +1134,22 @@ class GaudiGenerationMixin(GenerationMixin):
                                 (0, generation_config.max_new_tokens),
                                 value=0,
                             )
+                    if model_kwargs.get("cross_attention_mask") is not None:
+                        model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
+                            model_kwargs["cross_attention_mask"],
+                            (0, 0, 0, 0, 0, generation_config.max_new_tokens),
+                            value=0,
+                        )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
-                token_idx = 1
+                if model_kwargs.get("decoder_input_ids", None) is None:
+                    token_idx = 1
+                else:
+                    token_idx = model_kwargs["decoder_input_ids"].shape[-1]
                 model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                 if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
                     max_length = (
-                        generation_config.max_new_tokens + 1
+                        generation_config.max_new_tokens + token_idx
                         if generation_config.max_new_tokens is not None
                         else generation_config.max_length
                     )
@@ -1175,8 +1209,10 @@ class GaudiGenerationMixin(GenerationMixin):
         # If the model supports `num_logits_to_keep` in forward(), set it to 1 to avoid computing the whole
         # logit matrix. This can save a lot of memory during the first forward pass. Note that assisted decoding
         # dynamically overrides this value as it can need more than the last token logits
-        if self._supports_num_logits_to_keep() and "num_logits_to_keep" not in model_kwargs:
-            model_kwargs["num_logits_to_keep"] = 1
+        #
+        # Use trim_logits in HPU to save memory (in replacement of the num_logits_to_keep)
+        # if self._supports_num_logits_to_keep() and "num_logits_to_keep" not in model_kwargs:
+        #    model_kwargs["num_logits_to_keep"] = 1
 
         self._validate_generated_length(
             generation_config,
@@ -1223,6 +1259,8 @@ class GaudiGenerationMixin(GenerationMixin):
             True if generation_config.flash_attention_fast_softmax else False
         )
         model_kwargs["num_virtual_tokens"] = num_virtual_tokens
+        if generation_config.valid_sequence_lengths is not None:
+            model_kwargs["valid_sequence_lengths"] = generation_config.valid_sequence_lengths
 
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[1] + num_virtual_tokens
@@ -2563,6 +2601,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if streamer is not None:
             streamer.end()
+
+        if batch_size > 1 and has_eos_stopping_criteria:
+            eos_token_id = generation_config.eos_token_id
+            idx_bs = generation_config.max_length
+            for i in range(batch_size):
+                for idx in range(len(input_ids[i])):
+                    if input_ids[i][idx] == eos_token_id:
+                        idx_bs = idx
+                    if idx > idx_bs:
+                        input_ids[i][idx] = pad_token_id
+                idx_bs = generation_config.max_length
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
