@@ -45,6 +45,12 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .cohere import (
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
+)
 from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
@@ -106,6 +112,12 @@ from .gptj import (
     GaudiGPTJForCausalLM,
     GaudiGPTJModel,
 )
+from .idefics2 import (
+    Gaudi2Idefics2ImageProcessor,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
+)
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
@@ -140,6 +152,16 @@ from .mixtral import (
     MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
+)
+from .mllama import (
+    GaudiMllamaCrossAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaForConditionalGeneration,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaTextCrossAttention,
+    GaudiMllamaTextModel,
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionModel,
 )
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
@@ -252,4 +274,10 @@ from .whisper import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+)
+from .xglm import (
+    GaudiXGLMForCausalLM,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )

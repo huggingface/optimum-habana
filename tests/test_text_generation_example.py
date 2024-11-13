@@ -46,6 +46,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122),
             ("tiiuae/falcon-mamba-7b", 1, False, 47.1464839567739),
+            ("facebook/xglm-1.7B", 1, False, 357.46365062825083),
+            ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
