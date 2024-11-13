@@ -23,7 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, AutoProcessor, pipeline
+from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -185,14 +185,13 @@ def main():
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type in ["llava", "idefics2"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-
-    if args.prompt is None and model_type in ["llava", "idefics2", "llava_next"]:
+    if args.prompt is None and model_type in ["llava", "idefics2", "llava_next", "mllama"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         conversation = [
             {
@@ -231,17 +230,31 @@ def main():
 
         htcore.hpu_set_env()
 
-    generator = pipeline(
-        "image-to-text",
-        model=args.model_name_or_path,
-        torch_dtype=model_dtype,
-        device="hpu",
-    )
-
     if args.world_size > 1:
-        generator.model = initialize_distributed_model(args, generator.model, logger, model_dtype)
+        import deepspeed
 
+        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+            model = AutoModelForVision2Seq.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        if model_type == "mllama":
+            model.language_model = initialize_distributed_model(args, model.language_model, logger, model_dtype)
+        else:
+            model = initialize_distributed_model(args, model, logger, model_dtype)
+        generator = pipeline(
+            "image-to-text",
+            model=model,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
     else:
+        generator = pipeline(
+            "image-to-text",
+            model=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
@@ -263,7 +276,7 @@ def main():
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2"]:
+    if model_type in ["idefics2", "mllama"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
