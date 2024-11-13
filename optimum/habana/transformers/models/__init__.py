@@ -150,6 +150,16 @@ from .mixtral import (
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
+from .mllama import (
+    GaudiMllamaCrossAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaForConditionalGeneration,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaTextCrossAttention,
+    GaudiMllamaTextModel,
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionModel,
+)
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
@@ -262,4 +272,10 @@ from .whisper import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+)
+from .xglm import (
+    GaudiXGLMForCausalLM,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )

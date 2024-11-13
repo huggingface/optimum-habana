@@ -31,6 +31,7 @@ Models that have been validated:
   - [llava-hf/llava-v1.6-34b-hf](https://huggingface.co/llava-hf/llava-v1.6-34b-hf)
   - [llava-hf/llama3-llava-next-8b-hf](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf)
   - [HuggingFaceM4/idefics2-8b](https://huggingface.co/HuggingFaceM4/idefics2-8b)
+  - [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
 
 ### Inference with BF16
 
@@ -104,6 +105,15 @@ To run idefics2 inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
+    --use_hpu_graphs \
+    --bf16
+```
+
+To run mllama inference, use the following command:
+
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
     --use_hpu_graphs \
     --bf16
 ```
@@ -290,6 +300,75 @@ python3 ../gaudi_spawn.py \
     --use_hpu_graphs_for_inference \
     --low_cpu_mem_usage True \
     --lora_target_modules '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
+```
+
+Here are single-/multi-device command examples for meta-llama/Llama-3.2-11B-Vision-Instruct.
+
+```bash
+python3 run_image2text_lora_finetune.py \
+    --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
+    --dataset_name nielsr/docvqa_1200_examples \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 2 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 8 \
+    --weight_decay 0.01 \
+    --logging_steps 25 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 5e-5 \
+    --warmup_steps  50 \
+    --lr_scheduler_type "constant" \
+    --input_column_names 'image' 'query' \
+    --output_column_names 'answers' \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --lora_rank=8 \
+    --lora_alpha=8 \
+    --lora_dropout=0.1 \
+    --low_cpu_mem_usage True \
+    --max_seq_length=512 \
+    --use_hpu_graphs_for_inference True \
+    --lora_target_modules ".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"
+```
+
+```bash
+python3 ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_image2text_lora_finetune.py \
+    --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
+    --dataset_name nielsr/docvqa_1200_examples \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 2 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 8 \
+    --weight_decay 0.01 \
+    --logging_steps 25 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 5e-5 \
+    --warmup_steps  50 \
+    --lr_scheduler_type "constant" \
+    --input_column_names 'image' 'query' \
+    --output_column_names 'answers' \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --lora_rank=8 \
+    --lora_alpha=8 \
+    --lora_dropout=0.1 \
+    --low_cpu_mem_usage True \
+    --max_seq_length=512 \
+    --use_hpu_graphs_for_inference True \
+    --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
 ## Multi-HPU inference
