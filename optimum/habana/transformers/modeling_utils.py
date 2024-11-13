@@ -598,7 +598,6 @@ def adapt_transformers_to_gaudi():
         gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
     )
 
-
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
     transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer

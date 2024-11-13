@@ -13,14 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch FALCONMAMBA model."""
+
 from typing import Optional
 
 import torch
+from transformers.cache_utils import MambaCache
 from transformers.utils import (
     logging,
 )
 
-from transformers.cache_utils import MambaCache
 
 logger = logging.get_logger(__name__)
 
@@ -29,6 +30,8 @@ Copys from https://github.com/huggingface/transformers/blob/53fad641cfdb5105e247
 The only differences are:
 - Use the torch.index_select function to replace the slicing operation of Line 51
 """
+
+
 def gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation(
     self,
     input_ids,
@@ -48,7 +51,7 @@ def gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation(
                 "you are calling `prepare_inputs_for_generation` directly with `use_cache=True`"
             )
         if cache_position[0] > 0:
-            #input_ids = input_ids[:, -1].unsqueeze(-1)
+            # input_ids = input_ids[:, -1].unsqueeze(-1)
             idx = torch.tensor([input_ids.size(1) - 1])
             input_ids = torch.index_select(input_ids, 1, idx)
 
