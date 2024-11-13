@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -428,6 +429,8 @@ def main():
 
         elif args.optimize:
             # Import SDXL pipeline
+            # set PATCH_SDPA to enable fp8 varient of softmax in sdpa
+            os.environ["PATCH_SDPA"] = "1"
             import habana_frameworks.torch.hpu as torch_hpu
 
             from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
