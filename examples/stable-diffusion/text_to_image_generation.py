@@ -227,6 +227,9 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -316,6 +319,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
