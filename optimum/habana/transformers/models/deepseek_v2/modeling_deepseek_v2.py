@@ -499,6 +499,9 @@ class DeepseekV2MoE(nn.Module):
 
     @torch.no_grad()
     def moe_infer(self, x, topk_ids, topk_weight):
+    """
+    Rewrite DeepseekV2MoE.moe_infer: https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/blob/main/modeling_deepseek.py for static expert support
+    """
         out = torch.zeros_like(x)
 
         seq_len, hidden_dim = x.shape
@@ -660,6 +663,13 @@ class DeepseekV2Attention(nn.Module):
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        Copied from DeepseekV2Attention.forward: https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/blob/main/modeling_deepseek.py
+        deltas are:
+        - add  token_idx
+        - optimize KV cache
+        """DeepseekV2Attention
+
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -789,6 +799,11 @@ class DeepseekV2DecoderLayer(nn.Module):
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from DeepseekV2DecoderLayer.forward: https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/blob/main/modeling_deepseek.py
+        The deltas are:
+        - add token_idx
+        """
         """
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
