@@ -1,0 +1,83 @@
+{{- if and .Values.numNodes (gt (int .Values.numNodes) 1) }}
+apiVersion: kubeflow.org/v1
+kind: MPIJob
+metadata:
+  name: {{ .Release.Name }}-mpijob
+spec:
+  slotsPerWorker: {{ .Values.slotsPerWorker }}
+  runPolicy:
+    cleanPodPolicy: {{ .Values.image.cleanPodPolicy }}
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+            - name: {{ .Release.Name }}-mpijob-container
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/bash", "-c"]
+              {{- with .Values.envFrom }}
+              envFrom:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+              {{- with .Values.env }}
+              env:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              args:
+                - >-
+                  HOSTSFILE=$OMPI_MCA_orte_default_hostfile;
+                  MASTER_ADDR="$(head -n 1 $HOSTSFILE | sed -n s/[[:space:]]slots.*//p)";
+                  echo $MASTER_ADDR;
+                  NUM_NODES=$(wc -l < $HOSTSFILE);
+                  CARDS_PER_NODE= {{ .Values.numCards }};
+                  N_CARDS=$((NUM_NODES*CARDS_PER_NODE));
+
+                  SETUP_CMD="git clone --single-branch --branch v1.12.1 https://github.com/huggingface/optimum-habana.git /optimum-habana";
+                  $SETUP_CMD;
+                  mpirun --npernode 1 \
+                    --tag-output \
+                    --allow-run-as-root \
+                    --prefix $MPI_ROOT \
+                    -mca routed direct \
+                    $SETUP_CMD;
+
+                  MODEL_PATH=/optimum-habana/examples/language-modeling;
+                  cd $MODEL_PATH;
+                  mpirun -np ${N_CARDS} \
+                    --allow-run-as-root \
+                    --bind-to core \
+                    --map-by ppr:4:socket:PE=6 \
+                    -rank-by core --report-bindings \
+                    --tag-output \
+                    --merge-stderr-to-stdout --prefix $MPI_ROOT \
+                    -x MASTER_ADDR=$MASTER_ADDR \
+                    -mca routed direct \
+                    {{ .Values.command | join " " }};
+    Worker:
+      replicas: {{ .Values.numNodes }}
+      template:
+        spec:
+        #   nodeSelector:
+        #     kubernetes.io/hostname: g2-708056-vm04
+          hostIPC: {{ .Values.hostIPC }}
+          containers:
+            - name: {{ .Release.Name }}-mpijob-container
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              {{- with .Values.envFrom }}
+              envFrom:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+              {{- with .Values.env }}
+              env:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+{{- end }}
