@@ -499,9 +499,9 @@ class DeepseekV2MoE(nn.Module):
 
     @torch.no_grad()
     def moe_infer(self, x, topk_ids, topk_weight):
-    """
-    Rewrite DeepseekV2MoE.moe_infer: https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/blob/main/modeling_deepseek.py for static expert support
-    """
+        """
+        Rewrite DeepseekV2MoE.moe_infer: https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/blob/main/modeling_deepseek.py for static expert support
+        """
         out = torch.zeros_like(x)
 
         seq_len, hidden_dim = x.shape
