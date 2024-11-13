@@ -1,3 +1,4 @@
+{{- if or (not .Values.numNodes) (eq (int .Values.numNodes) 1) }}
 apiVersion: "batch/v1"
 kind: Job
 metadata:
@@ -66,4 +67,4 @@ spec:
         secret:
           secretName: {{ .Release.Name }}-secret
       {{- end }}
-
+{{- end }}
