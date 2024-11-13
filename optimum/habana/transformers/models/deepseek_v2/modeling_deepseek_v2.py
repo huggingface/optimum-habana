@@ -668,7 +668,7 @@ class DeepseekV2Attention(nn.Module):
         deltas are:
         - add  token_idx
         - optimize KV cache
-        """DeepseekV2Attention
+        """
 
         if "padding_mask" in kwargs:
             warnings.warn(
