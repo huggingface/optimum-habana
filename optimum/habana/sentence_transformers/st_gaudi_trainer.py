@@ -263,6 +263,8 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         from sentence_transformers import SentenceTransformer
 
         for name, child in loss.named_children():
+            if _is_peft_model(child):
+                child = child.get_base_model()
             if name == "model" and isinstance(child, SentenceTransformer):
                 loss.model = model
             elif isinstance(child, torch.nn.Module):
@@ -314,12 +316,14 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if isinstance(loss_fn, dict) and dataset_name:
             loss_fn = loss_fn[dataset_name]
 
-        # Hackishly insert the distributed model into the loss function, if the loss stores the model
-        # Only called once per process
+        # Insert the wrapped (e.g. distributed or compiled) model into the loss function,
+        # if the loss stores the model. Only called once per process
+        # from https://github.com/UKPLab/sentence-transformers/blob/v3.1.0/sentence_transformers/trainer.py#L337
         if (
-            self.args.parallel_mode != ParallelMode.NOT_PARALLEL
-            and hasattr(model, "module")
-            and hasattr(loss_fn, "model")
+            model == self.model_wrapped
+            and model != self.model  # Only if the model is wrapped
+            and hasattr(loss_fn, "model")  # Only if the loss stores the model
+            and loss_fn.model != model  # Only if the wrapped model is not already stored
         ):
             loss_fn = self.override_model_in_loss(loss_fn, model)
         loss = loss_fn(features, labels)

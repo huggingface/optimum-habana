@@ -60,7 +60,9 @@ MODELS_TO_TEST_MAPPING = {
     "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
     "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
-    "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen")],
+    "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen"), ("Qwen/Qwen2-72B", "Habana/qwen")],
+    "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
+    "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [

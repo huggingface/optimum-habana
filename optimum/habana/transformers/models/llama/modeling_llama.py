@@ -1,6 +1,5 @@
 import copy
 import math
-import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -20,6 +19,7 @@ from transformers.models.llama.modeling_llama import (
     apply_rotary_pos_emb,
     logger,
 )
+from transformers.utils import is_torchdynamo_compiling
 
 from .... import distributed
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
@@ -99,7 +99,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         if config is None:
             logger.warning_once(
                 "`LlamaRotaryEmbedding` can now be fully parameterized by passing the model config through the "
-                "`config` argument. All other arguments will be removed in v4.45"
+                "`config` argument. All other arguments will be removed in v4.46"
             )
             self.rope_kwargs = {
                 "rope_type": rope_type,
@@ -118,6 +118,9 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
             else:
                 self.rope_type = "default"
             self.max_seq_len_cached = config.max_position_embeddings
+            # Truncate the cached max sequence length to 8k to limit cached register buffer size
+            if config.max_position_embeddings > 8192 and self.rope_type == "llama3":
+                self.max_seq_len_cached = 8192
             self.original_max_seq_len = config.max_position_embeddings
 
         self.config = config
@@ -185,7 +188,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
 class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def __init__(self, *args, **kwargs):
         logger.warning_once(
-            "`LlamaLinearScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+            "`LlamaLinearScalingRotaryEmbedding` is deprecated an will be removed in v4.46. Please use "
             "`LlamaRotaryEmbedding`, which now also does linear scaling (simply pass the model config to __init__)."
         )
         kwargs["rope_type"] = "linear"
@@ -206,7 +209,7 @@ class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
 class GaudiLlamaDynamicNTKScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def __init__(self, *args, **kwargs):
         logger.warning_once(
-            "`LlamaDynamicNTKScalingRotaryEmbedding` is deprecated an will be removed in v4.45. Please use "
+            "`LlamaDynamicNTKScalingRotaryEmbedding` is deprecated an will be removed in v4.46. Please use "
             "`LlamaRotaryEmbedding`, which now also does dynamic ntk scaling (simply pass the model config to "
             "__init__)."
         )
@@ -347,12 +350,41 @@ def gaudi_llama_repeat_kv(
 
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
-    def __init__(self, fusedSDPA):
+    def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
         self._hpu_kernel_fsdpa = fusedSDPA
+        self.scale = scale
+        self.attention_dropout = attention_dropout
+        self.enable_recompute = enable_recompute
+        self.flash_attention_fp8 = flash_attention_fp8
 
-    def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
-        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode)
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_casual,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_casual,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
 
 
 class Matmul(torch.nn.Module):
@@ -412,7 +444,6 @@ class GaudiLlamaAttention(LlamaAttention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
-        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
             self.head_dim = config.hidden_size // self.num_heads
@@ -428,6 +459,17 @@ class GaudiLlamaAttention(LlamaAttention):
             self.v_proj = None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.fused_scaled_dot_product_attention = (
+            ModuleFusedSDPA(
+                FusedSDPA,
+                scale=self.norm_factor,
+                attention_dropout=self.attention_dropout,
+                enable_recompute=False,
+                flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+            )
+            if FusedSDPA
+            else None
+        )
 
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
@@ -480,7 +522,7 @@ class GaudiLlamaAttention(LlamaAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -488,6 +530,7 @@ class GaudiLlamaAttention(LlamaAttention):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
@@ -562,7 +605,7 @@ class GaudiLlamaAttention(LlamaAttention):
         # logger.warning_once(
         # "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
         # "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
+        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
         # "removed and `position_embeddings` will be mandatory."
         # )
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
@@ -618,30 +661,52 @@ class GaudiLlamaAttention(LlamaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
-            import habana_frameworks.torch.hpu as ht
-
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
             if q_len == 1:
                 # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None, "None"
-                    )
+                attn_output = self.fused_scaled_dot_product_attention(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    0.0,
+                    False,
+                    None,
+                    "None",
+                    False,
+                    None,
+                    "None",
+                )
             else:
                 # first token
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same length
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
-                        )
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states,
+                        key_states,
+                        value_states,
+                        None,
+                        0.0,
+                        True,
+                        None,
+                        softmax_mode,
+                        flash_attention_recompute,
+                        valid_sequence_lengths,
+                        "left",
+                    )
                 else:
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-                        )
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states,
+                        key_states,
+                        value_states,
+                        attention_mask,
+                        0.0,
+                        False,
+                        None,
+                        softmax_mode,
+                        flash_attention_recompute,
+                        None,
+                        "None",
+                    )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
@@ -695,7 +760,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -777,22 +842,22 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         hidden_states, attn_weights, present_key_value = GaudiLlamaAttention.pre_attn_forward(
             self,
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            position_embeddings,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
-            use_flash_attention,
-            flash_attention_recompute,
-            flash_attention_causal_mask,
-            flash_attention_fast_softmax,
-            cache_idx,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            cache_idx=cache_idx,
             **kwargs,
         )
 
@@ -829,7 +894,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -837,6 +902,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
@@ -855,21 +921,22 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         residual = hidden_states
 
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            position_embeddings,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
+            valid_sequence_lengths=valid_sequence_lengths,
             cache_idx=cache_idx,
             num_virtual_tokens=num_virtual_tokens,
             **kwargs,
@@ -905,6 +972,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -925,6 +993,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
+            valid_sequence_lengths=valid_sequence_lengths,
             cache_idx=cache_idx,
             num_virtual_tokens=num_virtual_tokens,
         )
@@ -1018,6 +1087,7 @@ class GaudiLlamaModel(LlamaModel):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
@@ -1157,6 +1227,7 @@ class GaudiLlamaModel(LlamaModel):
                     flash_attention_recompute,
                     flash_attention_causal_mask,
                     flash_attention_fast_softmax,
+                    valid_sequence_lengths,
                     None,
                 )
             else:
@@ -1176,6 +1247,7 @@ class GaudiLlamaModel(LlamaModel):
                     flash_attention_recompute=flash_attention_recompute,
                     flash_attention_causal_mask=flash_attention_causal_mask,
                     flash_attention_fast_softmax=flash_attention_fast_softmax,
+                    valid_sequence_lengths=valid_sequence_lengths,
                     cache_idx=cache_idx,
                     num_virtual_tokens=num_virtual_tokens,
                 )
@@ -1245,6 +1317,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
@@ -1253,6 +1326,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: torch.Tensor = None,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
@@ -1285,6 +1359,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
+            valid_sequence_lengths=valid_sequence_lengths,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
             num_virtual_tokens=num_virtual_tokens,
@@ -1302,11 +1377,18 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
             logits = torch.cat(logits, dim=-1)
         else:
-            logits = self.lm_head(hidden_states)
-        logits = logits.float()
+            if labels is None and not is_torchdynamo_compiling():
+                logger.warning_once(
+                    "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+                )
+            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+            # TODO: remove the float() operation in v4.46
+            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
@@ -1339,6 +1421,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        num_logits_to_keep=None,
         token_idx=None,
         **kwargs,
     ):
@@ -1346,7 +1429,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
@@ -1369,6 +1453,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # keep cache_position implementation as None for HPU
         cache_position = None
@@ -1377,7 +1463,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids.contiguous()}
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
         model_inputs.update(
             {
@@ -1394,6 +1483,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
                 "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
+                "valid_sequence_lengths": kwargs.get("valid_sequence_lengths"),
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
                 "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
