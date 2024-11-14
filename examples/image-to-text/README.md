@@ -32,6 +32,7 @@ Models that have been validated:
   - [llava-hf/llama3-llava-next-8b-hf](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf)
   - [HuggingFaceM4/idefics2-8b](https://huggingface.co/HuggingFaceM4/idefics2-8b)
   - [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
+  - [google/paligemma-3b-mix-224](https://huggingface.co/google/paligemma-3b-mix-224)
 
 ### Inference with BF16
 
