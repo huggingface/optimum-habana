@@ -1720,8 +1720,7 @@ class GaudiTrainer(Trainer):
     ) -> Dict[str, float]:
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
-        1. comment out TPU related
-        2. use throughput_warmup_steps in evaluation throughput calculation
+        1. use throughput_warmup_steps in evaluation throughput calculation
         """
         # handle multipe eval datasets
         override = eval_dataset is not None
