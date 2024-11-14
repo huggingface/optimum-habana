@@ -1,0 +1,46 @@
+From 04864c63cc4a88ea064c134250f345941824c9b2 Mon Sep 17 00:00:00 2001
+From: Iman Gohari <s.m.iman.gohari@intel.com>
+Date: Thu, 14 Nov 2024 17:41:15 +0000
+Subject: [PATCH] fix(sd-readme): Added sd3 measure step
+
+---
+ examples/stable-diffusion/README.md | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/examples/stable-diffusion/README.md b/examples/stable-diffusion/README.md
+index 6fe9aa9..a2799f7 100644
+--- a/examples/stable-diffusion/README.md
++++ b/examples/stable-diffusion/README.md
+@@ -295,10 +295,27 @@ python text_to_image_generation.py \
+     --bf16
+ ```
+ 
+-Here is how to generate SD3 images with a single prompt with FP8 precision:
++Here is how to generate SD3 images with a single prompt with FP8 precision. First we run the measure command to generate stats for quantization:
+ 
+-Note : Run the below command in Measure mode to generate stats for quantization, which is done by setting --quant_mode to 'measure' and use 'measure_config.json' file instead of 'quantize_config.json' for QUANT_CONFIG.
++```
++QUANT_CONFIG=quantization/stable-diffusion-3/measure_config.json \
++PT_HPU_WEIGHT_SHARING=0 \
++python text_to_image_generation.py \
++    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
++    --prompts "Sailing ship painting by Van Gogh" \
++    --num_images_per_prompt 10 \
++    --batch_size 1 \
++    --num_inference_steps 28 \
++    --image_save_dir /tmp/stable_diffusion_3_images \
++    --scheduler default \
++    --use_habana \
++    --use_hpu_graphs \
++    --gaudi_config Habana/stable-diffusion \
++    --bf16 \
++    --quant_mode measure
++```
+ 
++Second, we run quantization command:
+ ```bash
+ QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json \
+ PT_HPU_WEIGHT_SHARING=0 \
+-- 
+2.34.1
+
