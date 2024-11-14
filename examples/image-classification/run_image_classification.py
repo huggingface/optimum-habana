@@ -225,6 +225,9 @@ def main():
         token=model_args.token,
     )
 
+    if training_args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
