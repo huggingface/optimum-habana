@@ -219,7 +219,14 @@ class ExampleTestMeta(type):
 
     @staticmethod
     def to_test(
-        model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, fp8: bool, task_name: str
+        model_name: str,
+        multi_card: bool,
+        deepspeed: bool,
+        example_name: str,
+        fsdp: bool,
+        fp8: bool,
+        eager_mode: bool,
+        task_name: str,
     ):
         models_with_specific_rules = [
             "albert-xxlarge-v1",
@@ -247,6 +254,8 @@ class ExampleTestMeta(type):
             "run_image2text_lora_finetune",
         ]
 
+        models_measured_on_eager_mode = ["google/gemma-2b-it"]
+
         if (fsdp or fp8) and not IS_GAUDI2:
             return False
         elif (
@@ -270,6 +279,8 @@ class ExampleTestMeta(type):
             "adalora",
             "ln_tuning",
         ):
+            return False
+        elif eager_mode and not model_name in models_measured_on_eager_mode:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -321,6 +332,7 @@ class ExampleTestMeta(type):
         fsdp=False,
         torch_compile=False,
         fp8=False,
+        eager_mode=False,
     ):
         distribution = "single_card"
         if multi_card:
@@ -340,7 +352,7 @@ class ExampleTestMeta(type):
                     )
 
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, fp8, attrs["TASK_NAME"]):
+            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, fp8, eager_mode, attrs["TASK_NAME"]):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile, fp8
                 )
@@ -424,9 +436,15 @@ class ExampleTestMeta(type):
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
-            path_to_baseline = BASELINE_DIRECTORY / Path(
-                model_name.split("/")[-1].replace("-", "_").replace(".", "_")
-            ).with_suffix(".json")
+
+            # collect baseline from <model_name>_eager.json if eager_mode is True
+            if self.EAGER_MODE:
+                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_") + "_eager"
+            else:
+                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_")
+
+            path_to_baseline = BASELINE_DIRECTORY / Path(baseline_name).with_suffix(".json")
+
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
@@ -474,6 +492,10 @@ class ExampleTestMeta(type):
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
+            if self.EAGER_MODE:
+                env_variables["PT_HPU_LAZY_MODE"] = "0"
+                if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
+                    extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
             elif torch_compile and (
@@ -548,6 +570,7 @@ class ExampleTesterBase(TestCase):
         "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
         "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
     }
+    EAGER_MODE = None
 
     def _create_command_line(
         self,
@@ -721,6 +744,13 @@ class MultiCardQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa", multi_card=True, torch_compile=True
 ):
     TASK_NAME = "squad"
+
+
+class EagerModeCausalLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", eager_mode=True
+):
+    TASK_NAME = "wikitext"
+    EAGER_MODE = True
 
 
 class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
