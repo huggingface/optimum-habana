@@ -4,6 +4,7 @@ from .pipelines.controlnet.pipeline_stable_video_diffusion_controlnet import (
     GaudiStableVideoDiffusionControlNetPipeline,
 )
 from .pipelines.ddpm.pipeline_ddpm import GaudiDDPMPipeline
+from .pipelines.i2vgen_xl.pipeline_i2vgen_xl import GaudiI2VGenXLPipeline
 from .pipelines.pipeline_utils import GaudiDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_depth2img import GaudiStableDiffusionDepth2ImgPipeline
