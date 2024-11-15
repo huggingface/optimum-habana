@@ -191,8 +191,9 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next", "qwen2_vl"):
+    elif args.image_path is None and model_type == "qwen2_vl":
         args.image_path = ["https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"]
+    if args.prompt is None and model_type in ("llava", "llava_next", "qwen2_vl"):
         if model_type == "llava":
             processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
         elif model_type == "llava_next":
