@@ -18,36 +18,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss, LayerNorm
+from torch.nn import CrossEntropyLoss
 
-from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, SlidingWindowCache, StaticCache, DynamicCache
-from transformers.generation import GenerationMixin
-from transformers.modeling_attn_mask_utils import (
-    AttentionMaskConverter,
-)
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    ModelOutput,
-)
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    is_flash_attn_2_available,
-    is_flash_attn_greater_or_equal_2_10,
-    logging,
-    replace_return_docstrings,
-)
+from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_outputs import BaseModelOutputWithPast
+
+from transformers.utils import logging
 
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     Qwen2VLSdpaAttention,
@@ -79,6 +59,11 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        The only difference are:
+        - add new args token_idx
+        - optimize KV cache
+        """
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
             logger.warning_once(
@@ -485,7 +470,10 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             if token_idx:
                 input_ids = input_ids[:, token_idx-1].unsqueeze(-1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
 
         rope_deltas = kwargs.get("rope_deltas", None)
         if attention_mask is not None and position_ids is None:
@@ -512,6 +500,26 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
         else:
             model_inputs = {"input_ids": input_ids, "inputs_embeds": None}
+
+        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
+            if model_inputs["inputs_embeds"] is not None:
+                batch_size, sequence_length, _ = inputs_embeds.shape
+                device = inputs_embeds.device
+            else:
+                batch_size, sequence_length = input_ids.shape
+                device = input_ids.device
+
+            attention_mask = self.model._prepare_4d_causal_attention_mask_with_cache_position(
+                attention_mask,
+                sequence_length=sequence_length,
+                target_length=past_key_values.get_max_cache_shape(),
+                dtype=self.lm_head.weight.dtype,
+                device=device,
+                cache_position=cache_position,
+                batch_size=batch_size,
+                config=self.config,
+                past_key_values=past_key_values,
+            )
 
         model_inputs.update(
             {
