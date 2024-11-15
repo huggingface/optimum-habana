@@ -202,7 +202,10 @@ def main():
                 ],
             }
         ]
-        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+        if processor.chat_template is not None:
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+        else:
+            args.prompt = "User:<image>\nWhat is shown in this image?\nAssistant:"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)

@@ -278,7 +278,10 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 )
 
                 # 1. Extract the input embeddings
-                inputs_embeds = self.get_input_embeddings()(input_ids)
+                input_ids_mask = input_ids.clone()
+                input_ids_mask[input_ids == self.config.image_token_index] = 0
+                inputs_embeds = self.get_input_embeddings()(input_ids_mask)
+
                 # 2. Merge text and images
                 batch_size, num_patches, num_channels, height, width = pixel_values.shape
                 reshaped_pixel_values = pixel_values.view(batch_size * num_patches, num_channels, height, width)
