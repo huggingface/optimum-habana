@@ -23,30 +23,26 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
-
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast
-
-from transformers.utils import logging
-
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
-    Qwen2VLSdpaAttention,
     Qwen2VLAttention,
+    Qwen2VLCausalLMOutputWithPast,
+    Qwen2VLDecoderLayer,
     Qwen2VLFlashAttention2,
+    Qwen2VLForConditionalGeneration,
+    Qwen2VLModel,
+    Qwen2VLSdpaAttention,
     apply_multimodal_rotary_pos_emb,
     repeat_kv,
-    Qwen2VLDecoderLayer,
-    Qwen2VLModel,
-    Qwen2VLForConditionalGeneration,
-    Qwen2VLCausalLMOutputWithPast,
 )
+from transformers.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
 
-
 class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -119,7 +115,9 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
                     past_key_value.value_cache.append(value_states)
             else:
                 cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}  # Specific to RoPE models
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -148,9 +146,9 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
             dropout_p=self.attention_dropout if self.training else 0.0,
             is_causal=is_causal,
         )
- 
+
         # use hpu graph then no need of this
-        #if attn_output.device.type == 'hpu':
+        # if attn_output.device.type == 'hpu':
         #    torch.hpu.synchronize()
 
         attn_output = attn_output.transpose(1, 2).contiguous()
@@ -160,12 +158,14 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
 
         return attn_output, None, past_key_value
 
+
 # Now only support the default GaudiQwen2VLSdpaAttention
 GAUDI_QWEN2_VL_ATTENTION_CLASSES = {
     "eager": Qwen2VLAttention,
     "flash_attention_2": Qwen2VLFlashAttention2,
     "sdpa": GaudiQwen2VLSdpaAttention,
 }
+
 
 class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
     def forward(
@@ -214,6 +214,7 @@ class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
+
 
 class GaudiQwen2VLModel(Qwen2VLModel):
     def forward(
@@ -452,7 +453,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
     def prepare_inputs_for_generation(
         self,
         input_ids,
-        past_key_values=None, 
+        past_key_values=None,
         attention_mask=None,
         inputs_embeds=None,
         cache_position=None,
@@ -468,11 +469,13 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
 
         if past_key_values:
             if token_idx:
-                input_ids = input_ids[:, token_idx-1].unsqueeze(-1)
+                input_ids = input_ids[:, token_idx - 1].unsqueeze(-1)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
 
         rope_deltas = kwargs.get("rope_deltas", None)
