@@ -108,12 +108,9 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_moe",
     "xglm",
     "whisper",
-<<<<<<< HEAD
     "qwen2_vl",
-=======
     "idefics2",
     "mllama",
->>>>>>> source/main
 ]
 
 
