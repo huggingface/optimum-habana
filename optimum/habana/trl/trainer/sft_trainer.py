@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate import PartialState
+import datasets
 from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
