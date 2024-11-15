@@ -30,6 +30,7 @@ Models that have been validated:
   - [llava-hf/llava-v1.6-vicuna-13b-hf](https://huggingface.co/llava-hf/llava-v1.6-vicuna-13b-hf)
   - [llava-hf/llava-v1.6-34b-hf](https://huggingface.co/llava-hf/llava-v1.6-34b-hf)
   - [llava-hf/llama3-llava-next-8b-hf](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf)
+  - [Qwen/Qwen2-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct)
 
 ### Inference with BF16
 
@@ -88,6 +89,15 @@ To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
+    --use_hpu_graphs \
+    --bf16
+```
+
+To run Qwen/Qwen2-VL-7B-Instruct inference, use the following command:
+
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path Qwen/Qwen2-VL-7B-Instruct \
     --use_hpu_graphs \
     --bf16
 ```

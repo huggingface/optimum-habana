@@ -23,7 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
+from transformers import AutoConfig, AutoProcessor, LlavaNextProcessor, LlavaProcessor, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -191,11 +191,13 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next"):
+    if args.prompt is None and model_type in ("llava", "llava_next", "qwen2_vl"):
         if model_type == "llava":
             processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
         elif model_type == "llava_next":
             processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
+        elif model_type == "qwen2_vl":
+            processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         conversation = [
             {
                 "role": "user",
