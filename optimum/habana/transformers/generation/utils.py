@@ -2764,12 +2764,16 @@ class GaudiGenerationMixin(GenerationMixin):
             root = (float("-inf"), None, None, False)
 
             def resolve_beam(beam):
-                if beam == root:
-                    return []
-                score, prev, tok, is_finished = beam
-                rest = resolve_beam(prev)
-                rest.append(tok)
-                return rest
+                outputs = []
+                current = beam
+
+                while current != root:
+                    score, prev, tok, is_finished = current
+                    outputs.append(tok)
+                    current = prev
+
+                outputs.reverse()
+                return outputs
 
             prev_beams = [[root] * num_beams] * bs
             best = [root] * bs
