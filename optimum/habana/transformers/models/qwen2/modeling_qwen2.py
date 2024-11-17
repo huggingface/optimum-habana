@@ -419,7 +419,7 @@ class GaudiQwen2Attention(Qwen2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 

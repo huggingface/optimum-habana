@@ -34,6 +34,7 @@ from transformers import (
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
     MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
+    MODEL_FOR_VISION_2_SEQ_MAPPING,
     MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
@@ -201,6 +202,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         ["t5"],
     ),
+    "run_image2text_lora_finetune": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_VISION_2_SEQ_MAPPING,
+        ["idefics2", "mllama"],
+    ),
 }
 
 
@@ -230,16 +236,21 @@ class ExampleTestMeta(type):
             "meta-llama/LlamaGuard-7b",
         ]
 
+        case_only_in_gaudi2 = [
+            "sft",
+            "dpo",
+            "reward_modeling",
+            "ppo",
+            "prompt_tuning",
+            "peft_poly",
+            "run_sequence_classification",
+            "run_image2text_lora_finetune",
+        ]
+
         if (fsdp or fp8) and not IS_GAUDI2:
             return False
         elif (
-            "sft" in example_name
-            or "dpo" in example_name
-            or "reward_modeling" in example_name
-            or "ppo" in example_name
-            or "prompt_tuning" in example_name
-            or "peft_poly" in example_name
-            or example_name == "run_sequence_classification"
+            any(case in example_name for case in case_only_in_gaudi2)
             or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
         ) and not IS_GAUDI2:
             return False
@@ -411,10 +422,9 @@ class ExampleTestMeta(type):
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
-
-            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
-                ".json"
-            )
+            path_to_baseline = BASELINE_DIRECTORY / Path(
+                model_name.split("/")[-1].replace("-", "_").replace(".", "_")
+            ).with_suffix(".json")
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
@@ -439,7 +449,7 @@ class ExampleTestMeta(type):
 
             env_variables = os.environ.copy()
             if "falcon" in model_name:
-                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(example_script.parent / "ops_bf16.txt")
             elif "flan" in model_name:
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
             elif "bloom" in model_name:
@@ -450,13 +460,15 @@ class ExampleTestMeta(type):
                 env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
             elif fsdp:
                 if "llama" in model_name:
-                    env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                    env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(
+                        example_script.parent / "ops_bf16.txt"
+                    )
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
             elif deepspeed and "gpt-neox-20b" in model_name:
                 env_variables["LD_PRELOAD"] = ""
 
             if fp8 and "llama" in model_name:
-                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(example_script.parent / "ops_bf16.txt")
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
@@ -920,6 +932,16 @@ class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
     DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardImageToTextModelingLoRAExampleTester(
+    ExampleTesterBase,
+    metaclass=ExampleTestMeta,
+    example_name="run_image2text_lora_finetune",
+    multi_card=True,
+):
+    TASK_NAME = "image2text_lora_finetune"
+    DATASET_NAME = "nielsr/docvqa_1200_examples"
 
 
 class MultiCardCausalLanguageModelingVeraExampleTester(
