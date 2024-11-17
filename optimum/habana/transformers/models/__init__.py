@@ -72,6 +72,7 @@ from .falcon import (
 )
 from .falcon_mamba import (
     gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
 )
 from .gemma import (
     GaudiGemmaAttention,

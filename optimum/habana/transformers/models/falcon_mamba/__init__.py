@@ -13,3 +13,4 @@
 # limitations under the License.
 
 from .modeling_falcon_mamba import gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
+from .modeling_falcon_mamba import gaudi_FalconMambaModel_forward

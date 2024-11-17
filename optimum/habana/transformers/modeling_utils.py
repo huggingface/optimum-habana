@@ -173,6 +173,7 @@ from .models import (
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
     gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_forward,
@@ -625,6 +626,15 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaForCausalLM.prepare_inputs_for_generation = (
         gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
     )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = (
+        gaudi_FalconMambaModel_forward
+    )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = (
+        gaudi_llama_rmsnorm_forward
+    )
+
+
+
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention

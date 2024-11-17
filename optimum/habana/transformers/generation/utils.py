@@ -2453,7 +2453,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     # case3 (default case): token_idx is None
                     next_token_scores = logits_processor(input_ids, next_token_logits)
-
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
                 if output_scores:
