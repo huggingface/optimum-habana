@@ -329,7 +329,9 @@ class GaudiQwen2Attention(Qwen2Attention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                    )
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
