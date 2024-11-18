@@ -137,6 +137,9 @@ The following command triggers the fine-tuning of [GPT-NeoX-20B](https://hugging
 Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
 It reaches a perplexity of 10.469.
 
+> [!NOTE]
+>  For GPT-NeoX-20B model, please switch to jemalloc in case of host OOM issues using ``` export LD_PRELOAD=<path>/libjemalloc.so.2 ```
+
 > Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
 
 ```bash
@@ -362,7 +365,7 @@ python run_clm.py \
 
 ## PEFT
 
-### LORA/ADALORA/IA3/LLAMA_ADAPTER
+### LORA/ADALORA/IA3/LLAMA_ADAPTER/VERA/LN_TUNING
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
 Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
@@ -401,7 +404,7 @@ python3 run_lora_clm.py \
 ```
 - Single-card finetuning of Falcon-40B:
 ```bash
-LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
@@ -471,39 +474,39 @@ python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Llama2-7B with FP8:
 ```bash
-LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
-	--world_size 8 --use_mpi run_lora_clm.py \
-	--model_name_or_path meta-llama/Llama-2-7b-hf \
-	--dataset_name tatsu-lab/alpaca \
-	--bf16 True \
-	--output_dir ./model_lora_llama \
-	--num_train_epochs 3 \
-	--per_device_train_batch_size 16 \
-	--gradient_accumulation_steps 1 \
-	--eval_strategy "no" \
-	--save_strategy "no" \
-	--learning_rate 3e-4 \
-	--warmup_ratio 0.03 \
-	--lr_scheduler_type "constant" \
-	--max_grad_norm 0.3 \
-	--logging_steps 20 \
-	--do_train \
-	--do_eval \
-	--use_habana \
-	--use_lazy_mode \
-	--throughput_warmup_steps 18 \
-	--lora_rank=8 \
-	--lora_alpha=16 \
-	--lora_dropout=0.05 \
-	--lora_target_modules "q_proj" "v_proj" \
-	--dataset_concatenation \
-	--max_seq_length 512 \
-	--ddp_bucket_cap_mb 50 \
-	--adam_epsilon 1e-08 \
-	--validation_split_percentage 10 \
-	--low_cpu_mem_usage True \
-	--pipelining_fwd_bwd \
-	--fp8 True
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 1 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm 0.3 \
+    --logging_steps 20 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 18 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --ddp_bucket_cap_mb 50 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 10 \
+    --low_cpu_mem_usage True \
+    --pipelining_fwd_bwd \
+    --fp8 True
 ```
 
 - Multi-card finetuning of codegen-16B-mono:
@@ -566,7 +569,7 @@ python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Falcon-40B:
 ```bash
-LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -644,7 +647,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:
 
 ```bash
-LOWER_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --dataset_name tatsu-lab/alpaca \
@@ -687,7 +690,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   - Falcon-180B example command saves only the LoRA parameters at end
   - For inference we need to merge the pretrained model and LoRA weights
 ```bash
-DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-180B \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -720,7 +723,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`.
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`.
 
 #### Custom Files
 
@@ -865,7 +868,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --per_device_eval_batch_size 4 \
     --bf16 \
     --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training
+    --use_hpu_graphs_for_training \
+    --trust_remote_code
 ```
 
 

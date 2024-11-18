@@ -65,7 +65,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.43.0")
+check_min_version("4.45.0")
 check_optimum_habana_min_version("1.14.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
@@ -374,6 +374,12 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
     )
+
+    if training_args.do_train and training_args.use_compiled_autograd:
+        from habana_frameworks.torch.dynamo.compile_backend.experimental import enable_compiled_autograd
+
+        enable_compiled_autograd()
+        torch._C._set_autograd_fallback_mode("nothing")
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast

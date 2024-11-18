@@ -45,7 +45,7 @@ from transformers.models.mixtral.modeling_mixtral import (
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -347,7 +347,7 @@ class GaudiMixtralAttention(MixtralAttention):
 
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
+        if not output_attentions or FusedSDPA:
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
@@ -701,6 +701,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
@@ -736,11 +737,18 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         )
 
         hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-        logits = logits.float()
+        if labels is None and not is_torchdynamo_compiling():
+            logger.warning_once(
+                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+            )
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        # TODO: remove the float() operation in v4.46
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
@@ -789,6 +797,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits=False,
         position_ids=None,
         use_cache=True,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         reuse_cache = kwargs.get("reuse_cache")
@@ -797,7 +806,8 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]
@@ -826,6 +836,9 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
 
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
@@ -833,6 +846,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "attention_mask": attention_mask,
+                "output_router_logits": output_router_logits,
                 "token_idx": token_idx,
                 "reuse_cache": reuse_cache,
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),

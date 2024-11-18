@@ -50,8 +50,8 @@
                     "learning_rate": 6e-5,
                     "train_batch_size": 160,
                     "eval_accuracy": 0.9850666666666666,
-                    "train_runtime": 72.7832,
-                    "train_samples_per_second": 891.862,
+                    "train_runtime": 77.8934,
+                    "train_samples_per_second": 826.766,
                     "extra_arguments": [
                         "--remove_unused_columns False",
                         "--image_column_name img",
