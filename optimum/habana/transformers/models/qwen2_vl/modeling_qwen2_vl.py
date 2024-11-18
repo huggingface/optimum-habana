@@ -466,17 +466,24 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         **kwargs,
     ):
         token_idx = kwargs.get("token_idx", None)
+        if token_idx is None:
+            return super().prepare_inputs_for_generation(
+                input_ids=input_ids,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                cache_position=cache_position,
+                position_ids=position_ids,
+                use_cache=use_cache,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                **kwargs,
+            )
 
         if past_key_values:
-            if token_idx:
-                input_ids = input_ids[:, token_idx - 1].unsqueeze(-1)
-            else:
-                if inputs_embeds is not None:  # Exception 1
-                    input_ids = input_ids[:, -cache_position.shape[0] :]
-                elif (
-                    input_ids.shape[1] != cache_position.shape[0]
-                ):  # Default case (the "else", a no op, is Exception 2)
-                    input_ids = input_ids[:, cache_position]
+            input_ids = input_ids[:, token_idx - 1].unsqueeze(-1)
 
         rope_deltas = kwargs.get("rope_deltas", None)
         if attention_mask is not None and position_ids is None:
