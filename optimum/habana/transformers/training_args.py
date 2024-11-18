@@ -242,6 +242,11 @@ class GaudiTrainingArguments(TrainingArguments):
         default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
     )
+    
+    profiling_with_stack: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("record source information (file and line number) for the ops when enabling profiling.")},
+    )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
         default="adamw_torch",
