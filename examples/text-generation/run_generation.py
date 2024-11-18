@@ -503,6 +503,8 @@ def main():
                 iteration_times=iteration_times,
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
+            first_token_time = iteration_times[0] + encode_duration
+            logger.info(f"Time to first token = {first_token_time*1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile

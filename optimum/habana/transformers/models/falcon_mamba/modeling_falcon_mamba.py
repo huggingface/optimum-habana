@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch FALCONMAMBA model."""
-import os
+
+from typing import Optional, Tuple, Union
+
+import habana_frameworks.torch.core as htcore
 import torch
-from typing import Any, Dict, Optional, Tuple, Union
 from transformers.cache_utils import MambaCache
+from transformers.models.falcon_mamba.modeling_falcon_mamba import FalconMambaOutput
 from transformers.utils import (
     logging,
 )
-from transformers.models.falcon_mamba.modeling_falcon_mamba import FalconMambaOutput
-from transformers.utils.import_utils import is_causal_conv1d_available, is_mamba_ssm_available, is_mambapy_available
-import habana_frameworks.torch.core as htcore
 
 
 # if is_mambapy_available():
@@ -53,6 +53,8 @@ Copys from https://github.com/huggingface/transformers/blob/v4.45.2/src/transfor
 The only differences are:
 - Use the mark_step function to reduce the graph compiling time.
 """
+
+
 def gaudi_FalconMambaModel_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
@@ -131,11 +133,14 @@ def gaudi_FalconMambaModel_forward(
         hidden_states=all_hidden_states,
     )
 
+
 """
 Copys from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/falcon_mamba/modeling_falcon_mamba.py#L762
 The only differences are:
 - Use the torch.index_select function to replace the slicing operation of Line 51
 """
+
+
 def gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation(
     self,
     input_ids,

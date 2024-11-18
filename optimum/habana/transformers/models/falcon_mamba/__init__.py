@@ -12,5 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .modeling_falcon_mamba import gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
-from .modeling_falcon_mamba import gaudi_FalconMambaModel_forward
+from .modeling_falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
+)
