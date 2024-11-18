@@ -1,0 +1,7 @@
+{
+    "method": "HOOKS",
+    "mode": "QUANTIZE",
+    "observer": "maxabs",
+    "scale_method": "maxabs_arbitrary",
+    "dump_stats_path": "./hqt_output/measure"
+}
