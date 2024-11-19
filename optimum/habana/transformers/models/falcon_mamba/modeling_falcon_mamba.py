@@ -24,28 +24,6 @@ from transformers.utils import (
     logging,
 )
 
-
-# if is_mambapy_available():
-#     from mambapy.pscan import pscan
-# else:
-#     pscan = None
-
-# if is_mamba_ssm_available():
-#     from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
-#     from mamba_ssm.ops.triton.selective_state_update import selective_state_update
-
-#     from ...kernels.falcon_mamba import mamba_inner_fn
-# else:
-#     selective_state_update, selective_scan_fn, mamba_inner_fn = None, None, None
-
-# if is_causal_conv1d_available():
-#     from causal_conv1d import causal_conv1d_fn, causal_conv1d_update
-# else:
-#     causal_conv1d_update, causal_conv1d_fn = None, None
-
-# is_fast_path_available = all(
-#     (selective_state_update, selective_scan_fn, causal_conv1d_fn, causal_conv1d_update, mamba_inner_fn)
-# )
 logger = logging.get_logger(__name__)
 
 """
