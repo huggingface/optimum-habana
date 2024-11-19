@@ -15,8 +15,7 @@ concurrency:
 jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
-    runs-on:
-      group: aws-dl1-24xlarge
+    runs-on: [self-hosted, linux, x64, gaudi2]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -38,8 +37,7 @@ jobs:
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
-    runs-on:
-      group: aws-dl1-24xlarge
+    runs-on: [self-hosted, linux, x64, gaudi2]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
