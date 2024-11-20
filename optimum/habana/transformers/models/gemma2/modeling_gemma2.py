@@ -37,10 +37,7 @@ from transformers.models.gemma2.modeling_gemma2 import (
 from transformers.utils import logging
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 
-from ...modeling_attn_mask_utils import (
-    GaudiAttentionMaskConverter,
-    _gaudi_prepare_4d_causal_attention_mask
-)
+from ...modeling_attn_mask_utils import GaudiAttentionMaskConverter, _gaudi_prepare_4d_causal_attention_mask
 
 
 try:
@@ -69,6 +66,7 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 
 logger = logging.get_logger(__name__)
+
 
 class GaudiGemma2RotaryEmbedding(torch.nn.Module):
     def __init__(
@@ -170,6 +168,7 @@ class GaudiGemma2RotaryEmbedding(torch.nn.Module):
                 self._sin_cached[:seq_len].to(dtype=x.dtype) * self.attention_scaling,
             )
 
+
 def gaudi_gemma2_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -194,6 +193,7 @@ def gaudi_gemma2_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
 
 class Matmul(torch.nn.Module):
     def __init__(self):
@@ -243,6 +243,7 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+
 class GaudiGemma2Attention(Gemma2Attention):
     def __init__(self, config: Gemma2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -283,7 +284,7 @@ class GaudiGemma2Attention(Gemma2Attention):
         self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
-    
+
     def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
@@ -309,7 +310,7 @@ class GaudiGemma2Attention(Gemma2Attention):
             attn_output = attn_output[:, :, :-q_padding, :]
 
         return attn_output
-    
+
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
@@ -476,6 +477,7 @@ class GaudiGemma2Attention(Gemma2Attention):
             self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
+
 class GaudiGemma2MLP(Gemma2MLP):
     def pre_mlp_forward(self, x):
         inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
@@ -490,7 +492,8 @@ class GaudiGemma2MLP(Gemma2MLP):
         if hasattr(self.down_proj, "post_all_reduce"):
             return self.down_proj.post_all_reduce(x)
         return x
-    
+
+
 class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     def __init__(self, config: Gemma2Config, layer_idx: int):
         super().__init__(config, layer_idx)
@@ -524,7 +527,6 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-
         hidden_states = self.input_layernorm(hidden_states)
 
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -606,7 +608,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
-    
+
     def post_attn_pre_mlp(self, hidden_states, residual):
         hidden_states = self.self_attn.post_attn_forward(hidden_states)
         hidden_states = self.post_attention_layernorm(hidden_states)
@@ -791,7 +793,7 @@ class GaudiGemma2Model(Gemma2Model):
                     flash_attention_recompute,
                     flash_attention_causal_mask,
                     flash_attention_fast_softmax,
-                    None
+                    None,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -842,7 +844,6 @@ class GaudiGemma2Model(Gemma2Model):
 
 
 class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
-
     def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
         config.parallel_strategy = parallel_strategy
         super().__init__(config)
@@ -916,7 +917,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
 
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
-        
+
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
                 hidden_states = hidden_states.index_select(1, token_idx - 1)
