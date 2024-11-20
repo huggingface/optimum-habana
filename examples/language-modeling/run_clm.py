@@ -165,7 +165,50 @@ class ModelArguments:
             )
         },
     )
-
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable recompute in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    flash_attention_fp8: bool = field(
+        default=False,
+        metadata={"help": ("Whether to enable flash attention in FP8.")},
+    )
+    use_fused_rope: bool = field(
+        default=False,
+        metadata={
+            "help": ("Whether to use Habana fused-rope for fine-tuning.")
+        },
+    )
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
             raise ValueError(
@@ -418,6 +461,7 @@ def main():
         "token": model_args.token,
         "trust_remote_code": model_args.trust_remote_code,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
+        "flash_attention_fp8": model_args.flash_attention_fp8,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -469,6 +513,26 @@ def main():
         model = AutoModelForCausalLM.from_config(config, trust_remote_code=model_args.trust_remote_code)
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(f"Training new model from scratch - Total size={n_params/2**20:.2f}M params")
+
+    if model.config.model_type == "llama":
+        if model.generation_config.pad_token_id is None:
+            if isinstance(model.generation_config.eos_token_id, int):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id
+            elif isinstance(model.generation_config.eos_token_id, list):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id[0]
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
+        if model_args.use_flash_attention:
+            model.generation_config.use_flash_attention = True
+            model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+            model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+
+            if model_args.flash_attention_fp8:
+                import habana_frameworks.torch.hpu as hthpu
+
+                assert hthpu.get_device_name() == "GAUDI3", "Flash attention in FP8 is supported only on Gaudi3"
+        if not model_args.use_fused_rope:
+            model.generation_config.use_fused_rope = False
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
