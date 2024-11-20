@@ -482,6 +482,8 @@ class GaudiLlamaAttention(LlamaAttention):
         Scales tensor gets the weight dtype."""
         if hasattr(self.k_proj, "qweight"):
             return self.k_proj.scales.dtype
+        if isinstance(self.k_proj, KVCache):
+            return torch.bfloat16
         return self.k_proj.weight.dtype
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
