@@ -384,6 +384,14 @@ def check_habana_frameworks_version(req_version):
     )
 
 
+def check_neural_compressor_min_version(req_version):
+    """
+    Checks if the installed version of `neural_compressor` is larger than or equal to `req_version`.
+    """
+    import neural_compressor
+    return version.Version(neural_compressor.__version__) >= version.Version(req_version)
+
+
 def get_device_name():
     """
     Returns the name of the current device: Gaudi or Gaudi2.
