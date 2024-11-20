@@ -790,6 +790,9 @@ def main():
             sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False, add_bos_token=add_bos_token)
             for label, source_len in zip(labels, sources_tokenized["input_id_len"]):
                 label[:source_len] = [IGNORE_INDEX] * source_len
+            for i, label in enumerate(labels):
+                label = label.numpy()
+                labels[i]=torch.tensor([elem if elem != tokenizer.pad_token_id else IGNORE_INDEX for elem in label], dtype=label.dtype, device=label.device)
         return {
             "input_ids": input_ids,
             "labels": labels,
