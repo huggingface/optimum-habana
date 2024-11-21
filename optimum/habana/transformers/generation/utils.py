@@ -117,6 +117,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deepseek_v2",
 ]
 
+# Initial generated token index is set to 1 to accomodate SOS (start of string) token.
+INITIAL_TOKEN_IDX = 1
 
 logger = logging.get_logger(__name__)
 
@@ -1149,7 +1151,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 if model_kwargs.get("decoder_input_ids", None) is None:
-                    token_idx = 1
+                    token_idx = INITIAL_TOKEN_IDX
                 else:
                     token_idx = model_kwargs["decoder_input_ids"].shape[-1]
                 model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
@@ -2616,7 +2618,7 @@ class GaudiGenerationMixin(GenerationMixin):
             eos_token_id = generation_config.eos_token_id
             idx_bs = generation_config.max_length
             for i in range(batch_size):
-                for idx in range(len(input_ids[i])):
+                for idx in range(INITIAL_TOKEN_IDX, len(input_ids[i])):
                     if input_ids[i][idx] == eos_token_id:
                         idx_bs = idx
                     if idx > idx_bs:
