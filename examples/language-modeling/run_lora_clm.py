@@ -30,7 +30,17 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AdaLoraConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
+from peft import (
+    AdaLoraConfig,
+    AdaptionPromptConfig,
+    IA3Config,
+    LNTuningConfig,
+    LoraConfig,
+    TaskType,
+    VeraConfig,
+    get_peft_model,
+    tuners,
+)
 from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
@@ -60,7 +70,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 
 
 @dataclass
@@ -103,7 +113,11 @@ class ModelArguments:
     trust_remote_code: bool = field(
         default=False,
         metadata={
-            "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+            "help": (
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
+            )
         },
     )
     use_cache: bool = field(
@@ -157,6 +171,10 @@ class ModelArguments:
                 " It is applicable only when use_flash_attention is True."
             )
         },
+    )
+    flash_attention_fp8: bool = field(
+        default=False,
+        metadata={"help": ("Whether to enable flash attention in FP8.")},
     )
     use_fused_rope: bool = field(
         default=True,
@@ -236,6 +254,9 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to keep in memory the loaded dataset. Defaults to False."},
     )
+    keep_linebreaks: bool = field(
+        default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
+    )
     dataset_seed: int = field(
         default=42,
         metadata={
@@ -255,6 +276,10 @@ class DataArguments:
     sql_prompt: bool = field(
         default=False,
         metadata={"help": "Whether to have a SQL style prompt"},
+    )
+    chat_prompt: bool = field(
+        default=False,
+        metadata={"help": "Whether to have a chat style prompt."},
     )
     save_last_ckpt: bool = field(
         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
@@ -338,7 +363,7 @@ class FinetuneArguments:
         default="lora",
         metadata={
             "help": ("The PEFT type to use."),
-            "choices": ["lora", "ia3", "adalora"],
+            "choices": ["lora", "ia3", "adalora", "llama-adapter", "vera", "ln_tuning"],
         },
     )
     ia3_target_modules: List[str] = field(
@@ -348,6 +373,22 @@ class FinetuneArguments:
     feedforward_modules: List[str] = field(
         default_factory=lambda: None,
         metadata={"help": "Target feedforward modules for the IA3 method."},
+    )
+    adapter_layers: int = field(
+        default=30,
+        metadata={"help": "Number of adapter layers (from the top) in llama-adapter"},
+    )
+    adapter_len: int = field(
+        default=10,
+        metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
+    )
+    vera_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the vera method."},
+    )
+    ln_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the ln method."},
     )
 
 
@@ -381,6 +422,25 @@ def create_prompts(examples):
             PROMPT_DICT["prompt_with_input"] if example.get("input", "") != "" else PROMPT_DICT["prompt_without_input"]
         )
         source = prompt_template.format_map(example)
+        prompts["source"].append(source)
+        prompts["target"].append(example["output"])
+    return prompts
+
+
+def create_chat_prompts(examples, tokenizer):
+    prompts = {}
+    prompts["source"] = []
+    prompts["target"] = []
+    for example in examples:
+        prompt = [
+            {
+                "role": "user",
+                "content": "Answer the below Query based on the Content given below. #### Query: {instruction} #### Content: {input}".format_map(
+                    example
+                ),
+            },
+        ]
+        source = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         prompts["source"].append(source)
         prompts["target"].append(example["output"])
     return prompts
@@ -453,6 +513,7 @@ def main():
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
         "token": model_args.token,
+        "flash_attention_fp8": model_args.flash_attention_fp8,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -466,6 +527,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "token": model_args.token,
+        "padding_side": "right",
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -493,15 +555,21 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
+            if not data_args.validation_split_percentage:
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -509,6 +577,7 @@ def main():
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
     else:
         data_files = {}
@@ -522,9 +591,11 @@ def main():
             if data_args.train_file is not None
             else data_args.validation_file.split(".")[-1]
         )
-        if extension == "txt":
+        if extension in ("txt", "text"):
             extension = "text"
             dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
+        if extension in ("json", "jsonl"):
+            extension = "json"
         raw_datasets = load_dataset(
             extension,
             data_files=data_files,
@@ -535,6 +606,10 @@ def main():
 
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
+            if not data_args.validation_split_percentage:
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 extension,
                 data_files=data_files,
@@ -551,20 +626,32 @@ def main():
                 token=model_args.token,
                 **dataset_args,
             )
-
+    single_column_dataset = False
+    # For named dataset (timdettmers/openassistant-guanaco) or custom dataset with a single column "text"
     if (
-        data_args.dataset_name == "timdettmers/openassistant-guanaco"
-    ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
+        training_args.do_train
+        and raw_datasets["train"].num_columns == 1
+        or training_args.do_eval
+        and raw_datasets["validation"].num_columns == 1
+    ):
+        single_column_dataset = True
         raw_datasets = raw_datasets.map(
             lambda x: {
                 "input": "",
                 "output": x["text"],
             }
         )
-        # Remove unused columns.
-        raw_datasets = raw_datasets.remove_columns(
-            [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
-        )
+        if training_args.do_train:
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+            )
+
+        if training_args.do_eval:
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["validation"] if col not in ["input", "output"]]
+            )
     else:
         # Preprocessing the datasets.
         for key in raw_datasets:
@@ -583,11 +670,12 @@ def main():
                     data_args.output_column_name, "answer" if data_args.sql_prompt else "output"
                 )
 
-            prompts = (
-                create_prompts(raw_datasets[key])
-                if not data_args.sql_prompt
-                else create_sql_prompts(raw_datasets[key])
-            )
+            if data_args.chat_prompt:
+                prompts = create_chat_prompts(raw_datasets[key], tokenizer)
+            elif data_args.sql_prompt:
+                prompts = create_sql_prompts(raw_datasets[key])
+            else:
+                prompts = create_prompts(raw_datasets[key])
             columns_to_be_removed = list(raw_datasets[key].features.keys())
             raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
             raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
@@ -612,37 +700,69 @@ def main():
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
 
     if model.config.model_type == "llama":
-        # unwind broken decapoda-research config
-        model.generation_config.pad_token_id = 0
-        model.generation_config.bos_token_id = 1
-        model.generation_config.eos_token_id = 2
+        if model.generation_config.pad_token_id is None:
+            if isinstance(model.generation_config.eos_token_id, int):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id
+            elif isinstance(model.generation_config.eos_token_id, list):
+                model.generation_config.pad_token_id = model.generation_config.eos_token_id[0]
         if model_args.attn_softmax_bf16:
             model.generation_config.attn_softmax_bf16 = True
         if model_args.use_flash_attention:
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
             model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+
+            if model_args.flash_attention_fp8:
+                import habana_frameworks.torch.hpu as hthpu
+
+                assert hthpu.get_device_name() == "GAUDI3", "Flash attention in FP8 is supported only on Gaudi3"
         if not model_args.use_fused_rope:
             model.generation_config.use_fused_rope = False
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
     if hasattr(model.generation_config, "eos_token_id") and model.generation_config.eos_token_id is not None:
-        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        if isinstance(model.generation_config.eos_token_id, int):
+            tokenizer.eos_token_id = model.generation_config.eos_token_id
+        elif isinstance(model.generation_config.eos_token_id, list):
+            tokenizer.eos_token_id = model.generation_config.eos_token_id[0]
     if hasattr(model.generation_config, "bos_token_id") and model.generation_config.bos_token_id is not None:
         tokenizer.bos_token_id = model.generation_config.bos_token_id
 
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    def tokenize(prompt, add_eos_token=True):
+    def tokenize(prompt, add_eos_token=True, add_bos_token=True):
+        if hasattr(tokenizer, "add_eos_token"):
+            add_eos_token_o = tokenizer.add_eos_token
+        else:
+            add_eos_token_o = None
+
+        if hasattr(tokenizer, "add_bos_token"):
+            add_bos_token_o = tokenizer.add_bos_token
+        else:
+            add_bos_token_o = None
+
+        if not data_args.dataset_concatenation:
+            tokenizer.add_eos_token = add_eos_token
+            padding = "max_length"
+        else:
+            padding = False
+        tokenizer.add_bos_token = add_bos_token
         results = tokenizer(
             prompt,
             truncation=True,
             max_length=data_args.max_seq_length,
-            padding=False,
+            padding=padding,
             return_tensors=None,
         )
+        # restore original value
+        if add_eos_token_o is not None:
+            tokenizer.add_eos_token = add_eos_token_o
+
+        if add_bos_token_o is not None:
+            tokenizer.add_bos_token = add_bos_token_o
+
         for i in range(len(results["input_ids"])):
             if (
                 results["input_ids"][i][-1] != tokenizer.eos_token_id
@@ -659,15 +779,15 @@ def main():
     def preprocess_function(examples):
         keys = list(examples.data.keys())
         if len(keys) != 2:
-            raise ValueError("Unsupported dataset format")
+            raise ValueError(f"Unsupported dataset format, number of keys {keys} !=2")
 
         st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
-
-        examples_tokenized = tokenize(st)
+        add_bos_token = False if data_args.chat_prompt else True
+        examples_tokenized = tokenize(st, add_bos_token=add_bos_token)
         input_ids = examples_tokenized["input_ids"]
         labels = examples_tokenized["labels"]
         if not finetune_args.train_on_inputs:
-            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False)
+            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False, add_bos_token=add_bos_token)
             for label, source_len in zip(labels, sources_tokenized["input_id_len"]):
                 label[:source_len] = [IGNORE_INDEX] * source_len
         return {
@@ -696,17 +816,18 @@ def main():
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
 
-        if data_args.dataset_name == "timdettmers/openassistant-guanaco":
+        if single_column_dataset:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
         else:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
                 tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
-        tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
+        if training_args.do_train:
+            tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
             tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
@@ -738,6 +859,9 @@ def main():
             # by preprocess_logits_for_metrics but we need to shift the labels
             labels = labels[:, 1:].reshape(-1)
             preds = preds[:, :-1].reshape(-1)
+            mask = labels != -100
+            labels = labels[mask]
+            preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
     # Data collator
@@ -779,6 +903,28 @@ def main():
                 feedforward_modules=finetune_args.feedforward_modules,
                 task_type=TaskType.CAUSAL_LM,
             )
+        elif finetune_args.peft_type == "llama-adapter":
+            peft_config = AdaptionPromptConfig(
+                adapter_layers=finetune_args.adapter_layers,
+                adapter_len=finetune_args.adapter_len,
+                task_type=TaskType.CAUSAL_LM,
+            )
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
+        elif finetune_args.peft_type == "vera":
+            peft_config = VeraConfig(
+                target_modules=finetune_args.vera_target_modules, task_type=TaskType.CAUSAL_LM, init_weights=False
+            )
+        elif finetune_args.peft_type == "ln_tuning":
+            peft_config = LNTuningConfig(
+                target_modules=finetune_args.ln_target_modules,
+                task_type=TaskType.CAUSAL_LM,
+            )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)
@@ -815,7 +961,7 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
 
-        # Evaluation
+    # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()

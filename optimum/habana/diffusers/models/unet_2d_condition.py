@@ -1,13 +1,14 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
+import torch.utils.checkpoint
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
-from diffusers.utils import USE_PEFT_BACKEND, deprecate, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, torch_utils, unscale_lora_layers
 
-from optimum.utils import logging
+from optimum.habana.diffusers.utils.torch_utils import gaudi_fourier_filter
 
 
-logger = logging.get_logger(__name__)
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def gaudi_unet_2d_condition_model_forward(
@@ -27,16 +28,19 @@ def gaudi_unet_2d_condition_model_forward(
     return_dict: bool = True,
 ) -> Union[UNet2DConditionOutput, Tuple]:
     r"""
-    Copied from: https://github.com/huggingface/diffusers/blob/v0.19.3/src/diffusers/models/unet_2d_condition.py#L700
+    Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/models/unets/unet_2d_condition.py#L843
 
-    Adds a workaround to be able to compute `conv_in` with Torch Autocast and full bf16 precision.
+    Changes:
+      - Adds a workaround to be able to compute `conv_in` with Torch Autocast and full bf16 precision.
+      - Added mark_step in unet forward
     """
     # By default samples have to be AT least a multiple of the overall upsampling factor.
     # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
     # However, the upsampling interpolation output size can be forced to fit any upsampling size
     # on the fly if necessary.
     default_overall_up_factor = 2**self.num_upsamplers
-
+    orig_fourier_filter = torch_utils.fourier_filter
+    torch_utils.fourier_filter = gaudi_fourier_filter
     # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
     forward_upsample_size = False
     upsample_size = None
@@ -90,6 +94,10 @@ def gaudi_unet_2d_condition_model_forward(
     timesteps = timesteps.expand(sample.shape[0])
 
     t_emb = self.time_proj(timesteps)
+
+    import habana_frameworks.torch.core as htcore
+
+    htcore.mark_step()
 
     # `Timesteps` does not contain any weights and will always return f32 tensors
     # but time_embedding might actually be running in fp16. so we need to cast here.
@@ -234,8 +242,8 @@ def gaudi_unet_2d_condition_model_forward(
             "T2I should not use down_block_additional_residuals",
             "1.3.0",
             "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
-                    and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
-                    for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
+            and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
+            for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
             standard_warn=False,
         )
         down_intrablock_additional_residuals = down_block_additional_residuals
@@ -342,6 +350,8 @@ def gaudi_unet_2d_condition_model_forward(
     if USE_PEFT_BACKEND:
         # remove `lora_scale` from each PEFT layer
         unscale_lora_layers(self, lora_scale)
+
+    torch_utils.fourier_filter = orig_fourier_filter
 
     if not return_dict:
         return (sample,)

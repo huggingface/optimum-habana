@@ -31,7 +31,7 @@ Let's get our dataset. For this example, we will use some cat images: https://hu
 
 Let's first download it locally:
 
-```py
+```python
 from huggingface_hub import snapshot_download
 
 local_dir = "./cat"
@@ -43,7 +43,7 @@ Now we can launch the training using:
 
 ```bash
 python textual_inversion.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
   --train_data_dir ./cat \
   --learnable_property object \
   --placeholder_token "<cat-toy>" \
@@ -61,9 +61,94 @@ python textual_inversion.py \
   --throughput_warmup_steps 3
 ```
 
+The following example shows how to run inference using the fine-tuned model:
+
+```python
+from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+import torch
+
+model_id = "/tmp/textual_inversion_cat"
+pipe = GaudiStableDiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack.png")
+```
+
 > Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
 
-> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
+> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
+> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+
+
+## Textual Inversion XL
+
+The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
+such as `stabilityai/stable-diffusion-xl-base-1.0` or `cagliostrolab/animagine-xl-3.1` for example.
+
+Assuming the afforemenioned cat toy dataset has been obtained, we can launch textual inversion XL training using:
+
+```bash
+python textual_inversion_sdxl.py \
+  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token "<cat-toy>" \
+  --initializer_token toy \
+  --resolution 768 \
+  --train_batch_size 1 \
+  --gradient_accumulation_steps 4 \
+  --max_train_steps 500 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat_sdxl \
+  --save_as_full_pipeline \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3
+```
+
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
+> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
+> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+
+The script also supports training of both text encoders of SDXL, so inference can be executed by inserting a placeholder token into one or both prompts.
+The following example shows how to run inference using the fine tuned-model with both text encoders, separately and in combination:
+
+```python
+from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+import torch
+
+model_id = "/tmp/textual_inversion_cat_sdxl"
+pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack.png")
+
+image = pipe(prompt="", prompt_2=prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack_p2.png")
+
+prompt_2 = "A <cat-toy> colored backpack"
+image = pipe(prompt=prompt, prompt_2=prompt_2, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack_p1and2.png")
+```
 
 
 ## ControlNet Training
@@ -82,7 +167,7 @@ Then proceed to training with command:
 
 ```bash
 python train_controlnet.py \
- --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5\
+ --pretrained_model_name_or_path=CompVis/stable-diffusion-v1-4\
  --output_dir=/tmp/stable_diffusion1_5 \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
@@ -92,7 +177,8 @@ python train_controlnet.py \
  --train_batch_size=4 \
  --throughput_warmup_steps=3 \
  --use_hpu_graphs \
- --bf16
+ --bf16 \
+ --trust_remote_code
 ```
 
 ### Multi-card Run
@@ -100,7 +186,7 @@ python train_controlnet.py \
 You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
 python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
   --output_dir=/tmp/stable_diffusion1_5 \
   --dataset_name=fusing/fill50k \
   --resolution=512 \
@@ -110,7 +196,8 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --train_batch_size=4 \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs \
-  --bf16
+  --bf16 \
+  --trust_remote_code
 ```
 
 
@@ -124,7 +211,7 @@ from diffusers.utils import load_image
 import torch
 from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
-base_model_path = "runwayml/stable-diffusion-v1-5"
+base_model_path = "CompVis/stable-diffusion-v1-4"
 controlnet_path = "/tmp/stable_diffusion1_5"
 
 controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
@@ -271,6 +358,7 @@ Now let's get our dataset. For this example we will use some dog images: https:/
 Let's first download it locally:
 
 ```python
+import os
 from huggingface_hub import snapshot_download
 
 local_dir = "./dog"
@@ -279,13 +367,19 @@ snapshot_download(
     local_dir=local_dir, repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
+
+# check if .cache folder exists and remove it.
+cache_folder = os.path.join(local_dir, ".cache")
+if os.path.exists(cache_folder):
+    import shutil
+    shutil.rmtree(cache_folder)
 ```
 
 ### Full model finetune
 And launch the multi-card training using:
 ```bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="out"
@@ -325,7 +419,7 @@ use *1e-4* instead of the usual *5e-6*.___**
 Launch the multi-card training using:
 ```bash
 
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="out"
@@ -369,7 +463,7 @@ You could use text_to_image_generation.py to generate picture using the peft ada
 
 ```bash
 python ../text_to_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5  \
+    --model_name_or_path CompVis/stable-diffusion-v1-4  \
     --prompts "a sks dog" \
     --num_images_per_prompt 5 \
     --batch_size 1 \

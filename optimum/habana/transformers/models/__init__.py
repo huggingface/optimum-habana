@@ -10,6 +10,7 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .bert import gaudi_BertModel_forward
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -30,13 +31,31 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
-from .clip import GaudiCLIPVisionEmbeddings
+from .clip import (
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
+    GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
+)
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .cohere import (
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
+)
+from .decilm import (
+    DeciLMConfig,
+    DeciLMForCausalLM,
+)
+from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -52,30 +71,49 @@ from .falcon import (
     gaudi_falcon_linear_forward,
 )
 from .gemma import (
+    GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
-    gaudi_gemma_attention_forward,
-    gaudi_gemma_model_forward,
+    GaudiGemmaMLP,
+    GaudiGemmaModel,
 )
-from .gpt2 import GaudiGPT2Attention, GaudiGPT2Block, GaudiGPT2LMHeadModel, gaudi_gpt2_forward
+from .gpt2 import (
+    GaudiGPT2Attention,
+    GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
+    GaudiGPT2LMHeadModel,
+    gaudi_gpt2_forward,
+)
 from .gpt_bigcode import (
+    GaudiGPTBigCodeAttention,
     GaudiGPTBigCodeForCausalLM,
-    gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
     gaudi_gpt_bigcode_model_forward,
 )
+from .gpt_neo import (
+    GaudiGPTNeoForCausalLM,
+    gaudi_gpt_neo_attention_forward,
+    gaudi_gpt_neo_block_forward,
+    gaudi_gpt_neo_model_forward,
+    gaudi_gpt_neo_selfattention_forward,
+)
 from .gpt_neox import (
+    GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
-    gaudi_gpt_neox_attention_forward,
-    gaudi_gpt_neox_layer_forward,
+    GaudiGPTNeoXLayer,
     gaudi_gpt_neox_model_forward,
-    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_model_forward,
+    GaudiGPTJModel,
+)
+from .idefics2 import (
+    Gaudi2Idefics2ImageProcessor,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
 )
 from .llama import (
     GaudiLlamaAttention,
@@ -91,6 +129,10 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .mamba import (
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+)
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -109,6 +151,16 @@ from .mixtral import (
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
+from .mllama import (
+    GaudiMllamaCrossAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaForConditionalGeneration,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaTextCrossAttention,
+    GaudiMllamaTextModel,
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionModel,
+)
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
@@ -116,10 +168,10 @@ from .modeling_all_models import (
     gaudi_invert_attention_mask,
 )
 from .mpt import (
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
 )
 from .opt import (
     GaudiOPTForCausalLM,
@@ -131,9 +183,9 @@ from .opt import (
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
 from .persimmon import (
+    GaudiPersimmonAttention,
+    GaudiPersimmonDecoderLayer,
     GaudiPersimmonForCausalLM,
-    gaudi_persimmon_attention_forward,
-    gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
 )
 from .phi import (
@@ -149,6 +201,15 @@ from .qwen2 import (
     GaudiQwen2MLP,
     GaudiQwen2Model,
     gaudi_qwen2_rmsnorm_forward,
+)
+from .qwen2_moe import (
+    GaudiQwen2MoeAttention,
+    GaudiQwen2MoeDecoderLayer,
+    GaudiQwen2MoeForCausalLM,
+    GaudiQwen2MoeMLP,
+    GaudiQwen2MoeModel,
+    gaudi_qwen2moe_block_sparse_moe_forward,
+    gaudi_qwen2moe_rmsnorm_forward,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
@@ -169,18 +230,17 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
 )
 from .stablelm import (
+    GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
-    gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
 )
 from .starcoder2 import (
+    GaudiStarcoder2Attention,
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
-    gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_model_forward,
+    GaudiStarcoder2Model,
 )
-from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -190,14 +250,12 @@ from .t5 import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
+from .table_transformer import gaudi_table_transformer_conv_encoder_forward
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
-from .vits import (
-    gaudi_unconstrained_rational_quadratic_spline,
-    gaudi_VitsResidualCouplingLayer_forward,
-)
+from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
@@ -206,4 +264,18 @@ from .wav2vec2 import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+)
+from .whisper import (
+    GAUDI_WHISPER_ATTENTION_CLASSES,
+    GaudiWhisperDecoder,
+    GaudiWhisperDecoderLayer,
+    GaudiWhisperForConditionalGeneration,
+    GaudiWhisperModel,
+    GaudiWhisperSdpaAttention,
+)
+from .xglm import (
+    GaudiXGLMForCausalLM,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )

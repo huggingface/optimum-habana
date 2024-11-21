@@ -20,21 +20,47 @@
 import argparse
 import json
 import logging
+import multiprocessing as mp
 import os
 import time
 
 import lm_eval.evaluator
 import lm_eval.tasks
+import psutil
 import torch
 import torch.nn.functional as F
+
+# Local imports
 from run_generation import setup_parser
-from utils import initialize_model
+from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 logger = logging.getLogger(__name__)
+
+
+# This hack is a workaround to limitations of lm_eval which always allocates
+# mp.Pool with max cpu count which explodes on multinode scenarios and for hpu
+# create multiprocess with spawn context
+OrigPool = mp.Pool
+
+
+def LimitedSpawnPool(_):
+    spawn_context = mp.get_context("spawn")
+    physical_cpu_count = psutil.cpu_count(logical=False)
+    pool_size = physical_cpu_count
+    world_size = int(os.getenv("WORLD_SIZE", 1))
+    if world_size == 0:
+        world_size = 1
+    pool_size //= world_size
+    if (pool_size * world_size) != physical_cpu_count:
+        pool_size -= 1
+    return spawn_context.Pool(pool_size)
+
+
+mp.Pool = LimitedSpawnPool
 
 
 def setup_lm_eval_parser():
@@ -75,13 +101,23 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "falcon",
+            "phi",
+            "mixtral",
+            "qwen2",
+            "gptj",
+            "starcoder2",
+            "gemma",
+        ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
@@ -159,12 +195,21 @@ def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
+    if args.trust_remote_code:
+        # trust_remote_code fix was introduced in lm_eval 0.4.3
+        # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
+        # We need to cherry-pick the fix manually untill we upgrade (SW-190418)
+        import datasets
+
+        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
+
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
-    results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+    with torch.no_grad():
+        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -182,9 +227,8 @@ def main():
         json.dump(results, open(args.output_file, "w"), indent=2)
         print(json.dumps(results, indent=2))
     if args.quant_config:
-        import habana_quantization_toolkit
+        finalize_quantization(model)
 
-        habana_quantization_toolkit.finish_measurements(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

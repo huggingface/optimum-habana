@@ -1,7 +1,6 @@
 import contextlib
 import math
 import os
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -31,6 +30,7 @@ import habana_frameworks.torch.core as htcore
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
+from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
@@ -52,6 +52,7 @@ from ...modeling_attn_mask_utils import (
     GaudiAttentionMaskConverter,
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 logger = logging.get_logger(__name__)
@@ -80,12 +81,46 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
             k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         )
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
 def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
     hidden_states = F.linear(input, self.weight, bias=self.bias)
     return hidden_states
+
+
+def repeat_kv(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor,
+    n_rep: int,
+):
+    """
+    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    The only differences are:
+        - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
+        - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
+    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
+    The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, kv_len, head_dim = key_states.shape
+    if n_rep == 1 or num_key_value_heads == 1:
+        return query_states, key_states, value_states, attention_mask
+
+    new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
+    key_states = key_states.reshape(new_kv_shape)
+    value_states = value_states.reshape(new_kv_shape)
+
+    batch, _, q_len, head_dim = query_states.shape
+    new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
+    query_states = query_states.reshape(new_q_shape)
+
+    if attention_mask is not None:
+        # Add groups dim and set to 1
+        attention_mask = attention_mask.unsqueeze(1)
+
+    return query_states, key_states, value_states, attention_mask
 
 
 #  FusedScaledDotProductAttention
@@ -124,40 +159,6 @@ class ScaledDotProductAttention(nn.Module):
         self.softmax = Softmax()
         self.num_key_value_groups = config.num_attention_heads // config.num_kv_heads
 
-    def repeat_kv(
-        self,
-        query_states: torch.Tensor,
-        key_states: torch.Tensor,
-        value_states: torch.Tensor,
-        attention_mask: torch.Tensor,
-        n_rep: int,
-    ):
-        """
-        Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-        The only differences are:
-            - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
-            - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
-        The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
-        The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
-        """
-        batch, num_key_value_heads, kv_len, head_dim = key_states.shape
-        if n_rep == 1 or num_key_value_heads == 1:
-            return query_states, key_states, value_states, attention_mask
-
-        new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
-        key_states = key_states.reshape(new_kv_shape)
-        value_states = value_states.reshape(new_kv_shape)
-
-        batch, _, q_len, head_dim = query_states.shape
-        new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
-        query_states = query_states.reshape(new_q_shape)
-
-        if attention_mask is not None:
-            # Add groups dim and set to 1
-            attention_mask = attention_mask.unsqueeze(1)
-
-        return query_states, key_states, value_states, attention_mask
-
     def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
         L, S = query.size(-2), key.size(-2)
         scale_factor = 1 / math.sqrt(self.head_dim)
@@ -174,7 +175,7 @@ class ScaledDotProductAttention(nn.Module):
             if attn_mask.dtype == torch.bool:
                 attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
 
-        query, key, value, attn_mask = self.repeat_kv(query, key, value, attn_mask, self.num_key_value_groups)
+        query, key, value, attn_mask = repeat_kv(query, key, value, attn_mask, self.num_key_value_groups)
 
         attn_weight = self.bmm1(query, key.transpose(-2, -1))
         attn_weight += attn_mask
@@ -229,7 +230,8 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
-    def update(self, prev, cur, dim, idx, inp_seq_len):
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
         return update(prev, cur, dim, idx, inp_seq_len)
 
 
@@ -253,8 +255,8 @@ class GaudiFalconAttention(FalconAttention):
         4. not use_flash_attention, bf16: F.scaled_dot_product_attention. Slowest option
     """
 
-    def __init__(self, config: FalconConfig):
-        super().__init__(config)
+    def __init__(self, config: FalconConfig, layer_idx=None):
+        super().__init__(config, layer_idx)
 
         self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
 
@@ -262,12 +264,13 @@ class GaudiFalconAttention(FalconAttention):
         # TODO, Does this affect memory usage?
         if self.is_fp8:
             self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA)
-        self.unfused_scaled_dot_product_attention = ScaledDotProductAttention(config)
+            self.unfused_scaled_dot_product_attention = ScaledDotProductAttention(config)
 
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.max_position_embeddings = config.max_position_embeddings
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def _split_heads(
         self, fused_qkv: torch.Tensor, broadcast: Optional[bool] = True
@@ -337,28 +340,29 @@ class GaudiFalconAttention(FalconAttention):
         alibi: Optional[torch.Tensor],
         attention_mask: torch.Tensor,
         position_ids: Optional[torch.LongTensor] = None,
-        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         head_mask: Optional[torch.Tensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        **kwargs,
     ):
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # 3 x [batch_size, seq_length, num_heads, head_dim]
 
         train_with_flash_attention = self.training and self._use_sdpa and not output_attentions and head_mask is None
         (query_layer, key_layer, value_layer) = self._split_heads(
-            fused_qkv, not use_flash_attention and not self.is_fp8 and not train_with_flash_attention
+            fused_qkv,
+            not use_flash_attention
+            and not self.is_fp8
+            and not train_with_flash_attention
+            and not (self.config.num_kv_heads == 8),
         )
 
         batch_size, query_length, _, _ = query_layer.shape
@@ -467,6 +471,14 @@ class GaudiFalconAttention(FalconAttention):
                             query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
                         )
                     else:
+                        if query_layer.shape != key_layer.shape:
+                            query_layer, key_layer, value_layer, attention_mask = repeat_kv(
+                                query_layer,
+                                key_layer,
+                                value_layer,
+                                attention_mask,
+                                self.config.num_attention_heads // self.config.num_kv_heads,
+                            )
                         # Workaround util scaled_dot_product_attention support broadcast.
                         if self.training is True and query_layer.shape != key_layer.shape:
                             key_layer = torch.broadcast_to(key_layer, query_layer.shape)
@@ -566,7 +578,7 @@ class GaudiFalconAttention(FalconAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.dense, "all_reduce"):
-            self.dense.post_all_reduce(attn_output)
+            return self.dense.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -586,7 +598,7 @@ class GaudiFalconMLP(FalconMLP):
 
     def post_mlp_forward(self, x):
         if hasattr(self.dense_4h_to_h, "all_reduce"):
-            self.dense_4h_to_h.post_all_reduce(x)
+            return self.dense_4h_to_h.post_all_reduce(x)
         return x
 
 
@@ -602,9 +614,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
     - add new arg flash_attention_causal_mask
     """
 
-    def __init__(self, config: FalconConfig):
+    def __init__(self, config: FalconConfig, layer_idx=None):
         super().__init__(config)
-        self.self_attention = GaudiFalconAttention(config)
+        self.self_attention = GaudiFalconAttention(config, layer_idx)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attention.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -618,10 +630,12 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         alibi: Optional[torch.Tensor],
         attention_mask: torch.Tensor,
         position_ids: Optional[torch.LongTensor] = None,
-        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        layer_past: Optional[Union[Cache, Tuple[torch.Tensor, torch.Tensor]]] = None,
         head_mask: Optional[torch.Tensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
@@ -630,11 +644,8 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         **kwargs,
     ):
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         residual = hidden_states
+
         (
             hidden_states,
             present,
@@ -650,13 +661,14 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
-            **kwargs,
         )
 
         self.self_attention.attention_all_reduce(hidden_states)
@@ -672,6 +684,13 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
                     attention_output, residual, self.config.attention_dropout, training=self.training
                 )
                 mlp_layernorm_out = self.post_attention_layernorm(residual)
+
+        if (
+            self.config.new_decoder_architecture
+            and self.config.parallel_attn
+            and self.config.num_ln_in_parallel_attn == 1
+        ):
+            mlp_layernorm_out = attention_layernorm_out
 
         outputs = (present, attn_scores)
 
@@ -701,6 +720,8 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         head_mask: Optional[torch.Tensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
@@ -708,7 +729,7 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
     ):
-        if self.config.new_decoder_architecture:
+        if self.config.new_decoder_architecture and self.config.num_ln_in_parallel_attn == 2:
             attention_layernorm_out = self.ln_attn(hidden_states)
             mlp_layernorm_out = self.ln_mlp(hidden_states)
         else:
@@ -725,6 +746,8 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -759,7 +782,7 @@ class GaudiFalconModel(FalconModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.LongTensor] = None,
@@ -768,6 +791,7 @@ class GaudiFalconModel(FalconModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
@@ -888,6 +912,8 @@ class GaudiFalconModel(FalconModel):
         # head_mask has shape n_layer x batch x num_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
+        position_embeddings = None
+
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -903,6 +929,8 @@ class GaudiFalconModel(FalconModel):
                     layer_past,
                     use_cache,
                     output_attentions,
+                    cache_position,
+                    position_embeddings,
                     None,
                     use_flash_attention,
                     flash_attention_recompute,
@@ -918,6 +946,8 @@ class GaudiFalconModel(FalconModel):
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                     alibi=alibi,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
@@ -974,9 +1004,12 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
     def prepare_inputs_for_generation(
         self,
         input_ids: torch.LongTensor,
-        past_key_values: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Union[Cache, torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        use_cache: bool = True,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
@@ -984,7 +1017,8 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]
 
@@ -1018,24 +1052,35 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
 
-        return {
-            "input_ids": input_ids,
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "attention_mask": attention_mask,
-            "token_idx": token_idx,
-            "reuse_cache": reuse_cache,
-            "cache_idx": kwargs.get("cache_idx"),
-            "use_flash_attention": kwargs.get("use_flash_attention"),
-            "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
-            "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
-        }
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
+
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
+                "token_idx": token_idx,
+                "reuse_cache": reuse_cache,
+                "cache_idx": kwargs.get("cache_idx"),
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+            }
+        )
+        return model_inputs
 
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.Tensor] = None,
@@ -1045,6 +1090,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
@@ -1078,6 +1124,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,

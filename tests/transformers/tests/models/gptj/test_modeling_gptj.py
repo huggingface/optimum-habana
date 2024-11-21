@@ -37,7 +37,6 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from transformers import (
-        GPTJ_PRETRAINED_MODEL_ARCHIVE_LIST,
         AutoTokenizer,
         GPTJForCausalLM,
         GPTJForQuestionAnswering,
@@ -183,7 +182,6 @@ class GPTJModelTester:
             token_labels,
             choice_labels,
         ) = self.prepare_config_and_inputs()
-
         encoder_hidden_states = floats_tensor([self.batch_size, self.seq_length, self.hidden_size])
         encoder_attention_mask = ids_tensor([self.batch_size, self.seq_length], vocab_size=2)
 
@@ -523,9 +521,9 @@ class GPTJModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in GPTJ_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = GPTJModel.from_pretrained(model_name, revision="float16", torch_dtype=torch.float16)
-            self.assertIsNotNone(model)
+        model_name = "EleutherAI/gpt-j-6B"
+        model = GPTJModel.from_pretrained(model_name, revision="float16", torch_dtype=torch.float16)
+        self.assertIsNotNone(model)
 
 
 @require_torch

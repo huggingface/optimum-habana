@@ -56,7 +56,8 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -84,7 +85,7 @@ python ../gaudi_spawn.py \
     --max_length_seconds 8 \
     --attention_mask False \
     --warmup_ratio 0.1 \
-    --num_train_epochs 10 \
+    --num_train_epochs 5 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 32 \
     --seed 0 \
@@ -94,7 +95,8 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
@@ -108,7 +110,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -141,7 +143,8 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+    --trust_remote_code True
 ```
 
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
@@ -171,7 +174,8 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
-    --bf16
+    --bf16 \
+    --trust_remote_code True
 ```
 
 

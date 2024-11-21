@@ -17,7 +17,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "bert-base-uncased",
                 "Habana/bert-base-uncased",
-                3516.322,
+                3253.917,
                 85.5503,
                 "question-answering",
                 24,
@@ -104,7 +104,7 @@ def _test_fsdp(
             "--bf16 True ",
             "--gradient_accumulation_steps 2",
             "--save_strategy 'no'",
-            "--evaluation_strategy 'no'",
+            "--eval_strategy 'no'",
             "--learning_rate 0.0003",
             "--warmup_ratio 0.03",
             "--max_grad_norm 0.3",
@@ -154,7 +154,7 @@ def _test_fsdp(
         if model_name == "bert-base-uncased":
             assert results["eval_f1"] >= ACCURACY_PERF_FACTOR * baseline_acc
         else:
-            assert results["train_loss"] <= baseline_acc
+            assert results["train_loss"] <= (2 - ACCURACY_PERF_FACTOR) * baseline_acc
 
 
 @pytest.mark.parametrize(

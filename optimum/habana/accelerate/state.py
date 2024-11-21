@@ -55,13 +55,15 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
 
                     if world_size > 1:
-                        os.environ["HLS_MODULE_ID"] = str(local_rank)
+                        # override HLS_MODULE_ID only if it's not previously set by bridge
+                        if "HLS_MODULE_ID" not in os.environ:
+                            os.environ["HLS_MODULE_ID"] = str(local_rank)
                         os.environ["ID"] = str(rank)
 
                     deepspeed.init_distributed(dist_backend=self.backend, **kwargs)

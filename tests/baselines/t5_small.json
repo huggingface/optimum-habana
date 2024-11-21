@@ -57,10 +57,10 @@
                 "multi_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 32,
-                    "eval_rougeLsum": 38.5648,
-                    "train_runtime": 164.962,
-                    "train_samples_per_second": 1912.578,
-                    "eval_samples_per_second": 116.48,
+                    "eval_rougeLsum": 38.5977,
+                    "train_runtime": 162.079,
+                    "train_samples_per_second": 1922.144,
+                    "eval_samples_per_second": 96.797,
                     "extra_arguments": [
                         "--dataset_config \"3.0.0\"",
                         "--source_prefix \"summarize: \"",
@@ -80,9 +80,9 @@
                 "multi_card": {
                     "learning_rate": 2e-3,
                     "train_batch_size": 64,
-                    "eval_f1": 65.7157,
-                    "train_runtime": 49.5816,
-                    "train_samples_per_second": 6353.351,
+                    "eval_f1": 65.83485191703365,
+                    "train_runtime": 53.8295,
+                    "train_samples_per_second": 5686.229,
                     "extra_arguments": [
                         "--context_column context",
                         "--question_column question",
@@ -94,6 +94,50 @@
                         "--pad_to_max_length",
                         "--use_hpu_graphs_for_inference",
                         "--save_strategy epoch"
+                    ]
+                }
+            }
+        },
+        "multitask-prompt-tuning": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 33,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 64,
+                    "eval_f1": 0.8701550387596899,
+                    "train_runtime": 7.0713,
+                    "train_samples_per_second": 18461.413,
+                    "extra_arguments": [
+                        "--use_hpu_graphs_for_inference",
+                        "--use_hpu_graphs_for_training",
+                        "--max_source_length 256",
+                        "--max_target_length 16",
+                        "--bf16",
+                        "--trust_remote_code True"
+                    ]
+                }
+            }
+        },
+        "poly-tuning": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 8,
+                    "eval_accuracy": 0.38,
+                    "train_runtime": 16,
+                    "train_samples_per_second": 1268,
+                    "extra_arguments": [
+                        "--use_hpu_graphs_for_inference",
+                        "--use_hpu_graphs_for_training",
+                        "--max_source_length 256",
+                        "--max_target_length 2",
+                        "--max_train_samples 1000",
+                        "--max_eval_samples 100",
+                        "--bf16",
+                        "--trust_remote_code True"
                     ]
                 }
             }

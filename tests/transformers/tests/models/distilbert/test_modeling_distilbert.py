@@ -31,7 +31,6 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from transformers import (
-        DISTILBERT_PRETRAINED_MODEL_ARCHIVE_LIST,
         DistilBertForMaskedLM,
         DistilBertForMultipleChoice,
         DistilBertForQuestionAnswering,
@@ -262,9 +261,9 @@ class DistilBertModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in DISTILBERT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = DistilBertModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "distilbert-base-uncased"
+        model = DistilBertModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     @slow
     @require_torch_gpu

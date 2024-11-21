@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-A set of basic tensor ops compatible with tpu, gpu, and multigpu
+A set of basic tensor ops compatible with hpu
 """
 
 import torch

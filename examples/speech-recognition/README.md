@@ -141,7 +141,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -237,7 +237,7 @@ python run_speech_recognition_seq2seq.py \
     --logging_steps="25" \
     --learning_rate="1e-5" \
     --warmup_steps="500" \
-    --evaluation_strategy="steps" \
+    --eval_strategy="steps" \
     --eval_steps="1000" \
     --save_strategy="steps" \
     --save_steps="1000" \

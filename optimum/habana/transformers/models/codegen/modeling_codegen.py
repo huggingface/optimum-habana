@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.codegen.modeling_codegen import (
     CodeGenAttention,
@@ -16,12 +17,13 @@ class GaudiCodeGenAttention(CodeGenAttention):
     def forward(
         self,
         hidden_states: Optional[torch.FloatTensor],
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[
         Tuple[torch.Tensor, Tuple[torch.Tensor]],
@@ -106,12 +108,13 @@ class GaudiCodeGenAttention(CodeGenAttention):
 def gaudi_codegen_block_forward(
     self,
     hidden_states: Optional[torch.FloatTensor],
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
+    layer_past: Optional[Cache] = None,
     attention_mask: Optional[torch.FloatTensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
     """
@@ -129,6 +132,7 @@ def gaudi_codegen_block_forward(
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
@@ -148,7 +152,7 @@ def gaudi_codegen_block_forward(
 def gaudi_codegen_model_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
     attention_mask: Optional[torch.FloatTensor] = None,
     token_type_ids: Optional[torch.LongTensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
@@ -158,6 +162,7 @@ def gaudi_codegen_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
@@ -229,14 +234,16 @@ def gaudi_codegen_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.wte(input_ids)
 
+    seq_length = inputs_embeds.shape[1]
+
     hidden_states = inputs_embeds
 
     if token_type_ids is not None:
+        token_type_ids = token_type_ids.view(-1, seq_length)
         token_type_embeds = self.wte(token_type_ids)
         hidden_states = hidden_states + token_type_embeds
 
     hidden_states = self.drop(hidden_states)
-
     output_shape = input_shape + (hidden_states.size(-1),)
 
     if self.gradient_checkpointing and self.training:
@@ -264,6 +271,7 @@ def gaudi_codegen_model_forward(
                 head_mask[i],
                 use_cache,
                 output_attentions,
+                cache_position,
                 None,
             )
         else:
@@ -275,6 +283,7 @@ def gaudi_codegen_model_forward(
                 head_mask=head_mask[i],
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                cache_position=cache_position,
                 token_idx=token_idx,
             )
 
@@ -313,21 +322,32 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
     - when KV cache is enabled, slice next_position_ids from position_ids based on the token_idx
     """
 
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, token_idx=None, **kwargs):
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        cache_position=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
+    ):
         token_type_ids = kwargs.get("token_type_ids", None)
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
+
                 if token_type_ids is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:
                 input_ids = input_ids[:, -1]
                 if token_type_ids is not None:
                     token_type_ids = token_type_ids[:, -1]
-
-        attention_mask = kwargs.get("attention_mask", None)
-        position_ids = kwargs.get("position_ids", None)
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
@@ -339,20 +359,32 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
                 else:
                     position_ids = position_ids[:, -1]
 
-        return {
-            "input_ids": input_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "position_ids": position_ids,
-            "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-            "token_idx": token_idx,
-        }
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
+
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
+                "token_type_ids": token_type_ids,
+                "token_idx": token_idx,
+            }
+        )
+        return model_inputs
 
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -363,6 +395,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
@@ -385,6 +418,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
         hidden_states = transformer_outputs[0]

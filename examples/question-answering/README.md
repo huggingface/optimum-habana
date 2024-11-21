@@ -50,7 +50,7 @@ PT_HPU_LAZY_MODE=0 python run_qa.py \
   --dataset_name squad \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 24 \
+  --per_device_train_batch_size 32 \
   --per_device_eval_batch_size 8 \
   --learning_rate 3e-5 \
   --num_train_epochs 2 \
@@ -78,7 +78,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --dataset_name squad \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 24 \
+    --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 2 \
@@ -106,7 +106,7 @@ python ../gaudi_spawn.py \
     --dataset_name squad \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 24 \
+    --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 8 \
     --learning_rate 3e-5 \
     --num_train_epochs 2 \

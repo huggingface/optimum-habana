@@ -68,12 +68,12 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.14.0.dev0")
 if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0")
+check_min_version("0.29.0")
 
 logger = get_logger(__name__)
 
@@ -567,6 +567,15 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU.")
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help=(
+            "Whether to trust the execution of code from datasets defined on the Hub."
+            " This option should only be set to `True` for repositories you trust and in which you have read the"
+            " code, as it will execute code present on the Hub on your local machine."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -620,6 +629,7 @@ def make_train_dataset(args, tokenizer, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            trust_remote_code=args.trust_remote_code,
         )
     else:
         if args.train_data_dir is not None:
