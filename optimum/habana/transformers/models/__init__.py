@@ -78,11 +78,11 @@ from .gemma import (
     GaudiGemmaModel,
 )
 from .gemma2 import (
+    GaudiGemma2Attention,
     GaudiGemma2DecoderLayer,
     GaudiGemma2ForCausalLM,
-    GaudiGemma2Attention,
-    GaudiGemma2Model,
     GaudiGemma2MLP,
+    GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
 )
 from .gpt2 import (

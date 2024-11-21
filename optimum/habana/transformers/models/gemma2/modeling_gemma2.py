@@ -15,29 +15,28 @@
 # limitations under the License.
 """PyTorch Gemma2 model."""
 
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch import nn
+import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
-import math
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from transformers.models.gemma2.modeling_gemma2 import (
     Gemma2Attention,
     Gemma2Config,
-    Gemma2MLP,
     Gemma2DecoderLayer,
     Gemma2ForCausalLM,
+    Gemma2MLP,
     Gemma2Model,
     apply_rotary_pos_emb,
-    repeat_kv,
 )
 from transformers.utils import logging
-from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 
-from ...modeling_attn_mask_utils import GaudiAttentionMaskConverter, _gaudi_prepare_4d_causal_attention_mask
+from ....distributed.strategy import DistributedStrategy, NoOpStrategy
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 try:
@@ -64,6 +63,7 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
 
 import habana_frameworks.torch.core as htcore
+
 
 logger = logging.get_logger(__name__)
 
@@ -340,7 +340,7 @@ class GaudiGemma2Attention(Gemma2Attention):
         - add new arg flash_attention_recompute
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
+            logger.warning_once(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
