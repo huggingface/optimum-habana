@@ -1238,12 +1238,7 @@ class GaudiLlamaModel(LlamaModel):
             if (
                 lazy_mode
                 and not self.training
-                and (
-                    torch.distributed.is_initialized() is False
-                    or torch.distributed.get_world_size() == 1
-                    or seq_length == 32768
-                )
-                # Added seq_length check workaround for now as recipe goes OOM. Will remove once we add CP to eval - JIRA: SW-207491
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
             ):
                 htcore.mark_step()
 

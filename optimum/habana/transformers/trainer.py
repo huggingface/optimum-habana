@@ -1544,7 +1544,6 @@ class GaudiTrainer(Trainer):
             if (
                 self.accelerator.mpu.sequence_parallel_is_initialized()
                 and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
-                and self.model.training
             ):
                 seq_parallel_world_rank = self.accelerator.mpu.get_sequence_parallel_rank()
                 sub_seq_length = int(data.size()[1] / self.accelerator.mpu.get_sequence_parallel_world_size())
@@ -1740,7 +1739,6 @@ class GaudiTrainer(Trainer):
         2. use throughput_warmup_steps in evaluation throughput calculation
         """
         # handle multipe eval datasets
-        self.accelerator.mpu.set_eval_mode()
         override = eval_dataset is not None
         eval_dataset = eval_dataset if override else self.eval_dataset
         if isinstance(eval_dataset, dict):
@@ -1796,7 +1794,6 @@ class GaudiTrainer(Trainer):
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-        self.accelerator.mpu.set_training_mode()
         return output.metrics
 
     def evaluation_loop(
@@ -1934,6 +1931,8 @@ class GaudiTrainer(Trainer):
                 all_losses.add(losses)
             if labels is not None:
                 labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+                if self.args.context_parallel_size != 1:
+                    labels = labels.clone()
                 labels = self.gather_function((labels))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_labels.add(labels)
