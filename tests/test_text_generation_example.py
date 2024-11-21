@@ -40,6 +40,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("google/gemma-2-9b", 1, False, 92.302359446567),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605),
             ("Deci/DeciLM-7B", 1, False, 120),
             ("Qwen/Qwen2-7B", 512, False, 9669.45787),
@@ -77,6 +78,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
+            ("google/gemma-2-9b", 8, 1, 110.12610917383735),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
