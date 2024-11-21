@@ -620,6 +620,7 @@ class GaudiI2VGenXLPipeline(
         # import pdb;pdb.set_trace()
         # breakpoint()
         # 0. Default height and width to unet
+        print("self.gaudi_config.use_torch_autocast", self.gaudi_config.use_torch_autocast)
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             height = height or self.unet.config.sample_size * self.vae_scale_factor
             width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -640,7 +641,8 @@ class GaudiI2VGenXLPipeline(
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
             # corresponds to doing no classifier free guidance.
             self._guidance_scale = guidance_scale
-
+            # import pdb; pdb.set_trace()
+            # breakpoint()
             # 3.1 Encode input text prompt
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt,
@@ -668,13 +670,29 @@ class GaudiI2VGenXLPipeline(
 
             # 3.2.2 Image latents.
             resized_image = _center_crop_wide(image, (width, height))
-            image = self.video_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
+            image = self.video_processor.preprocess(resized_image).to(device=device)
+            # import pdb; pdb.set_trace()
+            # breakpoint() 
+            needs_upcasting = (
+                self.vae.dtype == torch.float16 or self.vae.dtype == torch.bfloat16
+            ) and self.vae.config.force_upcast
+
+            if needs_upcasting:
+                cast_dtype = self.vae.dtype
+                self.vae.to(dtype=torch.float32)
+
             image_latents = self.prepare_image_latents(
                 image,
                 device=device,
                 num_frames=num_frames,
                 num_videos_per_prompt=num_videos_per_prompt,
             )
+            image_latents = image_latents.to(image_embeddings.dtype)
+
+            # cast back to fp16/bf16 if needed
+            if needs_upcasting:
+                self.vae.to(dtype=cast_dtype)
+
 
             # 3.3 Prepare additional conditions for the UNet.
             if self.do_classifier_free_guidance:
@@ -725,6 +743,8 @@ class GaudiI2VGenXLPipeline(
                         return_dict=False,
                     )
                     
+                    import pdb; pdb.set_trace()
+                    breakpoint() 
                     #noise_pred.to(torch.float)
                     # perform guidance
                     if self.do_classifier_free_guidance:
@@ -745,13 +765,14 @@ class GaudiI2VGenXLPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                     
-                    if not self.use_hpu_graphs:
-                        self.htcore.mark_step()
-
             # 8. Post processing
             if output_type == "latent":
                 video = latents
             else:
+                # cast back to fp16/bf16 if needed
+                if needs_upcasting:
+                    self.vae.to(dtype=cast_dtype)
+  
                 video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
                 video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 

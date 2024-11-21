@@ -326,7 +326,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
         export_to_video(frames, "generated.mp4", fps=7)
         ```
         """
-
+        print(f"self.gaudi_config.use_torch_autocast: {self.gaudi_config.use_torch_autocast}")
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 0. Default height and width to unet
             height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -368,15 +368,15 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             # is why it is reduced here.
             # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
             fps = fps - 1
-
+            # import pdb; pdb.set_trace()
+            # breakpoint()
             # 4. Encode input image using VAE
-            image = self.video_processor.preprocess(image, height=height, width=width)
+            image = self.video_processor.preprocess(image, height=height, width=width).to(device)
             # torch.randn is broken on HPU so running it on CPU
             rand_device = "cpu" if device.type == "hpu" else device
             noise = randn_tensor(image.shape, generator=generator, device=rand_device, dtype=image.dtype).to(device)
             # image = self.image_processor.preprocess(image, height=height, width=width).to(device)
             # noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
-
             image = image + noise_aug_strength * noise
 
             needs_upcasting = (
