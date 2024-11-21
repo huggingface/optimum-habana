@@ -234,6 +234,7 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
+            "huggyllama/llama-7b",
         ]
 
         case_only_in_gaudi2 = [
@@ -269,6 +270,7 @@ class ExampleTestMeta(type):
             "ia3",
             "adalora",
             "ln_tuning",
+            "tatsu-lab/alpaca_cp",
         ):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
@@ -304,6 +306,8 @@ class ExampleTestMeta(type):
         elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+            return True
+        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
             return True
 
         return False
@@ -969,4 +973,10 @@ class MultiCardCausalLanguageModelingAdaloraExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
     TASK_NAME = "adalora"
+
+
+class MultiCardCausalLanguageModelingLoRACPExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", deepspeed=True
+):
+    TASK_NAME = "tatsu-lab/alpaca_cp"
     DATASET_NAME = "tatsu-lab/alpaca"
