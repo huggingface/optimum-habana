@@ -169,6 +169,8 @@ from .models import (
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+    gaudi_MambaMixer,
+    gaudi_MambaCache_update_conv_state,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -593,6 +595,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+    transformers.models.mamba.modeling_mamba.MambaMixer = gaudi_MambaMixer
+    transformers.cache_utils.MambaCache.update_conv_state = gaudi_MambaCache_update_conv_state
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
