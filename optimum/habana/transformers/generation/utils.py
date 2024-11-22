@@ -110,6 +110,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "whisper",
     "idefics2",
     "mllama",
+    "video_llava",
 ]
 
 

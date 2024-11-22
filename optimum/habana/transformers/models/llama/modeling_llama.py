@@ -719,6 +719,8 @@ class GaudiLlamaAttention(LlamaAttention):
                 causal_mask = attention_mask
                 if cache_position is not None:
                     causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                else:
+                    causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
                 attn_weights = attn_weights + causal_mask
 
             if attn_softmax_bf16:
