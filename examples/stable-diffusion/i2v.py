@@ -14,7 +14,7 @@ def main() :
     #torch_dtype=torch.float,
     # import pdb;pdb.set_trace()
     # breakpoint()
-    #pipeline.enable_model_cpu_offload(device="hpu")
+    pipeline.enable_model_cpu_offload(device="hpu")
 
     image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
     image = load_image(image_url).convert("RGB")
