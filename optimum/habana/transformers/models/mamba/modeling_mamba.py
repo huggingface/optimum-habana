@@ -13,15 +13,15 @@ from transformers.utils import (
 
 from pathlib import Path
 import os
-base_dir = "/workspace/custom_op_pscan_all" 
+my_dir = os.path.realpath(__file__)
+my_len = my_dir.rfind("/")
+base_dir = os.environ.get('HABANA_CUSTOM_OP_DIR', my_dir[:my_len]) 
 
 custom_op_lib_path = str(
     next(
-        Path(
-            next(Path(os.path.join(base_dir, "build")).glob("lib.linux-x86_64-*"))
-        ).glob("hpu_custom_pscan_all.cpython-*-x86_64-linux-gnu.so")
-    )
-)    
+        Path(base_dir).glob("hpu_custom_pscan_all.cpython-*-x86_64-linux-gnu.so")
+        )
+)
 torch.ops.load_library(custom_op_lib_path)
 
 logger = logging.get_logger(__name__)
@@ -161,6 +161,8 @@ class gaudi_MambaMixer(nn.Module):
     A, D are input independent (see Mamba paper [1] Section 3.5.2 "Interpretation of A" for why A isn't selective)
     ∆, B, C are input-dependent (this is a key difference between Mamba and the linear time invariant S4,
     and is why Mamba is called **selective** state spaces)
+
+    We only replaced the slow path with custom op
     """
 
     def __init__(self, config: MambaConfig, layer_idx: int):
@@ -326,6 +328,9 @@ class gaudi_MambaMixer(nn.Module):
 
     # fmt: off
     def slow_forward(self, input_states, cache_params: Optional[MambaCache]=None, cache_position:Optional[torch.LongTensor]=None, attention_mask: Optional[torch.LongTensor] = None):
+        """
+        We replaced the 3c and 3d parts with custom op "Run_Mamba_Forward_Gaudi", which removed the sequence length loop and gain the performance.
+        """
         batch_size, seq_len, _ = input_states.shape
         dtype = input_states.dtype
         # 1. Gated MLP's linear projection
