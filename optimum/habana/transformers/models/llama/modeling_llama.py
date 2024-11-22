@@ -676,44 +676,36 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-        fused_scaled_dot_product_attention = GaudiDistributedAttention(
-            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
-        )
-        if use_flash_attention and FusedSDPA is not None:
-            if q_len == 1:
-                # next token
-                attn_output = fused_scaled_dot_product_attention(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attention_mask,
-                    0.0,
-                    False,
-                    None,
-                    "None",
-                    False,
-                    None,
-                    "None",
-                )
-            else:
-                # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-                if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same length
-                    attn_output = fused_scaled_dot_product_attention(
-                        query_states,
-                        key_states,
-                        value_states,
-                        None,
-                        0.0,
-                        True,
-                        None,
-                        softmax_mode,
-                        flash_attention_recompute,
-                        valid_sequence_lengths,
-                        "left",
-                    )
-                else:
+
+        kv_cache_on_host = (key_states.device == torch.device("cpu") and value_states.device == torch.device("cpu"))
+        # CPU SDPA fot next token
+        if kv_cache_on_host and q_len == 1 and not self.training:
+            query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
+            # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+            # dispatch to flash attention implementation
+            attn_output = F.scaled_dot_product_attention(query_states,
+                                                        key_states,
+                                                        value_states,
+                                                        attn_mask=attention_mask,
+                                                        dropout_p=0.0,
+                                                        is_causal=False,
+                                                        scale=self.norm_factor)
+            attn_output = attn_output.to("hpu", non_blocking=True)
+
+        else:
+            if kv_cache_on_host:
+                key_states = key_states.to("hpu", non_blocking=True)
+                value_states = value_states.to("hpu", non_blocking=True)
+
+            fused_scaled_dot_product_attention = GaudiDistributedAttention(
+                self.fused_scaled_dot_product_attention,
+                self.fused_scaled_dot_product_attention_distributed
+            )
+            if use_flash_attention and FusedSDPA is not None:
+                if q_len == 1:
+                    # next token
                     attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
@@ -722,11 +714,42 @@ class GaudiLlamaAttention(LlamaAttention):
                         0.0,
                         False,
                         None,
-                        softmax_mode,
-                        flash_attention_recompute,
+                        "None",
+                        False,
                         None,
                         "None",
                     )
+                else:
+                    # first token
+                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+                    if flash_attention_causal_mask:
+                        attn_output = fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            None,
+                            0.0,
+                            True,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            valid_sequence_lengths,
+                            "left",
+                        )
+                    else:
+                        attn_output = fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            attention_mask,
+                            0.0,
+                            False,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            None,
+                            "None",
+                        )
 
             else:
                 query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
