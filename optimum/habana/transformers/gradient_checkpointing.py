@@ -181,8 +181,10 @@ class CheckpointFunction(torch.autograd.Function):
                     set_device_states(ctx.fwd_devices, ctx.fwd_device_states)
             detached_inputs = detach_variable(tuple(inputs))
 
-            with torch.enable_grad(), torch.autocast(**ctx.hpu_autocast_kwargs), torch.amp.autocast(
-                "cpu", **ctx.cpu_autocast_kwargs
+            with (
+                torch.enable_grad(),
+                torch.autocast(**ctx.hpu_autocast_kwargs),
+                torch.amp.autocast("cpu", **ctx.cpu_autocast_kwargs),
             ):
                 outputs = ctx.run_function(*detached_inputs)
 
