@@ -1,5 +1,6 @@
 from .configuration_mixtral import MixtralConfig
 from .modeling_mixtral import (
+    GaudiDynamicMoeBlock,
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,

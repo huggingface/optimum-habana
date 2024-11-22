@@ -142,6 +142,7 @@ from .mistral import (
     gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
+    GaudiDynamicMoeBlock,
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
