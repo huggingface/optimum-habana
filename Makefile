@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check: clean
-	python.exe -m pip install -U pip ruff
+	python -m pip install -U pip ruff
 	ruff check . setup.py
 	ruff format --check . setup.py
 
 style: clean
-	python.exe -m pip install -U pip ruff
+	python -m pip install -U pip ruff
 	ruff check . setup.py --fix
 	ruff format . setup.py
 
