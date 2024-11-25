@@ -562,6 +562,8 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
+        if len(model.generation_config.eos_token_id) > 1:
+            print("WARNING: Multiple EOS token IDs found. Only last eos token id will be used.")
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
