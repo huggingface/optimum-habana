@@ -22,6 +22,7 @@
 
 import contextlib
 import math
+import os
 from typing import Dict, List, Optional, OrderedDict, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -513,21 +514,21 @@ class FusedMoE(nn.Module):
 
         # Fused gate_up_proj (column parallel)
         self.w13_weight = nn.Parameter(
-            torch.empty(
+            torch.rand(
                 self.num_experts,
                 2 * self.intermediate_size_per_partition,
                 config.hidden_size,
                 dtype=params_dtype,
-            )
+            ).multiply(config.initializer_range)
         )
         # down_proj (row parallel)
         self.w2_weight = nn.Parameter(
-            torch.empty(
+            torch.rand(
                 self.num_experts,
                 config.hidden_size,
                 self.intermediate_size_per_partition,
                 dtype=params_dtype,
-            )
+            ).multiply(config.initializer_range)
         )
 
     def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor) -> torch.Tensor:
@@ -587,33 +588,45 @@ class GaudiDynamicMoeBlock(MixtralSparseMoeBlock):
         for name, loaded_weight in state_dict.items():
             if "rotary_emb.inv_freq" in name or not name.startswith(prefix) or name.endswith("gate.weight"):
                 continue
+            # normal flow, as using normal model
+            if len(name.strip(prefix).split(".")) == 4:
+                _, expert_id, weight_name, _ = name.strip(prefix).split(".")
+                param_name = "w13_weight" if weight_name in gate_up else "w2_weight"
+                shard_id = gate_down_up.index(weight_name)
+                expert_id = int(expert_id)
+                param_data = params_dict[param_name].data
 
-            _, expert_id, weight_name, _ = name.strip(prefix).split(".")
-            param_name = "w13_weight" if weight_name in gate_up else "w2_weight"
-            shard_id = gate_down_up.index(weight_name)
-            expert_id = int(expert_id)
-            param_data = params_dict[param_name].data
+                tp_rank = 0
+                if self.tp_size > 1:
+                    from deepspeed import comm as dist
 
-            tp_rank = 0
-            if self.tp_size > 1:
-                from deepspeed import comm as dist
+                    tp_rank = dist.get_rank()
 
-                tp_rank = dist.get_rank()
+                shard_size = self.intermediate_size_per_partition
+                shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
 
-            shard_size = self.intermediate_size_per_partition
-            shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
-
-            # w1, gate_proj case: Load into first shard of w13.
-            if shard_id == 0:
-                param_data[expert_id, 0:shard_size, :] = loaded_weight[shard, :]
-            # w3, up_proj case: Load into second shard of w13.
-            elif shard_id == 2:
-                param_data[expert_id, shard_size : 2 * shard_size, :] = loaded_weight[shard, :]
-            # w2, down_proj case: Load into only shard of w2.
-            elif shard_id == 1:
-                param_data[expert_id, :, :] = loaded_weight[:, shard]
+                # w1, gate_proj case: Load into first shard of w13.
+                if shard_id == 0:
+                    param_data[expert_id, 0:shard_size, :] = loaded_weight[shard, :]
+                # w3, up_proj case: Load into second shard of w13.
+                elif shard_id == 2:
+                    param_data[expert_id, shard_size : 2 * shard_size, :] = loaded_weight[shard, :]
+                # w2, down_proj case: Load into only shard of w2.
+                elif shard_id == 1:
+                    param_data[expert_id, :, :] = loaded_weight[:, shard]
+                else:
+                    raise ValueError(f"Shard id must be in [0,1,2] but got {shard_id}")
+            #flow prepared for tests
+            elif len(name.strip(prefix).split(".")) == 2:
+                if name.endswith("w13_weight"):
+                    self.experts.w13_weight.data = loaded_weight
+                elif name.endswith("w2_weight"):
+                    self.experts.w2_weight.data = loaded_weight
+                else:
+                    ValueError(f"Unexpected weight name: {name}")
             else:
-                raise ValueError(f"Shard id must be in [0,1,2] but got {shard_id}")
+                raise ValueError(f"Unexpected weight name: {name}")
+
 
 
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
