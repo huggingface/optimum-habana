@@ -286,7 +286,11 @@ def main():
         action="store_true",
         help="Use rescale_betas_zero_snr for controlling image brightness",
     )
+    parser.add_argument("--optimize", action="store_true", help="Use optimized pipeline.")
     args = parser.parse_args()
+
+    if args.optimize and not args.use_habana:
+        raise ValueError("--optimize can only be used with --use-habana.")
 
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
@@ -302,6 +306,8 @@ def main():
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
+        if args.optimize:
+            scheduler.hpu_opt = True
     elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
@@ -417,14 +423,31 @@ def main():
 
             pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
 
-        else:
+        elif args.optimize:
             # Import SDXL pipeline
+            import habana_frameworks.torch.hpu as torch_hpu
+
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
+
+            pipeline = StableDiffusionXLPipeline_HPU.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+
+            pipeline.to(torch.device("hpu"))
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
+            if args.use_hpu_graphs:
+                pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
+        else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
             pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
+
             if args.lora_id:
                 pipeline.load_lora_weights(args.lora_id)
 
