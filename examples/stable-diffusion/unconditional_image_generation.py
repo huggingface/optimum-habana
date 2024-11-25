@@ -79,6 +79,12 @@ def main():
         default="/tmp/",
         help="Where to save the generated images. The default is DDPMScheduler.",
     )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=3,
+        help="Number of steps to ignore for throughput calculation.",
+    )
 
     args = parser.parse_args()
     model_name = args.model_name_or_path
@@ -100,8 +106,10 @@ def main():
         "gaudi_config": gaudi_config,
     }
 
+    kwargs_call = {"throughput_warmup_steps": args.throughput_warmup_steps}
+
     pipeline = GaudiDDPMPipeline.from_pretrained(model_name, **kwargs)
-    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps)
+    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps, **kwargs_call)
 
     if args.output_dir:
         logger.info(f"Generating outputs to {args.output_dir}")

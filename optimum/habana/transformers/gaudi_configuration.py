@@ -93,5 +93,5 @@ class GaudiConfig(BaseConfig):
                     autocast_bf16_filename,
                     autocast_fp32_filename,
                 )
-                os.environ["LOWER_LIST"] = autocast_bf16_filename
-                os.environ["FP32_LIST"] = autocast_fp32_filename
+                os.environ["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = autocast_bf16_filename
+                os.environ["PT_HPU_AUTOCAST_FP32_OPS_LIST"] = autocast_fp32_filename

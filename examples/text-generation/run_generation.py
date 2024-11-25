@@ -561,12 +561,16 @@ def main():
 
         print()
         print("Input/outputs:")
+        all_inputs = []
+        all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
             print(f"input {i+1}: {input_sentence}")
+            all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
                 print(f"output {j+1}: {output}")
+                all_outputs.append(output)
             print()
 
         # Store results if necessary
@@ -576,7 +580,8 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "output": output,
+                "input": all_inputs,
+                "output": all_outputs,
             }
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)

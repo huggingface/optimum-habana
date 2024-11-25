@@ -178,13 +178,11 @@ def patch_scoped_linear_all_reduce(model):
 
 def get_torch_compiled_model(model):
     if model.config.model_type in ["gpt_bigcode", "mpt", "bloom", "gpt2"]:
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = torch.compile(model.transformer, backend="hpu_backend")
     elif model.config.model_type in ["gpt_neox"]:
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend")
     else:
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = torch.compile(model.model, backend="hpu_backend")
     return model
 
 
@@ -269,6 +267,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
+        # TODO: This will be removed in v1.19 Synapse release
+        # the loaded model should have the same dtype as original_model
+        model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(

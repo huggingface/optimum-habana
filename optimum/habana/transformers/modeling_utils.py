@@ -30,6 +30,7 @@ from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     DeciLMConfig,
     DeciLMForCausalLM,
+    Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -40,6 +41,8 @@ from .models import (
     GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
     GaudiFalconAttention,
     GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
@@ -64,6 +67,9 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -82,12 +88,21 @@ from .models import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMllamaCrossAttentionDecoderLayer,
+    GaudiMllamaForCausalLM,
+    GaudiMllamaForConditionalGeneration,
+    GaudiMllamaSelfAttentionDecoderLayer,
+    GaudiMllamaTextCrossAttention,
+    GaudiMllamaTextModel,
+    GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionModel,
     GaudiMptAttention,
     GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPaliGemmaForConditionalGeneration,
     GaudiPersimmonAttention,
     GaudiPersimmonDecoderLayer,
     GaudiPersimmonForCausalLM,
@@ -117,6 +132,7 @@ from .models import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+    GaudiXGLMForCausalLM,
     LlamaConfig,
     MistralConfig,
     MixtralConfig,
@@ -150,6 +166,8 @@ from .models import (
     gaudi_check_and_enable_sdpa,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
     gaudi_esm_for_protein_folding_forward,
@@ -212,6 +230,9 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )
 
 
@@ -410,6 +431,19 @@ def adapt_transformers_to_gaudi():
         GaudiLlavaNextForConditionalGeneration
     )
 
+    # Optimization for paligemma on Gaudi
+    transformers.models.paligemma.modeling_paligemma.PaliGemmaForConditionalGeneration = (
+        GaudiPaliGemmaForConditionalGeneration
+    )
+
+    # Optimization for idefics2 on Gaudi
+    transformers.models.idefics2.modeling_idefics2.Idefics2ForConditionalGeneration = (
+        GaudiIdefics2ForConditionalGeneration
+    )
+    transformers.models.idefics2.modeling_idefics2.Idefics2Model = GaudiIdefics2Model
+    transformers.models.idefics2.image_processing_idefics2.Idefics2ImageProcessor = Gaudi2Idefics2ImageProcessor
+    transformers.models.idefics2.modeling_idefics2.Idefics2VisionEmbeddings = GaudiIdefics2VisionEmbeddings
+
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
     transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
@@ -602,5 +636,27 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
     transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
 
+    # Optimization for mllama on Gaudi
+    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaCrossAttentionDecoderLayer = GaudiMllamaCrossAttentionDecoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaForCausalLM = GaudiMllamaForCausalLM
+    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
+    transformers.models.mllama.modeling_mllama.MllamaTextCrossAttention = GaudiMllamaTextCrossAttention
+    transformers.models.mllama.modeling_mllama.MllamaForConditionalGeneration = GaudiMllamaForConditionalGeneration
+    transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
+    transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
+
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
+    # Optimization for cohere on Gaudi
+    transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
+    transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
+    transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
+    transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
+
+    # Optimization for xglm on Gaudi
+    transformers.models.xglm.modeling_xglm.XGLMForCausalLM = GaudiXGLMForCausalLM
+    transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
+    transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
+    transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward

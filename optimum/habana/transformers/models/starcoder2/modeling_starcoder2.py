@@ -17,6 +17,7 @@
 ###############################################################################
 
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -280,14 +281,14 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
-                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+                past_key_value = [self.k_cache.get_shape(), self.v_cache.get_shape()]
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
-                    past_key_value = (past_key, past_value)
+                    past_key_value = [past_key, past_value]
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
                 if token_idx is None:
@@ -307,7 +308,8 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -374,7 +376,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 

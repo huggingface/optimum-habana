@@ -461,7 +461,7 @@ def main():
 
             if args.use_hpu_graphs:
                 pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
-
+    
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
