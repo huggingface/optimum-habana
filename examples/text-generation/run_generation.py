@@ -656,7 +656,7 @@ def main():
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
                     attn_mask = input_tokens["attention_mask"]
-                    return torch.sum(attn_mask, dim=1)
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
 
                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
                 generation_config.valid_sequence_lengths = valid_sequence_lengths
