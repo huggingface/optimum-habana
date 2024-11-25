@@ -173,6 +173,7 @@ def _test_text_generation(
     parallel_strategy: str = None,
     contrastive_search: bool = False,
     num_beams: int = 1,
+    num_return_sequences: int = 1,
     check_output: bool = False,
 ):
     command = ["python3"]
@@ -246,6 +247,11 @@ def _test_text_generation(
         command += [
             f"--num_beams {num_beams}",
             "--bucket_internal --bucket_size 64",
+        ]
+
+    if num_return_sequences > 1:
+        command += [
+            f"--num_return_sequences {num_return_sequences}",
         ]
 
     if fp8:
@@ -473,6 +479,7 @@ def test_text_generation_contrastive_search(
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3, num_return_sequences=2)
 
 
 class TextGenPipeline(TestCase):
