@@ -33,7 +33,7 @@ pip install -r requirements.txt
 Here we show how to fine-tune a Vision Transformer (`ViT`) on Cifar10:
 
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=0 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
@@ -51,10 +51,11 @@ python run_image_classification.py \
     --save_total_limit 3 \
     --seed 1337 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 3 \
+    --throughput_warmup_steps 6 \
     --dataloader_num_workers 1 \
     --bf16
 ```
@@ -92,7 +93,7 @@ root/cat/[...]/asd932_.png
 In other words, you need to organize your images in subfolders, based on their class. You can then run the script like this:
 
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=0 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --train_dir <path-to-train-root> \
     --output_dir /tmp/outputs/ \
@@ -100,8 +101,9 @@ python run_image_classification.py \
     --do_train \
     --do_eval \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 1 \
@@ -184,7 +186,7 @@ python run_image_classification.py \
 Here is how you would fine-tune ViT on Cifar10 using 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
@@ -203,8 +205,9 @@ python ../gaudi_spawn.py \
     --save_total_limit 3 \
     --seed 1337 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 8 \
     --dataloader_num_workers 1 \
@@ -224,7 +227,7 @@ For Swin, you need to change/add the following arguments:
 Similarly to multi-HPU training, here is how you would fine-tune ViT on Cifar10 using 8 HPUs with DeepSpeed:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
@@ -243,8 +246,9 @@ python ../gaudi_spawn.py \
     --save_total_limit 3 \
     --seed 1337 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 1 \

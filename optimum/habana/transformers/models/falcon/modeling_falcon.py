@@ -453,9 +453,11 @@ class GaudiFalconAttention(FalconAttention):
                             )
                     else:
                         # TODO very similar to the fp8 case above, could be merged.
-                        with sdp_kernel(
-                            enable_recompute=flash_attention_recompute
-                        ) if SDPContext else contextlib.nullcontext():
+                        with (
+                            sdp_kernel(enable_recompute=flash_attention_recompute)
+                            if SDPContext
+                            else contextlib.nullcontext()
+                        ):
                             attn_output = FusedSDPA.apply(
                                 query_layer,
                                 key_layer,
@@ -578,7 +580,7 @@ class GaudiFalconAttention(FalconAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.dense, "all_reduce"):
-            self.dense.post_all_reduce(attn_output)
+            return self.dense.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -598,7 +600,7 @@ class GaudiFalconMLP(FalconMLP):
 
     def post_mlp_forward(self, x):
         if hasattr(self.dense_4h_to_h, "all_reduce"):
-            self.dense_4h_to_h.post_all_reduce(x)
+            return self.dense_4h_to_h.post_all_reduce(x)
         return x
 
 
