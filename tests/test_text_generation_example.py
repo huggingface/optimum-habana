@@ -137,13 +137,13 @@ else:
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505, False),
+            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
         "distributed_tp": [],
         "contrastive_search": [
-            ("gpt2-xl", 1, False, 34.48141280163397, False),
+            ("gpt2-xl", 1, False, 34.48141280163397),
         ],
     }
     MODEL_OUTPUTS = {}
