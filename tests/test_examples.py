@@ -570,7 +570,7 @@ class ExampleTesterBase(TestCase):
         "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
         "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
     }
-    EAGER_MODE = None
+    EAGER_MODE = False
 
     def _create_command_line(
         self,
