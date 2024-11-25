@@ -135,7 +135,7 @@ class KVCache(torch.nn.Module):
 class GaudiGemmaAttention(GemmaAttention):
     def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -605,12 +605,13 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-            attention_mask,
-            input_ids.shape if input_ids is not None else (batch_size, seq_length),
-            inputs_embeds,
-            past_seen_tokens,
-        )
+        if attention_mask.dim() != 4:
+            attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+                attention_mask,
+                input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                inputs_embeds,
+                past_seen_tokens,
+            )
         # embed positions
         hidden_states = inputs_embeds
 
