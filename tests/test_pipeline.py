@@ -87,9 +87,11 @@ class TestGaudiPipeline:
                 generate_kwargs = {"lazy_mode": True, "ignore_eos": False, "hpu_graphs": True}
 
             generator.model = wrap_in_hpu_graph(generator.model)
-            with torch.autocast(
-                "hpu", torch.bfloat16, enabled=(model_dtype == torch.bfloat16)
-            ), torch.no_grad(), torch.inference_mode():
+            with (
+                torch.autocast("hpu", torch.bfloat16, enabled=(model_dtype == torch.bfloat16)),
+                torch.no_grad(),
+                torch.inference_mode(),
+            ):
                 for i in range(3):
                     output = generator(text, forward_params=forward_params, generate_kwargs=generate_kwargs)
             assert isinstance(output["audio"], np.ndarray)
