@@ -2743,13 +2743,19 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if self.generation_config.static_shapes:
             beam_trace_scores = torch.zeros(
-                (input_ids.shape[1], num_selection * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
+                (input_ids.shape[1], num_selection * batch_size * num_beams),
+                device=input_ids.device,
+                dtype=torch.float32,
             )
             beam_trace_indices = torch.zeros(
-                (input_ids.shape[1], num_selection * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[1], num_selection * batch_size * num_beams),
+                device=input_ids.device,
+                dtype=torch.int64,
             )
             beam_trace_tokens = torch.zeros(
-                (input_ids.shape[1], num_selection * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[1], num_selection * batch_size * num_beams),
+                device=input_ids.device,
+                dtype=torch.int64,
             )
             beam_trace_idx = torch.tensor(0, device=input_ids.device)
             num_eos_tokens = torch.zeros((1), device=input_ids.device, dtype=torch.int64)
