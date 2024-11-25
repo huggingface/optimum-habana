@@ -453,9 +453,11 @@ class GaudiFalconAttention(FalconAttention):
                             )
                     else:
                         # TODO very similar to the fp8 case above, could be merged.
-                        with sdp_kernel(
-                            enable_recompute=flash_attention_recompute
-                        ) if SDPContext else contextlib.nullcontext():
+                        with (
+                            sdp_kernel(enable_recompute=flash_attention_recompute)
+                            if SDPContext
+                            else contextlib.nullcontext()
+                        ):
                             attn_output = FusedSDPA.apply(
                                 query_layer,
                                 key_layer,
