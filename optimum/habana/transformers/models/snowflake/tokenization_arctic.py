@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, Optional
 
-from transformers.models.llama import LlamaTokenizer
+from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 
 class ArcticTokenizer(LlamaTokenizer):
