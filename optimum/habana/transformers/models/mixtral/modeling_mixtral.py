@@ -22,8 +22,7 @@
 
 import contextlib
 import math
-import os
-from typing import Dict, List, Optional, OrderedDict, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -42,7 +41,6 @@ from transformers.models.mixtral.modeling_mixtral import (
     MixtralDecoderLayer,
     MixtralForCausalLM,
     MixtralModel,
-    MixtralSparseMoeBlock,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
@@ -364,9 +362,9 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                with sdp_kernel(
-                    enable_recompute=flash_attention_recompute
-                ) if SDPContext else contextlib.nullcontext():
+                with (
+                    sdp_kernel(enable_recompute=flash_attention_recompute) if SDPContext else contextlib.nullcontext()
+                ):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -451,35 +449,45 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     return final_hidden_states, router_logits
 
 
-class DynamicFusedMoE(nn.Module):
-    """DynamicFusedMoE layer for MoE models.
-    Based on implementation from vllm:
-    https://github.com/HabanaAI/vllm-fork/blob/84922944da5b65fa43bbdc465650911cbef9de72/vllm/hpu/ops.py#L282"""
+def gaudi_mixtral_block_dynamic_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    batch_size, sequence_length, hidden_dim = hidden_states.shape
+    original_shape = hidden_states.shape
+    hidden_states = hidden_states.view(-1, hidden_dim)
+    # router_logits: (batch * sequence_length, n_experts)
+    router_logits = self.gate(hidden_states)
 
-    def __init__(self, num_total_experts):
-        super().__init__()
-        self.num_total_experts = num_total_experts
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
 
-    def forward(
-        self, hidden_states: torch.Tensor, w13: torch.Tensor, w2: torch.Tensor, score: torch.Tensor, topk: int
-    ) -> torch.Tensor:
-        routing_weights, selected_experts = calculate_routing_tensors(score, topk, hidden_states.dtype)
-        # pre-processing for custom op inputs
-        experts_range = range(self.num_total_experts)
-        w13_list = [w13[i, :, :].squeeze() for i in experts_range]
-        w2_list = [w2[i, :, :].squeeze() for i in experts_range]
-        final_hidden_states = torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=selected_experts,
-            router_weights=routing_weights,
-            w12=w13_list,
-            w3=w2_list,
-            permuted_weights=True,
-            activation="silu",
-            experts_min=0,
-            experts_max=7,
-        )
-        return final_hidden_states.view(-1, hidden_states.shape[1])
+        if dist.is_initialized():
+            output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+            dist.all_gather(output_tensors, router_logits)
+            router_logits = torch.cat(output_tensors, dim=1)
+
+    routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
+    # pre-processing for custom op inputs
+    w1_list = [expert.w1.weight for expert in self.experts]
+    w2_list = [expert.w2.weight for expert in self.experts]
+    w3_list = [expert.w3.weight for expert in self.experts]
+
+    final_hidden_states = torch.ops.hpu.mixture_of_experts(
+        hidden_states=hidden_states,
+        expert_routing_table=selected_experts,
+        router_weights=routing_weights,
+        w1=w1_list,
+        w3=w2_list,
+        w2=w3_list,
+        permuted_weights=True,
+        activation="silu",
+        experts_min=0,
+        experts_max=7,
+    )
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
+
+        if dist.is_initialized():
+            dist.all_reduce(final_hidden_states)
+    return final_hidden_states.view(original_shape), router_logits
 
 
 def calculate_routing_tensors(
@@ -491,142 +499,6 @@ def calculate_routing_tensors(
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
     routing_weights = routing_weights.to(hidden_states_dtype)
     return routing_weights, selected_experts
-
-
-class FusedMoE(nn.Module):
-    def __init__(
-        self,
-        config: MixtralConfig,
-        tp_size: int = 1,
-        params_dtype: Optional[torch.dtype] = None,
-    ):
-        super().__init__()
-        if params_dtype is None:
-            params_dtype = torch.get_default_dtype()
-
-        self.top_k = config.num_experts_per_tok
-        self.num_experts = config.num_local_experts
-        self.tp_size = tp_size
-
-        self.intermediate_size = config.intermediate_size
-        self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
-        self.hpu_fused_moe = DynamicFusedMoE(self.num_experts)
-
-        # Fused gate_up_proj (column parallel)
-        self.w13_weight = nn.Parameter(
-            torch.rand(
-                self.num_experts,
-                2 * self.intermediate_size_per_partition,
-                config.hidden_size,
-                dtype=params_dtype,
-            ).multiply(config.initializer_range)
-        )
-        # down_proj (row parallel)
-        self.w2_weight = nn.Parameter(
-            torch.rand(
-                self.num_experts,
-                config.hidden_size,
-                self.intermediate_size_per_partition,
-                dtype=params_dtype,
-            ).multiply(config.initializer_range)
-        )
-
-    def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor) -> torch.Tensor:
-        final_hidden_states = self.hpu_fused_moe(
-            hidden_states, self.w13_weight, self.w2_weight, router_logits, self.top_k
-        )
-        if self.tp_size > 1:
-            from deepspeed import comm as dist
-
-            dist.all_reduce(final_hidden_states)
-        return final_hidden_states
-
-
-class GaudiDynamicMoeBlock(MixtralSparseMoeBlock):
-    def __init__(self, config: MixtralConfig):
-        super().__init__(config)
-        self.tp_size = 1
-        if is_deepspeed_available():
-            from deepspeed import comm as dist
-
-            if dist.is_initialized():
-                self.tp_size = dist.get_world_size()
-        self.intermediate_size_per_partition = config.intermediate_size // self.tp_size
-        self.experts = FusedMoE(config, self.tp_size)
-
-    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        _, _, hidden_dim = hidden_states.shape
-        orig_shape = hidden_states.shape
-
-        hidden_states = hidden_states.view(-1, hidden_dim)
-        # router_logits: (batch * sequence_length, n_experts)
-        router_logits = self.gate(hidden_states)
-        if is_deepspeed_available() and (not self.training):
-            from deepspeed import comm as dist
-
-            if dist.is_initialized():
-                output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
-                dist.all_gather(output_tensors, router_logits)
-                router_logits = torch.cat(output_tensors, dim=1)
-
-        final_hidden_states = self.experts(hidden_states, router_logits)
-        return final_hidden_states.view(orig_shape), router_logits
-
-    def _load_from_state_dict(
-        self,
-        state_dict: OrderedDict[str, torch.Tensor],
-        prefix: str,
-        local_metadata: Dict[str, str],
-        strict: bool,
-        missing_keys: List[str],
-        unexpected_keys: List[str],
-        error_msgs: List[str],
-    ) -> None:
-        gate_up = ["w1", "w3"]
-        gate_down_up = ["w1", "w2", "w3"]
-        params_dict = dict(self.experts.named_parameters())
-        for name, loaded_weight in state_dict.items():
-            if "rotary_emb.inv_freq" in name or not name.startswith(prefix) or name.endswith("gate.weight"):
-                continue
-            # normal flow, as using normal model
-            if len(name.strip(prefix).split(".")) == 4:
-                _, expert_id, weight_name, _ = name.strip(prefix).split(".")
-                param_name = "w13_weight" if weight_name in gate_up else "w2_weight"
-                shard_id = gate_down_up.index(weight_name)
-                expert_id = int(expert_id)
-                param_data = params_dict[param_name].data
-
-                tp_rank = 0
-                if self.tp_size > 1:
-                    from deepspeed import comm as dist
-
-                    tp_rank = dist.get_rank()
-
-                shard_size = self.intermediate_size_per_partition
-                shard = slice(tp_rank * shard_size, (tp_rank + 1) * shard_size)
-
-                # w1, gate_proj case: Load into first shard of w13.
-                if shard_id == 0:
-                    param_data[expert_id, 0:shard_size, :] = loaded_weight[shard, :]
-                # w3, up_proj case: Load into second shard of w13.
-                elif shard_id == 2:
-                    param_data[expert_id, shard_size : 2 * shard_size, :] = loaded_weight[shard, :]
-                # w2, down_proj case: Load into only shard of w2.
-                elif shard_id == 1:
-                    param_data[expert_id, :, :] = loaded_weight[:, shard]
-                else:
-                    raise ValueError(f"Shard id must be in [0,1,2] but got {shard_id}")
-            #flow prepared for tests
-            elif len(name.strip(prefix).split(".")) == 2:
-                if name.endswith("w13_weight"):
-                    self.experts.w13_weight.data = loaded_weight
-                elif name.endswith("w2_weight"):
-                    self.experts.w2_weight.data = loaded_weight
-                else:
-                    ValueError(f"Unexpected weight name: {name}")
-            else:
-                raise ValueError(f"Unexpected weight name: {name}")
-
 
 
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
@@ -906,12 +778,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
-
-    # We don't want to raise an error for unitialized weights
-    _keys_to_ignore_on_load_missing = [
-        r"model.layers.\d+.block_sparse_moe.experts.w2_weight",
-        r"model.layers.\d+.block_sparse_moe.experts.w13_weight",
-    ]
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)

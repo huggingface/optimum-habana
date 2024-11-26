@@ -44,7 +44,6 @@ from .models import (
     GaudiCodeGenForCausalLM,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
-    GaudiDynamicMoeBlock,
     GaudiFalconAttention,
     GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
@@ -189,6 +188,7 @@ from .models import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
@@ -522,7 +522,9 @@ def adapt_transformers_to_gaudi():
             gaudi_mixtral_block_sparse_moe_forward
         )
     else:
-        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock = GaudiDynamicMoeBlock
+        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
+            gaudi_mixtral_block_dynamic_moe_forward
+        )
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
     transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig

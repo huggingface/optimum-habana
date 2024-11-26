@@ -337,12 +337,6 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     @unittest.skip(reason="This test is not supported for Mixtral")
     def test_sample_generate_dict_output(self):
         pass
-    
-    #TODO: @kwisniewski98 - Change saving scheme to be the same loading scheme
-    @unittest.skip(reason="In most of the cases, Mixtral will have w1 w2 and w3 per each expert, so in that case we need expected missing, \
-                   but when we are loading checkpoint from saved model, it will be loaded as w13 and w2 and this causes this test to fail.")
-    def test_model_weights_reload_no_missing_tied_weights(self):
-        pass
 
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79245/workflows/9490ef58-79c2-410d-8f51-e3495156cf9c/jobs/1012146
     def is_pipeline_test_to_skip(
