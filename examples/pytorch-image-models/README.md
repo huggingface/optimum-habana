@@ -153,7 +153,7 @@ python inference.py \
     --graph_mode
 ```
 
-### hpu with lazy mode
+### HPU with lazy mode
 ```bash
 python inference.py \
     --data-dir='./download_ds/imagenette2-320' 
