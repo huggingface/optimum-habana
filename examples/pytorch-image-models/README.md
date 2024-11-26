@@ -103,7 +103,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --device 'hpu' \
     --model resnet50.a1_in1k
 ```
-### training with hpu graph mode
+### Training with HPU graph mode
 
 ```bash
 torchrun --nnodes 1 --nproc_per_node 2 \
