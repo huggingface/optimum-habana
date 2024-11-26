@@ -257,6 +257,7 @@ class GaudiFusedFluxAttnProcessor2_0:
 class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
     r"""
     Adapted from https://github.com/huggingface/diffusers/blob/v0.30.3/src/diffusers/pipelines/flux/pipeline_flux.py#L140
+        Added batch size control for inference, and support for HPU graphs and Gaudi quantization via Intel Neural Compressor
 
     The Flux pipeline for text-to-image generation.
 
