@@ -666,8 +666,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             if quant_mode == "quantize-mixed":
                 # 10% of steps use higher precision in mixed quant mode
                 quant_mixed_step = quant_mixed_step - (quant_mixed_step // 10)
-                print(f"Use FP8  Transformer at steps 0 to {quant_mixed_step - 1}")
-                print(f"Use BF16 Transformer at steps {quant_mixed_step} to {len(timesteps) - 1}")
+                logger.info(f"Use FP8  Transformer at steps 0 to {quant_mixed_step - 1}")
+                logger.info(f"Use BF16 Transformer at steps {quant_mixed_step} to {len(timesteps) - 1}")
 
             for i in self.progress_bar(range(len(timesteps))):
                 if use_warmup_inference_steps and i == throughput_warmup_steps and j == num_batches - 1:
