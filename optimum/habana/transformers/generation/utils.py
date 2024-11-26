@@ -1062,9 +1062,10 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
-        # Below condition checked explicitly since llama supports bucket_internal even without reuse_cache
+        # Below condition checked explicitly since some models (like llama and gpt_bigcode) support bucket_internal even without reuse_cache
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
+            assert generation_config.use_cache, "please set use_cache flag to use bucket_internal"
         if generation_config.reuse_cache:
             assert (
                 self.config.model_type
