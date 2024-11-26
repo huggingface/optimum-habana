@@ -502,7 +502,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             quant_config_path = os.getenv("QUANT_CONFIG")
             if not quant_config_path:
                 raise ImportError(
-                    "Error: QUANT_CONFIG path is not defined. Please define path to quantization configuration JSON file."
+                    "QUANT_CONFIG path is not defined. Please define path to quantization configuration JSON file."
                 )
             elif not os.path.isfile(quant_config_path):
                 raise ImportError(f"Error: QUANT_CONFIG path '{quant_config_path}' is not valid")
