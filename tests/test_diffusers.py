@@ -22,6 +22,7 @@ import json
 import os
 import random
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -136,8 +137,10 @@ if IS_GAUDI2:
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.15186785472532677
     DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 36.06376791000366
+    TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.6694
+    TEXTUAL_INVERSION_SDXL_RUNTIME = 74.92
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -148,9 +151,11 @@ else:
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.42
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.050208662346013566
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 1000  # TODO: Get Gaudi 1 benchmark numbers
     DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 200  # TODO: Get Gaudi 1 Throughput
+    TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.695
+    TEXTUAL_INVERSION_SDXL_RUNTIME = 74.19
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -831,6 +836,9 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             snapshot_download(
                 "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
             )
+            cache_dir = Path(data_dir, ".cache")
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
             with tempfile.TemporaryDirectory() as run_dir:
                 cmd_line = [
                     "python3",
@@ -1195,6 +1203,77 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images[0]
 
         self.assertEqual(image.shape, (64, 64, 3))
+
+    @slow
+    def test_textual_inversion_sdxl(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "textual_inversion_sdxl.py"
+        )
+        with tempfile.TemporaryDirectory() as data_dir:
+            snapshot_download(
+                "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            cache_dir = Path(data_dir, ".cache")
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
+            with tempfile.TemporaryDirectory() as run_dir:
+                cmd_line = [
+                    "python3",
+                    f"{path_to_script}",
+                    "--pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0",
+                    f"--train_data_dir {data_dir}",
+                    "--learnable_property object",
+                    "--placeholder_token <cat-toy>",
+                    "--initializer_token toy",
+                    "--resolution 64",
+                    "--train_batch_size 1",
+                    "--gradient_accumulation_steps 4",
+                    "--max_train_steps 50",
+                    "--learning_rate 5.0e-04",
+                    "--scale_lr",
+                    "--lr_scheduler constant",
+                    "--lr_warmup_steps 0",
+                    f"--output_dir {run_dir}",
+                    "--save_as_full_pipeline",
+                    "--gaudi_config_name Habana/stable-diffusion",
+                    "--throughput_warmup_steps 3",
+                    "--seed 27",
+                ]
+
+                pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
+                cmd_line = [x for y in cmd_line for x in re.split(pattern, y) if x]
+                # Run textual inversion
+                p = subprocess.Popen(cmd_line)
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+
+                # Assess throughput
+                with open(Path(run_dir) / "speed_metrics.json") as fp:
+                    results = json.load(fp)
+                self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * TEXTUAL_INVERSION_SDXL_THROUGHPUT)
+                self.assertLessEqual(results["train_runtime"], 1.05 * TEXTUAL_INVERSION_SDXL_RUNTIME)
+
+                pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
+                    run_dir,
+                    torch_dtype=torch.bfloat16,
+                    use_habana=True,
+                    use_hpu_graphs=True,
+                    gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                )
+
+                set_seed(27)
+                prompt_1 = "A <cat-toy> backpack"
+                prompt_2 = "A <cat-toy> colored backpack"
+                image = pipe(
+                    prompt=prompt_1, prompt_2=prompt_2, num_inference_steps=50, guidance_scale=7.5, output_type="np"
+                ).images[0]
+                self.assertEqual(image.shape, (1024, 1024, 3))
 
     def test_stable_diffusion_xl_default(self):
         components = self.get_dummy_components()
