@@ -38,9 +38,9 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import (
     check_habana_frameworks_version,
+    check_neural_compressor_min_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
-    check_neural_compressor_min_version,
     set_seed,
 )
 
