@@ -471,7 +471,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["attention_mask"], (0, pad_amount), value=0
                 )
             else:
-                assert False, "Not tested for cases where attn_mask isnt passed"
+                assert False, "Not tested for cases where attn_mask isn't passed"
 
             if model_kwargs.get("cross_attention_mask") is not None:
                 model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
@@ -500,7 +500,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     elif model_kwargs["past_key_values"][0][0].dim() == 4:
                         return (0, 0, 0, pad_amount)  # llama, falcon, qwen2, starcoder2, gemma
                     else:
-                        assert False, "Unknown case, please handle, or dont use bucketing"
+                        assert False, "Unknown case, please handle, or don't use bucketing"
 
                 new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
                 if self.config.model_type == "gpt_bigcode" and model_kwargs["past_key_values"][0][0].dim() == 2:
@@ -1067,9 +1067,10 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
-        # Below condition checked explicitly since llama supports bucket_internal even without reuse_cache
+        # Below condition checked explicitly since some models (like llama and gpt_bigcode) support bucket_internal even without reuse_cache
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
+            assert generation_config.use_cache, "please set use_cache flag to use bucket_internal"
         if generation_config.reuse_cache:
             assert (
                 self.config.model_type
@@ -2203,7 +2204,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
             ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
 
                 is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
