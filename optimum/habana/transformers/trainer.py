@@ -139,7 +139,7 @@ if is_accelerate_available("0.28.0"):
     from accelerate.utils import DataLoaderConfiguration
 
 
-def _get_input_update_settings(model) -> Tuple[bool, Dict]:
+def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
     """
     Determines whether the input settings need to be updated.
 
@@ -148,16 +148,17 @@ def _get_input_update_settings(model) -> Tuple[bool, Dict]:
 
     Args:
         model: The model instance for which the input update settings are being evaluated
+        lazy_mode[Optional[bool]]: Whether to use lazy mode for the model (defaults to `None`)
 
     Returns:
         Tuple[bool, Dict]: A flag indicating whether the input settings should be updated.
         A dictionary containing the specific input settings that need to be updated, if any
     """
-    should_update_inputs: bool = (getattr(model, "generation_config", None) is not None) and (
+    inputs_update: Dict = {}
+
+    should_update_inputs = (getattr(model, "generation_config", None) is not None) and (
         model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma")
     )
-
-    inputs_update: Dict = {}
     if should_update_inputs:
         if model.generation_config.attn_softmax_bf16:
             inputs_update["attn_softmax_bf16"] = True
@@ -167,7 +168,16 @@ def _get_input_update_settings(model) -> Tuple[bool, Dict]:
             inputs_update["flash_attention_recompute"] = True
         if model.generation_config.flash_attention_causal_mask:
             inputs_update["flash_attention_causal_mask"] = True
-        should_update_inputs = len(inputs_update) > 0
+
+    should_update_inputs = (
+        (getattr(model, "generation_config", None) is not None)
+        and (model.config.model_type in ("llama", "qwen2", "starcoder2", "mistral"))
+        and (lazy_mode is not None)
+    )
+    if should_update_inputs:
+        inputs_update["lazy_mode"] = lazy_mode
+
+    should_update_inputs: bool = len(inputs_update) > 0
 
     return should_update_inputs, inputs_update
 
@@ -887,7 +897,7 @@ class GaudiTrainer(Trainer):
         )
 
         # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
-        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model)
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model, lazy_mode=args.use_lazy_mode)
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -989,6 +999,7 @@ class GaudiTrainer(Trainer):
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
+                # lazy_mode for llama, qwen2, starcoder2 and mistral
                 if _should_update_inputs:
                     inputs.update(_inputs_update)
 
