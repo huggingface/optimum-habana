@@ -1,6 +1,6 @@
 - sections:
   - local: index
-    title: 🤗 Optimum Habana
+    title: 🤗 Optimum for Intel Gaudi
   - local: installation
     title: Installation
   - local: quickstart
@@ -16,12 +16,14 @@
       title: Run Inference
     - local: tutorials/stable_diffusion
       title: Stable Diffusion
-    - local: tutorials/stable_diffusion_ldm3d
-      title: LDM3D
+    - local: tutorials/tgi
+      title: TGI on Gaudi
     title: Tutorials
   - sections:
     - local: usage_guides/overview
       title: Overview
+    - local: usage_guides/script_adaptation
+      title: Script Adaptation
     - local: usage_guides/pretraining
       title: Pretraining Transformers
     - local: usage_guides/accelerate_training
@@ -32,20 +34,16 @@
       title: How to use DeepSpeed
     - local: usage_guides/multi_node_training
       title: Multi-node Training
+    - local: usage_guides/quantization
+      title: Quantization
     title: How-To Guides
-  - sections:
-    - local: concept_guides/hpu
-      title: What are Habana's Gaudi and HPUs?
-    title: Conceptual Guides
   - sections:
     - local: package_reference/trainer
       title: Gaudi Trainer
     - local: package_reference/gaudi_config
       title: Gaudi Configuration
-    - local: package_reference/stable_diffusion_pipeline
-      title: Gaudi Stable Diffusion Pipeline
     - local: package_reference/distributed_runner
       title: Distributed Runner
     title: Reference
-  title: Optimum Habana
+  title: Optimum for Intel Gaudi
   isExpanded: false
