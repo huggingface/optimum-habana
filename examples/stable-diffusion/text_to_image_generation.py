@@ -291,6 +291,7 @@ def main():
     parser.add_argument(
         "--quant_mode",
         default="disable",
+        choices=["measure", "quantize", "quantize-mixed", "disable"],
         type=str,
         help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
     )
