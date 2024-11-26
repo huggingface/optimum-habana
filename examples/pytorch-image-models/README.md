@@ -93,7 +93,7 @@ Current checkpoints:
 
 ## Multi-HPU training
 
-Here we show how to fine-tune the [imagenette2-320 dataset](https://www.kaggle.com/datasets/xbinchen/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
+Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
 ### training with hpu lazy mode
 ```bash
