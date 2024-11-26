@@ -292,7 +292,7 @@ def _test_text_generation(
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
-        command.append(f"--token {token}")
+        command.append(f"--token {token.value}")
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
 
