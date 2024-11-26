@@ -54,7 +54,7 @@ python train_hpu_lazy.py \
     --device 'hpu' \
     --model resnet50.a1_in1k
 ```
-### training with hpu graph mode
+### Training with HPU graph mode
 
 ```bash
 python train_hpu_graph.py \
