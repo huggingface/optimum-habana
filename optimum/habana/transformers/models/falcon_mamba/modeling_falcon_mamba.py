@@ -32,6 +32,8 @@ Copys from https://github.com/huggingface/transformers/blob/v4.45.2/src/transfor
 The only differences are:
 - Use the mark_step function to reduce the graph compiling time.
 """
+
+
 def gaudi_FalconMambaModel_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
@@ -116,6 +118,8 @@ Copys from https://github.com/huggingface/transformers/blob/v4.45.2/src/transfor
 The only differences are:
 - Use the torch.index_select function to replace the slicing operation of Line 51
 """
+
+
 def gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation(
     self,
     input_ids,
