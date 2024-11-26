@@ -81,6 +81,14 @@ from .gemma import (
     GaudiGemmaMLP,
     GaudiGemmaModel,
 )
+from .gemma2 import (
+    GaudiGemma2Attention,
+    GaudiGemma2DecoderLayer,
+    GaudiGemma2ForCausalLM,
+    GaudiGemma2MLP,
+    GaudiGemma2Model,
+    GaudiGemma2RotaryEmbedding,
+)
 from .gpt2 import (
     GaudiGPT2Attention,
     GaudiGPT2Block,
@@ -185,6 +193,7 @@ from .opt import (
     gaudi_opt_model_forward,
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
+from .paligemma import GaudiPaliGemmaForConditionalGeneration
 from .persimmon import (
     GaudiPersimmonAttention,
     GaudiPersimmonDecoderLayer,

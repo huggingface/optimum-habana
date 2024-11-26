@@ -170,6 +170,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         )
         self.unet.set_default_attn_processor = set_default_attn_processor_hpu
         self.unet.forward = gaudi_unet_2d_condition_model_forward
+        self.quantized = False
 
     def run_unet(
         self,
@@ -609,7 +610,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            timesteps = [t.item() for t in timesteps]
             if self.quantized:
                 for i, t in enumerate(timesteps[0:-2]):
                     if self.interrupt:
@@ -666,7 +666,9 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                     )
                     hb_profiler.step()
             else:
-                for i, t in enumerate(timesteps):
+                for i in range(num_inference_steps):
+                    t = timesteps[0]
+                    timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                     if self.interrupt:
                         continue
                     latents = self.run_unet(

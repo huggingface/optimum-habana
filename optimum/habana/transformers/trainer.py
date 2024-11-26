@@ -72,6 +72,7 @@ from transformers.trainer_utils import (
     HPSearchBackend,
     HubStrategy,
     IntervalStrategy,
+    PredictionOutput,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
@@ -1719,8 +1720,7 @@ class GaudiTrainer(Trainer):
     ) -> Dict[str, float]:
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
-        1. comment out TPU related
-        2. use throughput_warmup_steps in evaluation throughput calculation
+        1. use throughput_warmup_steps in evaluation throughput calculation
         """
         # handle multipe eval datasets
         override = eval_dataset is not None
@@ -1780,6 +1780,51 @@ class GaudiTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output.metrics
+
+    def predict(
+        self, test_dataset: Dataset, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "test"
+    ) -> PredictionOutput:
+        """
+        From https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/trainer.py#L3904 with the following modification
+        1. comment out TPU related
+        2. use throughput_warmup_steps in evaluation throughput calculation
+        """
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        test_dataloader = self.get_test_dataloader(test_dataset)
+        start_time = time.time()
+        self.start_time_after_warmup = None
+
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        output = eval_loop(
+            test_dataloader, description="Prediction", ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix
+        )
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
+        if f"{metric_key_prefix}_model_preparation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_model_preparation_time"]
+
+        num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
+        num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
+
+        logger.info(f"num_samples : {num_samples}, num_steps: {num_steps}")
+
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=num_samples,
+                num_steps=num_steps,
+                start_time_after_warmup=self.start_time_after_warmup,
+            )
+        )
+
+        self.control = self.callback_handler.on_predict(self.args, self.state, self.control, output.metrics)
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
     def evaluation_loop(
         self,
@@ -1873,6 +1918,7 @@ class GaudiTrainer(Trainer):
         observed_num_examples = 0
 
         # Main evaluation loop
+        start_time_eval = time.time()
         for step, inputs in enumerate(dataloader):
             if (
                 self.args.throughput_warmup_steps > 0
@@ -1880,6 +1926,8 @@ class GaudiTrainer(Trainer):
                 and step == self.args.throughput_warmup_steps
             ):
                 self.start_time_after_warmup = time.time()
+                self.compilation_time = self.start_time_after_warmup - start_time_eval
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -2022,6 +2070,8 @@ class GaudiTrainer(Trainer):
             metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
         if hasattr(self, "model_preparation_time"):
             metrics[f"{metric_key_prefix}_model_preparation_time"] = self.model_preparation_time
+        if hasattr(self, "compilation_time"):
+            metrics[f"{metric_key_prefix}_graph_compliation_duration"] = self.compilation_time
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
