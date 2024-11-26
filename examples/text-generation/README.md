@@ -258,7 +258,7 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 ### Using Beam Search
 
-Restriction: Currently beam search is only enabled for the models with model type of `llama` or `qwen2` if `reuse_cache` is not enabled. The group beam search and constrained beam search is not supported by optimum-habana yet. 
+> Restriction: When `reuse_cache` is not applied, currently beam search can only work for the models with model type of `llama` or `qwen2` since it requires `_reorder_cache` implemented in the modeling. The group beam search and constrained beam search is not supported by optimum-habana yet. 
 
 Here is an example:
 ```bash
