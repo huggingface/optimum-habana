@@ -1,0 +1,48 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# TGI on Gaudi
+
+Text Generation Inference (TGI) on Intel® Gaudi® AI Accelerator is supported via [Intel® Gaudi® TGI repository](https://github.com/huggingface/tgi-gaudi).
+Start TGI service on Gaudi system simply by [pulling a TGI Gaudi Docker image](https://github.com/huggingface/tgi-gaudi/pkgs/container/tgi-gaudi) and launching a local TGI service instance.
+
+For example, TGI service on Gaudi for *Llama 2 7B* model can be started with:
+```bash
+docker run \
+  -p 8080:80 \
+  -v $PWD/data:/data \
+  --runtime=habana \
+  -e HABANA_VISIBLE_DEVICES=all \
+  -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+  --cap-add=sys_nice \
+  --ipc=host ghcr.io/huggingface/tgi-gaudi:2.0.1 \
+  --model-id meta-llama/Llama-2-7b-hf \
+  --max-input-tokens 1024 \
+  --max-total-tokens 2048
+```
+
+You can then send a simple request:
+```bash
+curl 127.0.0.1:8080/generate \
+  -X POST \
+  -d '{"inputs":"What is Deep Learning?","parameters":{"max_new_tokens":32}}' \
+  -H 'Content-Type: application/json'
+```
+
+To run static benchmark test, please refer to
+[TGI's benchmark tool](https://github.com/huggingface/text-generation-inference/tree/main/benchmark).
+More examples of running the service instances on single or multi HPU device system are available
+[here](https://github.com/huggingface/tgi-gaudi?tab=readme-ov-file#running-tgi-on-gaudi).
