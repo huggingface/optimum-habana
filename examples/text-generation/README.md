@@ -124,6 +124,7 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
+- `--use_mark_dynamic` Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -627,7 +628,6 @@ and by adding the argument `--load_quantized_model_with_autogptq`.
 
 ***Note:***
 Setting the above environment variables improves performance. These variables will be removed in future releases.
- 
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
