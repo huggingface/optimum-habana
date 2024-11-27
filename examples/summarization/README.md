@@ -179,7 +179,7 @@ python ../gaudi_spawn.py \
 
 ## Using DeepSpeed
 
-Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
+Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_summarization.py \

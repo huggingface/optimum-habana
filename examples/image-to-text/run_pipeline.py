@@ -188,11 +188,16 @@ def main():
     model_type = config.model_type
     if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
+    elif args.image_path is None and model_type == "paligemma":
+        args.image_path = [
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
+        ]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if model_type in ["llava", "idefics2", "llava_next", "mllama"]:
+
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -218,7 +223,10 @@ def main():
                     image_str = "<image>"
                 else:
                     image_str = str(processor.tokenizer.added_tokens_decoder[image_token_id])
-                args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
+                if model_type == "paligemma":
+                    args.prompt = "caption es"
+                else:
+                    args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -295,7 +303,7 @@ def main():
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama"]:
+    if model_type in ["idefics2", "mllama", "paligemma"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):

@@ -94,6 +94,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "phi",
     "mixtral",
     "gemma",
+    "gemma2",
     "blip_text_model",
     "seamless_m4t",
     "starcoder2",
@@ -108,6 +109,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_moe",
     "xglm",
     "whisper",
+    "paligemma",
     "idefics2",
     "mllama",
 ]
@@ -464,7 +466,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["attention_mask"], (0, pad_amount), value=0
                 )
             else:
-                assert False, "Not tested for cases where attn_mask isnt passed"
+                assert False, "Not tested for cases where attn_mask isn't passed"
 
             if model_kwargs.get("cross_attention_mask") is not None:
                 model_kwargs["cross_attention_mask"] = torch.nn.functional.pad(
@@ -493,7 +495,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     elif model_kwargs["past_key_values"][0][0].dim() == 4:
                         return (0, 0, 0, pad_amount)  # llama, falcon, qwen2, starcoder2, gemma
                     else:
-                        assert False, "Unknown case, please handle, or dont use bucketing"
+                        assert False, "Unknown case, please handle, or don't use bucketing"
 
                 new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
                 if self.config.model_type == "gpt_bigcode" and model_kwargs["past_key_values"][0][0].dim() == 2:
@@ -960,6 +962,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.GenerateEncoderDecoderOutput`],
                     - [`transformers.generation.GenerateBeamEncoderDecoderOutput`]
         """
+
         if iteration_times is not None:
             hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
             hb_gen_time.start()
@@ -1059,9 +1062,10 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
-        # Below condition checked explicitly since llama supports bucket_internal even without reuse_cache
+        # Below condition checked explicitly since some models (like llama and gpt_bigcode) support bucket_internal even without reuse_cache
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
+            assert generation_config.use_cache, "please set use_cache flag to use bucket_internal"
         if generation_config.reuse_cache:
             assert (
                 self.config.model_type
@@ -1076,14 +1080,18 @@ class GaudiGenerationMixin(GenerationMixin):
                     "starcoder2",
                     "qwen2_moe",
                     "gemma",
+                    "gemma2",
                 ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma and starcoder2 at the moment"
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2 and starcoder2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
                 ), "please set bucket_internal along with reuse_cache and bucket_size"
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
+
+        if self.config.model_type == "gemma2":
+            generation_config.cache_implementation = None
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -1189,6 +1197,7 @@ class GaudiGenerationMixin(GenerationMixin):
         input_ids_length = input_ids.shape[1]
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         has_default_min_length = kwargs.get("min_length") is None and generation_config.min_length is not None
+
         generation_config = self._prepare_generated_length(
             generation_config=generation_config,
             has_default_max_length=has_default_max_length,
@@ -1277,6 +1286,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gptj",
                 "starcoder2",
                 "gemma",
+                "gemma2",
                 "qwen2_moe",
             ]:
                 if self.config.max_position_embeddings < calculated_max_length:
@@ -2190,7 +2200,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
             ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
 
                 is_mqa_model = self.config.model_type == "gpt_bigcode" and self.config.multi_query
