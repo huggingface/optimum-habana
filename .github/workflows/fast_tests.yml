@@ -30,14 +30,14 @@ jobs:
             -v /scratch-1:/data \
             --workdir=/root/workspace \
             --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=0,1 \
+            -e HABANA_VISIBLE_DEVICES=$HABANA_VISIBLE_DEVICES \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             -e HF_HOME=/data \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.18.0/ubuntu22.04/habanalabs/pytorch-installer-2.4.0:latest \
-            /bin/bash tests/ci/fast_tests.sh
+            /bin/bash echo $HABANA_VISIBLE_DEVICES
   diffusers:
     name: Run tests for optimum.habana.diffusers
     needs:
