@@ -38,12 +38,12 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaTextSelfAttention,
     MllamaVisionAttention,
     MllamaVisionConfig,
+    MllamaVisionEncoder,
+    MllamaVisionEncoderLayer,
     MllamaVisionModel,
     _prepare_4d_causal_attention_mask_with_cache_position,
     _prepare_aspect_ratio_attention_mask,
     apply_rotary_pos_emb,
-    MllamaVisionEncoderLayer,
-    MllamaVisionEncoder,
     repeat_kv,
 )
 from transformers.utils import (
