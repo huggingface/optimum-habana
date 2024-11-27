@@ -262,8 +262,11 @@ class ExampleTestMeta(type):
             return False
         elif "llama" in model_name and "trl-sft-qwen" in task_name:
             return False
-        elif "Llama-3.1-8B" in model_name and task_name == "tatsu-lab/alpaca":
-            return True
+        elif "Llama-3.1-8B" in model_name:
+            if multi_card:
+                return False
+            elif task_name == "tatsu-lab/alpaca":
+                return True
         elif "falcon" in model_name and task_name in (
             "llama-adapter",
             "databricks/databricks-dolly-15k",
