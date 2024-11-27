@@ -66,12 +66,6 @@ try:
 except ImportError:
     has_wandb = False
 
-# try:
-#    from functorch.compile import memory_efficient_fusion
-#    has_functorch = True
-# except ImportError:
-#    has_functorch = False
-
 has_compile = hasattr(torch, "compile")
 
 

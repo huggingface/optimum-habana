@@ -288,14 +288,11 @@ def main():
         imagenet_subset = infer_imagenet_subset(model)
         if imagenet_subset is not None:
             dataset_info = ImageNetInfo(imagenet_subset)
-            if args.label_type == "name":
-                # to_label = lambda x: dataset_info.index_to_label_name(x)
+            if args.label_type == "name":                
                 to_label = to_label_name
-            elif args.label_type == "detail":
-                # to_label = lambda x: dataset_info.index_to_description(x, detailed=True)
+            elif args.label_type == "detail":                
                 to_label = to_label_description(detailed=True)
-            else:
-                # to_label = lambda x: dataset_info.index_to_description(x)
+            else:                
                 to_label = to_label_description
             to_label = np.vectorize(to_label)
         else:
