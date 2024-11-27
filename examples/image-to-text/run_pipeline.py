@@ -25,8 +25,6 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -182,6 +180,11 @@ def main():
     args.global_rank = int(os.getenv("RANK", "0"))
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
+    if args.world_size > 0:
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type

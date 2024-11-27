@@ -83,9 +83,15 @@ def _test_image_to_text(
                 path_to_example_dir, "image-to-text/quantization_config/maxabs_measure_include_outputs.json"
             )
             subprocess.run(command, env=env_variables)
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "image-to-text/quantization_config/maxabs_quant.json"
-            )
+            quant_file_path = "image-to-text/quantization_config/maxabs_quant.json"
+            if model_name in [
+                "llava-hf/llava-v1.6-mistral-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-13b-hf",
+            ]:
+                quant_file_path = "image-to-text/quantization_config/maxabs_quant_scale_format_const.json"
+
+            env_variables["QUANT_CONFIG"] = os.path.join(path_to_example_dir, quant_file_path)
 
         proc = subprocess.run(command, env=env_variables)
 
