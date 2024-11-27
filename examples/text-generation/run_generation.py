@@ -569,7 +569,7 @@ def main():
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i+1}.{j+1}: {output}")
                 all_outputs.append(output)
             print()
 
