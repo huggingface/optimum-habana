@@ -388,7 +388,7 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     if args.device == "hpu":
         dist.init_process_group(backend="hccl")
     else:
-        assert False, "Supports TP only on HPU"
+        assert False, "Supports EP only on HPU"
 
     torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
     logger.info("Creating Model")
