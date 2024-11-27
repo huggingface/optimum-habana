@@ -33,6 +33,8 @@ Models that have been validated:
   - [HuggingFaceM4/idefics2-8b](https://huggingface.co/HuggingFaceM4/idefics2-8b)
   - [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
   - [google/paligemma-3b-mix-224](https://huggingface.co/google/paligemma-3b-mix-224)
+  - [Qwen/Qwen2-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct)
+
 
 ### Inference with BF16
 
@@ -115,6 +117,14 @@ To run mllama inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
+    --use_hpu_graphs \
+    --bf16
+```
+To run Qwen/Qwen2-VL-7B-Instruct inference, use the following command:
+
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path Qwen/Qwen2-VL-7B-Instruct \
     --use_hpu_graphs \
     --bf16
 ```
