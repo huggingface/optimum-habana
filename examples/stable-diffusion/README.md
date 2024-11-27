@@ -619,8 +619,8 @@ python image_to_image_generation.py \
     --model_name_or_path "black-forest-labs/FLUX.1-dev" \
     --src_image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png" \
     --prompts "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k" \
-    --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --num_images_per_prompt 40 \
+    --batch_size 10 \
     --strength 0.9 \
     --guidance_scale 3.5 \
     --num_inference_steps 30 \
