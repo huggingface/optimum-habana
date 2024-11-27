@@ -17,9 +17,6 @@ jobs:
     name: Run tests for optimum.habana.transformers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
-      - name: Test HABANA_VISIBLE_DEVICES
-        run: |
-            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
@@ -45,9 +42,6 @@ jobs:
     name: Run tests for optimum.habana.diffusers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
-      - name: Test HABANA_VISIBLE_DEVICES
-        run: |
-            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
