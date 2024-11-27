@@ -102,7 +102,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
-    --val-spit train \
+    --val-split train \
     --dataset-download
 ```
 ### Training with HPU graph mode
@@ -115,7 +115,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
-    --val-spit train \
+    --val-split train \
     --dataset-download
 ```
 
@@ -141,12 +141,12 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ### HPU with graph mode
 ```
 python inference.py \
-    --data-dir='./' \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
-    --device='hpu' \
-    --model resnet50.a1_in1k \
-    --split train \
-    --graph_mode
+--data-dir='./' \
+--dataset hfds/johnowhitaker/imagenette2-320 \    
+--device='hpu' \
+--model resnet50.a1_in1k \
+--split train \
+--graph_mode
 ```
 
 ### HPU with lazy mode
