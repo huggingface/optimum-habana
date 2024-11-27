@@ -17,11 +17,11 @@ import warnings
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import datasets
 import numpy as np
 import torch
 import torch.nn as nn
 from accelerate import PartialState
-import datasets
 from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
@@ -510,7 +510,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 formatting_func,
                 add_special_tokens,
                 remove_unused_columns,
-                pad_max
+                pad_max,
             )
 
         else:
@@ -588,7 +588,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         )
 
         return tokenized_dataset
-      
+
     def _get_buckets(self, sentence_lengths, num_buckets):
         return np.unique(
             np.percentile(
