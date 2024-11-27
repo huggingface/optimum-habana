@@ -546,6 +546,7 @@ def main():
                     args.model_name_or_path,
                     **kwargs,
                 )
+                pipeline.unet.set_default_attn_processor(pipeline.unet)
 
                 if args.unet_adapter_name_or_path is not None:
                     from peft import PeftModel
