@@ -1763,6 +1763,14 @@ class GaudiTrainer(Trainer):
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
 
+        eval_steps = output.num_samples / total_batch_size
+        if eval_steps <= self.args.throughput_warmup_steps:
+            logger.warning(
+                f" Ignoring warmup steps as number of samples is less to exceed {self.args.throughput_warmup_steps} warmup evaluation steps"
+            )
+            num_samples = output.num_samples
+            num_steps = eval_steps
+
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
