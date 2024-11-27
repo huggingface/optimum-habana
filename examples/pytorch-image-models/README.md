@@ -159,5 +159,5 @@ python inference.py \
     --split train
 ```
 
-Models that have been validated same as training lists supported as above. 
+
 
