@@ -499,7 +499,7 @@ def main():
     elif flux:
         # Flux pipelines
         if controlnet:
-            # Import Flux+ControlNet pipeline
+            
             raise ValueError("Flux+ControlNet pipeline is not currenly supported")
         elif inpainting:
             # Import FLux Inpainting pipeline
