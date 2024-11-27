@@ -50,17 +50,27 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
    
 ```bash
 python train_hpu_lazy.py \
-    --data-dir ./imagenette2-320/ \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device 'hpu' \
-    --model resnet50.a1_in1k
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-spit train \
+    --dataset-download
 ```
+
+python train_hpu_lazy.py --data-dir='./' --dataset hfds/johnowhitaker/imagenette2-320  --device='hpu' --model resnet50.a1_in1k 
 ### Training with HPU graph mode
 
 ```bash
 python train_hpu_graph.py \
-    --data-dir ./imagenette2-320/ \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device 'hpu' \
-    --model resnet50.a1_in1k
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-spit train \
+    --dataset-download
 ```
 
 Here the results for lazy mode is shown below for example:
@@ -87,18 +97,26 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ```bash
 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_lazy.py \
-    --data-dir ./imagenette2-320/ \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device 'hpu' \
-    --model resnet50.a1_in1k
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-spit train \
+    --dataset-download
 ```
 ### Training with HPU graph mode
 
 ```bash
 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_graph.py \
-    --data-dir ./imagenette2-320/ \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device 'hpu' \
-    --model resnet50.a1_in1k
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-spit train \
+    --dataset-download
 ```
 
 Here the results for lazy mode is shown below for example:
@@ -123,18 +141,22 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ### HPU with graph mode
 ```bash
 python inference.py \
-    --data-dir='./download_ds/imagenette2-320' \
+    --data-dir='./' \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device='hpu' \
     --model resnet50.a1_in1k \
+    --split train \
     --graph_mode
 ```
 
 ### HPU with lazy mode
 ```bash
 python inference.py \
-    --data-dir='./download_ds/imagenette2-320' 
+    --data-dir='./' \
+    --dataset hfds/johnowhitaker/imagenette2-320 \    
     --device='hpu' \
-    --model resnet50.a1_in1k
+    --model resnet50.a1_in1k \
+    --split train
 ```
 
 Models that have been validated same as training lists supported as above. 

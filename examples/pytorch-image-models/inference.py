@@ -358,7 +358,7 @@ def main():
         save_results(df, results_filename, fmt)
 
     print(f'--result')
-    print(df.set_index(args.filename_col).to_json(orient='index', indent=4))
+    print(df.to_json(orient='index', indent=4))
 
 
 def save_results(df, results_filename, results_format='csv', filename_col='filename'):
