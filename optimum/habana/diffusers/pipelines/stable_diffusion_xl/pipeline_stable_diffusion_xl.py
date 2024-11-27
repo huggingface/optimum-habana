@@ -479,19 +479,20 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        quant_mode=kwargs["quant_mode"]
-        if quant_mode == "measure" or quant_mode == "quantize":
-            import os
-            quant_config_path = os.getenv('QUANT_CONFIG')
-
+        import os
+        quant_mode="disable"
+        quant_config_path = os.getenv('QUANT_CONFIG')
+        if quant_config_path != None:
             import habana_frameworks.torch.core as htcore
             htcore.hpu_set_env()
 
             from neural_compressor.torch.quantization import FP8Config, convert, prepare
             config = FP8Config.from_json_file(quant_config_path)
             if config.measure:
+                quant_mode="measure"
                 self.unet = prepare(self.unet, config)
             elif config.quantize:
+                quant_mode="quantize"
                 self.unet = convert(self.unet, config) 
             htcore.hpu_initialize(self.unet, mark_only_scales_as_const=True)
 
