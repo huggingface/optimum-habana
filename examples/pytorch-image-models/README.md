@@ -139,7 +139,7 @@ Test: [  15/15]  Time: 0.020 (0.180)  Loss:   1.812 ( 1.982)  Acc@1:  52.326 ( 3
 Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
 ### HPU with graph mode
-```bash
+```
 python inference.py \
     --data-dir='./' \
     --dataset hfds/johnowhitaker/imagenette2-320 \    
