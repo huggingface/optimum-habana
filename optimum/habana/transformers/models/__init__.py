@@ -135,6 +135,7 @@ from .mixtral import (
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
     MixtralConfig,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
