@@ -22,6 +22,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/paligemma-3b-mix-224", 1, 132.8949150246155),
             ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
             ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1, 20.407843538649303),
+            ("tiiuae/falcon-11B-vlm", 1, 27.0566558689559327),
         ],
         "fp8": [
             ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
