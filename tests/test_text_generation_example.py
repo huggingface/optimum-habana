@@ -100,6 +100,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "contrastive_search": [
             ("gpt2-xl", 1, False, 51.61471298016438),
         ],
+        "beam_search": [
+            ("Qwen/Qwen2-7b-Instruct", 1, True, 91.24938949709826),
+        ],
     }
     MODEL_OUTPUTS = {
         "bigcode/starcoder": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_twice():\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_thrice():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_four_times():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n   ',
@@ -145,6 +148,7 @@ else:
         "contrastive_search": [
             ("gpt2-xl", 1, False, 34.48141280163397),
         ],
+        "beam_search": [],
     }
     MODEL_OUTPUTS = {}
 
@@ -164,6 +168,7 @@ def _test_text_generation(
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
     contrastive_search: bool = False,
+    num_beams: int = 1,
     check_output: bool = False,
 ):
     command = ["python3"]
@@ -232,6 +237,12 @@ def _test_text_generation(
 
     if contrastive_search:
         command += ["--top_k 4", "--penalty_alpha 0.5"]
+
+    if num_beams > 1:
+        command += [
+            f"--num_beams {num_beams}",
+            "--bucket_internal --bucket_size 64",
+        ]
 
     if fp8:
         if "--trim_logits" not in command:
@@ -453,6 +464,11 @@ def test_text_generation_contrastive_search(
     model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
 ):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
+
+
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
+def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
 
 
 class TextGenPipeline(TestCase):
