@@ -40,7 +40,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.18.0/ubuntu22.04/habanalabs/pytorch-installer-2.4.0:latest \
-            echo "Visible devices: $HABANA_VISIBLE_DEVICES" && hl-smi
+            echo hl-smi
   diffusers:
     name: Run tests for optimum.habana.diffusers
     needs:
