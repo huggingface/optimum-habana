@@ -48,6 +48,12 @@ from .models import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemma2Attention,
+    GaudiGemma2DecoderLayer,
+    GaudiGemma2ForCausalLM,
+    GaudiGemma2MLP,
+    GaudiGemma2Model,
+    GaudiGemma2RotaryEmbedding,
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
@@ -127,6 +133,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
@@ -264,6 +271,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
     transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
+    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2SdpaAttention = GaudiWav2Vec2SdpaAttention
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
@@ -502,6 +510,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.gemma.modeling_gemma.GemmaAttention = GaudiGemmaAttention
     transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
     transformers.models.gemma.modeling_gemma.GemmaModel = GaudiGemmaModel
+
+    # Optimization for gemma2 on Gaudi
+    transformers.models.gemma2.modeling_gemma2.Gemma2ForCausalLM = GaudiGemma2ForCausalLM
+    transformers.models.gemma2.modeling_gemma2.Gemma2MLP = GaudiGemma2MLP
+    transformers.models.gemma2.modeling_gemma2.Gemma2Attention = GaudiGemma2Attention
+    transformers.models.gemma2.modeling_gemma2.Gemma2DecoderLayer = GaudiGemma2DecoderLayer
+    transformers.models.gemma2.modeling_gemma2.Gemma2Model = GaudiGemma2Model
+    transformers.models.gemma2.modeling_gemma2.Gemma2RotaryEmbedding = GaudiGemma2RotaryEmbedding
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward

@@ -54,6 +54,11 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
+        use_beta_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
+            Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
         timestep_spacing (`str`, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
@@ -78,6 +83,8 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         prediction_type: str = "epsilon",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
+        use_beta_sigmas: Optional[bool] = False,
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
@@ -94,6 +101,8 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
             prediction_type,
             interpolation_type,
             use_karras_sigmas,
+            use_exponential_sigmas,
+            use_beta_sigmas,
             sigma_min,
             sigma_max,
             timestep_spacing,

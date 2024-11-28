@@ -15,8 +15,11 @@ concurrency:
 jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
+      - name: Test HABANA_VISIBLE_DEVICES
+        run: |
+            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
@@ -25,11 +28,14 @@ jobs:
       - name: Run tests
         run: |
             docker run \
+            --rm \
             -v $PWD:/root/workspace \
+            -v /scratch-1:/data \
             --workdir=/root/workspace \
             --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=all \
+            -e HABANA_VISIBLE_DEVICES=$HABANA_VISIBLE_DEVICES \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e HF_HOME=/data \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
@@ -37,8 +43,11 @@ jobs:
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
+      - name: Test HABANA_VISIBLE_DEVICES
+        run: |
+            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
@@ -47,11 +56,14 @@ jobs:
       - name: Run tests
         run: |
             docker run \
+            --rm \
             -v $PWD:/root/workspace \
+            -v /scratch-1:/data \
             --workdir=/root/workspace \
             --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=all \
+            -e HABANA_VISIBLE_DEVICES=$HABANA_VISIBLE_DEVICES \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e HF_HOME=/data \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
