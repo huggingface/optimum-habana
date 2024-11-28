@@ -40,8 +40,6 @@ jobs:
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
-    needs:
-      - transformers  # for debug only
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
       - name: Checkout
