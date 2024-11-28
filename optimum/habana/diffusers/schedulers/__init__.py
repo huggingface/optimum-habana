@@ -1,3 +1,4 @@
 from .scheduling_ddim import GaudiDDIMScheduler
 from .scheduling_euler_ancestral_discrete import GaudiEulerAncestralDiscreteScheduler
 from .scheduling_euler_discrete import GaudiEulerDiscreteScheduler
+from .scheduling_flow_mactch_euler_discrete import GaudiFlowMatchEulerDiscreteScheduler

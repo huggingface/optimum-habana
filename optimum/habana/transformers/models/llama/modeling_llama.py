@@ -640,7 +640,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
                 ):
-                    # prefix tunining case. attach past_key_value to generate first token.
+                    # prefix tuning case. attach past_key_value to generate first token.
                     key_states = torch.cat((past_key_value[0], key_states), -2)
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
