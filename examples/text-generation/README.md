@@ -323,6 +323,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --bf16 \
 --batch_size 1
 ```
+Note regarding `QUANT_CONFIG` env var in all examples: it is parsed by the script into a `quant_config` script argument.
+
 
 Here is an example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
