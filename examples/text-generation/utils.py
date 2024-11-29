@@ -179,20 +179,16 @@ def patch_scoped_linear_all_reduce(model):
 
 def get_torch_compiled_model(model, logger):
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
-    if hasattr(model, 'transformer'):
+    if hasattr(model, "transformer"):
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
     # for gpt_neox
-    elif hasattr(model, 'gpt_neox'):
-        model.gpt_neox = torch.compile(
-            model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+    elif hasattr(model, "gpt_neox"):
+        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
     # for llama, mistral, mixtral, qwen2
-    elif hasattr(model, 'model'):
-        model.model = torch.compile(
-            model.model, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+    elif hasattr(model, "model"):
+        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     else:
         logger.warning(
             "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
