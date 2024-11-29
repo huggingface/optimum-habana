@@ -970,7 +970,7 @@ class GaudiTrainer(Trainer):
 
                 # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
                 if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
+                    if self.model.config.model_type in ["llama", "qwen2", "qwen_moe", "mixtral", "mistral", "starcoder2", "gemma"]:
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
