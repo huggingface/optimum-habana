@@ -523,7 +523,7 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         return model
 
 
-def setup_tokenizer(args, model, assistant_model):
+def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
@@ -566,6 +566,14 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
+    # HACK: MiniCPM3 has multiple eos_tokens and does not specify padding token. Set both to second one.
+    if model.config.model_type == "minicpm3":
+        tokenizer.pad_token = tokenizer.eos_token
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
+        model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
+        if len(model.generation_config.eos_token_id) > 1:
+            logger.warning("Multiple EOS token IDs found. Only last eos token id will be used.")
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
@@ -673,7 +681,7 @@ def initialize_model(args, logger):
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
     )
 
-    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
+    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 
     if args.const_serialization_path:

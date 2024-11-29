@@ -144,6 +144,8 @@ from .models import (
     GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
     LlamaConfig,
+    MiniCPM3Config,
+    MiniCPM3ForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -682,3 +684,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
     transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
     transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
+
+    transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
+    transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
