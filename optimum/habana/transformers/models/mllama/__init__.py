@@ -6,5 +6,8 @@ from .modeling_mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
 )

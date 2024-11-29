@@ -141,6 +141,7 @@ from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
 )
+from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -166,7 +167,10 @@ from .mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,

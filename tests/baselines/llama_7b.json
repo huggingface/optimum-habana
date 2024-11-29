@@ -1,6 +1,6 @@
 {
     "gaudi": {
-         "databricks/databricks-dolly-15k": {
+        "databricks/databricks-dolly-15k": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -36,7 +36,7 @@
                 }
             }
         },
-       "tatsu-lab/alpaca": {
+        "tatsu-lab/alpaca": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -165,7 +165,7 @@
                     ]
                 }
             }
-	},
+        },
         "tatsu-lab/alpaca_fsdpcompile": {
             "num_train_epochs": 1,
             "eval_batch_size": 1,
@@ -555,9 +555,9 @@
                 "multi_card": {
                     "learning_rate": 1e-2,
                     "train_batch_size": 8,
-                    "perplexity": 8.68,
-                    "train_runtime": 318.7,
-                    "train_samples_per_second": 126.6,
+                    "perplexity": 9.064502567217577,
+                    "train_runtime": 312.9258,
+                    "train_samples_per_second": 127.305,
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",

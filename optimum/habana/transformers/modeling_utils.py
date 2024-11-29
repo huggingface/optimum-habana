@@ -101,7 +101,10 @@ from .models import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
     GaudiMptAttention,
     GaudiMptBlock,
     GaudiMptForCausalLM,
@@ -141,6 +144,8 @@ from .models import (
     GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
     LlamaConfig,
+    MiniCPM3Config,
+    MiniCPM3ForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -661,6 +666,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.mllama.modeling_mllama.MllamaForConditionalGeneration = GaudiMllamaForConditionalGeneration
     transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
     transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
+    transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
+    transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
@@ -676,3 +684,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
     transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
     transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
+
+    transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
+    transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
