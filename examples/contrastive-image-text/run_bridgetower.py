@@ -17,6 +17,7 @@
 Training BridgeTower with a contrastive text-image loss.
 """
 
+import io
 import logging
 import os
 import sys
@@ -28,6 +29,7 @@ import torch
 import transformers
 from datasets import load_dataset
 from habana_dataloader_trainer import HabanaDataloaderTrainer
+from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode, to_grayscale, to_tensor
@@ -468,18 +470,29 @@ def main():
         if isinstance(image_or_path, str):
             # If the argument is a path to an image file, read it
             return read_image(image_or_path, mode=ImageReadMode.RGB)
-        elif isinstance(image_or_path, dict):
-            # Manage the case where images are a dictionary with keys 'bytes' and 'path'
-            return
-        else:
-            # If the argument is already an image, convert it into a tensor
+        elif isinstance(image_or_path, Image.Image):
             if len(image_or_path.getbands()) == 1:
                 image_or_path = to_grayscale(image_or_path, num_output_channels=3)
             return to_tensor(image_or_path)
 
+        return None
+
     def transform_images(examples):
-        images = [get_image(image_file) for image_file in examples[image_column]]
+        images = []
+
+        for item in examples[image_column]:
+            # Manage the case where images are a dictionary with keys 'bytes' and 'path'
+            if isinstance(item, dict):
+                encoding = "ISO-8859-1"
+                s = item["bytes"].decode(encoding)
+                b = bytearray(s, encoding)
+                image = Image.open(io.BytesIO(b)).convert("RGB")
+                images.append(to_tensor(image))
+            else:
+                images.append(get_image(item))
+
         examples["pixel_values"] = [image_transformations(image) for image in images]
+
         return examples
 
     if training_args.do_train:
