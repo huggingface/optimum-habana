@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""PyTorch Inference Script
+# PyTorch Inference Script for TIMM models with Gaudi2
+# Copy from https://github.com/huggingface/pytorch-image-models/blob/main/inference.py, enable it for guadi2
 
-An example inference script that outputs top-k class ids for images in a folder into a csv.
-
-Hacked together by / Copyright 2020 Ross Wightman (https://github.com/rwightman)
-"""
 
 import argparse
 import logging
