@@ -16,20 +16,109 @@ limitations under the License.
 
 # GaudiConfig
 
+To define a configuration for a specific workload you can use `GaudiConfig` class.
+
 Here is a description of each configuration parameter:
-- `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
-- `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
-- `use_torch_autocast` enables PyTorch autocast; used to define good pre-defined config; users should favor `--bf16` training argument
-- `autocast_bf16_ops` list of operations that should be run with bf16 precision under autocast context; using environment flag PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST is a preffered way for operator autocast list override
-- `autocast_fp32_ops` list of operations that should be run with fp32 precision under autocast context; using environment flag PT_HPU_AUTOCAST_FP32_OPS_LIST is a preffered way for operator autocast list override
+- `use_fused_adam` controls whether to use the [custom fused implementation of the ADAM optimizer provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
+- `use_fused_clip_norm` controls whether to use the [custom fused implementation of gradient norm clipping provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
+- `use_torch_autocast` controls whether to enable PyTorch autocast; used to define good pre-defined config; users should favor `--bf16` training argument
+- `use_dynamic_shapes` controls whether to enable dynamic shapes suppport when processing input dataset
+- `autocast_bf16_ops` list of operations that should be run with bf16 precision under autocast context; using environment flag LOWER_LIST is a preffered way for operator autocast list override
+- `autocast_fp32_ops` list of operations that should be run with fp32 precision under autocast context; using environment flag FP32_LIST is a preffered way for operator autocast list override
 
+Parameter values of this class can be set from an external JSON file.
 
-You can find examples of Gaudi configurations in the [Habana model repository on the Hugging Face Hub](https://huggingface.co/habana). For instance, [for BERT Large we have](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json):
-
+You can find examples of Gaudi configurations in the [Intel Gaudi model repository on the Hugging Face Hub](https://huggingface.co/habana).
+For instance, [for BERT Large we have](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json):
 ```JSON
 {
   "use_fused_adam": true,
   "use_fused_clip_norm": true,
+  "use_torch_autocast": true
+}
+```
+
+More advanced configuration file [for Stable Diffusion 2](https://huggingface.co/Habana/stable-diffusion-2/blob/main/gaudi_config.json):
+```JSON
+{
+  "use_torch_autocast": true,
+  "use_fused_adam": true,
+  "use_fused_clip_norm": true,
+  "autocast_bf16_ops": [
+    "_convolution.deprecated",
+    "_convolution",
+    "conv1d",
+    "conv2d",
+    "conv3d",
+    "conv_tbc",
+    "conv_transpose1d",
+    "conv_transpose2d.input",
+    "conv_transpose3d.input",
+    "convolution",
+    "prelu",
+    "addmm",
+    "addmv",
+    "addr",
+    "matmul",
+    "einsum",
+    "mm",
+    "mv",
+    "silu",
+    "linear",
+    "addbmm",
+    "baddbmm",
+    "bmm",
+    "chain_matmul",
+    "linalg_multi_dot",
+    "layer_norm",
+    "group_norm"
+  ],
+  "autocast_fp32_ops": [
+    "acos",
+    "asin",
+    "cosh",
+    "erfinv",
+    "exp",
+    "expm1",
+    "log",
+    "log10",
+    "log2",
+    "log1p",
+    "reciprocal",
+    "rsqrt",
+    "sinh",
+    "tan",
+    "pow.Tensor_Scalar",
+    "pow.Tensor_Tensor",
+    "pow.Scalar",
+    "softplus",
+    "frobenius_norm",
+    "frobenius_norm.dim",
+    "nuclear_norm",
+    "nuclear_norm.dim",
+    "cosine_similarity",
+    "poisson_nll_loss",
+    "cosine_embedding_loss",
+    "nll_loss",
+    "nll_loss2d",
+    "hinge_embedding_loss",
+    "kl_div",
+    "l1_loss",
+    "smooth_l1_loss",
+    "huber_loss",
+    "mse_loss",
+    "margin_ranking_loss",
+    "multilabel_margin_loss",
+    "soft_margin_loss",
+    "triplet_margin_loss",
+    "multi_margin_loss",
+    "binary_cross_entropy_with_logits",
+    "dist",
+    "pdist",
+    "cdist",
+    "renorm",
+    "logsumexp"
+  ]
 }
 ```
 

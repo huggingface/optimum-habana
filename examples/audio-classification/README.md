@@ -70,7 +70,7 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
@@ -90,13 +90,13 @@ python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --seed 0 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False\
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
     --bf16 \
-    --trust_remote_code True
+    --trust_remote_code True \
+    --torch_compile \
+    --torch_compile_backend hpu_backend
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
@@ -119,7 +119,7 @@ DeepSpeed can be used with almost the same command as for a multi-card run:
 
 For example:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
@@ -139,8 +139,7 @@ python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --seed 0 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False\
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json \
@@ -175,7 +174,9 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --bf16 \
-    --trust_remote_code True
+    --trust_remote_code True\
+    --torch_compile \
+    --torch_compile_backend hpu_backend
 ```
 
 

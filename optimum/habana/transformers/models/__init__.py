@@ -145,6 +145,7 @@ from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
 )
+from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -170,7 +171,10 @@ from .mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
     gaudi_check_and_enable_sdpa,
@@ -269,6 +273,7 @@ from .vision_encoder_decoder import (
 from .vit import gaudi_vit_self_attention_forward
 from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
+    GaudiWav2Vec2SdpaAttention,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,

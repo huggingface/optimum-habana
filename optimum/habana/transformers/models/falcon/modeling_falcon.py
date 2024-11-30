@@ -617,7 +617,7 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
     """
 
     def __init__(self, config: FalconConfig, layer_idx=None):
-        super().__init__(config)
+        super().__init__(config, layer_idx=layer_idx)
         self.self_attention = GaudiFalconAttention(config, layer_idx)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
