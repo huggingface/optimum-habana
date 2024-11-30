@@ -70,6 +70,10 @@ from .falcon import (
     GaudiFalconModel,
     gaudi_falcon_linear_forward,
 )
+from .falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
+)
 from .gemma import (
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
