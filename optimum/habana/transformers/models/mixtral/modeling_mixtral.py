@@ -318,9 +318,9 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                with sdp_kernel(
-                    enable_recompute=flash_attention_recompute
-                ) if SDPContext else contextlib.nullcontext():
+                with (
+                    sdp_kernel(enable_recompute=flash_attention_recompute) if SDPContext else contextlib.nullcontext()
+                ):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )

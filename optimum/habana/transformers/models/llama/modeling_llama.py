@@ -590,7 +590,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
                 ):
-                    # prefix tunining case. attach past_key_value to generate first token.
+                    # prefix tuning case. attach past_key_value to generate first token.
                     key_states = torch.cat((past_key_value[0], key_states), -2)
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
@@ -1360,6 +1360,25 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+        )
+
+    @staticmethod
+    def _reorder_cache(
+        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+
+        Output shares the same memory storage as `past`.
+        """
+        return tuple(
+            (
+                layer_past[0].index_select(0, beam_idx.to(layer_past[0].device)),
+                layer_past[1].index_select(0, beam_idx.to(layer_past[1].device)),
+            )
+            for layer_past in past
         )
 
     def prepare_inputs_for_generation(

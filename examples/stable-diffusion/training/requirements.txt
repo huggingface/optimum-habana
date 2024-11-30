@@ -1,2 +1,3 @@
 imagesize
 peft == 0.10.0
+sentencepiece
