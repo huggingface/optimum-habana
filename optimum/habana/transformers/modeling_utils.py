@@ -28,6 +28,9 @@ from .generation import (
 )
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
     DeciLMConfig,
     DeciLMForCausalLM,
     Gaudi2Idefics2ImageProcessor,
@@ -694,3 +697,8 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
+
+    # Optimization for Baichuan2 on Gaudi
+    transformers.AutoConfig.register("baichuan", BaichuanConfig)
+    transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
+    transformers.AutoModelForCausalLM.register(BaichuanConfig, BaichuanForCausalLM)

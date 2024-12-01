@@ -1,4 +1,9 @@
 from .albert import gaudi_albert_forward
+from .baichuan import (
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
+)
 from .bart import (
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
