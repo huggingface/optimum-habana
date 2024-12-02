@@ -20,7 +20,6 @@
 """PyTorch Qwen2MoE model."""
 
 import math
-import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -562,7 +561,8 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
             padded_weight = padded_weights[expert_idx]
             current_state_static = hidden_states.reshape(-1, hidden_dim)
             current_hidden_states_static = (
-                expert_layer.pre_mlp_forward(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+                expert_layer.pre_mlp_forward(current_state_static).reshape(-1, sequence_length, hidden_dim)
+                * padded_weight
             )
             final_hidden_states = final_hidden_states + current_hidden_states_static
     else:
@@ -576,7 +576,7 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
             expert_routing_table=selected_experts,
             router_weights=routing_weights,
             w1=w1_list,
-            w2=w3_list, # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
             w3=w2_list,
             permuted_weights=True,
             activation="silu",
@@ -587,6 +587,7 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
 
         if is_deepspeed_available():
             from deepspeed import comm as dist
+
             if dist.is_initialized():
                 dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 

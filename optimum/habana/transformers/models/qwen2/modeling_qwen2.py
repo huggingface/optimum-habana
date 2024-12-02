@@ -17,13 +17,11 @@
 ###############################################################################
 
 import math
-import os
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 from transformers.models.qwen2.modeling_qwen2 import (
@@ -226,10 +224,10 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
-        
+
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        
+
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
         self.fused_scaled_dot_product_attention = (
@@ -345,7 +343,6 @@ class GaudiQwen2Attention(Qwen2Attention):
                     else:
                         kv_seq_len = past_key_value[0].shape[-2]
 
-
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
@@ -361,7 +358,9 @@ class GaudiQwen2Attention(Qwen2Attention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                    )
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
