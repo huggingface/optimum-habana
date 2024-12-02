@@ -15,15 +15,36 @@ limitations under the License.
 -->
 
 
-# Optimum for Intel Gaudi
+# Optimum for Intel® Gaudi® AI Accelerator
 
-Optimum for Intel Gaudi is the interface between the Transformers and Diffusers libraries and [Intel® Gaudi® AI Accelerators (HPUs)](https://docs.habana.ai/en/latest/index.html).
+Optimum for Intel Gaudi AI accelerator is the interface between Hugging Face libraries (Transformers, Diffusers, Accelerate,...) and [Intel Gaudi AI Accelerators (HPUs)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools that enable easy model loading, training and inference on single- and multi-HPU settings for various downstream tasks as shown in the table below.
 
-HPUs offer fast model training and inference as well as a great price-performance ratio.
-Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this post benchmarking Intel Gaudi 2 with NVIDIA A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
-If you are not familiar with HPUs, we recommend you take a look at [our conceptual guide](./concept_guides/hpu).
+<div class="mt-10">
+  <div class="w-full flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-y-4 md:gap-x-5">
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./tutorials/overview"
+      ><div class="w-full text-center bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Tutorials</div>
+      <p class="text-gray-700">Learn the basics and become familiar with training transformers on HPUs with 🤗 Optimum. Start here if you are using 🤗 Optimum for Intel Gaudi for the first time!</p>
+    </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./usage_guides/overview"
+      ><div class="w-full text-center bg-gradient-to-br from-indigo-400 to-indigo-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">How-to guides</div>
+      <p class="text-gray-700">Practical guides to help you achieve a specific goal. Take a look at these guides to learn how to use 🤗 Optimum for Intel Gaudi to solve real-world problems.</p>
+    </a>
+  </div>
+</div>
 
+The Intel Gaudi AI accelerator family currently includes three product generations:
+[Intel Gaudi 1](https://habana.ai/products/gaudi/),
+[Intel Gaudi 2](https://habana.ai/products/gaudi2/), and
+[Intel Gaudi 3](https://habana.ai/products/gaudi3/).
+Each server is equipped with 8 devices, known as Habana Processing Units (HPUs), providing 128GB of memory on Gaudi 3,
+96GB on Gaudi 2, and 32GB on the first-gen Gaudi. For more details on the underlying hardware architecture, check out the
+[Gaudi Architecture Overview](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html).
+Optimum for Intel Gaudi library is fully compatible with all three generations of Gaudi accelerators.
+
+For in-depth examples of running workloads on Gaudi, explore the following blog posts:
+- [Benchmarking Intel Gaudi 2 with NVIDIA A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark)
+- [Accelerating Vision-Language Models: BridgeTower on Habana Gaudi2](https://huggingface.co/blog/bridgetower)
 
 The following model architectures, tasks and device distributions have been validated for Optimum for Intel Gaudi:
 
@@ -57,6 +78,7 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 | Phi          | ✅       | <div style="text-align:left"><li>Single card</li></div> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Mixtral      |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Gemma        | ✅       | <div style="text-align:left"><li>Single card</li></div> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Gemma2       |           | ✅        | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Qwen2        | <div style="text-align:left"><li>Single card</li></div> | <div style="text-align:left"><li>Single card</li></div> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Qwen2-MoE    |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Persimmon    |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
@@ -76,12 +98,16 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 | OWLViT       |          | <div style="text-align:left"><li>Single card</li></div> | <li>[zero shot object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/zero-shot-object-detection)</li> |
 | ClipSeg      |          | <div style="text-align:left"><li>Single card</li></div> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
 | Llava / Llava-next |    | <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
+| Paligemma |    | <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | idefics2     | <div style="text-align:left"><li>LoRA</li></div> | <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | SAM          |          | <div style="text-align:left"><li>Single card</li></div> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
 | VideoMAE |          | <div style="text-align:left"><li>Single card</li></div> | <li>[Video classification](https://github.com/huggingface/optimum-habana/tree/main/examples/video-classification)</li> |
 | TableTransformer |       | <div style="text-align:left"><li>Single card</li></div> | <li>[table object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/table-detection)</li> |
 | DETR         |          | <div style="text-align:left"><li>Single card</li></div> | <li>[object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/object-detection)</li> |
 | Mllama     | <div style="text-align:left"><li>LoRA</li></div> |✅      | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
+| MiniCPM3 |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Baichuan2 |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| DeepSeek-V2 |   | ✅ | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 
 - Diffusers
 
@@ -91,7 +117,8 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 | Stable Diffusion XL | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#fine-tuning-for-stable-diffusion-xl)</li> | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Stable Diffusion Depth2img | | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D               |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
-| Text to Video    |          | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-to-video)</li> |
+| FLUX.1              | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#dreambooth-lora-fine-tuning-with-flux1-dev)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Text to Video       |          | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-to-video)</li> |
 
 - PyTorch Image Models/TIMM:
 
@@ -109,27 +136,5 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 
 
 Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers library may also work.
-You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana.
-Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
-
-
-<div class="mt-10">
-  <div class="w-full flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-y-4 md:gap-x-5">
-    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./tutorials/overview"
-      ><div class="w-full text-center bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Tutorials</div>
-      <p class="text-gray-700">Learn the basics and become familiar with training transformers on HPUs with 🤗 Optimum. Start here if you are using 🤗 Optimum Habana for the first time!</p>
-    </a>
-    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./usage_guides/overview"
-      ><div class="w-full text-center bg-gradient-to-br from-indigo-400 to-indigo-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">How-to guides</div>
-      <p class="text-gray-700">Practical guides to help you achieve a specific goal. Take a look at these guides to learn how to use 🤗 Optimum Habana to solve real-world problems.</p>
-    </a>
-    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./concept_guides/hpu"
-      ><div class="w-full text-center bg-gradient-to-br from-pink-400 to-pink-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Conceptual guides</div>
-      <p class="text-gray-700">High-level explanations for building a better understanding of important topics such as HPUs.</p>
-   </a>
-    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./package_reference/trainer"
-      ><div class="w-full text-center bg-gradient-to-br from-purple-400 to-purple-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Reference</div>
-      <p class="text-gray-700">Technical descriptions of how the Habana classes and methods of 🤗 Optimum Habana work.</p>
-    </a>
-  </div>
-</div>
+You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum for Intel Gaudi.
+In addition, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum for Intel Gaudi.
