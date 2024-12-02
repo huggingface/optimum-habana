@@ -60,6 +60,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("openbmb/MiniCPM3-4B", 1, False, 65.116, False),
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
             ("baichuan-inc/Baichuan2-13B-Chat", 1, False, 66, False),
+            ("deepseek-ai/DeepSeek-V2-Lite", 1, False, 35, False),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
