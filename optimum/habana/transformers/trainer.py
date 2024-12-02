@@ -575,7 +575,7 @@ class GaudiTrainer(Trainer):
                 (self.model_wrapped,) = release_memory(self.model_wrapped)
                 self.model_wrapped = self.model
 
-                # Check for DeepSpeed *after* the intial pass and modify the config
+                # Check for DeepSpeed *after* the initial pass and modify the config
                 if self.is_deepspeed_enabled:
                     # Temporarily unset `self.args.train_batch_size`
                     original_bs = self.args.per_device_train_batch_size
@@ -686,14 +686,14 @@ class GaudiTrainer(Trainer):
 
                 # HACK because outputs should always be tuples
                 def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
-                    """DeepSpeed acitvation checkpointing."""
+                    """DeepSpeed activation checkpointing."""
                     if use_reentrant is None:
                         use_reentrant = True
                     if use_reentrant:
                         all_outputs = []
                         CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
                     else:
-                        logger.info("DeepSpeed acitvation checkpointing=non_reentrant_checkpoint")
+                        logger.info("DeepSpeed activation checkpointing=non_reentrant_checkpoint")
                         all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
 
                     # Always return a tuple
@@ -863,7 +863,7 @@ class GaudiTrainer(Trainer):
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
-        # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
+        # _total_loss_scalar is updated every time .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
@@ -968,9 +968,9 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma and baichuan
                 if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
+                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma", "baichuan"]:
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
@@ -1433,7 +1433,7 @@ class GaudiTrainer(Trainer):
             )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
-            # This block is exectuted by the main process only
+            # This block is executed by the main process only
             optim_dict = self.optimizer.state_dict()
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
@@ -1599,7 +1599,7 @@ class GaudiTrainer(Trainer):
         del inputs
         kwargs = {}
 
-        # For LOMO optimizers you need to explicitly use the learnign rate
+        # For LOMO optimizers you need to explicitly use the learning rate
         if self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             kwargs["learning_rate"] = self._get_learning_rate()
 
@@ -1725,7 +1725,7 @@ class GaudiTrainer(Trainer):
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
         1. use throughput_warmup_steps in evaluation throughput calculation
         """
-        # handle multipe eval datasets
+        # handle multiple eval datasets
         override = eval_dataset is not None
         eval_dataset = eval_dataset if override else self.eval_dataset
         if isinstance(eval_dataset, dict):
@@ -1939,9 +1939,9 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
             if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
+                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma", "baichuan"]:
                     if self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
                     if self.model.generation_config.use_flash_attention:

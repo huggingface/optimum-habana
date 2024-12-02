@@ -239,6 +239,8 @@ The following model architectures, tasks and device distributions have been vali
 | DETR |   | <div style="text-align:left"><li>Single card</li></div> | <li>[object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/object-detection)</li> |
 | Mllama     | <div style="text-align:left"><li>LoRA</li></div> | :heavy_check_mark: | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/main/examples/video-comprehension)</li> |
+| MiniCPM3 |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Baichuan2 |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 
 </div>
 
@@ -252,6 +254,7 @@ The following model architectures, tasks and device distributions have been vali
 | Stable Diffusion XL | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#fine-tuning-for-stable-diffusion-xl)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Stable Diffusion Depth2img | | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| FLUX.1           | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#dreambooth-lora-fine-tuning-with-flux1-dev)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Text to Video    |          | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-to-video)</li> |
 
 </div>

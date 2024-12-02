@@ -1414,6 +1414,25 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             attentions=outputs.attentions,
         )
 
+    @staticmethod
+    def _reorder_cache(
+        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+
+        Output shares the same memory storage as `past`.
+        """
+        return tuple(
+            (
+                layer_past[0].index_select(0, beam_idx.to(layer_past[0].device)),
+                layer_past[1].index_select(0, beam_idx.to(layer_past[1].device)),
+            )
+            for layer_past in past
+        )
+
     def prepare_inputs_for_generation(
         self,
         input_ids,
