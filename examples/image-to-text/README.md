@@ -32,6 +32,9 @@ Models that have been validated:
   - [llava-hf/llama3-llava-next-8b-hf](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf)
   - [HuggingFaceM4/idefics2-8b](https://huggingface.co/HuggingFaceM4/idefics2-8b)
   - [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
+  - [meta-llama/Llama-3.2-90B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision-Instruct)
+  - [tiiuae/falcon-11B-vlm](https://huggingface.co/tiiuae/falcon-11B-vlm)
+  - [google/paligemma-3b-mix-224](https://huggingface.co/google/paligemma-3b-mix-224)
 
 ### Inference with BF16
 
@@ -77,7 +80,6 @@ python3 run_pipeline.py \
 ```
 
 To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
-
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-34b-hf \
@@ -85,8 +87,15 @@ python3 run_pipeline.py \
     --bf16
 ```
 
-To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
+To run google/paligemma-3b-mix-224 inference, use the following command:
+```bash
+python3 run_pipeline.py \
+    --model_name_or_path google/paligemma-3b-mix-224 \
+    --use_hpu_graphs \
+    --bf16
+```
 
+To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
@@ -374,35 +383,49 @@ To enable multi-card inference, you must set the environment variable `PT_HPU_EN
 Use the following commands to run Llava-v1.6-mistral-7b BF16 inference with FusedSDPA on 8 HPUs:
 ```bash
 PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention \
---flash_attention_recompute
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
+
+Use the following commands to run Llama-3.2-90B-Vision-Instruct BF16 inference with FusedSDPA on 8 HPUs:
+```bash
+PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+    --model_name_or_path meta-llama/Llama-3.2-90B-Vision-Instruct \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
+```
+
 
 ### FP8 Inference with FusedSDPA on 8 HPUs
 
 Use the following commands to run Llava-v1.6-mistral-7b FP8 inference with FusedSDPA on 8 HPUs.
 Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b on 8 HPUs:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention \
---flash_attention_recompute
+QUANT_CONFIG=./quantization_config/maxabs_measure.json PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py \
+    --use_deepspeed --world_size 8 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
 
 Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b on 8 HPUs:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
---model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention \
---flash_attention_recompute
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py \
+    --use_deepspeed --world_size 8 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention \
+    --flash_attention_recompute
 ```
