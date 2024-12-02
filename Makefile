@@ -120,6 +120,11 @@ slow_tests_openclip_vqa_example: test_installs
 	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
 	python -m pytest tests/test_openclip_vqa.py
 
+# Run video comprehension tests
+slow_tests_video_llava_example: test_installs
+	python -m pip install -r examples/video-comprehension/requirements.txt
+	python -m pytest tests/test_video_llava.py
+
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
