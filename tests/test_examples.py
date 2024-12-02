@@ -285,7 +285,7 @@ class ExampleTestMeta(type):
             "ln_tuning",
         ):
             return False
-        elif eager_mode and not model_name in models_measured_on_eager_mode:
+        elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
