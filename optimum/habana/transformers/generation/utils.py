@@ -114,6 +114,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mllama",
     "minicpm3",
     "baichuan",
+    "deepseek_v2",
 ]
 
 

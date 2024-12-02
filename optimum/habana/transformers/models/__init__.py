@@ -60,6 +60,11 @@ from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
 )
+from .deepseek_v2 import (
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+)
 from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
