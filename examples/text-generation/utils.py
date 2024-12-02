@@ -38,6 +38,7 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import (
     check_habana_frameworks_version,
+    check_neural_compressor_min_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
     set_seed,
@@ -176,13 +177,23 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom", "gpt2"]:
-        model.transformer = torch.compile(model.transformer, backend="hpu_backend")
-    elif model.config.model_type in ["gpt_neox"]:
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend")
+def get_torch_compiled_model(model, logger):
+    # for gpt_bigcode, mpt, bloom, gpt2 model_type
+    if hasattr(model, "transformer"):
+        model.transformer = torch.compile(
+            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
+        )
+    # for gpt_neox
+    elif hasattr(model, "gpt_neox"):
+        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+    # for llama, mistral, mixtral, qwen2
+    elif hasattr(model, "model"):
+        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     else:
-        model.model = torch.compile(model.model, backend="hpu_backend")
+        logger.warning(
+            "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
+        )
+        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
 
 
@@ -267,9 +278,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        # TODO: This will be removed in v1.19 Synapse release
-        # the loaded model should have the same dtype as original_model
-        model = model.to(model_kwargs["torch_dtype"])
+        if not check_neural_compressor_min_version("3.2"):
+            model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -305,9 +315,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger)
         # if args.assistant_model is not None:
-        #     assistant_model = get_torch_compiled_model(assistant_model)
+        #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
 
 
@@ -372,7 +382,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger)
 
     return model, args.assistant_model
 
@@ -484,9 +494,9 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger)
         # if args.assistant_model is not None:
-        #     assistant_model = get_torch_compiled_model(assistant_model)
+        #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
 
 
@@ -551,7 +561,7 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         return model
 
 
-def setup_tokenizer(args, model, assistant_model):
+def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
@@ -594,6 +604,14 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
+    # HACK: MiniCPM3 has multiple eos_tokens and does not specify padding token. Set both to second one.
+    if model.config.model_type == "minicpm3":
+        tokenizer.pad_token = tokenizer.eos_token
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
+        model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
+        if len(model.generation_config.eos_token_id) > 1:
+            logger.warning("Multiple EOS token IDs found. Only last eos token id will be used.")
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
@@ -703,7 +721,7 @@ def initialize_model(args, logger):
         else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
 
-    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
+    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 
     if args.const_serialization_path:

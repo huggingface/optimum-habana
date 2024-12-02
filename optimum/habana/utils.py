@@ -285,6 +285,7 @@ class HabanaProfile(object):
         warmup: int = 0,
         active: int = 0,
         record_shapes: bool = True,
+        with_stack: bool = False,
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
@@ -306,7 +307,7 @@ class HabanaProfile(object):
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
-                with_stack=False,
+                with_stack=with_stack,
             )
             self.start = profiler.start
             self.stop = profiler.stop
@@ -382,6 +383,15 @@ def check_habana_frameworks_version(req_version):
     return (get_habana_frameworks_version().major == version.parse(req_version).major) and (
         get_habana_frameworks_version().minor == version.parse(req_version).minor
     )
+
+
+def check_neural_compressor_min_version(req_version):
+    """
+    Checks if the installed version of `neural_compressor` is larger than or equal to `req_version`.
+    """
+    import neural_compressor
+
+    return version.Version(neural_compressor.__version__) >= version.Version(req_version)
 
 
 def get_device_name():

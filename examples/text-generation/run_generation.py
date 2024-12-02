@@ -28,6 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
+from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -248,7 +249,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -462,10 +467,15 @@ def main():
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
                     attn_mask = input_tokens["attention_mask"]
-                    return torch.sum(attn_mask, dim=1)
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
 
                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
                 generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -569,7 +579,7 @@ def main():
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i+1}.{j+1}: {output}")
                 all_outputs.append(output)
             print()
 

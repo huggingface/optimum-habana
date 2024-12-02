@@ -48,6 +48,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406, False),
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
+            ("google/gemma-2-9b", 1, False, 92.302359446567, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
             ("Deci/DeciLM-7B", 1, False, 120, False),
             ("Qwen/Qwen2-7B", 512, False, 9669.45787, True),
@@ -55,6 +56,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
             ("facebook/xglm-1.7B", 1, False, 357.46365062825083, False),
             ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154, False),
+            ("tiiuae/falcon-mamba-7b", 1, False, 47.1464839567739),
+            ("openbmb/MiniCPM3-4B", 1, False, 65.116, False),
+            ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
+            ("baichuan-inc/Baichuan2-13B-Chat", 1, False, 66, False),
             ("deepseek-ai/DeepSeek-V2-Lite", 1, False, 35, False),
         ],
         "fp8": [
@@ -86,6 +91,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
+            ("google/gemma-2-9b", 8, 1, 110.12610917383735),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -99,11 +105,15 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "contrastive_search": [
             ("gpt2-xl", 1, False, 51.61471298016438),
         ],
+        "beam_search": [
+            ("Qwen/Qwen2-7b-Instruct", 1, True, 91.24938949709826),
+        ],
     }
     MODEL_OUTPUTS = {
         "bigcode/starcoder": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_twice():\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_thrice():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_four_times():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n   ',
         "bigcode/starcoder2-3b": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_with_name(name):\n    print("Hello World, " + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print("Hello World, " + name + ", " + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print("Hello',
         "google/gemma-7b": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models.\n\nDeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and",
+        "google/gemma-2-9b": "DeepSpeed is a machine learning framework that enables training of large-scale deep learning models on a single GPU or across multiple GPUs. It is designed to be easy to use and highly scalable, making it a powerful tool for researchers and practitioners working with large-scale deep learning models.\n\nDeepSpeed is built on top of PyTorch, a popular deep learning framework, and provides a set of tools and libraries that make it easy to train large-scale models. It includes features such as zero-shot inference, which allows models to be",
         "meta-llama/Llama-2-7b-hf": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
         "mistralai/Mistral-7B-v0.1": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
         "mistralai/Mixtral-8x7B-v0.1": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
@@ -135,14 +145,15 @@ else:
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505, False),
+            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
         "distributed_tp": [],
         "contrastive_search": [
-            ("gpt2-xl", 1, False, 34.48141280163397, False),
+            ("gpt2-xl", 1, False, 34.48141280163397),
         ],
+        "beam_search": [],
     }
     MODEL_OUTPUTS = {}
 
@@ -162,6 +173,7 @@ def _test_text_generation(
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
     contrastive_search: bool = False,
+    num_beams: int = 1,
     check_output: bool = False,
 ):
     command = ["python3"]
@@ -230,6 +242,12 @@ def _test_text_generation(
 
     if contrastive_search:
         command += ["--top_k 4", "--penalty_alpha 0.5"]
+
+    if num_beams > 1:
+        command += [
+            f"--num_beams {num_beams}",
+            "--bucket_internal --bucket_size 64",
+        ]
 
     if fp8:
         if "--trim_logits" not in command:
@@ -451,6 +469,11 @@ def test_text_generation_contrastive_search(
     model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str
 ):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
+
+
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
+def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
 
 
 class TextGenPipeline(TestCase):
