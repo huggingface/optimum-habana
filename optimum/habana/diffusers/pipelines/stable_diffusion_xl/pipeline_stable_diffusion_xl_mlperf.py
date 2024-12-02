@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import time
+from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import habana_frameworks.torch as ht
 import habana_frameworks.torch.core as htcore
+import numpy as np
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers.image_processor import PipelineImageInput
@@ -38,7 +42,7 @@ from transformers import (
 
 from optimum.utils import logging
 
-from ....utils import HabanaProfile
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ...models.attention_processor import (
     AttentionProcessor,
     AttnProcessor2_0,
@@ -47,6 +51,7 @@ from ...models.attention_processor import (
 from ...models.unet_2d_condition import gaudi_unet_2d_condition_model_forward
 
 
+logging.set_verbosity_info()
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -187,7 +192,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         negative_add_time_ids,
         negative_pooled_prompt_embeds,
         num_warmup_steps,
-        progress_bar,
         callback,
         callback_steps,
         ip_adapter_image,
@@ -247,12 +251,126 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         # call the callback, if provided
         if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-            progress_bar.update()
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
 
         return latents
+
+    @classmethod
+    def _split_inputs_into_batches(
+        cls,
+        batch_size,
+        latents,
+        prompt_embeds,
+        negative_prompt_embeds,
+        add_text_embeds,
+        negative_pooled_prompt_embeds,
+        add_time_ids,
+        negative_add_time_ids,
+    ):
+        # Use torch.split to generate num_batches batches of size batch_size
+        latents_batches = list(torch.split(latents, batch_size))
+        prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
+        if add_text_embeds is not None:
+            add_text_embeds_batches = list(torch.split(add_text_embeds, batch_size))
+        if negative_pooled_prompt_embeds is not None:
+            negative_pooled_prompt_embeds_batches = list(torch.split(negative_pooled_prompt_embeds, batch_size))
+        if add_time_ids is not None:
+            add_time_ids_batches = list(torch.split(add_time_ids, batch_size))
+        if negative_add_time_ids is not None:
+            negative_add_time_ids_batches = list(torch.split(negative_add_time_ids, batch_size))
+
+        # If the last batch has less samples than batch_size, pad it with dummy samples
+        num_dummy_samples = 0
+        if latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+            # Pad latents_batches
+            sequence_to_stack = (latents_batches[-1],) + tuple(
+                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            latents_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad prompt_embeds_batches
+            sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
+                torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad negative_prompt_embeds_batches if necessary
+            if negative_prompt_embeds is not None:
+                sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad add_text_embeds_batches if necessary
+            if add_text_embeds is not None:
+                sequence_to_stack = (add_text_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(add_text_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                add_text_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad negative_pooled_prompt_embeds_batches if necessary
+            if negative_pooled_prompt_embeds is not None:
+                sequence_to_stack = (negative_pooled_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(negative_pooled_prompt_embeds_batches[-1][0][None, :])
+                    for _ in range(num_dummy_samples)
+                )
+                negative_pooled_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad add_time_ids_batches if necessary
+            if add_time_ids is not None:
+                sequence_to_stack = (add_time_ids_batches[-1],) + tuple(
+                    torch.zeros_like(add_time_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                add_time_ids_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad negative_add_time_ids_batches if necessary
+            if negative_add_time_ids is not None:
+                sequence_to_stack = (negative_add_time_ids_batches[-1],) + tuple(
+                    torch.zeros_like(negative_add_time_ids_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                negative_add_time_ids_batches[-1] = torch.vstack(sequence_to_stack)
+
+        # Stack batches in the same tensor
+        latents_batches = torch.stack(latents_batches)
+
+        if negative_prompt_embeds is not None:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (negative_prompt_embeds_batch, prompt_embeds_batch) in enumerate(
+                zip(negative_prompt_embeds_batches, prompt_embeds_batches[:])
+            ):
+                prompt_embeds_batches[i] = torch.cat([negative_prompt_embeds_batch, prompt_embeds_batch])
+        prompt_embeds_batches = torch.stack(prompt_embeds_batches)
+
+        if add_text_embeds is not None:
+            if negative_pooled_prompt_embeds is not None:
+                # For classifier free guidance, we need to do two forward passes.
+                # Here we concatenate the unconditional and text embeddings into a single batch
+                # to avoid doing two forward passes
+                for i, (negative_pooled_prompt_embeds_batch, add_text_embeds_batch) in enumerate(
+                    zip(negative_pooled_prompt_embeds_batches, add_text_embeds_batches[:])
+                ):
+                    add_text_embeds_batches[i] = torch.cat(
+                        [negative_pooled_prompt_embeds_batch, add_text_embeds_batch]
+                    )
+            add_text_embeds_batches = torch.stack(add_text_embeds_batches)
+        else:
+            add_text_embeds_batches = None
+
+        if add_time_ids is not None:
+            if negative_add_time_ids is not None:
+                # For classifier free guidance, we need to do two forward passes.
+                # Here we concatenate the unconditional and text embeddings into a single batch
+                # to avoid doing two forward passes
+                for i, (negative_add_time_ids_batch, add_time_ids_batch) in enumerate(
+                    zip(negative_add_time_ids_batches, add_time_ids_batches[:])
+                ):
+                    add_time_ids_batches[i] = torch.cat([negative_add_time_ids_batch, add_time_ids_batch])
+            add_time_ids_batches = torch.stack(add_time_ids_batches)
+        else:
+            add_time_ids_batches = None
+
+        return latents_batches, prompt_embeds_batches, add_text_embeds_batches, add_time_ids_batches, num_dummy_samples
 
     @torch.no_grad()
     def __call__(
@@ -268,6 +386,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
+        batch_size: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -482,11 +601,18 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
+            num_prompts = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            num_prompts = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            num_prompts = prompt_embeds.shape[0]
+        num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
+        logger.info(
+            f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
+            f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+        )
+        if num_batches < 3:
+            logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
         device = self._execution_device
 
@@ -519,10 +645,15 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps_hpu(self.scheduler, num_inference_steps, device, timesteps)
 
+        # Since the scheduler is reinitialized for each image generation,
+        # creating a separate copy of the timestep tensor prevents view-related issue
+        timesteps = timesteps.clone()
+
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
+
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            num_prompts * num_images_per_prompt,
             num_channels_latents,
             height,
             width,
@@ -560,19 +691,32 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         else:
             negative_add_time_ids = add_time_ids
 
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
-
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
-
+        add_time_ids = add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
+        negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
         if ip_adapter_image is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, device, batch_size * num_images_per_prompt
+                ip_adapter_image, device, num_prompts * num_images_per_prompt
             )
+
+        # 7.5 Split into batches (HPU-specific step)
+        (
+            latents_batches,
+            text_embeddings_batches,
+            add_text_embeddings_batches,
+            add_time_ids_batches,
+            num_dummy_samples,
+        ) = self._split_inputs_into_batches(
+            batch_size,
+            latents,
+            prompt_embeds,
+            negative_prompt_embeds,
+            add_text_embeds,
+            negative_pooled_prompt_embeds,
+            add_time_ids,
+            negative_add_time_ids,
+        )
 
         hb_profiler = HabanaProfile(
             warmup=profiling_warmup_steps,
@@ -603,13 +747,45 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         # 9. Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(num_prompts * num_images_per_prompt)
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
+        t0 = time.time()
+        t1 = t0
+
+        throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+        use_warmup_inference_steps = (
+            num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+        )
+
         self._num_timesteps = len(timesteps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+
+        output_images = []
+        for j in self.progress_bar(range(num_batches)):
+            # The throughput is calculated from the 3rd iteration
+            # because compilation occurs in the first two iterations
+            if j == throughput_warmup_steps:
+                ht.hpu.synchronize()
+                t1 = time.time()
+            if use_warmup_inference_steps:
+                ht.hpu.synchronize()
+                t0_inf = time.time()
+
+            latents = latents_batches[0]
+            latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+            prompt_embeds = text_embeddings_batches[0]
+            text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+            add_text_embeds = add_text_embeddings_batches[0]
+            add_text_embeddings_batches = torch.roll(add_text_embeddings_batches, shifts=-1, dims=0)
+            add_time_ids = add_time_ids_batches[0]
+            add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
+
+            if hasattr(self.scheduler, "_init_step_index"):
+                # Reset scheduler step index for next batch
+                self.scheduler._init_step_index(timesteps[0])
+
             if self.quantized:
                 for i, t in enumerate(timesteps[0:-2]):
                     if self.interrupt:
@@ -628,7 +804,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         negative_add_time_ids,
                         negative_pooled_prompt_embeds,
                         num_warmup_steps,
-                        progress_bar,
                         callback,
                         callback_steps,
                         ip_adapter_image,
@@ -655,7 +830,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         negative_add_time_ids,
                         negative_pooled_prompt_embeds,
                         num_warmup_steps,
-                        progress_bar,
                         callback,
                         callback_steps,
                         ip_adapter_image,
@@ -667,10 +841,17 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                     hb_profiler.step()
             else:
                 for i in range(num_inference_steps):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        ht.hpu.synchronize()
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
+
                     if self.interrupt:
                         continue
+
                     latents = self.run_unet(
                         self.unet,
                         latents,
@@ -685,7 +866,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         negative_add_time_ids,
                         negative_pooled_prompt_embeds,
                         num_warmup_steps,
-                        progress_bar,
                         callback,
                         callback_steps,
                         ip_adapter_image,
@@ -695,34 +875,82 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end_tensor_inputs,
                     )
                     hb_profiler.step()
-            hb_profiler.stop()
-        if not output_type == "latent":
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            if use_warmup_inference_steps:
+                ht.hpu.synchronize()
+                t1 = warmup_inference_steps_time_adjustment(t1, t1_inf, num_inference_steps, throughput_warmup_steps)
 
-            if needs_upcasting:
-                self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            if not output_type == "latent":
+                # make sure the VAE is in float32 mode, as it overflows in float16
+                needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+                if needs_upcasting:
+                    self.upcast_vae()
+                    latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            # cast back to fp16 if needed
-            if needs_upcasting:
-                self.vae.to(dtype=torch.float16)
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+
+                # cast back to fp16 if needed
+                if needs_upcasting:
+                    self.vae.to(dtype=torch.float16)
+            else:
+                image = latents
+
+            output_images.append(image)
+
+        hb_profiler.stop()
+
+        speed_metrics_prefix = "generation"
+        ht.hpu.synchronize()
+
+        if t1 == t0 or use_warmup_inference_steps:
+            num_samples = num_batches * batch_size
+            num_steps = (num_inference_steps - throughput_warmup_steps) * num_batches * batch_size
         else:
-            image = latents
+            num_samples = (num_batches - throughput_warmup_steps) * batch_size
+            num_steps = (num_batches - throughput_warmup_steps) * num_inference_steps * batch_size
 
-        if not output_type == "latent":
-            # apply watermark if available
-            if self.watermark is not None:
-                image = self.watermark.apply_watermark(image)
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=t0,
+            num_samples=num_samples,
+            num_steps=num_steps,
+            start_time_after_warmup=t1,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
+
+        # Remove dummy generations if needed
+        if num_dummy_samples > 0:
+            output_images[-1] = output_images[-1][:-num_dummy_samples]
+
+        # Process generated images
+        for i, image in enumerate(output_images[:]):
+            if i == 0:
+                output_images.clear()
+
+            if not output_type == "latent":
+                # apply watermark if available
+                if self.watermark is not None:
+                    image = self.watermark.apply_watermark(image)
 
             image = self.image_processor.postprocess(image, output_type=output_type)
+
+            if output_type == "pil" and isinstance(image, list):
+                output_images += image
+            elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                if len(output_images) == 0:
+                    output_images = image
+                else:
+                    output_images = np.concatenate((output_images, image), axis=0)
+            else:
+                if len(output_images) == 0:
+                    output_images = image
+                else:
+                    output_images = torch.cat((output_images, image), 0)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return (output_images,)
 
-        return StableDiffusionXLPipelineOutput(images=image)
+        return StableDiffusionXLPipelineOutput(images=output_images)

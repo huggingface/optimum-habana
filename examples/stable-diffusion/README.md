@@ -245,6 +245,38 @@ python ../gaudi_spawn.py \
     --distributed
 ```
 
+Here is how to generate SDXL images with optimized pipeline:
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --optimize
+```
+
+Here is how to generate SDXL images with optimized pipeline in fp8:
+```bash
+QUANT_CONFIG=./quantization/quant_config.json python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --optimize
+```
+
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.

@@ -726,7 +726,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                         continue
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
                         torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
@@ -817,13 +816,17 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
+            if t1 == t0 or use_warmup_inference_steps:
+                num_samples = num_batches * batch_size
+                num_steps = (num_inference_steps - throughput_warmup_steps) * num_batches * batch_size
+            else:
+                num_samples = (num_batches - throughput_warmup_steps) * batch_size
+                num_steps = (num_batches - throughput_warmup_steps) * num_inference_steps * batch_size
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_batches * batch_size
-                if t1 == t0 or use_warmup_inference_steps
-                else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches * batch_size * num_inference_steps,
+                num_samples=num_samples,
+                num_steps=num_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
