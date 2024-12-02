@@ -249,12 +249,14 @@ class FinetuneArguments:
         metadata={"help": "Target modules for the LoRA/AdaLoRA method."},
     )
 
+
 class LLavaDataCollator:
     def __init__(self, processor, max_seq_length):
         self.processor = processor
 
-        num_image_tokens = (self.processor.image_processor.crop_size["height"] // self.processor.patch_size) \
-                * (self.processor.image_processor.crop_size["width"] // self.processor.patch_size) + 1
+        num_image_tokens = (self.processor.image_processor.crop_size["height"] // self.processor.patch_size) * (
+            self.processor.image_processor.crop_size["width"] // self.processor.patch_size
+        ) + 1
         if self.processor.vision_feature_select_strategy == "default":
             num_image_tokens -= 1
 
@@ -287,11 +289,8 @@ class LLavaDataCollator:
             texts.append(text.strip())
             images.append(image)
 
-        batch = self.processor(images, texts,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_seq_length
+        batch = self.processor(
+            images, texts, return_tensors="pt", padding="max_length", truncation=True, max_length=self.max_seq_length
         )
 
         labels = batch["input_ids"].clone()
@@ -300,6 +299,7 @@ class LLavaDataCollator:
         batch["labels"] = labels
 
         return batch
+
 
 def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, max_seq_length):
     from tqdm import tqdm
@@ -310,7 +310,9 @@ def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, m
     for i in tqdm(range(0, len(dataset), batch_size)):
         examples = dataset[i : i + batch_size]
         answers_unique.extend(examples["answers"])
-        images = [im for im in examples["image"]]
+        images = []
+        for im in examples["image"]:
+            images.append(im)
         texts = []
         for q in examples["query"]:
             messages = [
@@ -332,7 +334,7 @@ def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, m
             padding="max_length",
             truncation=True,
             max_length=max_seq_length,
-            padding_side="left"
+            padding_side="left",
         )
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
         generated_ids = model.generate(
@@ -349,19 +351,20 @@ def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, m
     )
     return anls
 
+
 def find_all_linear_names(model):
     cls = torch.nn.Linear
     lora_module_names = set()
-    multimodal_keywords = ['mm_projector', 'vision_tower', 'vision_resampler']
+    multimodal_keywords = ["mm_projector", "vision_tower", "vision_resampler"]
     for name, module in model.named_modules():
         if any(mm_keyword in name for mm_keyword in multimodal_keywords):
             continue
         if isinstance(module, cls):
-            names = name.split('.')
+            names = name.split(".")
             lora_module_names.add(names[0] if len(names) == 1 else names[-1])
 
-    if 'lm_head' in lora_module_names: # needed for 16-bit
-        lora_module_names.remove('lm_head')
+    if "lm_head" in lora_module_names:  # needed for 16-bit
+        lora_module_names.remove("lm_head")
     return list(lora_module_names)
 
 
@@ -417,7 +420,7 @@ def main():
     setattr(processor, "patch_size", config.vision_config.patch_size)
     setattr(processor, "vision_feature_select_strategy", config.vision_feature_select_strategy)
 
-        # Load model
+    # Load model
     if model_args.model_name_or_path:
         model_dtype = torch.bfloat16 if training_args.bf16 else None
         model = AutoModelForVision2Seq.from_pretrained(
@@ -539,7 +542,7 @@ def main():
             padding="max_length",
             truncation=True,
             max_length=data_args.max_seq_length,
-            padding_side="left"
+            padding_side="left",
         )
         inputs = {k: v.to("hpu") for k, v in inputs.items()}
         generated_ids = model.generate(

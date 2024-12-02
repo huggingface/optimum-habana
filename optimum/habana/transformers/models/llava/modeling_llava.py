@@ -171,19 +171,14 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             elif vision_feature_select_strategy == "full":
                 selected_image_feature = selected_image_feature
             else:
-                raise ValueError(
-                    f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}"
-                )
+                raise ValueError(f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}")
 
             image_features = self.multi_modal_projector(selected_image_feature)
             inputs_embeds = _merge_input_ids_with_image_features(
                 image_features, inputs_embeds, input_ids, self.config.image_token_index
             )
 
-
-
         if token_idx is not None:
-
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -224,7 +219,6 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             )
 
         else:
-
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
