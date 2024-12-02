@@ -1763,10 +1763,10 @@ class GaudiTrainer(Trainer):
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
 
-        eval_steps = output.num_samples / total_batch_size
+        eval_steps = math.ceil(output.num_samples / total_batch_size)
         if eval_steps <= self.args.throughput_warmup_steps:
             logger.warning(
-                f" Ignoring warmup steps as number of samples is less to exceed {self.args.throughput_warmup_steps} warmup evaluation steps"
+                f" Warmup steps are taken into account for the throughput calculation because the number of evaluation steps ({eval_steps}) is smaller than the number of warmup steps ({self.args.throughput_warmup_steps})"
             )
             num_samples = output.num_samples
             num_steps = eval_steps
