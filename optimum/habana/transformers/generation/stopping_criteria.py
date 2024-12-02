@@ -17,6 +17,7 @@
 import time
 from typing import Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 
 from optimum.utils import logging
@@ -67,6 +68,7 @@ def gaudi_MaxTimeCriteria_call(
 def gaudi_EosTokenCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:
+    htcore.mark_step()
     self.eos_token_id = self.eos_token_id.to(input_ids.device)
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
