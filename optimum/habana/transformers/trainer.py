@@ -135,8 +135,7 @@ if is_peft_available():
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
-if is_accelerate_available("0.28.0"):
-    from accelerate.utils import DataLoaderConfiguration
+from accelerate.utils import DataLoaderConfiguration
 
 
 def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
@@ -2396,7 +2395,7 @@ class GaudiTrainer(Trainer):
 
     def create_accelerator_and_postprocess(self):
         grad_acc_kwargs = {}
-        if is_accelerate_available("0.28.0") and self.args.accelerator_config.gradient_accumulation_kwargs is not None:
+        if self.args.accelerator_config.gradient_accumulation_kwargs is not None:
             grad_acc_kwargs = self.args.accelerator_config.gradient_accumulation_kwargs
 
         # check if num_steps is attempted to be passed in gradient_accumulation_kwargs
@@ -2416,13 +2415,12 @@ class GaudiTrainer(Trainer):
 
         accelerator_config = self.args.accelerator_config.to_dict()
 
-        if is_accelerate_available("0.28.0"):
-            dataloader_config = DataLoaderConfiguration(
-                split_batches=accelerator_config.pop("split_batches"),
-                dispatch_batches=accelerator_config.pop("dispatch_batches"),
-                even_batches=accelerator_config.pop("even_batches"),
-                use_seedable_sampler=accelerator_config.pop("use_seedable_sampler"),
-            )
+        dataloader_config = DataLoaderConfiguration(
+            split_batches=accelerator_config.pop("split_batches"),
+            dispatch_batches=accelerator_config.pop("dispatch_batches"),
+            even_batches=accelerator_config.pop("even_batches"),
+            use_seedable_sampler=accelerator_config.pop("use_seedable_sampler"),
+        )
         non_blocking = accelerator_config.pop("non_blocking")
         if not is_accelerate_available("0.30.0"):
             if non_blocking:
@@ -2443,11 +2441,8 @@ class GaudiTrainer(Trainer):
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "distribution_strategy": self.args.distribution_strategy,
             "dynamic": self.args.compile_dynamic,
+            "dataloader_config": dataloader_config,
         }
-        if is_accelerate_available("0.28.0"):
-            args["dataloader_config"] = dataloader_config
-        else:
-            args.update(accelerator_config)
 
         # create accelerator object
         self.accelerator = GaudiAccelerator(**args)
