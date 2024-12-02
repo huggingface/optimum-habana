@@ -17,9 +17,6 @@ jobs:
     name: Run tests for optimum.habana.transformers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
-      - name: Test HABANA_VISIBLE_DEVICES
-        run: |
-            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
@@ -33,7 +30,7 @@ jobs:
             -v /scratch-1:/data \
             --workdir=/root/workspace \
             --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=$HABANA_VISIBLE_DEVICES \
+            -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             -e HF_HOME=/data \
             --cap-add=sys_nice \
@@ -45,9 +42,6 @@ jobs:
     name: Run tests for optimum.habana.diffusers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
-      - name: Test HABANA_VISIBLE_DEVICES
-        run: |
-            echo $HABANA_VISIBLE_DEVICES
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
@@ -61,7 +55,7 @@ jobs:
             -v /scratch-1:/data \
             --workdir=/root/workspace \
             --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=$HABANA_VISIBLE_DEVICES \
+            -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             -e HF_HOME=/data \
             --cap-add=sys_nice \
