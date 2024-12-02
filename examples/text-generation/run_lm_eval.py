@@ -111,13 +111,14 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             "gptj",
             "starcoder2",
             "gemma",
+            "baichuan",
         ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
@@ -194,6 +195,14 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
+
+    if args.trust_remote_code:
+        # trust_remote_code fix was introduced in lm_eval 0.4.3
+        # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
+        # We need to cherry-pick the fix manually untill we upgrade (SW-190418)
+        import datasets
+
+        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():

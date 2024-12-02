@@ -262,6 +262,11 @@ class ExampleTestMeta(type):
             return False
         elif "llama" in model_name and "trl-sft-qwen" in task_name:
             return False
+        elif "Llama-3.1-8B" in model_name:
+            if multi_card:
+                return False
+            elif task_name == "tatsu-lab/alpaca":
+                return True
         elif "falcon" in model_name and task_name in (
             "llama-adapter",
             "databricks/databricks-dolly-15k",
@@ -319,6 +324,7 @@ class ExampleTestMeta(type):
         fsdp=False,
         torch_compile=False,
         fp8=False,
+        compile_dynamic: Optional[bool] = None,
     ):
         distribution = "single_card"
         if multi_card:
@@ -355,6 +361,7 @@ class ExampleTestMeta(type):
         fsdp: bool = False,
         torch_compile: bool = False,
         fp8: bool = False,
+        compile_dynamic: Optional[bool] = None,
     ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
@@ -479,6 +486,8 @@ class ExampleTestMeta(type):
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
+                if compile_dynamic is not None:
+                    extra_command_line_arguments.append(f"--compile_dynamic {compile_dynamic}")
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
@@ -774,6 +783,16 @@ class MultiCardSummarizationExampleTester(
     TASK_NAME = "cnn_dailymail"
 
 
+class MultiCardDynamicCompileSummarizationExampleTester(
+    ExampleTesterBase,
+    metaclass=ExampleTestMeta,
+    example_name="run_summarization",
+    multi_card=True,
+    compile_dynamic=True,
+):
+    TASK_NAME = "cnn_dailymail"
+
+
 class DeepspeedSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", deepspeed=True
 ):
@@ -803,7 +822,7 @@ class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta,
 class CausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
 ):
-    TASK_NAME = "databricks/databricks-dolly-15k"
+    TASK_NAME = ["tatsu-lab/alpaca", "databricks/databricks-dolly-15k"]
 
 
 class MultiCardCausalLanguageModelingLORAExampleTester2(
