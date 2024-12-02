@@ -21,9 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import is_torchdynamo_compiling
 
-from optimum.habana import parallel_state
-
-from .... import distributed
+from .... import distributed, parallel_state
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,

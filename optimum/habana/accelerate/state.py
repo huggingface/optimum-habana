@@ -19,9 +19,9 @@ import torch
 from accelerate.state import AcceleratorState, PartialState
 from accelerate.utils import is_deepspeed_available, parse_choice_from_env, parse_flag_from_env
 
-from optimum.habana import parallel_state
 from optimum.utils import logging
 
+from .. import parallel_state
 from .utils import GaudiDistributedType
 
 
