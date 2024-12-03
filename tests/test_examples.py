@@ -219,7 +219,14 @@ class ExampleTestMeta(type):
 
     @staticmethod
     def to_test(
-        model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, fp8: bool, task_name: str
+        model_name: str,
+        multi_card: bool,
+        deepspeed: bool,
+        example_name: str,
+        fsdp: bool,
+        fp8: bool,
+        eager_mode: bool,
+        task_name: str,
     ):
         models_with_specific_rules = [
             "albert-xxlarge-v1",
@@ -246,6 +253,8 @@ class ExampleTestMeta(type):
             "run_sequence_classification",
             "run_image2text_lora_finetune",
         ]
+
+        models_measured_on_eager_mode = ["google/gemma-2b-it"]
 
         if (fsdp or fp8) and not IS_GAUDI2:
             return False
@@ -274,7 +283,10 @@ class ExampleTestMeta(type):
             "ia3",
             "adalora",
             "ln_tuning",
+            "tatsu-lab/alpaca_cp",
         ):
+            return False
+        elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -310,6 +322,10 @@ class ExampleTestMeta(type):
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
             return True
+        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
+            return True
+        elif "gemma" in model_name and IS_GAUDI2:
+            return True
 
         return False
 
@@ -324,6 +340,8 @@ class ExampleTestMeta(type):
         fsdp=False,
         torch_compile=False,
         fp8=False,
+        eager_mode=False,
+        compile_dynamic: Optional[bool] = None,
     ):
         distribution = "single_card"
         if multi_card:
@@ -343,7 +361,7 @@ class ExampleTestMeta(type):
                     )
 
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, fp8, attrs["TASK_NAME"]):
+            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, fp8, eager_mode, attrs["TASK_NAME"]):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile, fp8
                 )
@@ -360,6 +378,7 @@ class ExampleTestMeta(type):
         fsdp: bool = False,
         torch_compile: bool = False,
         fp8: bool = False,
+        compile_dynamic: Optional[bool] = None,
     ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
@@ -427,9 +446,15 @@ class ExampleTestMeta(type):
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
-            path_to_baseline = BASELINE_DIRECTORY / Path(
-                model_name.split("/")[-1].replace("-", "_").replace(".", "_")
-            ).with_suffix(".json")
+
+            # collect baseline from <model_name>_eager.json if eager_mode is True
+            if self.EAGER_MODE:
+                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_") + "_eager"
+            else:
+                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_")
+
+            path_to_baseline = BASELINE_DIRECTORY / Path(baseline_name).with_suffix(".json")
+
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
@@ -477,6 +502,10 @@ class ExampleTestMeta(type):
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
+            if self.EAGER_MODE:
+                env_variables["PT_HPU_LAZY_MODE"] = "0"
+                if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
+                    extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
             elif torch_compile and (
@@ -484,6 +513,8 @@ class ExampleTestMeta(type):
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
+                if compile_dynamic is not None:
+                    extra_command_line_arguments.append(f"--compile_dynamic {compile_dynamic}")
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
@@ -551,6 +582,7 @@ class ExampleTesterBase(TestCase):
         "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
         "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
     }
+    EAGER_MODE = False
 
     def _create_command_line(
         self,
@@ -726,6 +758,13 @@ class MultiCardQuestionAnsweringExampleTester(
     TASK_NAME = "squad"
 
 
+class EagerModeCausalLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", eager_mode=True
+):
+    TASK_NAME = "wikitext"
+    EAGER_MODE = True
+
+
 class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
     TASK_NAME = "wikitext"
 
@@ -775,6 +814,16 @@ class MultiCardSpeechRecognitionExampleTester(
 
 class MultiCardSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
+
+
+class MultiCardDynamicCompileSummarizationExampleTester(
+    ExampleTesterBase,
+    metaclass=ExampleTestMeta,
+    example_name="run_summarization",
+    multi_card=True,
+    compile_dynamic=True,
 ):
     TASK_NAME = "cnn_dailymail"
 
@@ -974,4 +1023,10 @@ class MultiCardCausalLanguageModelingAdaloraExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
     TASK_NAME = "adalora"
+
+
+class MultiCardCausalLanguageModelingLoRACPExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", deepspeed=True
+):
+    TASK_NAME = "tatsu-lab/alpaca_cp"
     DATASET_NAME = "tatsu-lab/alpaca"

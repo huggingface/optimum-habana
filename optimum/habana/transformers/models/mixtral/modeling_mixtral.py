@@ -409,6 +409,58 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     return final_hidden_states, router_logits
 
 
+def gaudi_mixtral_block_dynamic_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    batch_size, sequence_length, hidden_dim = hidden_states.shape
+    original_shape = hidden_states.shape
+    hidden_states = hidden_states.view(-1, hidden_dim)
+    # router_logits: (batch * sequence_length, n_experts)
+    router_logits = self.gate(hidden_states)
+
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
+
+        if dist.is_initialized():
+            output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+            dist.all_gather(output_tensors, router_logits)
+            router_logits = torch.cat(output_tensors, dim=1)
+
+    routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
+    # pre-processing for custom op inputs
+    w1_list = [expert.w1.weight for expert in self.experts]
+    w2_list = [expert.w2.weight for expert in self.experts]
+    w3_list = [expert.w3.weight for expert in self.experts]
+
+    final_hidden_states = torch.ops.hpu.mixture_of_experts(
+        hidden_states=hidden_states,
+        expert_routing_table=selected_experts,
+        router_weights=routing_weights,
+        w1=w1_list,
+        w3=w2_list,
+        w2=w3_list,
+        permuted_weights=True,
+        activation="silu",
+        experts_min=0,
+        experts_max=7,
+    )
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
+
+        if dist.is_initialized():
+            dist.all_reduce(final_hidden_states)
+    return final_hidden_states.view(original_shape), router_logits
+
+
+def calculate_routing_tensors(
+    score: torch.Tensor, topk: int, hidden_states_dtype: torch.dtype
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Based on https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py#L641"""
+    routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
+    routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
+    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+    routing_weights = routing_weights.to(hidden_states_dtype)
+    return routing_weights, selected_experts
+
+
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
     def __init__(self, config: MixtralConfig, layer_idx: int):
         super().__init__(config, layer_idx)
