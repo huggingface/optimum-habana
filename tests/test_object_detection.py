@@ -15,8 +15,7 @@
 
 import os
 import time
-import warnings
-from unittest import TestCase
+from unittest import TestCase, skipIf
 
 import habana_frameworks.torch as ht
 import numpy as np
@@ -100,10 +99,8 @@ class GaudiDETRTester(TestCase):
             expected_location = self.get_expected_loc(mode="autocast")
             self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 5)
 
+    @skipIf(is_eager_mode(), reason="ht.hpu.wrap_in_hpu_graph is supported only in lazy mode")
     def test_inference_hpu_graphs(self):
-        if is_eager_mode():
-            warnings.warn("test_inference_hpu_graphs is supported only in lazy mode. Skipped")
-            return
         model, processor = self.prepare_model_and_processor()
         image = self.prepare_data()
         inputs = processor(images=image, return_tensors="pt").to("hpu")
@@ -118,10 +115,8 @@ class GaudiDETRTester(TestCase):
         expected_location = self.get_expected_loc()
         self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 1)
 
+    @skipIf(is_eager_mode(), reason="ht.hpu.wrap_in_hpu_graph is supported only in lazy mode")
     def test_no_latency_regression_autocast(self):
-        if is_eager_mode():
-            warnings.warn("test_no_latency_regression_autocast is supported only in lazy mode. Skipped")
-            return
         warmup = 3
         iterations = 10
 
