@@ -241,7 +241,6 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
-            "huggyllama/llama-7b",
         ]
 
         case_only_in_gaudi2 = [
