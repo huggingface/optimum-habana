@@ -113,6 +113,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "idefics2",
     "mllama",
     "minicpm3",
+    "baichuan",
+    "deepseek_v2",
 ]
 
 
@@ -1082,8 +1084,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     "qwen2_moe",
                     "gemma",
                     "gemma2",
+                    "baichuan",
                 ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2 and starcoder2 at the moment"
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2 and baichuan at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1289,8 +1292,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma",
                 "gemma2",
                 "qwen2_moe",
+                "baichuan",
             ]:
-                if self.config.max_position_embeddings < calculated_max_length:
+                if (
+                    hasattr(self.config, "max_position_embeddings")
+                    and self.config.max_position_embeddings < calculated_max_length
+                ):
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
         # 8. determine generation mode

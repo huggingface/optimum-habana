@@ -1,4 +1,9 @@
 from .albert import gaudi_albert_forward
+from .baichuan import (
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
+)
 from .bart import (
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -55,6 +60,11 @@ from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
 )
+from .deepseek_v2 import (
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+)
 from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
@@ -69,6 +79,10 @@ from .falcon import (
     GaudiFalconMLP,
     GaudiFalconModel,
     gaudi_falcon_linear_forward,
+)
+from .falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
 )
 from .gemma import (
     GaudiGemmaAttention,
