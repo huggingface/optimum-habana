@@ -23,9 +23,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
 
 logging.basicConfig(
@@ -167,6 +165,11 @@ def main():
         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
+        "--limit_hpu_graphs",
+        action="store_true",
+        help="Whether to Skip HPU Graph usage for first token to save memory",
+    )
+    parser.add_argument(
         "--use_kv_cache",
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
@@ -182,30 +185,56 @@ def main():
     args.global_rank = int(os.getenv("RANK", "0"))
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
+    if args.world_size > 0:
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
 
-    model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type == "llava":
+    config = AutoConfig.from_pretrained(args.model_name_or_path)
+    model_type = config.model_type
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
+    elif args.image_path is None and model_type == "paligemma":
+        args.image_path = [
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
+        ]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
-    if args.prompt is None and model_type in ("llava", "llava_next"):
-        if model_type == "llava":
-            processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
-        elif model_type == "llava_next":
-            processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-        conversation = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What is shown in this image?"},
-                    {"type": "image"},
-                ],
-            }
-        ]
-        args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+        if args.prompt is None:
+            if processor.chat_template is not None:
+                conversation = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "What is shown in this image?"},
+                            {"type": "image"},
+                        ],
+                    }
+                ]
+                args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+            else:
+                image_token_id = None
+                if hasattr(config, "image_token_id"):
+                    # idefics
+                    image_token_id = config.image_token_id
+                elif hasattr(config, "image_token_index"):
+                    # mllama/falcon_vlm
+                    image_token_id = config.image_token_index
+                if image_token_id is None:
+                    image_str = "<image>"
+                else:
+                    image_str = str(processor.tokenizer.added_tokens_decoder[image_token_id])
+                if model_type == "paligemma":
+                    args.prompt = "caption es"
+                else:
+                    args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -233,22 +262,39 @@ def main():
 
         htcore.hpu_set_env()
 
-    generator = pipeline(
-        "image-to-text",
-        model=args.model_name_or_path,
-        torch_dtype=model_dtype,
-        device="hpu",
-    )
-
     if args.world_size > 1:
-        generator.model = initialize_distributed_model(args, generator.model, logger, model_dtype)
+        import deepspeed
 
+        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+            model = AutoModelForVision2Seq.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        if model_type == "mllama":
+            model.language_model = initialize_distributed_model(args, model.language_model, logger, model_dtype)
+        else:
+            model = initialize_distributed_model(args, model, logger, model_dtype)
+        generator = pipeline(
+            "image-to-text",
+            model=model,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
     else:
+        generator = pipeline(
+            "image-to-text",
+            model=args.model_name_or_path,
+            torch_dtype=model_dtype,
+            device="hpu",
+        )
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
             generator.model = wrap_in_hpu_graph(generator.model)
 
+    if "falcon-11B-vlm" in args.model_name_or_path:
+        # WA falcon vlm issue that image_token_id == embed size.
+        generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
     generate_kwargs = {
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
@@ -256,6 +302,7 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "limit_hpu_graphs": args.limit_hpu_graphs,
     }
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
@@ -263,6 +310,17 @@ def main():
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
+
+    # delete once pipeline integrate AutoProcessor as preprocess engine
+    if model_type in ["idefics2", "mllama", "paligemma"]:
+        from transformers.image_utils import load_image
+
+        def preprocess(self, image, prompt=None, timeout=None):
+            image = load_image(image, timeout=timeout)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            return model_inputs
+
+        generator.__class__.preprocess = preprocess
 
     # warm up
     for i in range(args.warmup):

@@ -72,6 +72,7 @@ from transformers.trainer_utils import (
     HPSearchBackend,
     HubStrategy,
     IntervalStrategy,
+    PredictionOutput,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
@@ -252,7 +253,7 @@ class GaudiTrainer(Trainer):
                         "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
                     )
 
-            if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
+            if self.use_hpu_amp and "PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST" not in os.environ:
                 self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.args.use_lazy_mode:
@@ -574,7 +575,7 @@ class GaudiTrainer(Trainer):
                 (self.model_wrapped,) = release_memory(self.model_wrapped)
                 self.model_wrapped = self.model
 
-                # Check for DeepSpeed *after* the intial pass and modify the config
+                # Check for DeepSpeed *after* the initial pass and modify the config
                 if self.is_deepspeed_enabled:
                     # Temporarily unset `self.args.train_batch_size`
                     original_bs = self.args.per_device_train_batch_size
@@ -685,14 +686,14 @@ class GaudiTrainer(Trainer):
 
                 # HACK because outputs should always be tuples
                 def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
-                    """DeepSpeed acitvation checkpointing."""
+                    """DeepSpeed activation checkpointing."""
                     if use_reentrant is None:
                         use_reentrant = True
                     if use_reentrant:
                         all_outputs = []
                         CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
                     else:
-                        logger.info("DeepSpeed acitvation checkpointing=non_reentrant_checkpoint")
+                        logger.info("DeepSpeed activation checkpointing=non_reentrant_checkpoint")
                         all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
 
                     # Always return a tuple
@@ -862,7 +863,7 @@ class GaudiTrainer(Trainer):
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
-        # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
+        # _total_loss_scalar is updated every time .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
@@ -881,6 +882,7 @@ class GaudiTrainer(Trainer):
             warmup=self.args.profiling_warmup_steps,
             active=self.args.profiling_steps,
             record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
         )
         hb_profiler.start()
 
@@ -966,9 +968,9 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma and baichuan
                 if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
+                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma", "baichuan"]:
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
@@ -977,7 +979,9 @@ class GaudiTrainer(Trainer):
                             inputs["flash_attention_recompute"] = True
                         if self.model.generation_config.flash_attention_causal_mask:
                             inputs["flash_attention_causal_mask"] = True
-
+                if self.model.config is not None:
+                    if self.model.config.model_type in ["llama", "qwen2", "mistral", "starcoder2"]:
+                        inputs["lazy_mode"] = args.use_lazy_mode
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -1429,7 +1433,7 @@ class GaudiTrainer(Trainer):
             )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
-            # This block is exectuted by the main process only
+            # This block is executed by the main process only
             optim_dict = self.optimizer.state_dict()
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
@@ -1595,7 +1599,7 @@ class GaudiTrainer(Trainer):
         del inputs
         kwargs = {}
 
-        # For LOMO optimizers you need to explicitly use the learnign rate
+        # For LOMO optimizers you need to explicitly use the learning rate
         if self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             kwargs["learning_rate"] = self._get_learning_rate()
 
@@ -1719,10 +1723,9 @@ class GaudiTrainer(Trainer):
     ) -> Dict[str, float]:
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
-        1. comment out TPU related
-        2. use throughput_warmup_steps in evaluation throughput calculation
+        1. use throughput_warmup_steps in evaluation throughput calculation
         """
-        # handle multipe eval datasets
+        # handle multiple eval datasets
         override = eval_dataset is not None
         eval_dataset = eval_dataset if override else self.eval_dataset
         if isinstance(eval_dataset, dict):
@@ -1763,6 +1766,14 @@ class GaudiTrainer(Trainer):
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
 
+        eval_steps = math.ceil(output.num_samples / total_batch_size)
+        if eval_steps <= self.args.throughput_warmup_steps:
+            logger.warning(
+                f" Warmup steps are taken into account for the throughput calculation because the number of evaluation steps ({eval_steps}) is smaller than the number of warmup steps ({self.args.throughput_warmup_steps})"
+            )
+            num_samples = output.num_samples
+            num_steps = eval_steps
+
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
@@ -1780,6 +1791,51 @@ class GaudiTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output.metrics
+
+    def predict(
+        self, test_dataset: Dataset, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "test"
+    ) -> PredictionOutput:
+        """
+        From https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/trainer.py#L3904 with the following modification
+        1. comment out TPU related
+        2. use throughput_warmup_steps in evaluation throughput calculation
+        """
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        test_dataloader = self.get_test_dataloader(test_dataset)
+        start_time = time.time()
+        self.start_time_after_warmup = None
+
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        output = eval_loop(
+            test_dataloader, description="Prediction", ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix
+        )
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
+        if f"{metric_key_prefix}_model_preparation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_model_preparation_time"]
+
+        num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
+        num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
+
+        logger.info(f"num_samples : {num_samples}, num_steps: {num_steps}")
+
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=num_samples,
+                num_steps=num_steps,
+                start_time_after_warmup=self.start_time_after_warmup,
+            )
+        )
+
+        self.control = self.callback_handler.on_predict(self.args, self.state, self.control, output.metrics)
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
     def evaluation_loop(
         self,
@@ -1873,6 +1929,7 @@ class GaudiTrainer(Trainer):
         observed_num_examples = 0
 
         # Main evaluation loop
+        start_time_eval = time.time()
         for step, inputs in enumerate(dataloader):
             if (
                 self.args.throughput_warmup_steps > 0
@@ -1880,6 +1937,8 @@ class GaudiTrainer(Trainer):
                 and step == self.args.throughput_warmup_steps
             ):
                 self.start_time_after_warmup = time.time()
+                self.compilation_time = self.start_time_after_warmup - start_time_eval
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -1888,9 +1947,9 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
             if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
+                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma", "baichuan"]:
                     if self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
                     if self.model.generation_config.use_flash_attention:
@@ -2022,6 +2081,8 @@ class GaudiTrainer(Trainer):
             metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
         if hasattr(self, "model_preparation_time"):
             metrics[f"{metric_key_prefix}_model_preparation_time"] = self.model_preparation_time
+        if hasattr(self, "compilation_time"):
+            metrics[f"{metric_key_prefix}_graph_compliation_duration"] = self.compilation_time
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):

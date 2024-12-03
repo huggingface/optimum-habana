@@ -28,6 +28,7 @@ class GaudiSFTConfig(GaudiTrainingArguments):
     dataset_text_field: Optional[str] = None
     packing: Optional[bool] = True
     max_seq_length: Optional[int] = 1024
+    pad_max: Optional[bool] = True
     dataset_num_proc: Optional[int] = None
     dataset_batch_size: int = 1000
     neftune_noise_alpha: Optional[float] = None

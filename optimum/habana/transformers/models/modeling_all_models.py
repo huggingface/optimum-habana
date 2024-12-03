@@ -115,7 +115,7 @@ def gaudi_conv1d_forward(self, x):
 @classmethod
 def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> PretrainedConfig:
     # This model doesn't support SDPA in Gaudi yet, fallback to original code.
-    MODELS_ATTN_IMPLEMENTATION_EAGER = ["bart", "gpt_bigcode", "mistral", "mixtral", "wav2vec2", "roberta"]
+    MODELS_ATTN_IMPLEMENTATION_EAGER = ["albert", "bart", "gpt_bigcode", "mistral", "mixtral", "wav2vec2", "roberta"]
 
     if config.model_type in MODELS_ATTN_IMPLEMENTATION_EAGER:
         config._attn_implementation = "eager"
@@ -164,7 +164,5 @@ class ScopedLinearAllReduce(torch.nn.Module):
             dist.inference_all_reduce(input, group=self.mp_group)
 
     def post_all_reduce(self, input):
-        # inplace addition needed for correct results
-        if self.bias is not None:
-            input += self.bias
-        return input
+        output = input + self.bias if (self.bias is not None) else input
+        return output

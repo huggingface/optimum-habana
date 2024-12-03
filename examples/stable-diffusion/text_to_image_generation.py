@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
 
@@ -66,7 +68,7 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim", "flow_match_euler_discrete"],
         type=str,
         help="Name of scheduler",
     )
@@ -227,6 +229,9 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -286,22 +291,48 @@ def main():
         action="store_true",
         help="Use rescale_betas_zero_snr for controlling image brightness",
     )
+    parser.add_argument("--optimize", action="store_true", help="Use optimized pipeline.")
+    parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        choices=["measure", "quantize", "quantize-mixed", "disable"],
+        type=str,
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+    )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
     args = parser.parse_args()
+
+    if args.optimize and not args.use_habana:
+        raise ValueError("--optimize can only be used with --use-habana.")
 
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3"]
+    flux_models = ["FLUX.1"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
+    flux = True if any(model in args.model_name_or_path for model in flux_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
-    if args.scheduler == "euler_discrete":
+
+    if flux or args.scheduler == "flow_match_euler_discrete":
+        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
+        if args.optimize:
+            scheduler.hpu_opt = True
     elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
@@ -316,6 +347,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
@@ -356,16 +388,18 @@ def main():
                 negative_prompts = negative_prompt
     kwargs_call["negative_prompt"] = negative_prompts
 
-    if sdxl or sd3:
+    if sdxl or sd3 or flux:
         prompts_2 = args.prompts_2
-        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.prompts_2 is not None:
             with distributed_state.split_between_processes(args.prompts_2) as prompt_2:
                 prompts_2 = prompt_2
+        kwargs_call["prompt_2"] = prompts_2
+
+    if sdxl or sd3:
+        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.negative_prompts_2 is not None:
             with distributed_state.split_between_processes(args.negative_prompts_2) as negative_prompt_2:
                 negative_prompts_2 = negative_prompt_2
-        kwargs_call["prompt_2"] = prompts_2
         kwargs_call["negative_prompt_2"] = negative_prompts_2
 
     if sd3:
@@ -404,7 +438,11 @@ def main():
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
 
+    kwargs_call["quant_mode"] = args.quant_mode
+
     # Instantiate a Stable Diffusion pipeline class
+    import habana_frameworks.torch.core as htcore  # noqa: F401
+
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -417,14 +455,52 @@ def main():
 
             pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
 
-        else:
+        elif args.optimize:
             # Import SDXL pipeline
+            # set PATCH_SDPA to enable fp8 varient of softmax in sdpa
+            os.environ["PATCH_SDPA"] = "1"
+            import habana_frameworks.torch.hpu as torch_hpu
+
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
+
+            pipeline = StableDiffusionXLPipeline_HPU.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
+            pipeline.to(torch.device("hpu"))
+
+            quant_config_path = os.getenv("QUANT_CONFIG")
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+                htcore.hpu_set_env()
+
+                config = FP8Config.from_json_file(quant_config_path)
+
+                if config.measure:
+                    logger.info("Running measurements")
+                    pipeline.unet = prepare(pipeline.unet, config)
+                elif config.quantize:
+                    logger.info("Running quantization")
+                    pipeline.unet = convert(pipeline.unet, config)
+                htcore.hpu_initialize(pipeline.unet, mark_only_scales_as_const=True)
+
+            if args.use_hpu_graphs:
+                pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
+
+        else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
             pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
+
             if args.lora_id:
                 pipeline.load_lora_weights(args.lora_id)
 
@@ -443,6 +519,20 @@ def main():
             from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
 
             pipeline = GaudiStableDiffusion3Pipeline.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+    elif flux:
+        # Flux pipelines
+        if controlnet:
+            raise ValueError("Flux+ControlNet pipeline is not currenly supported")
+        elif inpainting:
+            raise ValueError("Flux Inpainting pipeline is not currenly supported")
+        else:
+            # Import Flux pipeline
+            from optimum.habana.diffusers import GaudiFluxPipeline
+
+            pipeline = GaudiFluxPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
@@ -538,6 +628,14 @@ def main():
 
         pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
 
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
+
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
@@ -561,6 +659,12 @@ def main():
                 outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
         else:
             outputs = pipeline(prompt=args.prompts, **kwargs_call)
+
+    if args.optimize and quant_config_path and config.measure:
+        from neural_compressor.torch.quantization import finalize_calibration
+
+        logger.info("Finalizing calibration...")
+        finalize_calibration(pipeline.unet)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
