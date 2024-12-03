@@ -138,7 +138,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 
 Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \

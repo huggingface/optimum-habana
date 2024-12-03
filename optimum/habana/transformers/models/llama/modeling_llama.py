@@ -21,7 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import is_torchdynamo_compiling
 
-from .... import distributed
+from .... import distributed, parallel_state
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
@@ -119,7 +119,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
                 self.rope_type = "default"
             self.max_seq_len_cached = config.max_position_embeddings
             # Truncate the cached max sequence length to 8k to limit cached register buffer size
-            if config.max_position_embeddings > 8192 and self.rope_type == "llama3":
+            if not self.training and config.max_position_embeddings > 8192 and self.rope_type == "llama3":
                 self.max_seq_len_cached = 8192
             self.original_max_seq_len = config.max_position_embeddings
 
@@ -436,6 +436,13 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
+def GaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
+
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -444,6 +451,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
             self.head_dim = config.hidden_size // self.num_heads
@@ -470,6 +478,15 @@ class GaudiLlamaAttention(LlamaAttention):
             if FusedSDPA
             else None
         )
+        # https://github.com/microsoft/DeepSpeed/issues/4359
+        # for all2all comm, Distributed Attention cares about sequence (s) and number of heads (h) dimensions. In HPU, they are at 1 and 2 indices
+        self.fused_scaled_dot_product_attention_distributed = None
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            from deepspeed.sequence.layer import DistributedAttention
+
+            self.fused_scaled_dot_product_attention_distributed = DistributedAttention(
+                self.fused_scaled_dot_product_attention, parallel_state.get_sequence_parallel_group(), 1, 2
+            )
 
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
@@ -611,8 +628,22 @@ class GaudiLlamaAttention(LlamaAttention):
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         # else:
         # cos, sin = position_embeddings
+        seq_len = kv_seq_len
+        if parallel_state.sequence_parallel_is_initialized():
+            seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=seq_len)
+        # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
+        # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
+            position_ids = torch.arange(
+                kv_seq_len * parallel_state.get_sequence_parallel_rank(),
+                kv_seq_len * (parallel_state.get_sequence_parallel_rank() + 1),
+                dtype=torch.long,
+                device=query_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0)
+
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
@@ -659,11 +690,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-
+        fused_scaled_dot_product_attention = GaudiDistributedAttention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
         if use_flash_attention and FusedSDPA is not None:
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -680,7 +713,8 @@ class GaudiLlamaAttention(LlamaAttention):
                 # first token
                 softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    # causal masking on first token requires inputs to be of the same length
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -694,7 +728,7 @@ class GaudiLlamaAttention(LlamaAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -1398,7 +1432,19 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             shift_labels = shift_labels.view(-1)
             # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            # Collect losses from context parallel group
+            # Each rank in group calculates loss on partial outputs
+            if (
+                parallel_state.sequence_parallel_is_initialized()
+                and parallel_state.get_sequence_parallel_world_size() > 1
+            ):
+                from optimum.habana.distributed.contextparallel import _get_loss_from_context_parallel
+
+                loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+                loss_all = _get_loss_from_context_parallel(loss_fct(shift_logits, shift_labels))
+                loss = torch.mean(loss_all)
+            else:
+                loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
