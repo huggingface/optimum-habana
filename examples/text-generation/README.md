@@ -26,6 +26,11 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+For `run_lm_eval.py`:
+```bash
+pip install -r requirements_lm_eval.txt
+```
+
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
@@ -258,7 +263,7 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 ### Using Beam Search
 
-> Restriction: When `reuse_cache` is not applied, currently beam search can only work for the models with model type of `llama` or `qwen2` since it requires `_reorder_cache` implemented in the modeling. The group beam search and constrained beam search is not supported by optimum-habana yet. 
+> Restriction: When `reuse_cache` is not applied, currently beam search can only work for the models with model type of `llama` or `qwen2` since it requires `_reorder_cache` implemented in the modeling. The group beam search and constrained beam search is not supported by optimum-habana yet.
 
 Here is an example:
 ```bash
@@ -651,7 +656,7 @@ and by adding the argument `--load_quantized_model_with_autogptq`.
 
 ***Note:***
 Setting the above environment variables improves performance. These variables will be removed in future releases.
- 
+
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
