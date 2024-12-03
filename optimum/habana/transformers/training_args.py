@@ -310,6 +310,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    sdp_on_bf16: bool = field(
+        default=False,
+        metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend"},
+    )
+
     fp8: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use fp8 for training."},
@@ -851,6 +856,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 and self.half_precision_backend == "hpu_amp"
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
+
+        if self.sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
