@@ -520,11 +520,11 @@ class GaudiGenerationMixin(GenerationMixin):
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                             # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
+                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
                             if (
                                 model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)]
-                                == params["allocated_space"] - pad_amount
+                                == params["allocated_space"] - pad_amount + num_virtual_tokens
                             ):
-                                num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
                                 assert (
                                     model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
                                     == num_virtual_tokens
