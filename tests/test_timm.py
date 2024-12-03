@@ -1,20 +1,14 @@
-
-import json
 import os
 import re
 import subprocess
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pytest
-import habana_frameworks.torch as ht
-
 
 
 @pytest.mark.parametrize("test_timm_type", ["inference", "train_hpu_lazy", "train_hpu_graph"])
 def test_timm(test_timm_type: str) -> None:
-
-    task = 'pytorch-image-models'
+    task = "pytorch-image-models"
 
     os.environ["PT_HPU_LAZY_MODE"] = "1"
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -27,7 +21,6 @@ def test_timm(test_timm_type: str) -> None:
     return_code = p.wait()
     assert return_code == 0
 
-
     command = ["python3"]
 
     if test_timm_type == "inference":
@@ -39,7 +32,7 @@ def test_timm(test_timm_type: str) -> None:
             "--model resnet50.a1_in1k",
             "--split train",
             "--graph_mode",
-            ]
+        ]
     elif test_timm_type == "train_hpu_lazy":
         command += [
             f"{path_to_example_dir / task / 'train_hpu_lazy.py'}",
@@ -51,7 +44,7 @@ def test_timm(test_timm_type: str) -> None:
             "--val-split train",
             "--dataset-download",
             "--epochs 3",
-            ]
+        ]
     else:
         command += [
             f"{path_to_example_dir / task / 'train_hpu_graph.py'}",
@@ -63,16 +56,15 @@ def test_timm(test_timm_type: str) -> None:
             "--val-split train",
             "--dataset-download",
             "--epochs 3",
-            ]
+        ]
 
     print(f" {test_timm_type} for timm model is under testing ... ")
 
     print(f"\n\nCommand to test: {' '.join(command)}\n")
-    
+
     pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
     command = [x for y in command for x in re.split(pattern, y) if x]
 
-    
     proc = subprocess.run(command, env=env_variables)
 
     # Ensure the run finished without any issue
@@ -82,4 +74,3 @@ def test_timm(test_timm_type: str) -> None:
     except AssertionError as e:
         e.args = (f"The following command failed:\n{' '.join(command[:-2])}",)
         raise
-
