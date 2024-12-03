@@ -89,6 +89,8 @@ def _test_image_to_text(
                 "llava-hf/llava-v1.6-mistral-7b-hf",
                 "llava-hf/llava-v1.6-vicuna-7b-hf",
                 "llava-hf/llava-v1.6-vicuna-13b-hf",
+                "llava-hf/llava-1.5-7b-hf",
+                "llava-hf/llava-1.5-13b-hf",
             ]:
                 quant_file_path = "image-to-text/quantization_config/maxabs_quant_scale_format_const.json"
 
