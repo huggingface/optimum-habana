@@ -15,6 +15,7 @@
 
 import os
 import time
+import warnings
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -37,6 +38,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
 else:
     # Gaudi1 CI baselines
     LATENCY_DETR_BF16_GRAPH_BASELINE = 14.5
+
+
+def is_eager_mode():
+    return os.environ.get("PT_HPU_LAZY_MODE", "1") == "0"
 
 
 class GaudiDETRTester(TestCase):
@@ -96,6 +101,9 @@ class GaudiDETRTester(TestCase):
             self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 5)
 
     def test_inference_hpu_graphs(self):
+        if is_eager_mode():
+            warnings.warn("test_inference_hpu_graphs is supported only in lazy mode. Skipped")
+            return
         model, processor = self.prepare_model_and_processor()
         image = self.prepare_data()
         inputs = processor(images=image, return_tensors="pt").to("hpu")
@@ -111,6 +119,9 @@ class GaudiDETRTester(TestCase):
         self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 1)
 
     def test_no_latency_regression_autocast(self):
+        if is_eager_mode():
+            warnings.warn("test_no_latency_regression_autocast is supported only in lazy mode. Skipped")
+            return
         warmup = 3
         iterations = 10
 
