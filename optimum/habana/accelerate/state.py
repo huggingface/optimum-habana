@@ -21,6 +21,7 @@ from accelerate.utils import is_deepspeed_available, parse_choice_from_env, pars
 
 from optimum.utils import logging
 
+from .. import parallel_state
 from .utils import GaudiDistributedType
 
 
@@ -50,7 +51,7 @@ class GaudiPartialState(PartialState):
             if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
                 world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
-
+                context_parallel_size = kwargs.pop("context_parallel_size", 1)
                 if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true":
                     if not is_deepspeed_available():
                         raise ImportError(
@@ -85,6 +86,9 @@ class GaudiPartialState(PartialState):
                 if self.device is None:
                     # TODO: replace by `torch.device("hpu", self.local_process_index)` when hpu:x is supported
                     self.device = torch.device("hpu")
+                if not is_deepspeed_available():
+                    context_parallel_size = 1
+                parallel_state.initialize_model_parallel(sequence_parallel_size=context_parallel_size, use_fp8=False)
             else:
                 self.distributed_type = (
                     GaudiDistributedType.NO

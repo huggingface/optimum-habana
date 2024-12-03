@@ -147,7 +147,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.18.0/ubuntu22.04/habanalabs/pytorch-installer-2.4.0:latest \
-            /bin/bash tests/ci/slow_tests_8x.sh
+            /bin/bash tests/ci/slow_tests_8x.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   single-card:
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}

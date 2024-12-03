@@ -22,6 +22,7 @@ from accelerate.utils import (
 )
 from torch.utils.data import BatchSampler, DataLoader, IterableDataset
 
+from .. import parallel_state
 from .state import GaudiAcceleratorState
 from .utils.operations import (
     broadcast,
@@ -306,6 +307,10 @@ def gaudi_prepare_data_loader(
         num_processes = state.num_processes
     if process_index is None:
         process_index = state.process_index
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        num_processes = int(num_processes / parallel_state.get_sequence_parallel_world_size())
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        process_index = int(process_index / parallel_state.get_sequence_parallel_world_size())
 
     # Sanity check
     if split_batches:
