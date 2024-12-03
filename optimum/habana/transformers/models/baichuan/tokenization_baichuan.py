@@ -77,7 +77,7 @@ class BaichuanTokenizer(PreTrainedTokenizer):
         **kwargs,
     ):
         if not is_sentencepiece_available():
-            raise RuntimeError(
+            raise ModuleNotFoundError(
                 "Baichuan requires the Sentencepiece library to be installed. Please install it with: `pip install sentencepiece`"
             )
 
