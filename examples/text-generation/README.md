@@ -25,6 +25,10 @@ First, you should install the requirements:
 ```bash
 pip install -r requirements.txt
 ```
+For run_lm_eval.py:
+```bash
+pip install -r requirements_lm_eval.txt
+```
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
