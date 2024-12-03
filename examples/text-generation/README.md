@@ -679,9 +679,9 @@ ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
 
 ### Store KV Cache on CPU
 
-Keeping key/value cache on CPU (host) side can decrease hpu vram in spite of it may damage generation latency. It's a practical solution in long context serving scenario with a large LLM on single card.
+Keeping key/value cache on CPU (host) side can decrease HPU VRAM usage at the price of slower generation latency. It's a practical solution in long context serving scenarios with a large LLM on a single card.
 
-You can add `--kv_cache_on_host` arg to enable it. [Pytorch SDPA operator](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) will be automatically used to generate next token for saving data transfer time. First token is not be affected.
+You can add the `--kv_cache_on_host` argument to enable it. [Pytorch SDPA operator](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) will be automatically used to generate the next token for saving data transfer time. The first token is not affected.
 
 For exmaple:
 ```bash
@@ -704,8 +704,8 @@ python run_generation.py \
 ```
 
 > [!NOTE]
-> 1. `--kv_cache_on_host` only supports llama model for now. And it can not work with `--use_hpu_grapgs` and FP8 data type.
-> 2. Try to use it when you only meet HPU workspace allocation error (`OOM`) since it will increase latency.
+> 1. `--kv_cache_on_host` only supports Llama for now. It also does not work with `--use_hpu_graphs` and FP8 data type.
+> 2. Try to use it only when you meet an out-of-memory error on the HPU device since it will increase latency.
 
 ## Language Model Evaluation Harness
 

@@ -348,6 +348,7 @@ def gaudi_llama_repeat_kv(
 
     return query_states, key_states, value_states, attention_mask
 
+
 def gaudi_llama_repeat_kv_cpu(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -357,7 +358,7 @@ def gaudi_llama_repeat_kv_cpu(
 ):
     """
     PyTorch SDPA CPU (flash-atten) kernel does not support GQA/MQA for now.
-    So, expand k and v to num_query_heads
+    So, expand k and v to num_query_heads.
     """
     query_states = query_states.to("cpu")
     key_states = key_states.to("cpu")
@@ -369,22 +370,15 @@ def gaudi_llama_repeat_kv_cpu(
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
 
-    key_states = key_states[:, :, None, :, :].expand(batch,
-                                                     num_key_value_heads,
-                                                     n_rep,
-                                                     kv_len,
-                                                     head_dim)
-    value_states = value_states[:, :, None, :, :].expand(batch,
-                                                     num_key_value_heads,
-                                                     n_rep,
-                                                     kv_len,
-                                                     head_dim)
+    key_states = key_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, kv_len, head_dim)
+    value_states = value_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, kv_len, head_dim)
     key_states = key_states.reshape(batch, num_key_value_heads * n_rep, kv_len, head_dim)
     value_states = value_states.reshape(batch, num_key_value_heads * n_rep, kv_len, head_dim)
 
     return query_states, key_states, value_states, attention_mask
 
-# FusedScaledDotProductAttention
+
+#  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -677,7 +671,7 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        kv_cache_on_host = (key_states.device == torch.device("cpu") and value_states.device == torch.device("cpu"))
+        kv_cache_on_host = key_states.device == torch.device("cpu") and value_states.device == torch.device("cpu")
         # CPU SDPA fot next token
         if kv_cache_on_host and q_len == 1 and not self.training:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
@@ -685,13 +679,15 @@ class GaudiLlamaAttention(LlamaAttention):
             )
             # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
             # dispatch to flash attention implementation
-            attn_output = F.scaled_dot_product_attention(query_states,
-                                                        key_states,
-                                                        value_states,
-                                                        attn_mask=attention_mask,
-                                                        dropout_p=0.0,
-                                                        is_causal=False,
-                                                        scale=self.norm_factor)
+            attn_output = F.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                scale=self.norm_factor,
+            )
             attn_output = attn_output.to("hpu", non_blocking=True)
 
         else:
@@ -771,7 +767,9 @@ class GaudiLlamaAttention(LlamaAttention):
                     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
                         query_states.dtype
                     )
-                attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+                attn_weights = torch.nn.functional.dropout(
+                    attn_weights, p=self.attention_dropout, training=self.training
+                )
                 attn_output = self.matmul_av(attn_weights, value_states)
                 attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
 
