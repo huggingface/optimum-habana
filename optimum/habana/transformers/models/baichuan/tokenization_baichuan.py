@@ -29,9 +29,13 @@ import os
 from shutil import copyfile
 from typing import Any, Dict, List, Optional, Tuple
 
-import sentencepiece as spm
 from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
 from transformers.utils import logging
+from transformers.utils.import_utils import is_sentencepiece_available
+
+
+if is_sentencepiece_available():
+    import sentencepiece as spm
 
 
 logger = logging.get_logger(__name__)
@@ -72,6 +76,11 @@ class BaichuanTokenizer(PreTrainedTokenizer):
         clean_up_tokenization_spaces=False,
         **kwargs,
     ):
+        if not is_sentencepiece_available():
+            raise RuntimeError(
+                "Baichuan requires the Sentencepiece library to be installed. Please install it with: `pip install sentencepiece`"
+            )
+
         self.sp_model_kwargs = {} if sp_model_kwargs is None else sp_model_kwargs
         bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
