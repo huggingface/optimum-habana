@@ -78,7 +78,8 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
-def apply_customized_rope_module(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope_module(q, k, cos, sin, position_ids, training=True):
     if training:
         rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
         rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
@@ -103,6 +104,7 @@ def apply_customized_rope_module(q, k, cos, sin, position_ids, training = True):
         else:
             rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
     return rope_q, rope_k
+
 
 def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> torch.Tensor:
     """

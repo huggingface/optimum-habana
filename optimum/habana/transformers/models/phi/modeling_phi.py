@@ -22,7 +22,6 @@
 import math
 from typing import List, Optional, Tuple, Union
 
-from optimum.habana.transformers.models.modeling_all_models import KVCache, Matmul
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -42,6 +41,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul
 
 
 logger = logging.get_logger(__name__)

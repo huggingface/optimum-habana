@@ -20,7 +20,6 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
@@ -42,6 +41,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
@@ -133,6 +133,7 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+
 
 class GaudiQwen2Attention(Qwen2Attention):
     def __init__(self, config: Qwen2Config, layer_idx: Optional[int] = None):
@@ -269,7 +270,9 @@ class GaudiQwen2Attention(Qwen2Attention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -917,7 +920,8 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         )
         return model_inputs
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:

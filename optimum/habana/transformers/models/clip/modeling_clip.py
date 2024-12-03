@@ -1,6 +1,5 @@
 from typing import Optional, Tuple, Union
 
-from optimum.habana.transformers.models.modeling_all_models import Matmul
 import torch
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
@@ -14,6 +13,8 @@ from transformers.models.clip.modeling_clip import (
     CLIPVisionModel,
     CLIPVisionTransformer,
 )
+
+from ..modeling_all_models import Matmul
 
 
 try:

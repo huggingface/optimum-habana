@@ -20,7 +20,6 @@ import math
 import os
 from typing import List, Optional, Tuple, Union
 
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -41,6 +40,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
@@ -104,6 +104,7 @@ def gaudi_starcoder2_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
 
 class GaudiStarcoder2Attention(Starcoder2Attention):
     def __init__(self, config: Starcoder2Config, layer_idx: Optional[int] = None):
@@ -844,7 +845,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         )
         return model_inputs
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:

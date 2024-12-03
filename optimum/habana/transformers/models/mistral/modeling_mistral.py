@@ -49,11 +49,12 @@ from ..llama.modeling_llama import (
     GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
-from optimum.habana.transformers.models.modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+
     has_fused_rope = True
 except ImportError:
     has_fused_rope = False
@@ -73,6 +74,7 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
+
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
         super().__init__()
@@ -80,6 +82,7 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+
 
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -264,7 +267,9 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -816,7 +821,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         )
         return model_inputs
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:

@@ -25,7 +25,7 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module
+from ..modeling_all_models import apply_customized_rope_module
 
 
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
@@ -456,6 +456,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
         return model_inputs
 
+
 def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dtype):
     self.max_seq_len_cached = seq_len
     t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
@@ -466,7 +467,8 @@ def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dty
     self.cos_cached = emb.cos()
     self.sin_cached = emb.sin()
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:

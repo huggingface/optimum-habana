@@ -25,7 +25,6 @@ try:
 except ImportError:
     SDPContext = False
 
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import habana_frameworks.torch.core as htcore
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -53,6 +52,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 logger = logging.get_logger(__name__)
@@ -71,11 +71,13 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
         residual.add_(out)
         return residual
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
+
 
 def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
     hidden_states = F.linear(input, self.weight, bias=self.bias)
@@ -318,7 +320,9 @@ class GaudiFalconAttention(FalconAttention):
 
         if alibi is None:
             cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
-            query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids, self.training)
+            query_layer, key_layer = apply_customized_rope(
+                query_layer, key_layer, cos, sin, position_ids, self.training
+            )
 
         if use_cache:
             if self.training:

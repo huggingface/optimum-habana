@@ -3,7 +3,6 @@ import math
 from typing import List, Optional, Tuple, Union
 
 import torch
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache, Matmul
 import torch.nn.functional as F
 from torch.distributed.distributed_c10d import ProcessGroup
 from transformers.activations import ACT2FN
@@ -31,11 +30,13 @@ from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
 
 try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
+
     has_fused_rope = True
 except ImportError:
     has_fused_rope = False
@@ -385,6 +386,7 @@ class ModuleFusedSDPA(torch.nn.Module):
             valid_sequence_lengths,
             padding_side,
         )
+
 
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
@@ -1472,7 +1474,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return reordered_past
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:

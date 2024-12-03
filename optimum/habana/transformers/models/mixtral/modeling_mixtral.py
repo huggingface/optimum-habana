@@ -24,7 +24,6 @@ import contextlib
 import math
 from typing import List, Optional, Tuple, Union
 
-from optimum.habana.transformers.models.modeling_all_models import apply_customized_rope_module, KVCache
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
@@ -52,6 +51,7 @@ from ..llama.modeling_llama import (
     GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
+from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
 
 
@@ -82,11 +82,13 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
-def apply_customized_rope(q, k, cos, sin, position_ids, training = True):
+
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+
 
 def gaudi_mixtral_rmsnorm_forward(self, hidden_states):
     """
@@ -273,7 +275,9 @@ class GaudiMixtralAttention(MixtralAttention):
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             if reuse_cache:
