@@ -25,6 +25,8 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+from ..modeling_all_models import apply_customized_rope_module
+
 
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
@@ -455,34 +457,19 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return model_inputs
 
 
+def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dtype):
+    self.max_seq_len_cached = seq_len
+    t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+    freqs = torch.outer(t, self.inv_freq)
+    # Different from paper, but it uses a different permutation in order to obtain the same calculation
+    emb = torch.cat((freqs, freqs), dim=-1)
+    self.cos_cached = emb.cos()
+    self.sin_cached = emb.sin()
+
+
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
-        if training:
-            rope_q = FusedRoPE.apply(
-                q.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            )
-            rope_k = FusedRoPE.apply(
-                k.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            )
-        else:
-            if q.dtype == torch.bfloat16:
-                rope_q = FusedRoPE.apply(
-                    q,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            if k.dtype == torch.bfloat16:
-                rope_k = FusedRoPE.apply(
-                    k,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        return rope_q, rope_k
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q.to(torch.float), k.to(torch.float), cos[position_ids], sin[position_ids])

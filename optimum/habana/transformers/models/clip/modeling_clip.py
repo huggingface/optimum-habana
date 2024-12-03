@@ -14,6 +14,8 @@ from transformers.models.clip.modeling_clip import (
     CLIPVisionTransformer,
 )
 
+from ..modeling_all_models import Matmul
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -45,14 +47,6 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
 
 
 class Softmax(nn.Module):
