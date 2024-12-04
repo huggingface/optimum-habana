@@ -120,6 +120,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
 INITIAL_TOKEN_IDX = 1
 
+logging.set_verbosity_info()
 logger = logging.get_logger(__name__)
 
 
