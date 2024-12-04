@@ -986,7 +986,10 @@ class GaudiTrainer(Trainer):
                             inputs["flash_attention_causal_mask"] = True
                 if self.model.config is not None:
                     if self.model.config.model_type in ["llama", "qwen2", "mistral", "starcoder2"]:
-                        inputs["lazy_mode"] = args.use_lazy_mode
+                        forward_method = getattr(self.model, "forward")
+                        signature = inspect.signature(forward_method)
+                        if "lazy_mode" in signature.parameters:
+                            inputs["lazy_mode"] = args.use_lazy_mode
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
