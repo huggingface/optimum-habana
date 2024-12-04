@@ -1314,7 +1314,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
             StableDiffusionXLPipeline_HPU,
         )
-        components = self.get_dummy_components()
 
         model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
