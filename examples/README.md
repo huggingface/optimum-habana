@@ -22,6 +22,19 @@ Other [examples](https://github.com/huggingface/transformers/tree/main/examples/
 - replacing the `TrainingArguments` from 🤗 Transformers with the `GaudiTrainingArguments` from 🤗 Optimum Habana.
 
 
+## Important Note on Performance Degradation
+
+With the upgrade to PyTorch 2.5, users may experience some performance degradation due to changes in the handling of FP16/BF16 inputs. The note from PyTorch 2.5 states:
+
+"A naive SDPA math backend, when using FP16/BF16 inputs, can accumulate significant numerical errors due to the usage of low-precision intermediate buffers. To mitigate this issue, the default behavior now involves upcasting FP16/BF16 inputs to FP32. Computations are performed in FP32/TF32, and the final FP32 results are then downcasted back to FP16/BF16. This will improve numerical accuracy of the final output for the math backend with FP16/BF16 inputs, but increases memory usages and may cause the performance regressions in the math backend as computations shift from FP16/BF16 BMM to FP32/TF32 BMM/Matmul."
+
+For scenarios where reduced-precision reductions are preferred for speed, they can be enabled with the following setting:
+```python
+torch.backends.cuda.allow_fp16_bf16_reduction_math_sdp(True)
+```
+Additionally, the next release of Optimum Habana will include a Gaudi-specific safe_softmax implementation that will also improve performance.
+
+
 ## Distributed training
 
 All the PyTorch training scripts in this repository work out of the box with distributed training.
