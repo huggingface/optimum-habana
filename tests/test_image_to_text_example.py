@@ -68,6 +68,7 @@ def _test_image_to_text(
     ]
 
     command.append("--bf16")
+    command.append("--sdp_on_bf16")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
