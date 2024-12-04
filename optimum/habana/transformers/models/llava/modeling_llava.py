@@ -130,7 +130,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
         """
-        Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
+        Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/llava/modeling_llava.py#L362
         The only differences are:
         - add new args token_idx
         - add new args image_offset
@@ -151,8 +151,27 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             else self.config.vision_feature_select_strategy
         )
 
-        # 1. Extra the input embeddings
-        inputs_embeds = self.get_input_embeddings()(input_ids)
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
+            )
+
+        if pixel_values is not None and inputs_embeds is not None:
+            raise ValueError(
+                "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
+            )
+
+        legacy_processing = False
+        if inputs_embeds is None:
+            inputs_embeds = self.get_input_embeddings()(input_ids)
+
+            # if the number of image tokens is more than image embeddings seq length, then prob we expanded it in processing
+            # not very reliable, but we don't expect one to actually pass 500+ images for one prompt
+            # In case we're in decoding stage, legacy behavior is checked by presence of pixel values even if use_cache=True
+            legacy_processing = (
+                (input_ids == self.config.image_token_index).sum(1).max() < self.config.image_seq_length
+            ) or (input_ids.shape[-1] == 1 and pixel_values is not None)
+
 
         image_features = None
         # 2. Merge text and images
@@ -256,7 +275,6 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             if not return_dict:
                 output = (logits,) + outputs[1:]
                 return (loss,) + output if loss is not None else output
-            # print(loss)
 
             return LlavaCausalLMOutputWithPast(
                 loss=loss,
