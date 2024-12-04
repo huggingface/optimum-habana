@@ -175,7 +175,10 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple
         and (lazy_mode is not None)
     )
     if should_update_inputs:
-        inputs_update["lazy_mode"] = lazy_mode
+        forward_method = getattr(model, "forward")
+        signature = inspect.signature(forward_method)
+        if "lazy_mode" in signature.parameters:
+            inputs_update["lazy_mode"] = lazy_mode
 
     should_update_inputs: bool = len(inputs_update) > 0
 
