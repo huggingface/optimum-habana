@@ -208,8 +208,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 cache_position=cache_position,
-                # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
-                # num_logits_to_keep=num_logits_to_keep,
+                num_logits_to_keep=num_logits_to_keep,
                 token_idx=token_idx + image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
@@ -248,8 +247,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 cache_position=cache_position,
-                # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
-                # num_logits_to_keep=num_logits_to_keep,
+                num_logits_to_keep=num_logits_to_keep,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
             )
