@@ -592,6 +592,11 @@ class GaudiTrainer(Trainer):
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
+        if (
+            self.accelerator.mpu.sequence_parallel_is_initialized()
+            and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
+        ):
+            total_train_batch_size = total_train_batch_size / self.accelerator.mpu.get_sequence_parallel_world_size()
 
         len_dataloader = None
         num_train_tokens = None
@@ -1538,6 +1543,15 @@ class GaudiTrainer(Trainer):
         elif isinstance(data, (tuple, list)):
             return type(data)(self._prepare_input(v) for v in data)
         elif isinstance(data, torch.Tensor):
+            if (
+                self.accelerator.mpu.sequence_parallel_is_initialized()
+                and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
+            ):
+                seq_parallel_world_rank = self.accelerator.mpu.get_sequence_parallel_rank()
+                sub_seq_length = int(data.size()[1] / self.accelerator.mpu.get_sequence_parallel_world_size())
+                data = data[
+                    :, seq_parallel_world_rank * sub_seq_length : (seq_parallel_world_rank + 1) * sub_seq_length
+                ]
             kwargs = {"device": self.args.device}
             if self.is_deepspeed_enabled and (torch.is_floating_point(data) or torch.is_complex(data)):
                 # NLP models inputs are int/uint and those get adjusted to the right dtype of the
@@ -1766,6 +1780,14 @@ class GaudiTrainer(Trainer):
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
 
+        eval_steps = math.ceil(output.num_samples / total_batch_size)
+        if eval_steps <= self.args.throughput_warmup_steps:
+            logger.warning(
+                f" Warmup steps are taken into account for the throughput calculation because the number of evaluation steps ({eval_steps}) is smaller than the number of warmup steps ({self.args.throughput_warmup_steps})"
+            )
+            num_samples = output.num_samples
+            num_steps = eval_steps
+
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
@@ -1781,7 +1803,6 @@ class GaudiTrainer(Trainer):
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-
         return output.metrics
 
     def predict(
@@ -1967,6 +1988,8 @@ class GaudiTrainer(Trainer):
                 all_losses.add(losses)
             if labels is not None:
                 labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+                if self.args.context_parallel_size != 1:
+                    labels = labels.clone()
                 labels = self.gather_function((labels))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_labels.add(labels)

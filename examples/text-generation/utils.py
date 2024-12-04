@@ -387,6 +387,44 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
     return model, args.assistant_model
 
 
+def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
+    logger.info("Multi-device ep run.")
+
+    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
+    assert args.assistant_model is None, "Assistant model must be None"
+
+    from torch import distributed as dist
+
+    if args.device == "hpu":
+        dist.init_process_group(backend="hccl")
+    else:
+        assert False, "Supports EP only on HPU"
+
+    torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+    logger.info("Creating Model")
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    config.update({"ep_size": args.world_size})
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        config=config,
+        torch_dtype=model_dtype,
+        **model_kwargs,
+    )
+
+    model = model.eval().to(args.device)
+
+    if args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+        model = wrap_in_hpu_graph(model)
+
+    if args.torch_compile:
+        model = get_torch_compiled_model(model)
+
+    return model, args.assistant_model
+
+
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
@@ -677,8 +715,10 @@ def initialize_model(args, logger):
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
-        if not args.parallel_strategy == "tp"
+        if args.parallel_strategy == "none"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
+        if args.parallel_strategy == "tp"
+        else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)

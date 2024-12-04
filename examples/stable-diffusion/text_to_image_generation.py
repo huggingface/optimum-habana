@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -228,6 +229,9 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -343,6 +347,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
@@ -452,6 +457,8 @@ def main():
 
         elif args.optimize:
             # Import SDXL pipeline
+            # set PATCH_SDPA to enable fp8 varient of softmax in sdpa
+            os.environ["PATCH_SDPA"] = "1"
             import habana_frameworks.torch.hpu as torch_hpu
 
             from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
@@ -463,10 +470,29 @@ def main():
                 **kwargs,
             )
 
-            pipeline.to(torch.device("hpu"))
             pipeline.unet.set_default_attn_processor(pipeline.unet)
+            pipeline.to(torch.device("hpu"))
+
+            quant_config_path = os.getenv("QUANT_CONFIG")
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+                htcore.hpu_set_env()
+
+                config = FP8Config.from_json_file(quant_config_path)
+
+                if config.measure:
+                    logger.info("Running measurements")
+                    pipeline.unet = prepare(pipeline.unet, config)
+                elif config.quantize:
+                    logger.info("Running quantization")
+                    pipeline.unet = convert(pipeline.unet, config)
+                htcore.hpu_initialize(pipeline.unet, mark_only_scales_as_const=True)
+
             if args.use_hpu_graphs:
                 pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
+
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
@@ -633,6 +659,12 @@ def main():
                 outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
         else:
             outputs = pipeline(prompt=args.prompts, **kwargs_call)
+
+    if args.optimize and quant_config_path and config.measure:
+        from neural_compressor.torch.quantization import finalize_calibration
+
+        logger.info("Finalizing calibration...")
+        finalize_calibration(pipeline.unet)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
