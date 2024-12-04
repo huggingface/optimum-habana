@@ -135,8 +135,6 @@ def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, 
                         module.set_processor(attention_processor)
                 else:
                     module.set_processor(processor)
-                # else:
-                #     raise ValueError(f"Unsupported processor type: {type(processor)}")
 
         for sub_name, child in module.named_children():
             fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
