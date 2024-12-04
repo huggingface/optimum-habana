@@ -131,7 +131,7 @@ IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
 
 
 if IS_GAUDI2:
-    THROUGHPUT_BASELINE_BF16 = 1.086
+    THROUGHPUT_BASELINE_BF16 = 0.893
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
     TEXTUAL_INVERSION_THROUGHPUT = 131.7606336456344
     TEXTUAL_INVERSION_RUNTIME = 1.542460777796805
@@ -659,6 +659,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
+            sdp_on_bf16=True,
         )
         set_seed(27)
         outputs = pipeline(
@@ -1359,7 +1360,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             self.assertEqual(return_code, 0)
 
     if IS_GAUDI2:
-        _sdxl_inferece_throughput_data = (("ddim", 1, 10, 0.301), ("euler_discrete", 1, 10, 0.301))
+        _sdxl_inferece_throughput_data = (("ddim", 1, 10, 0.255), ("euler_discrete", 1, 10, 0.255))
     else:
         _sdxl_inferece_throughput_data = (("ddim", 1, 10, 0.074),)
 
@@ -1383,6 +1384,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "use_habana": True,
                 "use_hpu_graphs": True,
                 "gaudi_config": "Habana/stable-diffusion",
+                "sdp_on_bf16": True,
             }
             pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
                 "stabilityai/stable-diffusion-xl-base-1.0",
