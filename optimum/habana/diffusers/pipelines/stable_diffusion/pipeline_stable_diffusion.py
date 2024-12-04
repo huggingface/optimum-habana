@@ -143,6 +143,7 @@ def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, 
     for name, module in self.named_children():
         fn_recursive_attn_processor(name, module, processor)
 
+
 def set_default_attn_processor_hpu(self):
     """
     Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
