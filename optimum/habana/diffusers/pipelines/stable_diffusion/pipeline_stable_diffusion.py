@@ -104,6 +104,7 @@ def retrieve_timesteps(
 def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
     """
     Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    Added env PATCH_SDPA for HPU specific handle to use ScaledDotProductAttention.
     Sets the attention processor to use to compute attention.
     Parameters:
         processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
