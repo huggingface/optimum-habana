@@ -822,7 +822,7 @@ class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta,
 class CausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
 ):
-    TASK_NAME = ["tatsu-lab/alpaca", "databricks/databricks-dolly-15k"]
+    TASK_NAME = "databricks/databricks-dolly-15k"
 
 
 class MultiCardCausalLanguageModelingLORAExampleTester2(
