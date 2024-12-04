@@ -161,10 +161,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             sdp_on_bf16,
         )
 
-        # Workaround for Synapse 1.11 for full bf16
-        if bf16_full_eval:
-            unet.conv_in.float()
-
         StableDiffusionPipeline.__init__(
             self,
             vae,
