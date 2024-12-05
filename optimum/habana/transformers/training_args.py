@@ -101,6 +101,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use compiled autograd for training. Currently only for summarization models.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        cache_size_limit(`int`, *optional*, defaults to 'None'):
+            Set value of 'cache_size_limit' parameter for torch._dynamo.config
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -168,6 +170,11 @@ class GaudiTrainingArguments(TrainingArguments):
     compile_dynamic: Optional[bool | None] = field(
         default=None,
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
+    )
+
+    cache_size_limit: Optional[int] = field(
+        default=None,
+        metadata={"help": "Set value of 'cache_size_limit' parameter for torch._dynamo.config."},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(

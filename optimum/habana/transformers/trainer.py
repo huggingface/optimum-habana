@@ -233,6 +233,9 @@ class GaudiTrainer(Trainer):
         else:
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
+        if self.args.torch_compile and self.args.cache_size_limit is not None:
+            torch._dynamo.config.cache_size_limit = self.args.cache_size_limit
+
         if self.args.use_habana:
             if self.args.use_hpu_graphs_for_inference:
                 self.already_wrapped_for_hpu_graphs = False
