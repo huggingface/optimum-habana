@@ -652,7 +652,7 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        if attention_mask is not None and attention_mask.dim() != 4:
+        if attention_mask is None or attention_mask.dim() != 4:
             attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                 attention_mask,
                 input_ids.shape if input_ids is not None else (batch_size, seq_length),
