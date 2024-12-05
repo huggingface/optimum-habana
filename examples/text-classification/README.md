@@ -60,7 +60,8 @@ python run_glue.py \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3 \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -88,7 +89,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -116,7 +118,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_to_my_deepspeed_config \
+    --sdp_on_bf16
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -160,7 +163,8 @@ python run_glue.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
 
 ## Llama Guard on MRPC
@@ -190,7 +194,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3  \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+    --sdp_on_bf16
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -216,5 +221,6 @@ python run_glue.py \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 2 \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
