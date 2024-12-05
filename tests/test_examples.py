@@ -509,7 +509,9 @@ class ExampleTestMeta(type):
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
             elif torch_compile and (
-                model_name == "bert-large-uncased-whole-word-masking" or model_name == "roberta-large"
+                model_name == "bert-large-uncased-whole-word-masking"
+                or model_name == "roberta-large"
+                or model_name == "albert-xxlarge-v1"
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
