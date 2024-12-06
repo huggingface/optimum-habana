@@ -59,11 +59,10 @@ class KVCache(torch.nn.Module):
         if prev.shape == cur.shape:
             prev.copy_(cur)
             return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
             # Initialize
             prev[:, :, :inp_seq_len, :].copy_(cur)
             return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
         if idx is not None:
             prev.index_copy_(dim, idx - 1, cur)
             return prev

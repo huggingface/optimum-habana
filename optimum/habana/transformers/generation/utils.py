@@ -2411,9 +2411,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 assert "position_ids" not in model_kwargs, "Untested path"
 
         token_idx = model_kwargs.get("token_idx", None)
+        start_token_idx = cur_len
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
+            start_token_idx = token_idx
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
@@ -2621,7 +2623,10 @@ class GaudiGenerationMixin(GenerationMixin):
         if batch_size > 1 and has_eos_stopping_criteria:
             eos_token_id = generation_config.eos_token_id
             # Find the positions of the first eos_token_id in each sequence
-            eos_positions = (input_ids[:, INITIAL_TOKEN_IDX:] == eos_token_id).int().argmax(dim=1) + INITIAL_TOKEN_IDX
+            eos_positions = (
+                torch.isin(input_ids[:, start_token_idx:], torch.tensor(eos_token_id)).int().argmax(dim=1)
+                + start_token_idx
+            )
             # Create a mask for positions greater than the first eos_token_id
             mask = torch.arange(max_length).expand(batch_size, max_length) > eos_positions.unsqueeze(1)
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
