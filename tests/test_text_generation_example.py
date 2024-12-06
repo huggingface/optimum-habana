@@ -49,7 +49,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
-            ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
+            ("state-spaces/mamba-130m-hf", 1536, False, 19283.0330042467, False),
             ("Deci/DeciLM-7B", 1, False, 120, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
@@ -140,7 +140,6 @@ else:
             ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616, False),
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106, False),
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117, False),
-            ("state-spaces/mamba-130m-hf", 224, False, 794.542, False),
         ],
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
@@ -221,6 +220,34 @@ def _test_text_generation(
 
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
+
+    if "mamba" in model_name.lower():
+        import wget
+        import subprocess
+
+        cmd1 = subprocess.Popen(["pip", "list"], stdout=subprocess.PIPE)
+        cmd2 = subprocess.Popen(["grep", "habana-torch-plugin"], stdin=cmd1.stdout, stdout=subprocess.PIPE)
+        cmd1.stdout.close()
+        version_no, _ = cmd2.communicate() 
+
+        url_op = 'https://huggingface.co/Habana/mamba/resolve/main/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
+        url_kernel = 'https://huggingface.co/Habana/mamba/resolve/main/libcustom_tpc_perf_lib.so'   
+        if "1.19.0" in version_no.decode():
+            url_op = 'https://huggingface.co/Habana/mamba/resolve/main/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so'
+            url_kernel = 'https://huggingface.co/Habana/mamba/resolve/main/libcustom_tpc_perf_lib_119.so'   
+
+        file_op = 'hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
+        if not os.path.exists(file_op):
+            file_op = wget.download(url_op, out="hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so")
+        file_kernel = 'libcustom_tpc_perf_lib.so'
+        if not os.path.exists(file_kernel):
+            file_kernel = wget.download(url_kernel, out="libcustom_tpc_perf_lib.so")        
+
+        env_variables["HABANA_CUSTOM_OP_DIR"] = os.getcwd()
+        default_path = env_variables["GC_KERNEL_PATH"]
+        new_path = os.path.join(os.getcwd(), file_kernel)
+        env_variables["GC_KERNEL_PATH"] = new_path  + os.pathsep + default_path
+
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]

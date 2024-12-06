@@ -154,6 +154,8 @@ from .llava_next import GaudiLlavaNextForConditionalGeneration
 from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+    gaudi_MambaMixer,
+    gaudi_MambaCache_update_conv_state,    
 )
 from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
