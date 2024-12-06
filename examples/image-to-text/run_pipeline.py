@@ -174,14 +174,8 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
-    parser.add_argument(
-        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
-    )
 
     args = parser.parse_args()
-
-    if args.sdp_on_bf16:
-        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")

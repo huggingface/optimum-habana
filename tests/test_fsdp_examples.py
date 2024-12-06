@@ -97,6 +97,7 @@ def _test_fsdp(
             f"--gaudi_config_name {gaudi_config}",
             "--throughput_warmup_steps 100",
             "--do_eval",
+            "--sdp_on_bf16",
         ]
     else:
         command += [
@@ -127,8 +128,6 @@ def _test_fsdp(
             "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
-
-    command.append("--sdp_on_bf16")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
