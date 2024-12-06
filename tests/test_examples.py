@@ -288,6 +288,8 @@ class ExampleTestMeta(type):
             return False
         elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
+        elif "gemma" in model_name and not IS_GAUDI2:
+            return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
