@@ -36,7 +36,6 @@ INSTALL_REQUIRES = [
     "diffusers >= 0.31.0, < 0.32.0",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers == 3.2.1",
-    "wget",
 ]
 
 TESTS_REQUIRE = [
