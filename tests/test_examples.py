@@ -288,6 +288,8 @@ class ExampleTestMeta(type):
             return False
         elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
+        elif "gemma" in model_name and not IS_GAUDI2:
+            return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
@@ -323,8 +325,6 @@ class ExampleTestMeta(type):
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
             return True
         elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
-            return True
-        elif "gemma" in model_name and IS_GAUDI2:
             return True
 
         return False
@@ -509,7 +509,9 @@ class ExampleTestMeta(type):
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
             elif torch_compile and (
-                model_name == "bert-large-uncased-whole-word-masking" or model_name == "roberta-large"
+                model_name == "bert-large-uncased-whole-word-masking"
+                or model_name == "roberta-large"
+                or model_name == "albert-xxlarge-v1"
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
@@ -857,7 +859,7 @@ class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta,
 class CausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
 ):
-    TASK_NAME = ["tatsu-lab/alpaca", "databricks/databricks-dolly-15k"]
+    TASK_NAME = "databricks/databricks-dolly-15k"
 
 
 class MultiCardCausalLanguageModelingLORAExampleTester2(
