@@ -222,11 +222,7 @@ def _test_text_generation(
         command += ["--use_flash_attention"]
 
     if "mamba" in model_name.lower():
-<<<<<<< HEAD
-        import wget
-=======
         from huggingface_hub import hf_hub_download
->>>>>>> 259d04e2 (Added mamba model support and test CI script)
         import subprocess
 
         cmd1 = subprocess.Popen(["pip", "list"], stdout=subprocess.PIPE)
@@ -234,25 +230,6 @@ def _test_text_generation(
         cmd1.stdout.close()
         version_no, _ = cmd2.communicate() 
 
-<<<<<<< HEAD
-        url_op = 'https://huggingface.co/Habana/mamba/resolve/main/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
-        url_kernel = 'https://huggingface.co/Habana/mamba/resolve/main/libcustom_tpc_perf_lib.so'   
-        if "1.19.0" in version_no.decode():
-            url_op = 'https://huggingface.co/Habana/mamba/resolve/main/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so'
-            url_kernel = 'https://huggingface.co/Habana/mamba/resolve/main/libcustom_tpc_perf_lib_119.so'   
-
-        file_op = 'hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
-        if not os.path.exists(file_op):
-            file_op = wget.download(url_op, out="hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so")
-        file_kernel = 'libcustom_tpc_perf_lib.so'
-        if not os.path.exists(file_kernel):
-            file_kernel = wget.download(url_kernel, out="libcustom_tpc_perf_lib.so")        
-
-        env_variables["HABANA_CUSTOM_OP_DIR"] = os.getcwd()
-        default_path = env_variables["GC_KERNEL_PATH"]
-        new_path = os.path.join(os.getcwd(), file_kernel)
-        env_variables["GC_KERNEL_PATH"] = new_path  + os.pathsep + default_path
-=======
         name_op = 'hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
         name_kernel = 'libcustom_tpc_perf_lib.so'   
         if "1.19.0" in version_no.decode():
@@ -274,7 +251,6 @@ def _test_text_generation(
         env_variables["HABANA_CUSTOM_OP_DIR"] = os.path.dirname(new_file_op)
         default_path = env_variables["GC_KERNEL_PATH"]
         env_variables["GC_KERNEL_PATH"] = new_file_kernel  + os.pathsep + default_path
->>>>>>> 259d04e2 (Added mamba model support and test CI script)
 
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
