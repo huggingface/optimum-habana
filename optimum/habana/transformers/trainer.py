@@ -986,7 +986,10 @@ class GaudiTrainer(Trainer):
                             inputs["flash_attention_causal_mask"] = True
                 if self.model.config is not None:
                     if self.model.config.model_type in ["llama", "qwen2", "mistral", "starcoder2"]:
-                        forward_method = getattr(self.model, "forward")
+                        if _is_peft_model(model):
+                            forward_method = getattr(model.get_base_model(), "forward")
+                        else:
+                            forward_method = getattr(model, "forward")
                         signature = inspect.signature(forward_method)
                         if "lazy_mode" in signature.parameters:
                             inputs["lazy_mode"] = args.use_lazy_mode
