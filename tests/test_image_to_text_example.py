@@ -67,6 +67,11 @@ def _test_image_to_text(
         "--use_hpu_graphs",
     ]
 
+    if "meta-llama/Llama-3.2-11B-Vision-Instruct" in model_name or "tiiuae/falcon-11B-vlm" in model_name:
+        command += [
+            "--sdp_on_bf16",
+        ]
+
     command.append("--bf16")
 
     with TemporaryDirectory() as tmp_dir:

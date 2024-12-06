@@ -226,6 +226,9 @@ def _test_text_generation(
     if "decilm" in model_name.lower():
         command += ["--sdp_on_bf16"]
 
+    if "mamba-130m-hf" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 

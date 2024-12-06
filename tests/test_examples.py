@@ -529,6 +529,17 @@ class ExampleTestMeta(type):
                    model_name == "albert-large-v2":
                     extra_command_line_arguments.append("--sdp_on_bf16")
 
+            if self.EXAMPLE_NAME == "run_bridgetower":
+                if model_name == "BridgeTower/bridgetower-large-itm-mlm-itc":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_speech_recognition_seq2seq":
+                if model_name == "openai/whisper-small":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments.append("--sdp_on_bf16")
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
