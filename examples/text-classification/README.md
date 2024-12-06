@@ -27,22 +27,6 @@ and can also be used for a dataset hosted on our [hub](https://huggingface.co/da
 
 GLUE is made up of a total of 9 different tasks where the task name can be cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte or wnli.
 
-
-## Important Note on Performance Degradation
-
-With the upgrade to PyTorch 2.5, users may experience some performance degradation due to changes in the handling of FP16/BF16 inputs. The note from PyTorch 2.5 states:
-
-"A naive SDPA math backend, when using FP16/BF16 inputs, can accumulate significant numerical errors due to the usage of low-precision intermediate buffers. To mitigate this issue, the default behavior now involves upcasting FP16/BF16 inputs to FP32. Computations are performed in FP32/TF32, and the final FP32 results are then downcasted back to FP16/BF16. This will improve numerical accuracy of the final output for the math backend with FP16/BF16 inputs, but increases memory usages and may cause the performance regressions in the math backend as computations shift from FP16/BF16 BMM to FP32/TF32 BMM/Matmul."
-
-For scenarios where reduced-precision reductions are preferred for speed, they can be enabled with one of the following options:
-1. Using the following setting in your script:
-```python
-torch.backends.cuda.allow_fp16_bf16_reduction_math_sdp(True)
-```
-2. Using the --sdp_on_bf16 switch when calling the example script.
-
-Additionally, the next release of Optimum Habana will include a Gaudi-specific safe_softmax implementation that will also improve performance.
-
 ## Requirements
 
 First, you should install the requirements:
