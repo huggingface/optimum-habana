@@ -607,10 +607,9 @@ def setup_tokenizer(args, model, assistant_model, logger):
 
     # HACK: MiniCPM3 does not support list EOS token ID generation config.
     if model.config.model_type == "minicpm3" and isinstance(model.generation_config.eos_token_id, list):
-        if len(model.generation_config.eos_token_id) > 1:
-            logger.warning(
-                f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
-            )
+        logger.warning(
+            f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
+        )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
