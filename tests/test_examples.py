@@ -326,6 +326,8 @@ class ExampleTestMeta(type):
             return True
         elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
             return True
+        elif "gemma" in model_name and IS_GAUDI2:
+            return True
 
         return False
 
