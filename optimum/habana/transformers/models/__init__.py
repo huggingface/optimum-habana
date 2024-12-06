@@ -170,6 +170,7 @@ from .mixtral import (
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
     MixtralConfig,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -187,6 +188,9 @@ from .mllama import (
     GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
+    KVCache,
+    Matmul,
+    apply_customized_rope_module,
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
