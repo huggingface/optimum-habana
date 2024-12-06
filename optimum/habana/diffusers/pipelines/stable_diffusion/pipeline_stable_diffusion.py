@@ -34,7 +34,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
-from ..pipeline_utils import GaudiDiffusionPipeline
+from ..pipeline_utils import GaudiDiffusionPipeline, set_default_attn_processor_hpu
 
 
 logger = logging.get_logger(__name__)
