@@ -44,7 +44,8 @@ python3 run_pipeline.py \
     --model_name_or_path Salesforce/blip-image-captioning-large \
     --image_path "https://ankur3107.github.io/assets/images/image-captioning-example.png" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-1.5-7b inference, use the following command:
@@ -52,7 +53,8 @@ To run Llava-1.5-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-1.5-13b inference, use the following command:
@@ -60,7 +62,8 @@ To run Llava-1.5-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-13b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-v1.6-mistral-7b inference, use the following command:
@@ -68,7 +71,8 @@ To run Llava-v1.6-mistral-7b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-v1.6-vicuna-13b inference, use the following command:
@@ -76,7 +80,8 @@ To run Llava-v1.6-vicuna-13b inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
@@ -84,7 +89,8 @@ To run Llava-hf/llava-v1.6-34b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-34b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run google/paligemma-3b-mix-224 inference, use the following command:
@@ -92,7 +98,8 @@ To run google/paligemma-3b-mix-224 inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path google/paligemma-3b-mix-224 \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
@@ -100,7 +107,8 @@ To run Llava-hf/llama3-llava-next-8b-hf inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llama3-llava-next-8b-hf \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run idefics2 inference, use the following command:
@@ -109,7 +117,8 @@ To run idefics2 inference, use the following command:
 python3 run_pipeline.py \
     --model_name_or_path HuggingFaceM4/idefics2-8b \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 To run mllama inference using reduced precision in the SDPA, use the following command:
@@ -134,7 +143,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
@@ -143,7 +153,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python r
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 
@@ -153,7 +164,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-v1.6-mistral-7b:
@@ -162,7 +174,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python r
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b:
@@ -171,7 +184,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for Llava-v1.6-vicuna-13b:
@@ -180,7 +194,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python r
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 ### Inference with FusedSDPA
