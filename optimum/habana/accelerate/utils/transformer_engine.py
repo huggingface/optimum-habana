@@ -91,7 +91,20 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
                         enable_recompute=module.enable_recompute,
                     )
 
-                def forward(self, query, key, value, attn_mask, dropout_p, is_causal, scale, softmax_mode):
+                def forward(
+                    self,
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    softmax_mode,
+                    recompute_mode,
+                    valid_sequence_lengths,
+                    padding_side="left",
+                ):
                     return self._hpu_kernel_fsdpa(query, key, value, attn_mask, is_causal, softmax_mode)
 
             setattr(model, name, TE_ModuleFusedSDPA())
