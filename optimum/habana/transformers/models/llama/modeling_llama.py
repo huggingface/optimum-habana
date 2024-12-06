@@ -696,8 +696,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 value_states = value_states.to("hpu", non_blocking=True)
 
             fused_scaled_dot_product_attention = GaudiDistributedAttention(
-                self.fused_scaled_dot_product_attention,
-                self.fused_scaled_dot_product_attention_distributed
+                self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
             )
             if use_flash_attention and FusedSDPA is not None:
                 if q_len == 1:
