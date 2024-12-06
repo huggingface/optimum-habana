@@ -28,10 +28,10 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
-from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
+from ...utils import to_device_dtype
 
 
 logger = logging.get_logger(__name__)

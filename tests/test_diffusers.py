@@ -660,6 +660,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
         set_seed(27)
         outputs = pipeline(
             prompt=prompts,
@@ -1388,6 +1389,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "stabilityai/stable-diffusion-xl-base-1.0",
                 **kwargs,
             )
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
             num_images_per_prompt = num_images_per_prompt
             res = {}
             outputs = pipeline(
