@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -34,17 +33,12 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from optimum.habana.diffusers.models.attention_processor import (
-    AttentionProcessor,
-    AttnProcessor2_0,
-    ScaledDotProductAttention,
-)
-
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
-from ..pipeline_utils import GaudiDiffusionPipeline, set_default_attn_processor_hpu
+from ...models import set_default_attn_processor_hpu
+from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
@@ -55,6 +49,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class GaudiStableDiffusionXLPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     throughput: float
+
 
 class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPipeline):
     """
