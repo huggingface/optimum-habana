@@ -628,7 +628,7 @@
                         "--bf16 True",
                         "--gradient_accumulation_steps 4",
                         "--logging_steps 1",
-			"--validation_split_percentage 10",
+                        "--validation_split_percentage 10",
                         "--lora_rank 8",
                         "--lora_alpha 16",
                         "--lora_dropout 0.05",
