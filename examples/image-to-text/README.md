@@ -112,13 +112,14 @@ python3 run_pipeline.py \
     --bf16
 ```
 
-To run mllama inference, use the following command:
+To run mllama inference using reduced precision in the SDPA, use the following command:
 
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
     --use_hpu_graphs \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 ### Inference with FP8
