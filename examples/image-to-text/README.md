@@ -375,10 +375,10 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
-Here are single-/multi-device command examples for llava-hf/llava-1.5-7b-hf.
+Here are single card training command examples for llava-hf/llava-1.5-7b-hf.
 
 ```
-python3 run_llava_lora_finetune.py \
+python3 run_image2text_lora_finetune.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
     --dataset_name nielsr/docvqa_1200_examples \
     --bf16 True \
