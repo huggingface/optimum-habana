@@ -194,8 +194,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3  \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
-    --sdp_on_bf16
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -221,6 +220,5 @@ python run_glue.py \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 2 \
-  --bf16 \
-  --sdp_on_bf16
+  --bf16
 ```
