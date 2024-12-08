@@ -27,13 +27,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354, False),
             ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076, True),
             ("tiiuae/falcon-40b", 1, True, 25.202450111088346, False),
-            (
-                "bigcode/starcoder",
-                256,
-                True,
-                6846.575763562658,
-                False,
-            ),  # TODO: Enable check_output after model bigcode/starcoder is fixed
+            ("bigcode/starcoder", 256, True, 6846.575763562658, True),
             ("Salesforce/codegen2-1B", 1, False, 446.4029486883532, False),
             ("mosaicml/mpt-30b", 1, False, 36.06464336116623, False),
             ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782, True),
@@ -41,7 +35,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("microsoft/phi-2", 1, False, 224.72307766211117, False),
             ("meta-llama/Meta-Llama-3-8B", 1, True, 129, False),
             ("meta-llama/Llama-2-7b-hf", 512, True, 12808, False),
-            ("meta-llama/Llama-2-7b-hf", 512, False, 8711, False),  # in some cases like TGI, reuse_cache isnt used
+            ("meta-llama/Llama-2-7b-hf", 512, False, 8711, False),  # in some cases like TGI, reuse_cache isn't used
             ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218, False),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644, False),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133, True),
