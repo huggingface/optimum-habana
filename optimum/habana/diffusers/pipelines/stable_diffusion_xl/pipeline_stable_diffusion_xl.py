@@ -37,7 +37,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
-from ...models import set_default_attn_processor_hpu
+from ...models.unet_2d_condition import set_default_attn_processor_hpu
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
