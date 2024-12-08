@@ -217,7 +217,6 @@ def _test_text_generation(
 
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
-        command += ["--sdp_on_bf16"]
 
     if "decilm" in model_name.lower():
         command += ["--sdp_on_bf16"]

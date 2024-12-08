@@ -79,7 +79,8 @@ python run_generation.py \
 --use_kv_cache \
 --max_new_tokens 100 \
 --do_sample \
---prompt "Here is my prompt"
+--prompt "Here is my prompt" \
+--sdp_on_bf16
 ```
 
 If you want to provide several prompts as inputs, here is how to do it:
@@ -91,7 +92,8 @@ python run_generation.py \
 --max_new_tokens 100 \
 --do_sample \
 --batch_size 2 \
---prompt "Hello world" "How are you?"
+--prompt "Hello world" "How are you?" \
+--sdp_on_bf16
 ```
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
@@ -110,7 +112,8 @@ python run_generation.py \
 --use_kv_cache \
 --num_return_sequences 1 \
 --temperature 0 \
---prompt "Alice and Bob"
+--prompt "Alice and Bob" \
+--sdp_on_bf16
 ```
 
 ### Benchmark
@@ -137,7 +140,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --batch_size 1 \
 --use_hpu_graphs \
 --use_kv_cache \
---max_new_tokens 100
+--max_new_tokens 100 \
+--sdp_on_bf16
 ```
 
 You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
@@ -152,7 +156,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --attn_softmax_bf16 \
 --limit_hpu_graphs \
 --reuse_cache \
---trim_logits
+--trim_logits \
+--sdp_on_bf16
 ```
 
 To run Falcon-7B inference, use the following command:
@@ -164,7 +169,8 @@ python run_generation.py \
  --use_kv_cache \
  --batch_size 1 \
  --max_new_tokens 128 \
- --do_sample
+ --do_sample \
+ --sdp_on_bf16
 ```
 
 To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
@@ -195,7 +201,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --use_hpu_graphs \
 > --use_kv_cache \
 > --max_new_tokens 100 \
-> --bf16
+> --bf16 \
+> --sdp_on_bf16
 > ```
 
 ### Use any dataset from the Hugging Face Hub
@@ -214,7 +221,8 @@ python run_generation.py \
 --use_kv_cache \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
@@ -233,7 +241,8 @@ python run_generation.py \
 --bf16 \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
---peft_model yard1/llama-2-7b-sql-lora-test
+--peft_model yard1/llama-2-7b-sql-lora-test \
+--sdp_on_bf16
 ```
 
 ### Using growing bucket optimization
@@ -490,7 +499,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --max_new_tokens 100 \
 --batch_size 1 \
 --reuse_cache \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
@@ -502,7 +512,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation
 --max_new_tokens 100 \
 --batch_size 1 \
 --reuse_cache \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 
