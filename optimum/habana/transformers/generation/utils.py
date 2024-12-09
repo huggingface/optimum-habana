@@ -70,7 +70,7 @@ from .configuration_utils import GaudiGenerationConfig
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
-    from transformers.streamers import BaseStreamer
+    from transformers.generation.streamers import BaseStreamer
     from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
     from .candidate_generator import GaudiCandidateGenerator
@@ -115,6 +115,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "minicpm3",
     "baichuan",
     "deepseek_v2",
+    "chatglm",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -178,12 +179,12 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         max_steps: int,  # current stopping criteria
         batch_size: int,
-        pad_token_id: int,
-        device: str,
-        dtype: str = bool,
+        device: Union[str, torch.device],
+        dtype: torch.dtype = torch.bool,
     ) -> torch.Tensor:
-        x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
+        decoder_attention_mask = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
+        index = torch.tensor(0, device=device)
+        return decoder_attention_mask.index_fill(1, index, 1)  # First position with 1
 
     def _prepare_decoder_input_ids_for_generation(
         self,
@@ -337,32 +338,37 @@ class GaudiGenerationMixin(GenerationMixin):
         return input_ids, model_kwargs
 
     def _pad_past_key_values(self, model_kwargs):
+        # Early return if no past key values to pad
+        past_key_values = model_kwargs.get("past_key_values")
+        if not past_key_values:
+            return
+
+        # Determine if the model is MQA or not
+        is_mqa_model = model_kwargs.get("mqa_model", False)
+        lazy_mode = model_kwargs.get("lazy_mode", False)
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
         kv_cache_len = model_kwargs.get("kv_cache_len", 0)
-        if model_kwargs["past_key_values"]:
-            if model_kwargs.get("mqa_model", False):
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    if (
-                        torch.is_tensor(model_kwargs["past_key_values"][i])
-                        and model_kwargs["past_key_values"][i].shape[-2] == kv_cache_len - pad_amount
-                    ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
-                        model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
-                        )
-                        if model_kwargs.get("lazy_mode", False):
+        kv_cache_len_pad_amount = kv_cache_len - pad_amount
+
+        # For MQA models, past_key_values is a tensor
+        if is_mqa_model:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                if torch.is_tensor(layer) and layer.shape[-2] == kv_cache_len_pad_amount:
+                    # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
+                    past_key_values[i] = torch.nn.functional.pad(layer, (0, 0, 0, pad_amount))
+                    # Mark step if lazy mode is enabled
+                    if lazy_mode:
+                        self.htcore_generation.mark_step()
+        # For Non-MQA models, the past_key_values is a list of lists (k and v)
+        else:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                for j, k_or_v in enumerate(layer):  # Iterate over k and v
+                    if torch.is_tensor(k_or_v) and k_or_v.shape[-2] == kv_cache_len_pad_amount:
+                        # tensor(batch_size, n_heads, kv_cache_len, head_dim)
+                        past_key_values[i][j] = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                        # Mark step if lazy mode is enabled
+                        if lazy_mode:
                             self.htcore_generation.mark_step()
-            else:
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
-                        if (
-                            torch.is_tensor(model_kwargs["past_key_values"][i][j])
-                            and model_kwargs["past_key_values"][i][j].shape[-2] == kv_cache_len - pad_amount
-                        ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
-                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
-                                model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
-                            )
-                            if model_kwargs.get("lazy_mode", False):
-                                self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
         if model_kwargs["past_key_values"]:
@@ -1087,8 +1093,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     "gemma",
                     "gemma2",
                     "baichuan",
+                    "chatglm",
                 ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2 and baichuan at the moment"
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1164,7 +1171,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
                         max_length,
                         inputs_tensor.shape[0],
-                        generation_config.pad_token_id,
                         inputs_tensor.device,
                     )
 
@@ -2807,7 +2813,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return rest
 
             prev_beams = [[root] * num_beams] * bs
-            best = [root] * bs
+            best = [[] for _ in range(bs)]
 
             def beam_score(beam):
                 return (beam[3], beam[0])
@@ -2829,8 +2835,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     if not is_finished:
                         cur_beams[batch].append(beam)
                     if is_finished or (step + 1 == beam_trace_idx):
-                        if beam_score(best[batch]) < beam_score(beam):
-                            best[batch] = beam
+                        if len(best[batch]) < num_beams:
+                            best[batch].append(beam)
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
+                        elif beam_score(best[batch][0]) < beam_score(beam):
+                            best[batch][0] = beam
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
                 prev_beams = cur_beams
 
             def expand_if_needed(tensor, new_size, value, dim=-1):
@@ -2847,15 +2857,22 @@ class GaudiGenerationMixin(GenerationMixin):
                         assert False, f"Unsupported dim value: {dim}"
                 return tensor
 
-            result = [
-                torch.cat(
-                    [initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]
-                )
-                for i, b in enumerate(best)
-            ]
-            max_length = max([t.shape[-1] for t in result])
-            result = [expand_if_needed(res, max_length, model_config.pad_token_id) for res in result]
-            input_ids = torch.stack(result)
+            results = []
+            for i, beam_hyp in enumerate(best):
+                sorted_hyps = sorted(beam_hyp, key=lambda x: beam_score(x))
+                res = []
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    best_hyp_tuple = sorted_hyps.pop()
+                    resolve = resolve_beam(best_hyp_tuple)
+                    res.append(torch.cat((initial_ids[i], torch.tensor(resolve))))
+                results.append(res)
+
+            max_length = max([n.shape[-1] for m in results for n in m])
+            return_res = []
+            for i, res in enumerate(results):
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    return_res.append(expand_if_needed(res[j], max_length, model_config.pad_token_id))
+            input_ids = torch.stack(return_res)
             return input_ids
 
         hb_profer = HabanaProfile(

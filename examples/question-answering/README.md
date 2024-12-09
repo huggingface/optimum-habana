@@ -216,7 +216,8 @@ python ../gaudi_spawn.py \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3 \
   --max_train_samples 45080 \
-  --deepspeed ../../tests/configs/deepspeed_zero_2.json
+  --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+  --sdp_on_bf16
 ```
 
 
