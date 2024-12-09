@@ -218,36 +218,36 @@ def _test_text_generation(
         command += ["--use_flash_attention"]
 
     if "mamba" in model_name.lower():
-        from huggingface_hub import hf_hub_download
         import subprocess
+
+        from huggingface_hub import hf_hub_download
 
         cmd1 = subprocess.Popen(["pip", "list"], stdout=subprocess.PIPE)
         cmd2 = subprocess.Popen(["grep", "habana-torch-plugin"], stdin=cmd1.stdout, stdout=subprocess.PIPE)
         cmd1.stdout.close()
-        version_no, _ = cmd2.communicate() 
+        version_no, _ = cmd2.communicate()
 
-        name_op = 'hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so'
-        name_kernel = 'libcustom_tpc_perf_lib.so'   
+        name_op = "hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu.so"
+        name_kernel = "libcustom_tpc_perf_lib.so"
         if "1.19.0" in version_no.decode():
-            name_op = 'hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so'
-            name_kernel = 'libcustom_tpc_perf_lib_119.so'   
+            name_op = "hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so"
+            name_kernel = "libcustom_tpc_perf_lib_119.so"
 
         file_op = hf_hub_download(repo_id="Habana/mamba", filename=name_op)
-        file_kernel = hf_hub_download(repo_id="Habana/mamba", filename=name_kernel) 
+        file_kernel = hf_hub_download(repo_id="Habana/mamba", filename=name_kernel)
 
         new_file_op = file_op
         new_file_kernel = file_kernel
 
         if "1.19.0" in version_no.decode():
-            new_file_op = file_op[:-7] + '.so'
-            new_file_kernel = file_kernel[:-7] + '.so'
+            new_file_op = file_op[:-7] + ".so"
+            new_file_kernel = file_kernel[:-7] + ".so"
             os.rename(file_op, new_file_op)
             os.rename(file_kernel, new_file_kernel)
 
         env_variables["HABANA_CUSTOM_OP_DIR"] = os.path.dirname(new_file_op)
         default_path = env_variables["GC_KERNEL_PATH"]
-        env_variables["GC_KERNEL_PATH"] = new_file_kernel  + os.pathsep + default_path
-
+        env_variables["GC_KERNEL_PATH"] = new_file_kernel + os.pathsep + default_path
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
