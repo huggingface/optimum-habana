@@ -38,7 +38,6 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import (
     check_habana_frameworks_version,
-    check_neural_compressor_min_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
     set_seed,
@@ -278,8 +277,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        if not check_neural_compressor_min_version("3.2"):
-            model = model.to(model_kwargs["torch_dtype"])
+        # TODO: This will be removed in v1.19 Synapse release
+        # the loaded model should have the same dtype as original_model
+        model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
