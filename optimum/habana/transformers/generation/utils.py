@@ -2807,7 +2807,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return rest
 
             prev_beams = [[root] * num_beams] * bs
-            best = [root] * bs
+            best = [[] for _ in range(bs)]
 
             def beam_score(beam):
                 return (beam[3], beam[0])
@@ -2829,8 +2829,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     if not is_finished:
                         cur_beams[batch].append(beam)
                     if is_finished or (step + 1 == beam_trace_idx):
-                        if beam_score(best[batch]) < beam_score(beam):
-                            best[batch] = beam
+                        if len(best[batch]) < num_beams:
+                            best[batch].append(beam)
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
+                        elif beam_score(best[batch][0]) < beam_score(beam):
+                            best[batch][0] = beam
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
                 prev_beams = cur_beams
 
             def expand_if_needed(tensor, new_size, value, dim=-1):
@@ -2847,15 +2851,22 @@ class GaudiGenerationMixin(GenerationMixin):
                         assert False, f"Unsupported dim value: {dim}"
                 return tensor
 
-            result = [
-                torch.cat(
-                    [initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]
-                )
-                for i, b in enumerate(best)
-            ]
-            max_length = max([t.shape[-1] for t in result])
-            result = [expand_if_needed(res, max_length, model_config.pad_token_id) for res in result]
-            input_ids = torch.stack(result)
+            results = []
+            for i, beam_hyp in enumerate(best):
+                sorted_hyps = sorted(beam_hyp, key=lambda x: beam_score(x))
+                res = []
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    best_hyp_tuple = sorted_hyps.pop()
+                    resolve = resolve_beam(best_hyp_tuple)
+                    res.append(torch.cat((initial_ids[i], torch.tensor(resolve))))
+                results.append(res)
+
+            max_length = max([n.shape[-1] for m in results for n in m])
+            return_res = []
+            for i, res in enumerate(results):
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    return_res.append(expand_if_needed(res[j], max_length, model_config.pad_token_id))
+            input_ids = torch.stack(return_res)
             return input_ids
 
         hb_profer = HabanaProfile(
