@@ -190,6 +190,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    context_parallel_size: Optional[int] = field(
+        default=1,
+        metadata={"help": ("Determines how many ranks are divided into context parallel group.")},
+    )
+
     throughput_warmup_steps: Optional[int] = field(
         default=0,
         metadata={
@@ -241,6 +246,11 @@ class GaudiTrainingArguments(TrainingArguments):
     profiling_record_shapes: Optional[bool] = field(
         default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
+    )
+
+    profiling_with_stack: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("record source information (file and line number) for the ops when enabling profiling.")},
     )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
@@ -298,6 +308,11 @@ class GaudiTrainingArguments(TrainingArguments):
             "help": "The backend to be used for distributed training.",
             "choices": ["hccl"],
         },
+    )
+
+    sdp_on_bf16: bool = field(
+        default=False,
+        metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend"},
     )
 
     fp8: Optional[bool] = field(
@@ -842,6 +857,9 @@ class GaudiTrainingArguments(TrainingArguments):
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
+        if self.sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
@@ -908,6 +926,7 @@ class GaudiTrainingArguments(TrainingArguments):
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

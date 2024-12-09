@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 
 import accelerate
 import transformers
@@ -29,8 +30,14 @@ from .generation import (
 from .models import (
     GAUDI_QWEN2_VL_ATTENTION_CLASSES,
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
     DeciLMConfig,
     DeciLMForCausalLM,
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
     Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -102,7 +109,10 @@ from .models import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
     GaudiMptAttention,
     GaudiMptBlock,
     GaudiMptForCausalLM,
@@ -146,6 +156,8 @@ from .models import (
     GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
     LlamaConfig,
+    MiniCPM3Config,
+    MiniCPM3ForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -185,6 +197,8 @@ from .models import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_forward,
@@ -200,6 +214,7 @@ from .models import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
@@ -541,7 +556,15 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
-    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
+    # We need this workaround until moe op in hpu is supporting fp8
+    if os.environ.get("QUANT_CONFIG"):
+        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
+            gaudi_mixtral_block_sparse_moe_forward
+        )
+    else:
+        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
+            gaudi_mixtral_block_dynamic_moe_forward
+        )
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
     transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig
@@ -648,6 +671,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
@@ -675,9 +703,16 @@ def adapt_transformers_to_gaudi():
     transformers.models.mllama.modeling_mllama.MllamaForConditionalGeneration = GaudiMllamaForConditionalGeneration
     transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
     transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
+    transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
+    transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+
+    transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
+    transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
+    transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
@@ -690,3 +725,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
     transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
     transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
+
+    transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
+    transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
+
+    # Optimization for Baichuan2 on Gaudi
+    transformers.AutoConfig.register("baichuan", BaichuanConfig)
+    transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
+    transformers.AutoModelForCausalLM.register(BaichuanConfig, BaichuanForCausalLM)

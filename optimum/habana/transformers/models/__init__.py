@@ -1,4 +1,9 @@
 from .albert import gaudi_albert_forward
+from .baichuan import (
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
+)
 from .bart import (
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -55,6 +60,11 @@ from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
 )
+from .deepseek_v2 import (
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+)
 from .detr import gaudi_DetrConvModel_forward
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
@@ -69,6 +79,10 @@ from .falcon import (
     GaudiFalconMLP,
     GaudiFalconModel,
     gaudi_falcon_linear_forward,
+)
+from .falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
 )
 from .gemma import (
     GaudiGemmaAttention,
@@ -141,6 +155,7 @@ from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
 )
+from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -155,6 +170,7 @@ from .mixtral import (
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
     MixtralConfig,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -166,9 +182,15 @@ from .mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
+    KVCache,
+    Matmul,
+    apply_customized_rope_module,
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,

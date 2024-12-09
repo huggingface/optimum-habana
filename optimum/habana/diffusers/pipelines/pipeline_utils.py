@@ -55,6 +55,7 @@ GAUDI_LOADABLE_CLASSES = {
     "optimum.habana.diffusers.schedulers": {
         "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiFlowMatchEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerAncestralDiscreteScheduler": ["save_pretrained", "from_pretrained"],
     },
 }
@@ -112,6 +113,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -120,8 +123,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         DiffusionPipeline.__init__(self)
+
+        if sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
         self.use_habana = use_habana
         if self.use_habana:

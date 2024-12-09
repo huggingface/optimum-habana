@@ -96,7 +96,7 @@ Finally, we can run the example script to train the model.
 Run the following command for single-device training:
 
 ```bash
-python run_clip.py \
+PT_HPU_LAZY_MODE=0 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
@@ -112,14 +112,13 @@ python run_clip.py \
     --overwrite_output_dir \
     --save_strategy epoch \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --bf16 \
-    --trust_remote_code
+    --trust_remote_code \
+    --torch_compile_backend=hpu_backend \
+    --torch_compile
 ```
 
 
@@ -128,6 +127,7 @@ python run_clip.py \
 Run the following command for distributed training:
 
 ```bash
+PT_HPU_LAZY_MODE=0 \
 python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
@@ -144,16 +144,15 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --overwrite_output_dir \
     --save_strategy epoch \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --mediapipe_dataloader \
-    --use_hpu_graphs_for_training \
     --bf16 \
     --distribution_strategy fast_ddp \
-    --trust_remote_code
+    --trust_remote_code \
+    --torch_compile_backend=hpu_backend \
+    --torch_compile
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -164,6 +163,7 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
 Run the following command for training with DeepSpeed:
 
 ```bash
+PT_HPU_LAZY_MODE=0 \
 python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
@@ -180,12 +180,12 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --overwrite_output_dir \
     --save_strategy epoch \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config \
-    --trust_remote_code
+    --trust_remote_code \
+    --torch_compile_backend=hpu_backend \
+    --torch_compile
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -235,7 +235,8 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --dataloader_num_workers 1 \
   --mediapipe_dataloader \
   --distribution_strategy fast_ddp \
-  --trust_remote_code
+  --trust_remote_code \
+  --sdp_on_bf16
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.

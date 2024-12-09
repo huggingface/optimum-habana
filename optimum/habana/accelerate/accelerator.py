@@ -59,6 +59,8 @@ from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
+from .. import parallel_state
+
 
 if is_deepspeed_available():
     from accelerate.utils import (
@@ -123,6 +125,7 @@ class GaudiAccelerator(Accelerator):
         force_autocast: bool = False,
     ):
         self.trackers = []
+        self.mpu = parallel_state
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -568,7 +571,10 @@ class GaudiAccelerator(Accelerator):
                 self._models[-1] = model
         # torch.compile should be called last and only if the model isn't already compiled.
         if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
-            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+            if self.dynamic is not None:
+                model = torch.compile(model, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+            else:
+                model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
     def _prepare_deepspeed(self, *args):
@@ -772,7 +778,6 @@ class GaudiAccelerator(Accelerator):
                 # This env variable is initialized here to make sure it is set to "true"
                 # It should be done by the launcher but it does not work for multi-node runs
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
-
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(

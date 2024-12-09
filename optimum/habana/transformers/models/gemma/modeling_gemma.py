@@ -497,6 +497,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
         - add new args token_idx
+        - add new args attn_softmax_bf16
         """
         residual = hidden_states
 
@@ -651,7 +652,7 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        if attention_mask.dim() != 4:
+        if attention_mask is None or attention_mask.dim() != 4:
             attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                 attention_mask,
                 input_ids.shape if input_ids is not None else (batch_size, seq_length),
@@ -776,11 +777,13 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
         - add new args token_idx
+        - add new args attn_softmax_bf16
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -805,6 +808,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
 
         hidden_states = outputs[0]
@@ -917,6 +921,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
             }
         )
         return model_inputs

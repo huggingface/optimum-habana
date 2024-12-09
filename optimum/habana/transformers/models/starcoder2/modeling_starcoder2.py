@@ -40,6 +40,14 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
+
+
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
 
 
 try:
@@ -47,12 +55,6 @@ try:
 except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
-
-try:
-    from habana_frameworks.torch.hpex.kernels import FusedSDPA
-except ImportError:
-    print("Not using HPU fused scaled dot-product attention kernel.")
-    FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
 
@@ -102,55 +104,6 @@ def gaudi_starcoder2_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def update(self, prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
 class GaudiStarcoder2Attention(Starcoder2Attention):
@@ -893,23 +846,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
-        if not is_training and (q.dtype == torch.bfloat16 or k.dtype == torch.bfloat16):
-            return FusedRoPE.apply(
-                q,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            )
-        else:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

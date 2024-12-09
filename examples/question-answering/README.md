@@ -44,7 +44,30 @@ For the following cases, an example of a Gaudi configuration file is given
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
 
 ```bash
-PT_HPU_LAZY_MODE=0 python run_qa.py \
+python run_qa.py \
+  --model_name_or_path bert-large-uncased-whole-word-masking \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --dataset_name squad \
+  --do_train \
+  --do_eval \
+  --per_device_train_batch_size 32 \
+  --per_device_eval_batch_size 8 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 2 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/squad/ \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs_for_inference \
+  --throughput_warmup_steps 3 \
+  --bf16 \
+  --sdp_on_bf16
+```
+
+For torch.compile mode,
+```bash
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
@@ -62,16 +85,40 @@ PT_HPU_LAZY_MODE=0 python run_qa.py \
   --torch_compile \
   --use_lazy_mode false \
   --throughput_warmup_steps 3 \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
-
 
 ### Multi-card Training
 
 Here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using the `run_qa` script, with 8 HPUs:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_qa.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+    --dataset_name squad \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 2 \
+    --max_seq_length 384 \
+    --doc_stride 128 \
+    --output_dir /tmp/squad_output/ \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --sdp_on_bf16
+```
+
+For torch.compile mode,
+```bash
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -90,7 +137,8 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --torch_compile \
     --use_lazy_mode false \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 
@@ -117,7 +165,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_to_my_deepspeed_config \
+    --sdp_on_bf16
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -175,7 +224,8 @@ python ../gaudi_spawn.py \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3 \
   --max_train_samples 45080 \
-  --deepspeed ../../tests/configs/deepspeed_zero_2.json
+  --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+  --sdp_on_bf16
 ```
 
 
@@ -197,7 +247,8 @@ python run_qa.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
 
 
