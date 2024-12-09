@@ -431,6 +431,10 @@ def main():
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
 
+    # Note that chatglm2/3 has float16 dtype from config.json, and on Gaudi we need to use bfloat16.
+    if config.model_type == "chatglm":
+        config.dtype = "torch.bfloat16"
+
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
@@ -472,8 +476,8 @@ def main():
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
-    # We need to skip this test for baichuan pretrain
-    if config.model_type not in ("baichuan"):
+    # We need to skip this test for baichuan and chatglm pretrain
+    if config.model_type not in ("baichuan", "chatglm"):
         embedding_size = model.get_input_embeddings().weight.shape[0]
         if len(tokenizer) > embedding_size:
             model.resize_token_embeddings(len(tokenizer))
