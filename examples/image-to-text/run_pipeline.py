@@ -289,6 +289,9 @@ def main():
         generator = pipeline(
             "image-to-text",
             model=args.model_name_or_path,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -321,7 +324,7 @@ def main():
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
