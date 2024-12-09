@@ -667,7 +667,7 @@ and by adding the argument `--load_quantized_model_with_autogptq`.
 
 ***Note:***
 Setting the above environment variables improves performance. These variables will be removed in future releases.
- 
+
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
