@@ -1,7 +1,7 @@
 def gaudi_DetrConvModel_forward(self, pixel_values, pixel_mask):
     """
     Copied from modeling_detr: https://github.com/huggingface/transformers/blob/main/src/transformers/models/detr/modeling_detr.py#L398
-    The modications are:
+    The modifications are:
         - Use CPU to calculate the position_embeddings and transfer back to HPU
     """
 
