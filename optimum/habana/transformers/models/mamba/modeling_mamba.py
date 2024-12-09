@@ -12,10 +12,21 @@ from transformers.utils import (
     logging,
 )
 
+from .util_mamba import set_mamba_lib
+env_variables = os.environ.copy()
 
-my_dir = os.path.realpath(__file__)
-my_len = my_dir.rfind("/")
-base_dir = os.environ.get("HABANA_CUSTOM_OP_DIR", my_dir[:my_len])
+new_file_op, new_file_kernel = set_mamba_lib()
+realpath_kfn = os.path.realpath(new_file_kernel)
+kfn = os.path.basename(realpath_kfn)
+new_kfn = os.path.join(os.path.dirname(realpath_kfn), "libcustom_tpc_perf_lib.so")
+os.rename(realpath_kfn, new_kfn)
+
+
+env_variables["HABANA_CUSTOM_OP_DIR"] = os.path.dirname(new_file_op)
+default_path = env_variables["GC_KERNEL_PATH"]
+env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
+
+base_dir = env_variables["HABANA_CUSTOM_OP_DIR"] 
 
 custom_op_lib_path = str(next(Path(base_dir).glob("hpu_custom_pscan_all.cpython-*-x86_64-linux-gnu.so")))
 torch.ops.load_library(custom_op_lib_path)

@@ -198,9 +198,9 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --bf16
 > ```
 
-To run Mamba-130m inference on 1 Gaudi2 card, use the following command:
+To run Mamba-130m inference on 1 Gaudi2 card, use the following command, for example if default custom kernel path is in /root/.cache/huggingface/hub/models--Habana--mamba/blobs/libcustom_tpc_perf_lib.so, if libcustom_tpc_perf_lib.so is in different folder, set accordingly,
 ```bash
-python run_generation.py \
+GC_KERNEL_PATH=/root/.cache/huggingface/hub/models--Habana--mamba/blobs/libcustom_tpc_perf_lib.so:$GC_KERNEL_PATH python run_generation.py \
 --model_name_or_path state-spaces/mamba-130m-hf \
 --max_input_tokens 128 \
 --max_new_tokens 128 \
@@ -209,13 +209,7 @@ python run_generation.py \
 --use_kv_cache \
 --batch_size 1024 \
 ```
-We need to download two shared libraries and set two env variables for mamba, for 1.19 version use *_119 so files. For different release, use different set of these so files.
-```bash
-wget https://huggingface.co/Habana/mamba/resolve/main/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so
-wget https://huggingface.co/Habana/mamba/resolve/main/libcustom_tpc_perf_lib_119.so
-export HABANA_CUSTOM_OP_DIR=/path/of/hpu_custom_pscan_all.cpython-310-x86_64-linux-gnu_119.so located
-export GC_KERNEL_PATH=/path/to/libcustom_tpc_perf_lib_119.so:$GC_KERNEL_PATH
-```
+
 ### Use any dataset from the Hugging Face Hub
 
 You can also provide the name of a dataset from the Hugging Face Hub to perform generation on it with the argument `--dataset_name`.
