@@ -992,7 +992,6 @@ class GaudiGenerationMixin(GenerationMixin):
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
         self._validate_model_class()
         tokenizer = kwargs.pop("tokenizer", None)  # Pull this out first, we only use it for stopping criteria
-        #assistant_tokenizer = kwargs.pop("assistant_tokenizer", None)  # only used for assisted generation
         if hpu_graphs and not lazy_mode:
             raise ValueError(
                 "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
@@ -1000,8 +999,7 @@ class GaudiGenerationMixin(GenerationMixin):
         num_virtual_tokens = kwargs.pop("num_virtual_tokens", 0)
         generation_config, model_kwargs = self._prepare_generation_config(generation_config, **kwargs)
         self._validate_model_kwargs(model_kwargs.copy())
-        #self._validate_assistant(assistant_model, tokenizer, assistant_tokenizer)
-        self._validate_assistant(assistant_model,)
+        self._validate_assistant(assistant_model)
 
         # 2. Set generation parameters if not already defined
         if synced_gpus is None:
