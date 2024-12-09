@@ -142,7 +142,8 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple
     Determines whether the input settings need to be updated.
 
     Currently (attn_softmax_bf16, use_flash_attention, flash_attention_recompute,
-    flash_attention_causal_mask) are enabled only for llama, qwen2, starcoder2, gemma and baichuan
+    flash_attention_causal_mask) are enabled only for llama, qwen2, starcoder2, gemma, baichuan
+    and chatglm
 
     lazy_mode for llama, qwen2, starcoder2 and mistral
 
@@ -157,7 +158,7 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple
     inputs_update: Dict = {}
 
     should_update_inputs = (getattr(model, "generation_config", None) is not None) and (
-        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan")
+        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan", "chatglm")
     )
     if should_update_inputs:
         if model.generation_config.attn_softmax_bf16:
@@ -1011,7 +1012,7 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma and baichuan
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
                 # lazy_mode for llama, qwen2, starcoder2 and mistral
                 if _should_update_inputs:
                     inputs.update(_inputs_update)
@@ -1927,7 +1928,7 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
             if _should_update_inputs:
                 inputs.update(_inputs_update)
 
