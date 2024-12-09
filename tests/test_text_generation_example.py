@@ -43,7 +43,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
-            ("state-spaces/mamba-130m-hf", 1536, False, 19283.0330042467, False),
+            ("state-spaces/mamba-130m-hf", 1536, False, 19283.0330042467, True),
             ("Deci/DeciLM-7B", 1, False, 120, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
@@ -113,6 +113,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "mistralai/Mistral-7B-v0.1": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
         "mistralai/Mixtral-8x7B-v0.1": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
         "Qwen/Qwen2-7B": "DeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of PyTorch and TensorFlow, and it supports a wide range of models, including transformers, convolutional neural networks, and recurrent neural networks.\nDeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of Py",
+        "state-spaces/mamba-130m-hf":"DeepSpeed is a machine learning framework.\n\nThe authors declare no conflict of interest.\n\n![The structure of the *S. aureus* strain used in this study. The *S. aureus* strain was obtained from the National Center for Biotechnology Information (NCBI) database. The strain was isolated from a patient with a history of bacteremia and was identified as *S. aureus* by the presence of a *cpsA* gene. The strain was also isolated from a patient with a history of b",
     }
 else:
     # Gaudi1 CI baselines
