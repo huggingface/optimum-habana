@@ -36,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
