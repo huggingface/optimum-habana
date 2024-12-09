@@ -128,7 +128,6 @@ To run Qwen/Qwen2-VL-7B-Instruct inference, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path Qwen/Qwen2-VL-7B-Instruct \
-    --use_hpu_graphs \
     --bf16
 ```
 
