@@ -38,7 +38,7 @@ logger = logging.get_logger(__name__)
 is_fast_path_available = False
 
 use_pscan_kernel = False
-if os.path.exists(custom_op_lib_path):
+if os.path.exists(custom_op_lib_path) and env_variables["GC_KERNEL_PATH"] != default_path:
     use_pscan_kernel = True
 
 
