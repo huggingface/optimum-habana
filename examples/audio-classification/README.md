@@ -56,6 +56,7 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True
 ```
@@ -93,6 +94,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --use_lazy_mode False\
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True \
     --torch_compile \
@@ -173,6 +175,7 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True\
     --torch_compile \
