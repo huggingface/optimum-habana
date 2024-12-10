@@ -659,10 +659,15 @@ def initialize_model(args, logger):
         model_dtype = torch.float
         args.attn_softmax_bf16 = False
 
+    if not use_deepspeed:
+        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
+        args.attn_batch_split = 1
+
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
+        "attn_batch_split": args.attn_batch_split,
     }
     if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16

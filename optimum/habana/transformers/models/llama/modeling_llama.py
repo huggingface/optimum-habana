@@ -908,7 +908,10 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super(LlamaDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
-
+        if hasattr(config, "attn_batch_split"):
+            self.attn_batch_split = config.attn_batch_split
+        else:
+            self.attn_batch_split = 1
         self.self_attn = GaudiLlamaAttention(config=config, layer_idx=layer_idx)
 
         self.mlp = GaudiLlamaMLP(config)
@@ -944,6 +947,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
+        prev_layer_residual: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -957,33 +961,102 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_causal_mask
         - add new arg flash_attention_fast_softmax
         """
-        residual = hidden_states
 
-        hidden_states, self_attn_weights, present_key_value = self.pre_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
-            position_embeddings=position_embeddings,
-            token_idx=token_idx,
-            attn_softmax_bf16=attn_softmax_bf16,
-            reuse_cache=reuse_cache,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
-            flash_attention_causal_mask=flash_attention_causal_mask,
-            flash_attention_fast_softmax=flash_attention_fast_softmax,
-            valid_sequence_lengths=valid_sequence_lengths,
-            cache_idx=cache_idx,
-            num_virtual_tokens=num_virtual_tokens,
-            **kwargs,
-        )
-        self.self_attn.attention_all_reduce(hidden_states)
-        hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
-        self.mlp.mlp_all_reduce(hidden_states)
-        hidden_states = self.post_mlp(hidden_states, residual)
+        if self.attn_batch_split > 1 and past_key_value is None:
+            # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
+            batch_size = attention_mask.size(0)
+            base_split_size = batch_size // self.attn_batch_split
+            remainder = batch_size % self.attn_batch_split
+
+            split_sizes = [
+                base_split_size + 1 if i < remainder else base_split_size for i in range(self.attn_batch_split)
+            ]
+
+            # Split tensors using the calculated sizes
+            sub_attention_mask = torch.split(attention_mask, split_sizes, dim=0)
+            sub_position_ids = torch.split(position_ids, split_sizes, dim=0)
+            sub_valid_sequence_lengths = torch.split(valid_sequence_lengths, split_sizes, dim=0)
+            split_attn_weights = []
+            split_present_key_values = []
+            split_hidden_states = [None] * self.attn_batch_split
+            residual = [None] * self.attn_batch_split
+
+            for i in range(self.attn_batch_split):
+                split_hidden_states[i] = hidden_states[i]
+                if self.self_attn.layer_idx != 0:
+                    # Add the residual from the previous layer
+                    split_hidden_states[i] = self.post_mlp(hidden_states[i], prev_layer_residual[i])
+
+                residual[i] = split_hidden_states[i]
+                split_hidden_states[i], self_attn_weights, present_key_value = self.pre_attn(
+                    hidden_states=split_hidden_states[i],
+                    attention_mask=sub_attention_mask[i],
+                    position_ids=sub_position_ids[i],
+                    past_key_value=past_key_value,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    token_idx=token_idx,
+                    attn_softmax_bf16=attn_softmax_bf16,
+                    reuse_cache=reuse_cache,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
+                    flash_attention_causal_mask=flash_attention_causal_mask,
+                    flash_attention_fast_softmax=flash_attention_fast_softmax,
+                    valid_sequence_lengths=sub_valid_sequence_lengths[i],
+                    cache_idx=cache_idx,
+                    num_virtual_tokens=num_virtual_tokens,
+                    **kwargs,
+                )
+                self.self_attn.attention_all_reduce(split_hidden_states[i])
+                if output_attentions:
+                    split_attn_weights.append(self_attn_weights)
+                if use_cache:
+                    split_present_key_values.append(present_key_value)
+
+            self_attn_weights = torch.cat(split_attn_weights, dim=0) if split_attn_weights else None
+            present_key_value = [torch.cat(tensors, dim=0) for tensors in zip(*split_present_key_values)]
+
+            int_residual_splits = []
+            for i in range(self.attn_batch_split):
+                split_hidden_states[i], int_residual = self.post_attn_pre_mlp(split_hidden_states[i], residual[i])
+                self.mlp.mlp_all_reduce(split_hidden_states[i])
+                int_residual_splits.append(int_residual)
+
+            if self.self_attn.layer_idx == (self.self_attn.config.num_hidden_layers - 1):
+                for i in range(self.attn_batch_split):
+                    split_hidden_states[i] = self.post_mlp(split_hidden_states[i], int_residual_splits[i])
+
+            hidden_states = split_hidden_states
+
+        else:
+            residual = hidden_states
+            hidden_states, self_attn_weights, present_key_value = self.pre_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+                token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
+                reuse_cache=reuse_cache,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                flash_attention_fast_softmax=flash_attention_fast_softmax,
+                valid_sequence_lengths=valid_sequence_lengths,
+                cache_idx=cache_idx,
+                num_virtual_tokens=num_virtual_tokens,
+                **kwargs,
+            )
+            self.self_attn.attention_all_reduce(hidden_states)
+            hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
+            self.mlp.mlp_all_reduce(hidden_states)
+            hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
 
@@ -991,6 +1064,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             outputs += (self_attn_weights,)
         if use_cache:
             outputs += (present_key_value,)
+        # Store the residual spits to add them in the beginning of the next layer
+        if self.attn_batch_split > 1 and past_key_value is None:
+            outputs += (int_residual_splits,)
 
         return outputs
 
@@ -1036,6 +1112,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             cache_idx=cache_idx,
             num_virtual_tokens=num_virtual_tokens,
         )
+
         return hidden_states, attn_weights, present_key_value
 
     def post_attn_pre_mlp(self, hidden_states, residual):
@@ -1077,6 +1154,10 @@ class GaudiLlamaModel(LlamaModel):
         2. add device=self.device
         """
         super(LlamaModel, self).__init__(config)
+        if hasattr(config, "attn_batch_split"):
+            self.attn_batch_split = config.attn_batch_split
+        else:
+            self.attn_batch_split = 1
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
@@ -1237,6 +1318,20 @@ class GaudiLlamaModel(LlamaModel):
         if lazy_mode:
             htcore.mark_step()
 
+        split_prompt = False
+        if self.attn_batch_split > 1 and past_key_values is None:
+            # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
+            batch_size = hidden_states.size(0)
+            base_split_size = batch_size // self.attn_batch_split
+            remainder = batch_size % self.attn_batch_split
+            split_sizes = [
+                base_split_size + 1 if i < remainder else base_split_size for i in range(self.attn_batch_split)
+            ]
+            # Split tensors using the calculated sizes
+            hidden_states = torch.split(hidden_states, split_sizes, dim=0)
+            split_prompt = True
+            prev_layer_residual = None
+
         for layer_idx, decoder_layer in enumerate(self.layers):
             if (
                 lazy_mode
@@ -1246,7 +1341,10 @@ class GaudiLlamaModel(LlamaModel):
                 htcore.mark_step()
 
             if output_hidden_states:
-                all_hidden_states += (hidden_states,)
+                if split_prompt:
+                    all_hidden_states += (torch.cat(hidden_states, dim=0),)
+                else:
+                    all_hidden_states += (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1270,26 +1368,52 @@ class GaudiLlamaModel(LlamaModel):
                     None,
                 )
             else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    valid_sequence_lengths=valid_sequence_lengths,
-                    cache_idx=cache_idx,
-                    num_virtual_tokens=num_virtual_tokens,
-                )
+                if self.attn_batch_split > 1 and past_key_values is None:
+                    layer_outputs = decoder_layer(
+                        hidden_states,
+                        attention_mask=causal_mask,
+                        position_ids=position_ids,
+                        past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                        output_attentions=output_attentions,
+                        use_cache=use_cache,
+                        cache_position=cache_position,
+                        position_embeddings=position_embeddings,
+                        token_idx=token_idx,
+                        attn_softmax_bf16=attn_softmax_bf16,
+                        reuse_cache=reuse_cache,
+                        use_flash_attention=use_flash_attention,
+                        flash_attention_recompute=flash_attention_recompute,
+                        flash_attention_causal_mask=flash_attention_causal_mask,
+                        flash_attention_fast_softmax=flash_attention_fast_softmax,
+                        valid_sequence_lengths=valid_sequence_lengths,
+                        cache_idx=cache_idx,
+                        num_virtual_tokens=num_virtual_tokens,
+                        prev_layer_residual=prev_layer_residual,
+                    )
+                    index = 1 + int(use_cache) + int(output_attentions)
+                    prev_layer_residual = layer_outputs[index]
+                else:
+                    layer_outputs = decoder_layer(
+                        hidden_states,
+                        attention_mask=causal_mask,
+                        position_ids=position_ids,
+                        past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                        output_attentions=output_attentions,
+                        use_cache=use_cache,
+                        cache_position=cache_position,
+                        position_embeddings=position_embeddings,
+                        token_idx=token_idx,
+                        attn_softmax_bf16=attn_softmax_bf16,
+                        reuse_cache=reuse_cache,
+                        use_flash_attention=use_flash_attention,
+                        flash_attention_recompute=flash_attention_recompute,
+                        flash_attention_causal_mask=flash_attention_causal_mask,
+                        flash_attention_fast_softmax=flash_attention_fast_softmax,
+                        valid_sequence_lengths=valid_sequence_lengths,
+                        cache_idx=cache_idx,
+                        num_virtual_tokens=num_virtual_tokens,
+                    )
+
             hidden_states = layer_outputs[0]
 
             if use_cache:
@@ -1297,6 +1421,9 @@ class GaudiLlamaModel(LlamaModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
+
+        if split_prompt:
+            hidden_states = torch.cat(hidden_states, dim=0)
 
         hidden_states = self.norm(hidden_states)
 

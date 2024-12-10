@@ -125,6 +125,7 @@ Here are a few settings you may be interested in:
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--use_mark_dynamic` Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.
+- `--attn_batch_split` specifies the number of smaller batches to split the attention and MLP processing into for better parallelization.By default, no splitting is performed (value is 1). Splitting is enabled only for prompt.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
