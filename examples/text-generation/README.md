@@ -498,7 +498,7 @@ Here is an example to quantize the model based on previous measurements for Llam
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --use_hpu_graphs \
 --use_kv_cache \
 --limit_hpu_graphs \
