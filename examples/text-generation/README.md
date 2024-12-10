@@ -190,7 +190,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 To run Llama-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
 --bf16 \
 --use_hpu_graphs \
