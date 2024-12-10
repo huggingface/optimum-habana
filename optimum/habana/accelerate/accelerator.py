@@ -586,6 +586,7 @@ class GaudiAccelerator(Accelerator):
                     module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
                 else:
                     module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
+                module.__dict__.pop("_parameters", None)
                 setattr(model, name, module)
         else:
             for _, module in model.named_children():
