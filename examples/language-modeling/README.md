@@ -157,6 +157,33 @@ python ../gaudi_spawn.py \
     --logging_steps 20
 ```
 
+### Multi-card Training with Deepspeed (Baichuan2-13B-Chat)
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name baichuan-inc/Baichuan2-13B-Chat \
+    --tokenizer_name baichuan-inc/Baichuan2-13B-Chat \
+    --dataset_name wikitext \
+    --num_train_epochs 30 \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
 
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 
