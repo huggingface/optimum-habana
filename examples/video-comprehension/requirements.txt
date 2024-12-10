@@ -1,0 +1,2 @@
+av == 12.1.0
+sentencepiece == 0.2.0
