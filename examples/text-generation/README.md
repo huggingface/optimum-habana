@@ -481,7 +481,7 @@ Here is an example to measure the tensor quantization statistics on Llama-405B w
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_llama3_405b_bs1_quant.txt \
---model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --use_hpu_graphs \
 --use_kv_cache \
 --trim_logits \
