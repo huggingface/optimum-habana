@@ -529,8 +529,7 @@ class ExampleTestMeta(type):
                     extra_command_line_arguments.append("--sdp_on_bf16")
 
             if self.EXAMPLE_NAME == "run_qa":
-                if model_name == "bert-large-uncased-whole-word-masking" or \
-                   model_name == "albert-large-v2":
+                if model_name == "bert-large-uncased-whole-word-masking" or model_name == "albert-large-v2":
                     extra_command_line_arguments.append("--sdp_on_bf16")
 
             if self.EXAMPLE_NAME == "run_bridgetower":
