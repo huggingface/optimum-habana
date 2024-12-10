@@ -649,11 +649,11 @@ For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Mo
 
 ### Running with UINT4 weight quantization using AutoGPTQ
 
-Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
+Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ](https://github.com/AutoGPTQ/AutoGPTQ), which provides quantization capabilities in PyTorch.
 Currently, the support is for UINT4 inference of pre-quantized models only.
 
 ```bash
-BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
+BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/AutoGPTQ/AutoGPTQ 
 ```
 
 You can run a *UINT4 weight quantized* model using AutoGPTQ by adding the argument `--load_quantized_model_with_autogptq`.
