@@ -181,6 +181,20 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
+To run Llama-405B inference on 8 Gaudi3 cards use the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--max_new_tokens 2048 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--do_sample \
+--use_flash_attention \
+--flash_attention_causal_mask
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
@@ -329,7 +343,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B, phi-2 and Llama-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -444,6 +458,44 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --max_input_tokens 128 \
 --max_new_tokens 2048 \
 --batch_size 110 \
+--bf16 \
+--reuse_cache \
+--trim_logits \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
+```
+
+Here is an example to measure the tensor quantization statistics on Llama-405B with 8 cards:
+> Please note that Llama-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_lm_eval.py \
+-o acc_falcon180b_bs1_quant.txt \
+--model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
+```
+
+Here is an example to quantize the model based on previous measurements for Llama-405B with 8 cards:
+> Please note that Llama-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path llama3.1/Meta-Llama-3.1-405B-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--max_input_tokens 2048 \
+--max_new_tokens 2048 \
+--batch_size 2 \
 --bf16 \
 --reuse_cache \
 --trim_logits \
