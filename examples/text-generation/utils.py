@@ -442,8 +442,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
+<<<<<<< HEAD
                 hasattr(config, "rope_scaling")
                 and config.rope_scaling
+=======
+                config.rope_scaling
+>>>>>>> 4b7f99c6 ([SW-207354] additional check for models other than llama3 (#62))
                 and config.rope_scaling["rope_type"] == "llama3"
                 and config.max_position_embeddings > 8192
             ):
