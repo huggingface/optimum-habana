@@ -187,7 +187,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
-To run Llama-405B inference on 8 Gaudi3 cards use the following command:
+To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
