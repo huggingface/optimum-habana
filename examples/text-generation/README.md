@@ -577,10 +577,8 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UI
 
 Below is an example to load a model with 4bit checkpoints from Hugging Face.
 Please note that model name is denoted as `<model_path_in_hugging_face>`.
-Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
 python run_lm_eval.py \
 -o acc_load_uint4_model.txt \
 --model_name_or_path <model_path_in_hugging_face> \
@@ -603,12 +601,10 @@ Currently, only uint4 checkpoints and single-device configurations are supported
 More information on enabling 4-bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html?highlight=inference%20using%20int4#enabling-and-running-uint4-in-pytorch-models.
 
-Below is an example of loading a llama7b model with a 4bit checkpoint quantized in INC.
+Below is an example of loading a llama2-7b model with a 4bit checkpoint quantized in INC.
 Please note that the model checkpoint name is denoted as `<local_model_path_from_inc>`.
-Additionally, the following environment variables are used for performance optimizations and are planned to be removed in future versions:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
 python run_lm_eval.py \
 -o acc_load_uint4_model.txt \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
@@ -653,7 +649,6 @@ For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Mo
 
 ### Running with UINT4 weight quantization using AutoGPTQ
 
-
 Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
 Currently, the support is for UINT4 inference of pre-quantized models only.
 
@@ -661,18 +656,11 @@ Currently, the support is for UINT4 inference of pre-quantized models only.
 BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
 ```
 
-You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
-and by adding the argument `--load_quantized_model_with_autogptq`.
-
-***Note:***
-Setting the above environment variables improves performance. These variables will be removed in future releases.
-
+You can run a *UINT4 weight quantized* model using AutoGPTQ by adding the argument `--load_quantized_model_with_autogptq`.
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false \
-ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
+python run_generation.py \
 --attn_softmax_bf16 \
 --model_name_or_path <quantized_gptq_model> \
 --use_hpu_graphs \
