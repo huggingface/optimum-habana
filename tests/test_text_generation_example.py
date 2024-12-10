@@ -331,6 +331,11 @@ def _test_text_generation(
                 env_variables["QUANT_CONFIG"] = os.path.join(
                     path_to_example_dir, "text-generation/quantization_config/maxabs_quant_mixtral.json"
                 )
+            elif "falcon-180b" in model_name.lower():
+                env_variables["PT_HPU_DISABLE_ASYNC_COLLECTIVE"] = "1"
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+                )
             else:
                 env_variables["QUANT_CONFIG"] = os.path.join(
                     path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
