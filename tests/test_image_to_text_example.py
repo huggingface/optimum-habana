@@ -125,4 +125,3 @@ def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, t
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["fp8"])
 def test_image_to_text_fp8(model_name: str, baseline: float, batch_size: int, token: str):
     _test_image_to_text(model_name, baseline, token, batch_size, fp8=True)
-
