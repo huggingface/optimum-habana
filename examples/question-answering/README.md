@@ -292,6 +292,7 @@ python run_seq2seq_qa.py \
   --pad_to_max_length \
   --save_strategy epoch \
   --throughput_warmup_steps 3 \
+  --sdp_on_bf16 \
   --bf16
 ```
 
