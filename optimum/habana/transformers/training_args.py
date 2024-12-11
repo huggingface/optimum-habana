@@ -101,6 +101,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use compiled autograd for training. Currently only for summarization models.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
+            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -168,6 +170,11 @@ class GaudiTrainingArguments(TrainingArguments):
     compile_dynamic: Optional[bool | None] = field(
         default=None,
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
+    )
+
+    inline_inbuilt_nn_modules: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -859,6 +866,9 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if self.sdp_on_bf16:
             torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
+        if self.inline_inbuilt_nn_modules is not None:
+            torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
