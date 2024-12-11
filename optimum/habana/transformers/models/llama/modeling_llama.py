@@ -30,9 +30,48 @@ from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
+from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len, training=False):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if training is False and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len, self.training)
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
