@@ -211,19 +211,20 @@ class GaudiGenerationMixin(GenerationMixin):
         # 2. `decoder_start_token_id` must have shape (batch_size, 1)
         if device is None:
             device = self.device
-        if token_idx is None:
-            if decoder_start_token_id.ndim == 1:
-                if decoder_start_token_id.shape[0] != batch_size:
-                    raise ValueError(
-                        f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
-                    )
-                decoder_start_token_id = decoder_start_token_id.view(-1, 1)
-            else:
-                decoder_start_token_id = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+        if decoder_start_token_id.ndim == 1:
+            if decoder_start_token_id.shape[0] != batch_size:
+                raise ValueError(
+                    f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
                 )
+            decoder_start_token_id = decoder_start_token_id.view(-1, 1)
         else:
-            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            decoder_start_token_id = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
+        if token_idx is not None:
+            # creating padded decoder_input_ids to achieve static shapes.
+            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_start_token_id = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
@@ -3039,7 +3040,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                if self.config.eos_token_id is not None:
+                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
@@ -3210,6 +3212,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if return_dict_in_generate:
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
+
+            if self.generation_config.static_shapes:
+                raise NotImplementedError("sequence_scores is not implemented for static_shapes")
 
             if self.config.is_encoder_decoder:
                 return GenerateBeamEncoderDecoderOutput(
