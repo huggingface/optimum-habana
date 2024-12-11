@@ -26,6 +26,11 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+For `run_lm_eval.py`:
+```bash
+pip install -r requirements_lm_eval.txt
+```
+
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
@@ -254,6 +259,30 @@ python run_generation.py \
 Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25 35 45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
+
+
+### Using Beam Search
+
+> Restriction: When `reuse_cache` is not applied, currently beam search can only work for the models with model type of `llama` or `qwen2` since it requires `_reorder_cache` implemented in the modeling. The group beam search and constrained beam search is not supported by optimum-habana yet.
+
+Here is an example:
+```bash
+python run_generation.py \
+--model_name_or_path Qwen/Qwen2-7b-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--use_flash_attention \
+--max_input_tokens 128 \
+--max_new_tokens 128 \
+--batch_size 4 \
+--limit_hpu_graphs \
+--reuse_cache \
+--bucket_internal \
+--bucket_size 128 \
+--bf16 \
+--num_beams 3
+```
 
 
 ### Running with torch.compile
@@ -628,7 +657,7 @@ and by adding the argument `--load_quantized_model_with_autogptq`.
 
 ***Note:***
 Setting the above environment variables improves performance. These variables will be removed in future releases.
- 
+
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash

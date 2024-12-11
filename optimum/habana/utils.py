@@ -285,6 +285,7 @@ class HabanaProfile(object):
         warmup: int = 0,
         active: int = 0,
         record_shapes: bool = True,
+        with_stack: bool = False,
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
@@ -306,7 +307,7 @@ class HabanaProfile(object):
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
-                with_stack=False,
+                with_stack=with_stack,
             )
             self.start = profiler.start
             self.stop = profiler.stop

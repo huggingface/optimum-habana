@@ -25,6 +25,8 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+from ..modeling_all_models import apply_customized_rope_module
+
 
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
@@ -456,33 +458,10 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
-    if q.device.type == "hpu" and FusedRoPE:
+    if q.device.type == "hpu" and FusedRoPE is not None:
         if training:
-            rope_q = FusedRoPE.apply(
-                q.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            )
-            rope_k = FusedRoPE.apply(
-                k.to(torch.float), cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            )
+            return apply_customized_rope_module(q.to(torch.float), k.to(torch.float), cos, sin, position_ids, training)
         else:
-            if q.dtype == torch.bfloat16:
-                rope_q = FusedRoPE.apply(
-                    q,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            if k.dtype == torch.bfloat16:
-                rope_k = FusedRoPE.apply(
-                    k,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        return rope_q, rope_k
+            return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q.to(torch.float), k.to(torch.float), cos[position_ids], sin[position_ids])

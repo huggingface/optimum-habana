@@ -22,6 +22,89 @@ from transformers.modeling_utils import ModuleUtilsMixin, PretrainedConfig
 from transformers.utils.import_utils import is_torch_sdpa_available
 
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, *args, **kwargs):
+        return torch.matmul(*args, **kwargs)
+
+
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
+
+
+def apply_customized_rope_module(q, k, cos, sin, position_ids, training=True):
+    if training:
+        rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+
+    else:
+        if q.dtype == torch.bfloat16:
+            rope_q = FusedRoPE.apply(
+                q,
+                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                position_ids,
+            )
+        else:
+            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        if k.dtype == torch.bfloat16:
+            rope_k = FusedRoPE.apply(
+                k,
+                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                position_ids,
+            )
+        else:
+            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+    return rope_q, rope_k
+
+
 def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L640
@@ -115,7 +198,7 @@ def gaudi_conv1d_forward(self, x):
 @classmethod
 def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> PretrainedConfig:
     # This model doesn't support SDPA in Gaudi yet, fallback to original code.
-    MODELS_ATTN_IMPLEMENTATION_EAGER = ["bart", "gpt_bigcode", "mistral", "mixtral", "wav2vec2", "roberta"]
+    MODELS_ATTN_IMPLEMENTATION_EAGER = ["albert", "bart", "gpt_bigcode", "mistral", "mixtral", "wav2vec2", "roberta"]
 
     if config.model_type in MODELS_ATTN_IMPLEMENTATION_EAGER:
         config._attn_implementation = "eager"
@@ -164,7 +247,5 @@ class ScopedLinearAllReduce(torch.nn.Module):
             dist.inference_all_reduce(input, group=self.mp_group)
 
     def post_all_reduce(self, input):
-        # inplace addition needed for correct results
-        if self.bias is not None:
-            input += self.bias
-        return input
+        output = input + self.bias if (self.bias is not None) else input
+        return output

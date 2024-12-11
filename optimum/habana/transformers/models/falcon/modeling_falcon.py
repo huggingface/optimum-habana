@@ -13,18 +13,17 @@ except ImportError:
     FusedSDPA = None
 
 try:
-    from habana_frameworks.torch.hpu import sdp_kernel
-
-    SDPContext = True
-except ImportError:
-    SDPContext = False
-
-try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+try:
+    from habana_frameworks.torch.hpu import sdp_kernel
+
+    SDPContext = True
+except ImportError:
+    SDPContext = False
 
 import habana_frameworks.torch.core as htcore
 from torch import nn
@@ -53,6 +52,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 logger = logging.get_logger(__name__)
@@ -72,14 +72,9 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
         return residual
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
@@ -141,14 +136,6 @@ class Softmax(nn.Module):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
 
 
-class Matmul(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, *args, **kwargs):
-        return torch.matmul(*args, **kwargs)
-
-
 # ScaledDotProductAttention is based on torch.nn.functional.scaled_dot_product_attention
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, config: FalconConfig):
@@ -183,56 +170,6 @@ class ScaledDotProductAttention(nn.Module):
         attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
         attn_output = self.bmm2(attn_weight, value)
         return attn_output
-
-
-def update(prev, cur, dim, idx, inp_seq_len):
-    orig_cur = cur
-    cur = cur.to(dtype=prev.dtype)
-
-    if prev.shape == cur.shape:
-        prev.copy_(cur)
-        return orig_cur
-
-    if cur.shape[-2] > 1 and cur.shape[-2] <= prev.shape[-2]:
-        # Initialize
-        prev[:, :, :inp_seq_len, :].copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        prev.index_copy_(dim, idx - 1, cur)
-        prev_cast = prev.to(orig_cur.dtype)
-        return prev_cast
-    else:
-        return torch.cat((prev, cur), dim=dim)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-    @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len):
-        return update(prev, cur, dim, idx, inp_seq_len)
 
 
 class GaudiFalconAttention(FalconAttention):
@@ -383,7 +320,9 @@ class GaudiFalconAttention(FalconAttention):
 
         if alibi is None:
             cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
-            query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids)
+            query_layer, key_layer = apply_customized_rope(
+                query_layer, key_layer, cos, sin, position_ids, self.training
+            )
 
         if use_cache:
             if self.training:
@@ -453,9 +392,11 @@ class GaudiFalconAttention(FalconAttention):
                             )
                     else:
                         # TODO very similar to the fp8 case above, could be merged.
-                        with sdp_kernel(
-                            enable_recompute=flash_attention_recompute
-                        ) if SDPContext else contextlib.nullcontext():
+                        with (
+                            sdp_kernel(enable_recompute=flash_attention_recompute)
+                            if SDPContext
+                            else contextlib.nullcontext()
+                        ):
                             attn_output = FusedSDPA.apply(
                                 query_layer,
                                 key_layer,
@@ -578,7 +519,7 @@ class GaudiFalconAttention(FalconAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.dense, "all_reduce"):
-            self.dense.post_all_reduce(attn_output)
+            return self.dense.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -598,7 +539,7 @@ class GaudiFalconMLP(FalconMLP):
 
     def post_mlp_forward(self, x):
         if hasattr(self.dense_4h_to_h, "all_reduce"):
-            self.dense_4h_to_h.post_all_reduce(x)
+            return self.dense_4h_to_h.post_all_reduce(x)
         return x
 
 
@@ -615,7 +556,7 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
     """
 
     def __init__(self, config: FalconConfig, layer_idx=None):
-        super().__init__(config)
+        super().__init__(config, layer_idx=layer_idx)
         self.self_attention = GaudiFalconAttention(config, layer_idx)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):

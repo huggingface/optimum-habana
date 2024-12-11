@@ -176,15 +176,23 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model):
-    if model.config.model_type in ["gpt_bigcode", "mpt", "bloom", "gpt2"]:
+def get_torch_compiled_model(model, logger):
+    # for gpt_bigcode, mpt, bloom, gpt2 model_type
+    if hasattr(model, "transformer"):
         model.transformer = torch.compile(
             model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
         )
-    elif model.config.model_type in ["gpt_neox"]:
+    # for gpt_neox
+    elif hasattr(model, "gpt_neox"):
         model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
-    else:
+    # for llama, mistral, mixtral, qwen2
+    elif hasattr(model, "model"):
         model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+    else:
+        logger.warning(
+            "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
+        )
+        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
 
 
@@ -269,6 +277,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
+        # TODO: This will be removed in v1.19 Synapse release
+        # the loaded model should have the same dtype as original_model
+        model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -304,9 +315,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger)
         # if args.assistant_model is not None:
-        #     assistant_model = get_torch_compiled_model(assistant_model)
+        #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
 
 
@@ -362,6 +373,44 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
             args.local_rank,
             args.world_size,
         )
+
+    model = model.eval().to(args.device)
+
+    if args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+        model = wrap_in_hpu_graph(model)
+
+    if args.torch_compile:
+        model = get_torch_compiled_model(model, logger)
+
+    return model, args.assistant_model
+
+
+def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
+    logger.info("Multi-device ep run.")
+
+    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
+    assert args.assistant_model is None, "Assistant model must be None"
+
+    from torch import distributed as dist
+
+    if args.device == "hpu":
+        dist.init_process_group(backend="hccl")
+    else:
+        assert False, "Supports EP only on HPU"
+
+    torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+    logger.info("Creating Model")
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    config.update({"ep_size": args.world_size})
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        config=config,
+        torch_dtype=model_dtype,
+        **model_kwargs,
+    )
 
     model = model.eval().to(args.device)
 
@@ -445,9 +494,9 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger)
         # if args.assistant_model is not None:
-        #     assistant_model = get_torch_compiled_model(assistant_model)
+        #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
 
 
@@ -512,7 +561,7 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         return model
 
 
-def setup_tokenizer(args, model, assistant_model):
+def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
@@ -555,6 +604,13 @@ def setup_tokenizer(args, model, assistant_model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
+    # HACK: MiniCPM3 does not support list EOS token ID generation config.
+    if model.config.model_type == "minicpm3" and isinstance(model.generation_config.eos_token_id, list):
+        logger.warning(
+            f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
+        )
+        model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
@@ -658,11 +714,13 @@ def initialize_model(args, logger):
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
-        if not args.parallel_strategy == "tp"
+        if args.parallel_strategy == "none"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
+        if args.parallel_strategy == "tp"
+        else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
 
-    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
+    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 
     if args.const_serialization_path:

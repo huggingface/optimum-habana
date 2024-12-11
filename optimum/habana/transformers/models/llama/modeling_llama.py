@@ -21,7 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import is_torchdynamo_compiling
 
-from .... import distributed
+from .... import distributed, parallel_state
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
@@ -30,11 +30,12 @@ from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
 
 try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
     has_fused_rope = True
 except ImportError:
@@ -119,7 +120,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
                 self.rope_type = "default"
             self.max_seq_len_cached = config.max_position_embeddings
             # Truncate the cached max sequence length to 8k to limit cached register buffer size
-            if config.max_position_embeddings > 8192 and self.rope_type == "llama3":
+            if not self.training and config.max_position_embeddings > 8192 and self.rope_type == "llama3":
                 self.max_seq_len_cached = 8192
             self.original_max_seq_len = config.max_position_embeddings
 
@@ -348,7 +349,7 @@ def gaudi_llama_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-#  FusedScaledDotProductAttention
+# FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -365,7 +366,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         value,
         attn_mask,
         dropout_p,
-        is_casual,
+        is_causal,
         scale,
         softmax_mode,
         recompute_mode,
@@ -378,7 +379,7 @@ class ModuleFusedSDPA(torch.nn.Module):
             value,
             attn_mask,
             dropout_p,
-            is_casual,
+            is_causal,
             scale,
             softmax_mode,
             recompute_mode,
@@ -387,53 +388,11 @@ class ModuleFusedSDPA(torch.nn.Module):
         )
 
 
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
+def GaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
 
 
 class GaudiLlamaAttention(LlamaAttention):
@@ -444,6 +403,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
             self.head_dim = config.hidden_size // self.num_heads
@@ -470,6 +430,15 @@ class GaudiLlamaAttention(LlamaAttention):
             if FusedSDPA
             else None
         )
+        # https://github.com/microsoft/DeepSpeed/issues/4359
+        # for all2all comm, Distributed Attention cares about sequence (s) and number of heads (h) dimensions. In HPU, they are at 1 and 2 indices
+        self.fused_scaled_dot_product_attention_distributed = None
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            from deepspeed.sequence.layer import DistributedAttention
+
+            self.fused_scaled_dot_product_attention_distributed = DistributedAttention(
+                self.fused_scaled_dot_product_attention, parallel_state.get_sequence_parallel_group(), 1, 2
+            )
 
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
@@ -611,8 +580,22 @@ class GaudiLlamaAttention(LlamaAttention):
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         # else:
         # cos, sin = position_embeddings
+        seq_len = kv_seq_len
+        if parallel_state.sequence_parallel_is_initialized():
+            seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=seq_len)
+        # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
+        # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
+            position_ids = torch.arange(
+                kv_seq_len * parallel_state.get_sequence_parallel_rank(),
+                kv_seq_len * (parallel_state.get_sequence_parallel_rank() + 1),
+                dtype=torch.long,
+                device=query_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0)
+
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
@@ -640,7 +623,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
                 ):
-                    # prefix tunining case. attach past_key_value to generate first token.
+                    # prefix tuning case. attach past_key_value to generate first token.
                     key_states = torch.cat((past_key_value[0], key_states), -2)
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
@@ -659,11 +642,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-
+        fused_scaled_dot_product_attention = GaudiDistributedAttention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
         if use_flash_attention and FusedSDPA is not None:
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -680,7 +665,8 @@ class GaudiLlamaAttention(LlamaAttention):
                 # first token
                 softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    # causal masking on first token requires inputs to be of the same length
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -694,7 +680,7 @@ class GaudiLlamaAttention(LlamaAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -760,7 +746,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -1398,7 +1384,19 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             shift_labels = shift_labels.view(-1)
             # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            # Collect losses from context parallel group
+            # Each rank in group calculates loss on partial outputs
+            if (
+                parallel_state.sequence_parallel_is_initialized()
+                and parallel_state.get_sequence_parallel_world_size() > 1
+            ):
+                from optimum.habana.distributed.contextparallel import _get_loss_from_context_parallel
+
+                loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+                loss_all = _get_loss_from_context_parallel(loss_fct(shift_logits, shift_labels))
+                loss = torch.mean(loss_all)
+            else:
+                loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1410,6 +1408,25 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+        )
+
+    @staticmethod
+    def _reorder_cache(
+        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+
+        Output shares the same memory storage as `past`.
+        """
+        return tuple(
+            (
+                layer_past[0].index_select(0, beam_idx.to(layer_past[0].device)),
+                layer_past[1].index_select(0, beam_idx.to(layer_past[1].device)),
+            )
+            for layer_past in past
         )
 
     def prepare_inputs_for_generation(
@@ -1503,23 +1520,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return reordered_past
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
-        # keep the same implementation as Transformers v4.37.2
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

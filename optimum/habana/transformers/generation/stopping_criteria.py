@@ -38,8 +38,10 @@ def gaudi_MaxLengthCriteria_call(
 ) -> Union[torch.BoolTensor, bool]:
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        assert not kwargs["needs_tensor_output"]
-        return token_idx >= self.max_length
+        if not kwargs["needs_tensor_output"]:
+            return token_idx >= self.max_length
+        else:
+            return create_return_const_tensor(input_ids, token_idx >= self.max_length)
     else:
         cur_len = input_ids.shape[-1]
         is_done = cur_len >= self.max_length
@@ -68,7 +70,6 @@ def gaudi_EosTokenCriteria_call(
     self.eos_token_id = self.eos_token_id.to(input_ids.device)
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        assert not kwargs["needs_tensor_output"]
         is_done = torch.isin(input_ids[:, token_idx - 1], self.eos_token_id)
     else:
         is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
@@ -78,19 +79,15 @@ def gaudi_EosTokenCriteria_call(
         return torch.all(is_done).item()
 
 
-def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
-    if token_idx is None:
-        return not ignore_eos and eos_token_id is not None
-    else:
-        # token_idx is present, so we have static shapes, so using single boolean
-        return False
+def needs_tensor_output(ignore_eos, eos_token_id) -> bool:
+    return not ignore_eos and eos_token_id is not None
 
 
 def gaudi_StoppingCriteriaList_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:
     kwargs["needs_tensor_output"] = needs_tensor_output(
-        kwargs.get("token_idx", None), kwargs.get("ignore_eos", True), kwargs.get("eos_token_id", None)
+        kwargs.get("ignore_eos", True), kwargs.get("eos_token_id", None)
     )
     is_done = (
         torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
