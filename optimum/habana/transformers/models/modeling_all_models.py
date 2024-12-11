@@ -115,7 +115,7 @@ def gaudi_conv1d_forward(self, x):
 @classmethod
 def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> PretrainedConfig:
     # This model doesn't support SDPA in Gaudi yet, fallback to original code.
-    MODELS_ATTN_IMPLEMENTATION_EAGER = ["albert", "bart", "gpt_bigcode", "mistral", "mixtral", "wav2vec2", "roberta"]
+    MODELS_ATTN_IMPLEMENTATION_EAGER = ["albert", "bart", "gpt_bigcode", "mistral", "mixtral", "roberta"]
 
     if config.model_type in MODELS_ATTN_IMPLEMENTATION_EAGER:
         config._attn_implementation = "eager"
