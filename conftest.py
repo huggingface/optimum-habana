@@ -119,9 +119,10 @@ def pytest_collection_modifyitems(items):
 
 
 def pytest_addoption(parser):
-    parser.addoption("--token", action="store", default=None)    
-    
+    parser.addoption("--token", action="store", default=None)
+
     from transformers.testing_utils import pytest_addoption_shared
+
     pytest_addoption_shared(parser)
 
 
