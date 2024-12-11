@@ -297,8 +297,11 @@ def main():
         )
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-
-            generator.model = wrap_in_hpu_graph(generator.model)
+            if "Qwen2-VL" in args.model_name_or_path:
+                # only wrap language model part
+                generator.model.model = wrap_in_hpu_graph(generator.model.model)
+            else:
+                generator.model = wrap_in_hpu_graph(generator.model)
 
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
@@ -313,7 +316,7 @@ def main():
         "limit_hpu_graphs": args.limit_hpu_graphs,
     }
 
-    if args.sdp_on_bf16:
+    if args.sdp_on_bf16 and "Llama-3.2-11B-Vision-Instruct" in args.model_name_or_path:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.use_kv_cache:

@@ -147,10 +147,6 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
             is_causal=is_causal,
         )
 
-        # use hpu graph then no need of this
-        if attn_output.device.type == 'hpu':
-            torch.hpu.synchronize()
-
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
