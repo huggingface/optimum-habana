@@ -105,6 +105,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Set value of 'cache_size_limit' parameter for torch._dynamo.config
         use_regional_compliation (`bool`, *optional*, defaults to `False`):
             Whether to use regional_compliation with deepspeed
+        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
+            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -182,6 +184,11 @@ class GaudiTrainingArguments(TrainingArguments):
     use_regional_compliation: Optional[bool] = field(
         default=False,
         metadata={"help": ("Whether to use regional_compliation for traing.")},
+    )
+
+    inline_inbuilt_nn_modules: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -874,6 +881,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 and self.half_precision_backend == "hpu_amp"
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
+
+        if self.inline_inbuilt_nn_modules is not None:
+            torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
