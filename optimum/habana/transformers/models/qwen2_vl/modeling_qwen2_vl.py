@@ -14,7 +14,6 @@
 # limitations under the License.
 """PyTorch Gaudi Qwen2-VL model."""
 
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -266,14 +265,6 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
         is_causal = True if causal_mask is None and q_len > 1 else False
 
         if FusedSDPA is not None and use_flash_attention:
-            input_dtype = query_states.dtype
-            # For accuracy
-            target_dtype = torch.float16
-            if input_dtype != target_dtype:
-                warnings.warn("FusedSDPA Type conversion for Accuracy")
-                query_states = query_states.to(target_dtype)
-                key_states = key_states.to(target_dtype)
-                value_states = value_states.to(target_dtype)
             attn_output = self.fused_scaled_dot_product_attention(
                 query_states,
                 key_states,
@@ -284,8 +275,6 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
                 None,  # scale
                 "None",  #'fast'
             )
-            if input_dtype != target_dtype:
-                attn_output = attn_output.to(input_dtype)
         else:
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
