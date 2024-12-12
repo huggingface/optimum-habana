@@ -50,15 +50,16 @@ class KVCache(torch.nn.Module):
             self.cache.fill_(0)
 
     @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len, training=False):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if training is False and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
+    def update(prev, cur, dim, idx, inp_seq_len, training):
+        if training is False:
+            orig_cur = cur
+            if prev.shape == cur.shape:
+                prev.copy_(cur)
+                return orig_cur
+            if idx is None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+                # Initialize
+                prev[:, :, :inp_seq_len, :].copy_(cur)
+                return orig_cur
         if idx is not None:
             prev.index_copy_(dim, idx - 1, cur)
             return prev
@@ -667,8 +668,8 @@ class GaudiLlamaAttention(LlamaAttention):
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
                 else:
-                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len, self.training)
+                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len, self.training)
 
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
