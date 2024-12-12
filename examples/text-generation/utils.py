@@ -38,7 +38,6 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import (
     check_habana_frameworks_version,
-    check_neural_compressor_min_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
     set_seed,
@@ -278,8 +277,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        if not check_neural_compressor_min_version("3.2"):
-            model = model.to(model_kwargs["torch_dtype"])
+        # TODO: This will be removed in v1.19 Synapse release
+        # the loaded model should have the same dtype as original_model
+        model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -441,6 +441,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+            if (
+                config.rope_scaling
+                and config.rope_scaling["rope_type"] == "llama3"
+                and config.max_position_embeddings > 8192
+            ):
+                config.max_position_embeddings = 8192
             model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
 
         # Model loaded to meta is managed differently
@@ -605,13 +611,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
-    # HACK: MiniCPM3 has multiple eos_tokens and does not specify padding token. Set both to second one.
-    if model.config.model_type == "minicpm3":
-        tokenizer.pad_token = tokenizer.eos_token
-        model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
+    # HACK: MiniCPM3 does not support list EOS token ID generation config.
+    if model.config.model_type == "minicpm3" and isinstance(model.generation_config.eos_token_id, list):
+        logger.warning(
+            f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
+        )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
-        if len(model.generation_config.eos_token_id) > 1:
-            logger.warning("Multiple EOS token IDs found. Only last eos token id will be used.")
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:

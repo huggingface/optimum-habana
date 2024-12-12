@@ -12,8 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import inspect
+import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -30,6 +30,11 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from optimum.habana.diffusers.models.attention_processor import (
+    AttentionProcessor,
+    AttnProcessor2_0,
+    ScaledDotProductAttention,
+)
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
@@ -96,6 +101,59 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    """
+    Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    Added env PATCH_SDPA for HPU specific handle to use ScaledDotProductAttention.
+    Sets the attention processor to use to compute attention.
+    Parameters:
+        processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+            The instantiated processor class or a dictionary of processor classes that will be set as the processor
+            for **all** `Attention` layers.
+
+            If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+            processor. This is strongly recommended when setting trainable attention processors.
+
+    """
+
+    count = len(self.attn_processors.keys())
+
+    if isinstance(processor, dict) and len(processor) != count:
+        raise ValueError(
+            f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+            f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+        )
+
+    def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+        if hasattr(module, "set_processor"):
+            if os.environ.get("PATCH_SDPA") is not None:
+                setattr(module, "attention_module", ScaledDotProductAttention())
+                module.set_processor(processor(module.attention_module))
+            else:
+                if isinstance(processor, dict):
+                    attention_processor = processor.pop(f"{name}.processor", None)
+                    if attention_processor is not None:
+                        module.set_processor(attention_processor)
+                else:
+                    module.set_processor(processor)
+
+        for sub_name, child in module.named_children():
+            fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+    for name, module in self.named_children():
+        fn_recursive_attn_processor(name, module, processor)
+
+
+def set_default_attn_processor_hpu(self):
+    """
+    Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    Disables custom attention processors and sets the default attention implementation from HPU.
+    """
+
+    processor = AttnProcessor2_0()
+    set_attn_processor_hpu(self, processor)
+
+
 class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeline):
     """
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.23.1/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L73
@@ -131,6 +189,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -148,6 +208,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -155,6 +216,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
+            sdp_on_bf16,
         )
 
         # Workaround for Synapse 1.11 for full bf16
@@ -173,7 +235,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             image_encoder,
             requires_safety_checker,
         )
-
+        self.unet.set_default_attn_processor = set_default_attn_processor_hpu
         self.to(self._device)
 
     def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):

@@ -81,7 +81,7 @@ def _get_supported_models_for_script(
 
     def is_valid_model_type(model_type: str) -> bool:
         true_model_type = "llama" if model_type == "llama_guard" else model_type
-        if model_type == "protst":
+        if model_type in ("protst", "chatglm"):
             in_task_mapping = True
         else:
             # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
@@ -241,6 +241,7 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
+            "THUDM/chatglm3-6b",
         ]
 
         case_only_in_gaudi2 = [
@@ -283,9 +284,12 @@ class ExampleTestMeta(type):
             "ia3",
             "adalora",
             "ln_tuning",
+            "tatsu-lab/alpaca_cp",
         ):
             return False
         elif eager_mode and model_name not in models_measured_on_eager_mode:
+            return False
+        elif "gemma" in model_name and not IS_GAUDI2:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -321,7 +325,11 @@ class ExampleTestMeta(type):
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
             return True
+        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
+            return True
         elif "gemma" in model_name and IS_GAUDI2:
+            return True
+        elif "chatglm3" in model_name and IS_GAUDI2 and deepspeed:
             return True
 
         return False
@@ -362,6 +370,7 @@ class ExampleTestMeta(type):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile, fp8
                 )
+
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
@@ -506,7 +515,9 @@ class ExampleTestMeta(type):
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
             elif torch_compile and (
-                model_name == "bert-large-uncased-whole-word-masking" or model_name == "roberta-large"
+                model_name == "bert-large-uncased-whole-word-masking"
+                or model_name == "roberta-large"
+                or model_name == "albert-xxlarge-v1"
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
@@ -854,7 +865,7 @@ class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta,
 class CausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
 ):
-    TASK_NAME = ["tatsu-lab/alpaca", "databricks/databricks-dolly-15k"]
+    TASK_NAME = "databricks/databricks-dolly-15k"
 
 
 class MultiCardCausalLanguageModelingLORAExampleTester2(
@@ -1020,4 +1031,11 @@ class MultiCardCausalLanguageModelingAdaloraExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
     TASK_NAME = "adalora"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardCausalLanguageModelingLoRACPExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", deepspeed=True
+):
+    TASK_NAME = "tatsu-lab/alpaca_cp"
     DATASET_NAME = "tatsu-lab/alpaca"

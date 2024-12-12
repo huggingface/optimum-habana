@@ -70,7 +70,7 @@ from .configuration_utils import GaudiGenerationConfig
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
-    from transformers.streamers import BaseStreamer
+    from transformers.generation.streamers import BaseStreamer
     from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
     from .candidate_generator import GaudiCandidateGenerator
@@ -115,8 +115,11 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "minicpm3",
     "baichuan",
     "deepseek_v2",
+    "chatglm",
 ]
 
+# Initial generated token index is set to 1 to accomodate SOS (start of string) token.
+INITIAL_TOKEN_IDX = 1
 
 logger = logging.get_logger(__name__)
 
@@ -176,12 +179,12 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         max_steps: int,  # current stopping criteria
         batch_size: int,
-        pad_token_id: int,
-        device: str,
-        dtype: str = bool,
+        device: Union[str, torch.device],
+        dtype: torch.dtype = torch.bool,
     ) -> torch.Tensor:
-        x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor(0), 1)  # First the position with pad_token_id
+        decoder_attention_mask = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
+        index = torch.tensor(0, device=device)
+        return decoder_attention_mask.index_fill(1, index, 1)  # First position with 1
 
     def _prepare_decoder_input_ids_for_generation(
         self,
@@ -208,19 +211,20 @@ class GaudiGenerationMixin(GenerationMixin):
         # 2. `decoder_start_token_id` must have shape (batch_size, 1)
         if device is None:
             device = self.device
-        if token_idx is None:
-            if decoder_start_token_id.ndim == 1:
-                if decoder_start_token_id.shape[0] != batch_size:
-                    raise ValueError(
-                        f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
-                    )
-                decoder_start_token_id = decoder_start_token_id.view(-1, 1)
-            else:
-                decoder_start_token_id = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+        if decoder_start_token_id.ndim == 1:
+            if decoder_start_token_id.shape[0] != batch_size:
+                raise ValueError(
+                    f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
                 )
+            decoder_start_token_id = decoder_start_token_id.view(-1, 1)
         else:
-            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            decoder_start_token_id = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
+        if token_idx is not None:
+            # creating padded decoder_input_ids to achieve static shapes.
+            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_start_token_id = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
@@ -335,32 +339,37 @@ class GaudiGenerationMixin(GenerationMixin):
         return input_ids, model_kwargs
 
     def _pad_past_key_values(self, model_kwargs):
+        # Early return if no past key values to pad
+        past_key_values = model_kwargs.get("past_key_values")
+        if not past_key_values:
+            return
+
+        # Determine if the model is MQA or not
+        is_mqa_model = model_kwargs.get("mqa_model", False)
+        lazy_mode = model_kwargs.get("lazy_mode", False)
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
         kv_cache_len = model_kwargs.get("kv_cache_len", 0)
-        if model_kwargs["past_key_values"]:
-            if model_kwargs.get("mqa_model", False):
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    if (
-                        torch.is_tensor(model_kwargs["past_key_values"][i])
-                        and model_kwargs["past_key_values"][i].shape[-2] == kv_cache_len - pad_amount
-                    ):  # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
-                        model_kwargs["past_key_values"][i] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i], (0, 0, 0, pad_amount)
-                        )
-                        if model_kwargs.get("lazy_mode", False):
+        kv_cache_len_pad_amount = kv_cache_len - pad_amount
+
+        # For MQA models, past_key_values is a tensor
+        if is_mqa_model:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                if torch.is_tensor(layer) and layer.shape[-2] == kv_cache_len_pad_amount:
+                    # tensor(batch_size, kv_cache_len, n_heads * head_dim * 2) k and v stacked
+                    past_key_values[i] = torch.nn.functional.pad(layer, (0, 0, 0, pad_amount))
+                    # Mark step if lazy mode is enabled
+                    if lazy_mode:
+                        self.htcore_generation.mark_step()
+        # For Non-MQA models, the past_key_values is a list of lists (k and v)
+        else:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                for j, k_or_v in enumerate(layer):  # Iterate over k and v
+                    if torch.is_tensor(k_or_v) and k_or_v.shape[-2] == kv_cache_len_pad_amount:
+                        # tensor(batch_size, n_heads, kv_cache_len, head_dim)
+                        past_key_values[i][j] = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                        # Mark step if lazy mode is enabled
+                        if lazy_mode:
                             self.htcore_generation.mark_step()
-            else:
-                for i in range(len(model_kwargs["past_key_values"])):  # layer
-                    for j in range(len(model_kwargs["past_key_values"][i])):  # k or v
-                        if (
-                            torch.is_tensor(model_kwargs["past_key_values"][i][j])
-                            and model_kwargs["past_key_values"][i][j].shape[-2] == kv_cache_len - pad_amount
-                        ):  # tensor(batch_size, n_heads, kv_cache_len, head_dim)
-                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
-                                model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
-                            )
-                            if model_kwargs.get("lazy_mode", False):
-                                self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
         if model_kwargs["past_key_values"]:
@@ -520,11 +529,11 @@ class GaudiGenerationMixin(GenerationMixin):
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                             # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
+                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
                             if (
                                 model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)]
-                                == params["allocated_space"] - pad_amount
+                                == params["allocated_space"] - pad_amount + num_virtual_tokens
                             ):
-                                num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
                                 assert (
                                     model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
                                     == num_virtual_tokens
@@ -1085,8 +1094,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     "gemma",
                     "gemma2",
                     "baichuan",
+                    "chatglm",
                 ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2 and baichuan at the moment"
+            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -1149,7 +1159,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 if model_kwargs.get("decoder_input_ids", None) is None:
-                    token_idx = 1
+                    token_idx = INITIAL_TOKEN_IDX
                 else:
                     token_idx = model_kwargs["decoder_input_ids"].shape[-1]
                 model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
@@ -1162,7 +1172,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
                         max_length,
                         inputs_tensor.shape[0],
-                        generation_config.pad_token_id,
                         inputs_tensor.device,
                     )
 
@@ -2405,9 +2414,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 assert "position_ids" not in model_kwargs, "Untested path"
 
         token_idx = model_kwargs.get("token_idx", None)
+        start_token_idx = cur_len
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
+            start_token_idx = token_idx
 
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
@@ -2614,14 +2625,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if batch_size > 1 and has_eos_stopping_criteria:
             eos_token_id = generation_config.eos_token_id
-            idx_bs = generation_config.max_length
-            for i in range(batch_size):
-                for idx in range(len(input_ids[i])):
-                    if input_ids[i][idx] == eos_token_id:
-                        idx_bs = idx
-                    if idx > idx_bs:
-                        input_ids[i][idx] = pad_token_id
-                idx_bs = generation_config.max_length
+            # Find the positions of the first eos_token_id in each sequence
+            eos_positions = (
+                torch.isin(input_ids[:, start_token_idx:], torch.tensor(eos_token_id)).int().argmax(dim=1)
+                + start_token_idx
+            )
+            # Create a mask for positions greater than the first eos_token_id
+            mask = torch.arange(max_length).expand(batch_size, max_length) > eos_positions.unsqueeze(1)
+            # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
+            input_ids[mask] = pad_token_id
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
@@ -2802,7 +2814,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return rest
 
             prev_beams = [[root] * num_beams] * bs
-            best = [root] * bs
+            best = [[] for _ in range(bs)]
 
             def beam_score(beam):
                 return (beam[3], beam[0])
@@ -2824,8 +2836,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     if not is_finished:
                         cur_beams[batch].append(beam)
                     if is_finished or (step + 1 == beam_trace_idx):
-                        if beam_score(best[batch]) < beam_score(beam):
-                            best[batch] = beam
+                        if len(best[batch]) < num_beams:
+                            best[batch].append(beam)
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
+                        elif beam_score(best[batch][0]) < beam_score(beam):
+                            best[batch][0] = beam
+                            best[batch] = sorted(best[batch], key=lambda x: beam_score(x))
                 prev_beams = cur_beams
 
             def expand_if_needed(tensor, new_size, value, dim=-1):
@@ -2842,15 +2858,22 @@ class GaudiGenerationMixin(GenerationMixin):
                         assert False, f"Unsupported dim value: {dim}"
                 return tensor
 
-            result = [
-                torch.cat(
-                    [initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]
-                )
-                for i, b in enumerate(best)
-            ]
-            max_length = max([t.shape[-1] for t in result])
-            result = [expand_if_needed(res, max_length, model_config.pad_token_id) for res in result]
-            input_ids = torch.stack(result)
+            results = []
+            for i, beam_hyp in enumerate(best):
+                sorted_hyps = sorted(beam_hyp, key=lambda x: beam_score(x))
+                res = []
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    best_hyp_tuple = sorted_hyps.pop()
+                    resolve = resolve_beam(best_hyp_tuple)
+                    res.append(torch.cat((initial_ids[i], torch.tensor(resolve))))
+                results.append(res)
+
+            max_length = max([n.shape[-1] for m in results for n in m])
+            return_res = []
+            for i, res in enumerate(results):
+                for j in range(beam_scorer.num_beam_hyps_to_keep):
+                    return_res.append(expand_if_needed(res[j], max_length, model_config.pad_token_id))
+            input_ids = torch.stack(return_res)
             return input_ids
 
         hb_profer = HabanaProfile(
@@ -3017,7 +3040,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                if self.config.eos_token_id is not None:
+                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
@@ -3188,6 +3212,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if return_dict_in_generate:
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
+
+            if self.generation_config.static_shapes:
+                raise NotImplementedError("sequence_scores is not implemented for static_shapes")
 
             if self.config.is_encoder_decoder:
                 return GenerateBeamEncoderDecoderOutput(

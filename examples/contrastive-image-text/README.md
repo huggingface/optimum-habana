@@ -235,7 +235,8 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --dataloader_num_workers 1 \
   --mediapipe_dataloader \
   --distribution_strategy fast_ddp \
-  --trust_remote_code
+  --trust_remote_code \
+  --sdp_on_bf16
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.

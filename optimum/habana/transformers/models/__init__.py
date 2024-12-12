@@ -36,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
@@ -170,6 +176,7 @@ from .mixtral import (
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
     MixtralConfig,
+    gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -187,6 +194,9 @@ from .mllama import (
     GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
+    KVCache,
+    Matmul,
+    apply_customized_rope_module,
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,

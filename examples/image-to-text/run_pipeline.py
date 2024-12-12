@@ -174,6 +174,11 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        help="Allow PyTorch to use reduced precision in the SDPA math backend",
+    )
 
     args = parser.parse_args()
 
@@ -308,6 +313,10 @@ def main():
         "flash_attention_recompute": args.flash_attention_recompute,
         "limit_hpu_graphs": args.limit_hpu_graphs,
     }
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
