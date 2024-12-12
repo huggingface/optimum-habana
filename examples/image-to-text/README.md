@@ -33,7 +33,6 @@ python3 run_pipeline.py \
 ```
 > SDPA may introduce [reduced precison](https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-reduction-for-fp16-and-bf16-in-scaled-dot-product-attention-sdpa)
 
-
 ### Multi-cards inference with BF16
 
 Use the following commands to run Llama-3.2-90B-Vision-Instruct BF16 inference with FusedSDPA on 8 HPUs:
