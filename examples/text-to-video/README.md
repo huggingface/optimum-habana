@@ -39,3 +39,12 @@ python3 text_to_video_generation.py \
 
 Models that have been validated:
   - [ali-vilab/text-to-video-ms-1.7b](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b)
+
+CogvideoX test:
+```bash
+python3 cogvideo_generate.py \
+    --model_name_or_path CogVideoX-2b \
+    --output_name gaudi_output.mp4
+```
+
+
