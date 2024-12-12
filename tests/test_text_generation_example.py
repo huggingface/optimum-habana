@@ -361,7 +361,10 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
         # Verify output for 1 HPU, BF16
-        if check_output and model_name in MODEL_OUTPUTS:
+        if check_output:
+            assert (
+                model_name in MODEL_OUTPUTS
+            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
