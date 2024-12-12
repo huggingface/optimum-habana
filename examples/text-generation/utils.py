@@ -432,6 +432,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+            if (
+                config.rope_scaling
+                and config.rope_scaling["rope_type"] == "llama3"
+                and config.max_position_embeddings > 8192
+            ):
+                config.max_position_embeddings = 8192
             model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
 
         # Model loaded to meta is managed differently
