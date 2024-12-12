@@ -33,7 +33,6 @@ from ...modeling_attn_mask_utils import (
 from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
-
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
@@ -57,7 +56,6 @@ except ImportError:
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
-
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
@@ -384,6 +382,22 @@ class ModuleFusedSDPA(torch.nn.Module):
             padding_side,
         )
 
+class LlamaKVCache(KVCache):
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
 
 def GaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
     if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
@@ -398,8 +412,8 @@ class GaudiLlamaAttention(LlamaAttention):
 
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
-        self.k_cache = KVCache()
-        self.v_cache = KVCache()
+        self.k_cache = LlamaKVCache()
+        self.v_cache = LlamaKVCache()
 
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
