@@ -55,7 +55,7 @@ python train_hpu_lazy.py \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
-    --val-spit train \
+    --val-split train \
     --dataset-download
 ```
 
@@ -69,7 +69,7 @@ python train_hpu_graph.py \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
-    --val-spit train \
+    --val-split train \
     --dataset-download
 ```
 
