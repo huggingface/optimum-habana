@@ -1,6 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -19,6 +21,8 @@ class ModuleFusedSDPA(torch.nn.Module):
 
 
 from diffusers.models.attention import Attention
+
+
 class CogVideoXAttnProcessorGaudi:
     r"""
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
@@ -90,10 +94,13 @@ class CogVideoXAttnProcessorGaudi:
 
 import torch.nn.functional as F
 from diffusers.models import attention_processor
+
+
 attention_processor.CogVideoXAttnProcessor2_0 = CogVideoXAttnProcessorGaudi
 
 from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXSafeConv3d
 from diffusers.models.autoencoders.vae import DecoderOutput
+
 
 class CogVideoXCausalConv3dGaudi(nn.Module):
     r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
@@ -181,9 +188,13 @@ class CogVideoXCausalConv3dGaudi(nn.Module):
         return output
 
 from diffusers.models.autoencoders import autoencoder_kl_cogvideox
+
+
 autoencoder_kl_cogvideox.CogVideoXCausalConv3d = CogVideoXCausalConv3dGaudi
 
 from diffusers.models.autoencoders.autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
+
+
 class AutoencoderKLCogVideoXGaudi(AutoencoderKLCogVideoX):
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
@@ -268,6 +279,8 @@ class AutoencoderKLCogVideoXGaudi(AutoencoderKLCogVideoX):
         return DecoderOutput(sample=dec)
 
 from diffusers.models.autoencoders import autoencoder_kl_cogvideox
+
+
 autoencoder_kl_cogvideox.AutoencoderKLCogVideoX=AutoencoderKLCogVideoXGaudi
 
 

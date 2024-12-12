@@ -1,24 +1,23 @@
 import argparse
 import logging
-import sys
-from pathlib import Path
 
 import torch
-from optimum.habana.diffusers.pipelines.cogvideox.pipeline_cogvideox_gaudi import GaudiCogVideoXPipeline
 from diffusers.utils import export_to_video
 
+from optimum.habana.diffusers.pipelines.cogvideox.pipeline_cogvideox_gaudi import GaudiCogVideoXPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
-from optimum.habana.utils import set_seed
+
+
 logger = logging.getLogger(__name__)
 
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    
+
     parser.add_argument(
         "--model_name_or_path",
-        default="/mnt/disk2/libo/hf_models/CogVideoX-2b/",
+        default="CogVideoX-2b",
         type=str,
         help="Path to pre-trained model",
     )
@@ -38,32 +37,32 @@ def main():
     )
 
     args = parser.parse_args()
-    
+
     gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
     gaudi_config_kwargs["use_torch_autocast"] = True
-    
+
     gaudi_config = GaudiConfig(**gaudi_config_kwargs)
     logger.info(f"Gaudi Config: {gaudi_config}")
-    
-    
+
+
     kwargs = {
         "use_habana": True,
         "use_hpu_graphs": True,
         "gaudi_config": gaudi_config,
     }
     kwargs["torch_dtype"] = torch.bfloat16
-    
-    
+
+
     print('now to load model.....')
     pipe = GaudiCogVideoXPipeline.from_pretrained(
         args.model_name_or_path,
         **kwargs
     )
     print('pipe line load done!')
-    
+
     pipe.vae.enable_tiling()
     pipe.vae.enable_slicing()
-    
+
     print('now to generate video.')
     video = pipe(
         prompt=args.prompts,
@@ -73,9 +72,9 @@ def main():
         guidance_scale=6,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).frames[0]
-    
+
     print('generate video done!')
-    
+
     export_to_video(video, args.output_name, fps=8)
 
 
@@ -83,4 +82,4 @@ def main():
 if __name__ == "__main__":
     main()
 
- 
+

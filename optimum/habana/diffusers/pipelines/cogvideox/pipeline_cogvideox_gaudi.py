@@ -13,28 +13,21 @@
 # limitations under the License.
 
 import inspect
+import time as tm_perf
 from dataclasses import dataclass
-from math import ceil
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
-import cogvideoX_gaudi
-
-import numpy as np
-import PIL.Image
 import torch
 from diffusers import CogVideoXPipeline
-from transformers import T5EncoderModel, T5Tokenizer
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from diffusers.utils import BaseOutput, logging
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.utils import BaseOutput
-from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
+from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers.utils import logging
-
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
-import time as tm_perf
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -323,7 +316,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
                 callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-            time_box = time_box_t() 
+            time_box = time_box_t()
             time_box.start()
             # 0. Default height and width to unet
             height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
@@ -358,7 +351,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             # corresponds to doing no classifier free guidance.
             do_classifier_free_guidance = guidance_scale > 1.0
 
-            # 3. Encode input prompt 
+            # 3. Encode input prompt
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt,
                 negative_prompt,
@@ -516,10 +509,10 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
                 outputs = self.transformer(
-                    hidden_states = inputs[0], 
-                    encoder_hidden_states = inputs[1], 
-                    timestep=inputs[2], 
-                    image_rotary_emb=inputs[3], 
+                    hidden_states = inputs[0],
+                    encoder_hidden_states = inputs[1],
+                    timestep=inputs[2],
+                    image_rotary_emb=inputs[3],
                     return_dict=inputs[4]
                 )[0]
                 graph.capture_end()
