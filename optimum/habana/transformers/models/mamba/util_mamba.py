@@ -2,7 +2,7 @@ import os
 
 from huggingface_hub import hf_hub_download
 
-from optimum.habana.utils import get_habana_frameworks_version
+from ....utils import get_habana_frameworks_version
 
 
 def set_mamba_lib():
