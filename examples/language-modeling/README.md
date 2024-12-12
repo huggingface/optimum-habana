@@ -927,15 +927,18 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
 ```
 
 ### Training models with Long Sequence lengths
-We have added support for Deepspeed Ulysses https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md. This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below. 
-"context_parallel_size" sets the number of cards single input sequence will get mapped to, e.g., setting context_parallel_size=4 with an input_sequence_length=32k will result in each card processing input chunks of length 8k each (thereby reducing memory requirement for activations). This feature can be combined with Zero-3 to enable scaling not only to large sequence lengths but also to large size models.
-[Note: This feature is still in Beta version and may not work out of the box for all transformer model architectures and configurations.]
+We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below. 
+
+`--context_parallel_size` sets the number of cards single input sequences will get mapped to, e.g., setting `context_parallel_size=4` with `max_seq_len=32k` will result in each card processing input chunks of length 8k each (thereby reducing memory requirement for activations). This feature can be combined with Zero-3 to enable scaling not only to large sequence lengths but also to large size models.
+
+> [!NOTE]  
+> This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
 
 ```bash
 HL_DS_DISTRIBUTED_ATTENTION_SEQ_DIM=1   \
 python3 ../gaudi_spawn.py  \
         --world_size 8  --use_deepspeed run_lora_clm.py \
-        --model_name_or_path meta-llama/Llama-3.1-8B/ 
+        --model_name_or_path meta-llama/Llama-3.1-8B \
         --dataset_name tatsu-lab/alpaca \
         --bf16 True \
         --output_dir /tmp/lora_out \
