@@ -33,47 +33,6 @@ from ...modeling_attn_mask_utils import (
 from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len, training):
-        if training is False:
-            orig_cur = cur
-            if prev.shape == cur.shape:
-                prev.copy_(cur)
-                return orig_cur
-            if idx is None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-                # Initialize
-                prev[:, :, :inp_seq_len, :].copy_(cur)
-                return orig_cur
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len, self.training)
-
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
@@ -97,7 +56,6 @@ except ImportError:
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
-
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
@@ -427,6 +385,45 @@ class ModuleFusedSDPA(torch.nn.Module):
             padding_side,
         )
 
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    @staticmethod
+    def update(prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 def GaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
     if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
@@ -668,8 +665,8 @@ class GaudiLlamaAttention(LlamaAttention):
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
                 else:
-                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len, self.training)
-                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len, self.training)
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
