@@ -908,10 +908,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super(LlamaDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
-        if hasattr(config, "attn_batch_split"):
-            self.attn_batch_split = config.attn_batch_split
-        else:
-            self.attn_batch_split = 1
         self.self_attn = GaudiLlamaAttention(config=config, layer_idx=layer_idx)
 
         self.mlp = GaudiLlamaMLP(config)
@@ -947,6 +943,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
+        attn_batch_split: int = 1,
         prev_layer_residual: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -961,16 +958,13 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_causal_mask
         - add new arg flash_attention_fast_softmax
         """
-
-        if self.attn_batch_split > 1 and past_key_value is None:
+        if attn_batch_split > 1 and past_key_value is None:
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = attention_mask.size(0)
-            base_split_size = batch_size // self.attn_batch_split
-            remainder = batch_size % self.attn_batch_split
+            base_split_size = batch_size // attn_batch_split
+            remainder = batch_size % attn_batch_split
 
-            split_sizes = [
-                base_split_size + 1 if i < remainder else base_split_size for i in range(self.attn_batch_split)
-            ]
+            split_sizes = [base_split_size + 1 if i < remainder else base_split_size for i in range(attn_batch_split)]
 
             # Split tensors using the calculated sizes
             sub_attention_mask = torch.split(attention_mask, split_sizes, dim=0)
@@ -978,10 +972,10 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             sub_valid_sequence_lengths = torch.split(valid_sequence_lengths, split_sizes, dim=0)
             split_attn_weights = []
             split_present_key_values = []
-            split_hidden_states = [None] * self.attn_batch_split
-            residual = [None] * self.attn_batch_split
+            split_hidden_states = [None] * attn_batch_split
+            residual = [None] * attn_batch_split
 
-            for i in range(self.attn_batch_split):
+            for i in range(attn_batch_split):
                 split_hidden_states[i] = hidden_states[i]
                 if self.self_attn.layer_idx != 0:
                     # Add the residual from the previous layer
@@ -1019,13 +1013,13 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             present_key_value = [torch.cat(tensors, dim=0) for tensors in zip(*split_present_key_values)]
 
             int_residual_splits = []
-            for i in range(self.attn_batch_split):
+            for i in range(attn_batch_split):
                 split_hidden_states[i], int_residual = self.post_attn_pre_mlp(split_hidden_states[i], residual[i])
                 self.mlp.mlp_all_reduce(split_hidden_states[i])
                 int_residual_splits.append(int_residual)
 
             if self.self_attn.layer_idx == (self.self_attn.config.num_hidden_layers - 1):
-                for i in range(self.attn_batch_split):
+                for i in range(attn_batch_split):
                     split_hidden_states[i] = self.post_mlp(split_hidden_states[i], int_residual_splits[i])
 
             hidden_states = split_hidden_states
@@ -1065,7 +1059,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         if use_cache:
             outputs += (present_key_value,)
         # Store the residual spits to add them in the beginning of the next layer
-        if self.attn_batch_split > 1 and past_key_value is None:
+        if attn_batch_split > 1 and past_key_value is None:
             outputs += (int_residual_splits,)
 
         return outputs
@@ -1154,10 +1148,6 @@ class GaudiLlamaModel(LlamaModel):
         2. add device=self.device
         """
         super(LlamaModel, self).__init__(config)
-        if hasattr(config, "attn_batch_split"):
-            self.attn_batch_split = config.attn_batch_split
-        else:
-            self.attn_batch_split = 1
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
@@ -1211,6 +1201,7 @@ class GaudiLlamaModel(LlamaModel):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
+        attn_batch_split: int = 1,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -1319,14 +1310,12 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         split_prompt = False
-        if self.attn_batch_split > 1 and past_key_values is None:
+        if attn_batch_split > 1 and past_key_values is None:
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = hidden_states.size(0)
-            base_split_size = batch_size // self.attn_batch_split
-            remainder = batch_size % self.attn_batch_split
-            split_sizes = [
-                base_split_size + 1 if i < remainder else base_split_size for i in range(self.attn_batch_split)
-            ]
+            base_split_size = batch_size // attn_batch_split
+            remainder = batch_size % attn_batch_split
+            split_sizes = [base_split_size + 1 if i < remainder else base_split_size for i in range(attn_batch_split)]
             # Split tensors using the calculated sizes
             hidden_states = torch.split(hidden_states, split_sizes, dim=0)
             split_prompt = True
@@ -1368,7 +1357,7 @@ class GaudiLlamaModel(LlamaModel):
                     None,
                 )
             else:
-                if self.attn_batch_split > 1 and past_key_values is None:
+                if attn_batch_split > 1 and past_key_values is None:
                     layer_outputs = decoder_layer(
                         hidden_states,
                         attention_mask=causal_mask,
@@ -1388,6 +1377,7 @@ class GaudiLlamaModel(LlamaModel):
                         valid_sequence_lengths=valid_sequence_lengths,
                         cache_idx=cache_idx,
                         num_virtual_tokens=num_virtual_tokens,
+                        attn_batch_split=attn_batch_split,
                         prev_layer_residual=prev_layer_residual,
                     )
                     index = 1 + int(use_cache) + int(output_attentions)
@@ -1412,6 +1402,7 @@ class GaudiLlamaModel(LlamaModel):
                         valid_sequence_lengths=valid_sequence_lengths,
                         cache_idx=cache_idx,
                         num_virtual_tokens=num_virtual_tokens,
+                        attn_batch_split=attn_batch_split,
                     )
 
             hidden_states = layer_outputs[0]
@@ -1496,6 +1487,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
+        attn_batch_split: int = 1,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1529,6 +1521,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
             num_virtual_tokens=num_virtual_tokens,
+            attn_batch_split=attn_batch_split,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -1665,6 +1658,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
                 "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
+                "attn_batch_split": kwargs.get("attn_batch_split"),
             }
         )
         return model_inputs

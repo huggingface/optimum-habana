@@ -610,6 +610,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
     generation_config.use_mark_dynamic = args.use_mark_dynamic
+    generation_config.attn_batch_split = args.attn_batch_split
     if generation_config.use_mark_dynamic:
         mark_dynamic_config = get_mark_dynamic_min_max(args)
         if mark_dynamic_config.get("dim_0") is not None:
@@ -643,6 +644,9 @@ def exclude_hpu_graph_configs(args):
 def initialize_model(args, logger):
     init_start = time.perf_counter()
     setup_distributed(args)
+    if not args.world_size > 0 and args.attn_batch_split > 1:
+        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
+        args.attn_batch_split = 1
     if exclude_hpu_graph_configs(args):
         args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
@@ -659,15 +663,10 @@ def initialize_model(args, logger):
         model_dtype = torch.float
         args.attn_softmax_bf16 = False
 
-    if not use_deepspeed:
-        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
-        args.attn_batch_split = 1
-
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
-        "attn_batch_split": args.attn_batch_split,
     }
     if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
