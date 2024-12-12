@@ -81,7 +81,7 @@ def _get_supported_models_for_script(
 
     def is_valid_model_type(model_type: str) -> bool:
         true_model_type = "llama" if model_type == "llama_guard" else model_type
-        if model_type == "protst":
+        if model_type in ("protst", "chatglm"):
             in_task_mapping = True
         else:
             # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
@@ -241,6 +241,7 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
+            "THUDM/chatglm3-6b",
         ]
 
         case_only_in_gaudi2 = [
@@ -328,6 +329,8 @@ class ExampleTestMeta(type):
             return True
         elif "gemma" in model_name and IS_GAUDI2:
             return True
+        elif "chatglm3" in model_name and IS_GAUDI2 and deepspeed:
+            return True
 
         return False
 
@@ -367,6 +370,7 @@ class ExampleTestMeta(type):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile, fp8
                 )
+
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 

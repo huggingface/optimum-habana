@@ -84,9 +84,7 @@ def parse_args():
         help="Whether to perform generation in bf16 precision.",
     )
     parser.add_argument(
-        "--sdp_on_bf16",
-        action="store_true",
-        help="Allow pyTorch to use reduced precision in the SDPA math backend"
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
     parser.add_argument(
         "--warmup",

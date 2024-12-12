@@ -156,9 +156,7 @@ def main():
         help="Whether to perform in bf16 precision.",
     )
     parser.add_argument(
-        "--sdp_on_bf16",
-        action="store_true",
-        help="Allow pyTorch to use reduced precision in the SDPA math backend"
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
     parser.add_argument(
         "--log_level",

@@ -72,7 +72,7 @@ def main():
         "--sdp_on_bf16",
         action="store_true",
         default=False,
-        help="Allow pyTorch to use reduced precision in the SDPA math backend"
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument(
         "--save_outputs",

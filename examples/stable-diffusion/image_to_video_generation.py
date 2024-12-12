@@ -181,7 +181,7 @@ def main():
         "--sdp_on_bf16",
         action="store_true",
         default=False,
-        help="Allow pyTorch to use reduced precision in the SDPA math backend"
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
     args = parser.parse_args()
@@ -224,7 +224,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
-        "sdp_on_bf16" : args.sdp_on_bf16,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     set_seed(args.seed)

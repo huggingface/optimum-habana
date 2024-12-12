@@ -704,7 +704,7 @@ Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ](https://
 Currently, the support is for UINT4 inference of pre-quantized models only.
 
 ```bash
-BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/AutoGPTQ/AutoGPTQ 
+BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/AutoGPTQ/AutoGPTQ
 ```
 
 You can run a *UINT4 weight quantized* model using AutoGPTQ by adding the argument `--load_quantized_model_with_autogptq`.

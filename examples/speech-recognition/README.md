@@ -88,7 +88,8 @@ python run_speech_recognition_ctc.py \
     --sdp_on_bf16 \
     --bf16 \
     --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --sdp_on_bf16
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.
@@ -130,7 +131,8 @@ python ../gaudi_spawn.py \
     --bf16 \
     --sdp_on_bf16 \
     --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --sdp_on_bf16
 ```
 
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
@@ -178,7 +180,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+    --sdp_on_bf16
 ```
 
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
@@ -211,7 +214,8 @@ python run_speech_recognition_ctc.py \
     --gaudi_config_name="Habana/wav2vec2" \
     --sdp_on_bf16 \
     --bf16 \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --sdp_on_bf16
 ```
 ## Sequence to Sequence
 
