@@ -3,4 +3,4 @@ peft == 0.12.0
 datasets == 2.19.2
 tyro
 evaluate
-scikit-learn
+scikit-learn == 1.5.2
