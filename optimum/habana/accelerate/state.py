@@ -52,6 +52,7 @@ class GaudiPartialState(PartialState):
                 world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
                 context_parallel_size = kwargs.pop("context_parallel_size", 1)
+                self.minimize_memory = kwargs.pop("minimize_memory", False)
                 if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true":
                     if not is_deepspeed_available():
                         raise ImportError(
