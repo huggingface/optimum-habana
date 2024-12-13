@@ -3745,6 +3745,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             "CompVis/stable-diffusion-v1-4",
             **kwargs,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         num_images_per_prompt = 20
         res = {}
