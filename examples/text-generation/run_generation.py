@@ -463,6 +463,7 @@ def main():
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=False,
                 )
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
