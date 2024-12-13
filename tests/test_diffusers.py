@@ -660,6 +660,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
         set_seed(27)
         outputs = pipeline(
             prompt=prompts,
@@ -714,6 +715,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         prompt = "An image of a squirrel in Picasso style"
         generator = torch.manual_seed(seed)
