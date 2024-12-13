@@ -409,7 +409,7 @@ class GaudiAccelerator(Accelerator):
                 model.forward = convert_outputs_to_fp32(new_forward)
 
         if self.state.is_fp8_enabled:
-            model = convert_model(model)
+            model = convert_model(model, _minimize_memory=GaudiPartialState().minimize_memory)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -601,7 +601,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else convert_model(obj)
+            else convert_model(obj, _minimize_memory=GaudiPartialState().minimize_memory)
             if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
             else obj
             for obj in args
