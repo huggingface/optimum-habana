@@ -123,7 +123,7 @@ class GaudiAccelerator(Accelerator):
         dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
-        use_regional_compliation: bool | None = None,
+        use_regional_compilation: bool | None = None,
     ):
         self.trackers = []
         self.mpu = parallel_state
@@ -316,7 +316,7 @@ class GaudiAccelerator(Accelerator):
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
         self.dynamic = dynamic
-        self.use_regional_compliation = use_regional_compliation
+        self.use_regional_compilation = use_regional_compilation
 
         # Mixed precision attributes
         self.scaler = None
@@ -798,7 +798,7 @@ class GaudiAccelerator(Accelerator):
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                if self.use_regional_compliation:
+                if self.use_regional_compilation:
                     self.compile_regions(engine.module)
                 else:
                     engine.compile(compile_kwargs={"dynamic": self.dynamic})

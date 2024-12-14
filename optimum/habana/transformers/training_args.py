@@ -103,8 +103,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Set value of 'dynamic' parameter for torch.compile.
         cache_size_limit(`int`, *optional*, defaults to 'None'):
             Set value of 'cache_size_limit' parameter for torch._dynamo.config
-        use_regional_compliation (`bool`, *optional*, defaults to `False`):
-            Whether to use regional_compliation with deepspeed
+        use_regional_compilation (`bool`, *optional*, defaults to `False`):
+            Whether to use regional compilation with deepspeed
         inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
             Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
@@ -181,9 +181,9 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Set value of 'cache_size_limit' parameter for torch._dynamo.config."},
     )
 
-    use_regional_compliation: Optional[bool] = field(
+    use_regional_compilation: Optional[bool] = field(
         default=False,
-        metadata={"help": ("Whether to use regional_compliation for traing.")},
+        metadata={"help": ("Whether to use regional compilation for traing.")},
     )
 
     inline_inbuilt_nn_modules: Optional[bool] = field(

@@ -2501,7 +2501,7 @@ class GaudiTrainer(Trainer):
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "distribution_strategy": self.args.distribution_strategy,
             "dynamic": self.args.compile_dynamic,
-            "use_regional_compliation": self.args.use_regional_compliation,
+            "use_regional_compilation": self.args.use_regional_compilation,
         }
         if is_accelerate_available("0.28.0"):
             args["dataloader_config"] = dataloader_config
