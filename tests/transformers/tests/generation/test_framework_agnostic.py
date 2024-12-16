@@ -3,12 +3,8 @@ Framework agnostic tests for generate()-related methods.
 """
 
 import numpy as np
-import pytest
 from transformers import AutoTokenizer
-from transformers.testing_utils import slow
-
-
-torch_device = "hpu"
+from transformers.testing_utils import slow, torch_device
 
 
 class GenerationIntegrationTestsMixin:
@@ -50,8 +46,6 @@ class GenerationIntegrationTestsMixin:
         valid_model_kwargs = {"attention_mask": create_tensor_fn(np.zeros_like(input_ids))}
         model.generate(input_ids, **valid_model_kwargs)
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_custom_logits_processor(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         logits_processor_list_cls = self.framework_dependent_parameters["LogitsProcessorList"]
@@ -72,8 +66,6 @@ class GenerationIntegrationTestsMixin:
         bart_model.config.min_length = None
         bart_model.generate(input_ids, logits_processor=logits_processor)
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_max_new_tokens_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -230,8 +222,6 @@ class GenerationIntegrationTestsMixin:
         )
         self.assertTrue(np.allclose(transition_scores, expected_scores, atol=1e-3))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_transition_scores_beam_search_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -267,8 +257,6 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_transition_scores_beam_search_encoder_decoder_with_eos(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -303,8 +291,6 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_transition_scores_beam_search_decoder_only(self):
         model_cls = self.framework_dependent_parameters["AutoModelForCausalLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -342,8 +328,6 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_transition_scores_beam_sample_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -381,7 +365,6 @@ class GenerationIntegrationTestsMixin:
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
     @slow
-    @pytest.mark.skip("Not Implemented: sequence_scores is not implemented for static_shapes")
     def test_transition_scores_early_stopping(self):
         # This is an aggressive test that makes sure that `beam_search's`
         # transition scores are computed correctly for varying `num_return_sequences`, `num_beams` and `batch_size > 1`
@@ -417,8 +400,6 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_encoder_decoder_generate_attention_mask(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -520,8 +501,6 @@ class GenerationIntegrationTestsMixin:
         with self.assertRaises(ValueError):
             model.generate(input_ids=input_ids, inputs_embeds=input_ids)
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_generate_input_features_as_encoder_kwarg(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSpeechSeq2Seq"]
         floats_tensor = self.framework_dependent_parameters["floats_tensor"]
@@ -563,8 +542,6 @@ class GenerationIntegrationTestsMixin:
         self.assertTrue(np.array_equal(output_sequences, output_sequences_kwargs))
         self.assertEqual(output_sequences.shape, (2, 5))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_generate_encoder_outputs_attention_mask(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSpeechSeq2Seq"]
         floats_tensor = self.framework_dependent_parameters["floats_tensor"]
@@ -599,6 +576,7 @@ class GenerationIntegrationTestsMixin:
             "do_sample": False,
             "num_beams": 1,
         }
+        expectation = 13
 
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
         text = """Hello, my dog is cute and"""
@@ -608,7 +586,6 @@ class GenerationIntegrationTestsMixin:
             model = model.to(torch_device)
             tokens = tokens.to(torch_device)
 
-        expectation = model.config.max_length  # static shape should give max_length
         eos_token_id = 873
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
         self.assertTrue(expectation == len(generated_tokens[0]))
@@ -628,6 +605,7 @@ class GenerationIntegrationTestsMixin:
             "penalty_alpha": 0.6,
             "top_k": 4,
         }
+        expectation = 17
 
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
         text = """Hello, my dog is cute and"""
@@ -637,7 +615,6 @@ class GenerationIntegrationTestsMixin:
             model = model.to(torch_device)
             tokens = tokens.to(torch_device)
 
-        expectation = model.config.max_length  # static shape should give max_length
         eos_token_id = 225
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
         self.assertTrue(expectation == len(generated_tokens[0]))
@@ -646,8 +623,6 @@ class GenerationIntegrationTestsMixin:
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
         self.assertTrue(expectation == len(generated_tokens[0]))
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_eos_token_id_int_and_list_beam_search(self):
         model_cls = self.framework_dependent_parameters["AutoModelForCausalLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -673,10 +648,7 @@ class GenerationIntegrationTestsMixin:
         padded_correct_condition = expectation < len(generated_tokens[0]) and all(
             token == model.config.pad_token_id for token in generated_tokens[0][expectation:]
         )
-        static_shape_condition = expectation < len(generated_tokens[0]) and all(
-            token == eos_token_id for token in generated_tokens[0][expectation:]
-        )
-        self.assertTrue(unpadded_correct_condition or padded_correct_condition or static_shape_condition)
+        self.assertTrue(unpadded_correct_condition or padded_correct_condition)
 
         eos_token_id = [873, 198]
         generated_tokens = model.generate(**tokens, eos_token_id=eos_token_id, **generation_kwargs)
@@ -684,13 +656,8 @@ class GenerationIntegrationTestsMixin:
         padded_correct_condition = expectation < len(generated_tokens[0]) and all(
             token == model.config.pad_token_id for token in generated_tokens[0][expectation:]
         )
-        static_shape_condition = expectation < len(generated_tokens[0]) and all(
-            token in eos_token_id for token in generated_tokens[0][expectation:]
-        )
-        self.assertTrue(unpadded_correct_condition or padded_correct_condition or static_shape_condition)
+        self.assertTrue(unpadded_correct_condition or padded_correct_condition)
 
-    # TODO [gustavo] Enable this test to Optimum-habana
-    @pytest.mark.xfail
     def test_generate_vision2text_conditioning(self):
         model_cls = self.framework_dependent_parameters["AutoModelForVision2Seq"]
         floats_tensor = self.framework_dependent_parameters["floats_tensor"]
