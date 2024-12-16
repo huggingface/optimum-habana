@@ -159,27 +159,25 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset on 1 Gaudi card with the following command:
 ```bash
-PT_HPU_LAZY_MODE=0 python run_audio_classification.py \
+python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb \
+    --dataset_name superb  \
     --dataset_config_name ks \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
+    --bf16 \
     --do_eval \
     --max_length_seconds 1 \
     --attention_mask False \
     --per_device_eval_batch_size 256 \
     --dataloader_num_workers 4 \
     --use_habana \
-    --use_lazy_mode False \
+    --use_lazy_mode \
     --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
     --gaudi_config_name Habana/wav2vec2 \
-    --sdp_on_bf16 \
-    --bf16 \
-    --trust_remote_code True\
-    --torch_compile \
-    --torch_compile_backend hpu_backend
+    --trust_remote_code
 ```
 
 
