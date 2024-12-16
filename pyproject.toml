@@ -41,12 +41,3 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
-
-[tool.pytest.ini_options]
-addopts = "--doctest-glob='**/*.md'"
-doctest_optionflags="NUMBER NORMALIZE_WHITESPACE ELLIPSIS"
-markers = [
-    "flash_attn_test: marks tests related to flash attention (deselect with '-m \"not flash_attn_test\"')",
-    "bitsandbytes: select (or deselect with `not`) bitsandbytes integration tests",
-    "generate: marks tests that use the GenerationTesterMixin"
-]
