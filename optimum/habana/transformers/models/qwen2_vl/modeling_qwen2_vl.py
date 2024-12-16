@@ -51,7 +51,35 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+
+    has_fused_rope = True
+except ImportError:
+    has_fused_rope = False
+    print("Not using HPU fused kernel for apply_multimodal_rotary_pos_emb")
+
 logger = logging.get_logger(__name__)
+
+
+def apply_customized_rope(q, k, cos, sin, mrope_section):
+    if q.device.type == "hpu" and has_fused_rope:
+        mrope_section = mrope_section * 2
+        cos = torch.cat([m[i % 3] for i, m in enumerate(cos.split(mrope_section, dim=-1))], dim=-1)
+        sin = torch.cat([m[i % 3] for i, m in enumerate(sin.split(mrope_section, dim=-1))], dim=-1)
+        if k.dtype == torch.bfloat16:
+            return FusedRoPE.apply(
+                q, cos.unsqueeze(1).to(torch.bfloat16), sin.unsqueeze(1).to(torch.bfloat16), None
+            ), FusedRoPE.apply(k, cos.unsqueeze(1).to(torch.bfloat16), sin.unsqueeze(1).to(torch.bfloat16), None)
+        else:
+            return FusedRoPE.apply(
+                q,
+                cos.unsqueeze(1),
+                sin.unsqueeze(1),
+                None,
+            ), FusedRoPE.apply(k, cos.unsqueeze(1), sin.unsqueeze(1), None)
+    else:
+        return apply_multimodal_rotary_pos_emb(q, k, cos, sin, mrope_section)
 
 
 class ModuleFusedSDPA(torch.nn.Module):
@@ -237,7 +265,8 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
             cos, sin = self.rotary_emb(value_states, position_ids)
         else:
             cos, sin = position_embeddings
-        query_states, key_states = apply_multimodal_rotary_pos_emb(
+
+        query_states, key_states = apply_customized_rope(
             query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
         )
 
