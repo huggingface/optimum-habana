@@ -715,6 +715,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         prompt = "An image of a squirrel in Picasso style"
         generator = torch.manual_seed(seed)
@@ -3751,6 +3752,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             "CompVis/stable-diffusion-v1-4",
             **kwargs,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         num_images_per_prompt = 20
         res = {}
