@@ -4,6 +4,7 @@ import logging
 import torch
 from diffusers.utils import export_to_video
 
+from optimum.habana.diffusers.pipelines.cogvideox.cogvideoX_gaudi import adapt_cogvideo_to_gaudi
 from optimum.habana.diffusers.pipelines.cogvideox.pipeline_cogvideox_gaudi import GaudiCogVideoXPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 

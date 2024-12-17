@@ -283,4 +283,10 @@ from diffusers.models.autoencoders import autoencoder_kl_cogvideox
 
 autoencoder_kl_cogvideox.AutoencoderKLCogVideoX=AutoencoderKLCogVideoXGaudi
 
+import diffusers
+def adapt_cogvideo_to_gaudi():
+    diffusers.models.autoencoders.autoencoder_kl_cogvideox.CogVideoXCausalConv3d  = CogVideoXCausalConv3dGaudi
+    diffusers.models.autoencoders.autoencoder_kl_cogvideox.AutoencoderKLCogVideoX = AutoencoderKLCogVideoXGaudi
+    diffusers.models.attention_processor.CogVideoXAttnProcessor2_0 = CogVideoXAttnProcessorGaudi
+
 
