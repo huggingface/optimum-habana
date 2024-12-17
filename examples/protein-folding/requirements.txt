@@ -1,2 +1,2 @@
 datasets>=2.14.0
-scikit-learn
+scikit-learn == 1.5.2
