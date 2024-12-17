@@ -25,6 +25,7 @@ os.rename(realpath_kfn, new_kfn)
 
 env_variables["HABANA_CUSTOM_OP_DIR"] = os.path.dirname(new_file_op)
 default_path = env_variables["GC_KERNEL_PATH"]
+orig_path = '/usr/lib/habanalabs/libtpc_kernels.so'
 env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
 
 base_dir = env_variables["HABANA_CUSTOM_OP_DIR"]
@@ -37,7 +38,7 @@ logger = logging.get_logger(__name__)
 is_fast_path_available = False
 
 use_pscan_kernel = False
-if os.path.exists(custom_op_lib_path) and env_variables["GC_KERNEL_PATH"] != default_path:
+if os.path.exists(custom_op_lib_path) and default_path != orig_path:
     use_pscan_kernel = True
 
 
