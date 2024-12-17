@@ -30,8 +30,9 @@ env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
 
 base_dir = env_variables["HABANA_CUSTOM_OP_DIR"]
 
-custom_op_lib_path = str(next(Path(base_dir).glob("hpu_custom_pscan_all.cpython-*-x86_64-linux-gnu.so")))
-torch.ops.load_library(custom_op_lib_path)
+if os.path.exists(base_dir):
+    custom_op_lib_path = str(next(Path(base_dir).glob("hpu_custom_pscan_all.cpython-*-x86_64-linux-gnu.so")))
+    torch.ops.load_library(custom_op_lib_path)
 
 logger = logging.get_logger(__name__)
 
