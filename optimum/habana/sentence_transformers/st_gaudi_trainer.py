@@ -69,7 +69,7 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
     SentenceTransformerGaudiTrainer is a simple but feature-complete training and eval loop for PyTorch
     based on the 🤗 Transformers :class:`~transformers.Trainer`.
 
-    It inherits from GaudiTrainer and adapted from: 
+    It inherits from GaudiTrainer and adapted from:
         https://github.com/UKPLab/sentence-transformers/blob/v3.3.1/sentence_transformers/trainer.py
     """
 
@@ -151,7 +151,7 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
             use_hpu_graphs_for_training=True,
         ).to_dict()
 
-        # If the model ID is set via the SentenceTransformerGaudiTrainingArguments, but not via the 
+        # If the model ID is set via the SentenceTransformerGaudiTrainingArguments, but not via the
         # SentenceTransformerModelCardData, then we can set it here for the model card regardless
         if args.hub_model_id and not model.model_card_data.model_id:
             model.model_card_data.set_model_id(args.hub_model_id)
