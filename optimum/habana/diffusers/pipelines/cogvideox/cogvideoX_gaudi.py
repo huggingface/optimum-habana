@@ -153,39 +153,30 @@ class CogVideoXCausalConv3dGaudi(nn.Module):
             dilation=dilation,
         )
 
-        self.conv_cache = None
 
-    def fake_context_parallel_forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def fake_context_parallel_forward(
+        self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         kernel_size = self.time_kernel_size
         if kernel_size > 1:
-            cached_inputs = (
-                [self.conv_cache] if self.conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
-            )
+            cached_inputs = [conv_cache] if conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
             inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
-    def _clear_fake_context_parallel_cache(self):
-        del self.conv_cache
-        self.conv_cache = None
-
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        inputs = self.fake_context_parallel_forward(inputs)
-
-        #self._clear_fake_context_parallel_cache()
-        # Note: we could move these to the cpu for a lower maximum memory usage but its only a few
-        # hundred megabytes and so let's not do it for now
-        #self.conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
+    def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
+        inputs = self.fake_context_parallel_forward(inputs, conv_cache)
+        #conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
         inputs_pad = F.pad(inputs, padding_2d, mode="constant", value=0)
 
         output = self.conv(inputs_pad)
         if self.time_kernel_size>1:
-            if self.conv_cache is not None and self.conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1:].shape:
-                self.conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1:])
+            if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1:].shape:
+                conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1:])
             else:
-                self.conv_cache = inputs[:, :, -self.time_kernel_size + 1:].clone()
-        return output
+                conv_cache = inputs[:, :, -self.time_kernel_size + 1:].clone()
+        return output, conv_cache
 
 from diffusers.models.autoencoders import autoencoder_kl_cogvideox
 
@@ -237,8 +228,10 @@ class AutoencoderKLCogVideoXGaudi(AutoencoderKLCogVideoX):
         for i in range(0, height, overlap_height):
             row = []
             for j in range(0, width, overlap_width):
-                num_batches = num_frames // frame_batch_size
+                num_batches = max(num_frames // frame_batch_size, 1)
+                conv_cache = None
                 time = []
+
                 for k in range(num_batches):
                     remaining_frames = num_frames % frame_batch_size
                     start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
@@ -252,9 +245,9 @@ class AutoencoderKLCogVideoXGaudi(AutoencoderKLCogVideoX):
                     ].clone()
                     if self.post_quant_conv is not None:
                         tile = self.post_quant_conv(tile)
-                    tile = self.decoder(tile)
+                    tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
                     time.append(tile.clone())
-                self._clear_fake_context_parallel_cache()
+
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
 
