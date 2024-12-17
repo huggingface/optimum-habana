@@ -228,7 +228,7 @@ GC_KERNEL_PATH=/root/.cache/huggingface/hub/models--Habana--mamba/blobs/libcusto
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
---batch_size 1024 \
+--batch_size 1024
 ```
 
 ### Use any dataset from the Hugging Face Hub
