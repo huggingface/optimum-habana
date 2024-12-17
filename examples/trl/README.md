@@ -229,7 +229,7 @@ steps like:
 To merge the adaptors into the base model we can use the `merge_peft_adapter.py` helper script that comes with TRL:
 
 ```
-python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-7b-hf" --adapter_model_name="dpo" --output_name="stack-llama-2"
+python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-70b-hf" --adapter_model_name="dpo" --output_name="stack-llama-2"
 ```
 
 which will also push the model to your HuggingFace hub account.
@@ -239,7 +239,7 @@ which will also push the model to your HuggingFace hub account.
 We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
 ```
-python run_generation.py \
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
 --model_name_or_path ../trl/stack-llama-2/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
 --prompt "Here is my prompt"
