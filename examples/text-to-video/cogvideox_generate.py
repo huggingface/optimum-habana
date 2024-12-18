@@ -18,7 +18,7 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="CogVideoX-2b",
+        default="THUDM/CogVideoX-2b",
         type=str,
         help="Path to pre-trained model",
     )
