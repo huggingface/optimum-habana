@@ -45,7 +45,7 @@ class TestGaudiPeftTextGeneration:
             "hpu_graphs": True,
             "max_new_tokens": 128,
             "ignore_eos": True,
-            "do_sample":False,
+            "do_sample": False,
         }
         if extra_kwargs:
             generate_kwargs.update(extra_kwargs)
@@ -102,7 +102,7 @@ class TestGaudiPeftTextGeneration:
         result2 = self._text_generation(model, tokenizer, extra_kwargs={"reuse_cache": True})
 
         result3 = self._text_generation(model, tokenizer, extra_kwargs={"bucket_size": 10})
-        model=model.to("cpu")
+        model = model.to("cpu")
         if peft_method != "llama-adapter":
             assert result != result1
         assert result2 == result3
