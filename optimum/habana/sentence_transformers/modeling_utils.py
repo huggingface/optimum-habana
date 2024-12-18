@@ -20,18 +20,13 @@ def adapt_sentence_transformers_to_gaudi():
     for Gaudi.
     """
 
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers.models import Transformer
 
     from optimum.habana.sentence_transformers import (
         st_gaudi_data_collator_call,
-        st_gaudi_encode,
         st_gaudi_transformer_save,
         st_gaudi_transformer_tokenize,
     )
-
-    SentenceTransformer.encode = st_gaudi_encode
-
-    from sentence_transformers.models import Transformer
 
     Transformer.tokenize = st_gaudi_transformer_tokenize
     Transformer.save = st_gaudi_transformer_save
