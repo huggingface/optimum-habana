@@ -461,7 +461,7 @@ def main():
                     return_token_type_ids = True
                 else:
                     return_token_type_ids = False
-                
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
