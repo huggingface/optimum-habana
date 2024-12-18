@@ -466,11 +466,8 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
 
         #HabanaProfile.stop()
         if not output_type == "latent":
-            #print('baymax now to decode latents')
-            #latents = latents.to('cpu')
             video = self.decode_latents(latents)
             time_box.show_time('decode latents')
-            #print('baymax decode latents done!')
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
             time_box.show_time('postprocess_video')
         else:
