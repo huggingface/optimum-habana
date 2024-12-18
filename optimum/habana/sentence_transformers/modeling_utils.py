@@ -20,6 +20,7 @@ def adapt_sentence_transformers_to_gaudi():
     for Gaudi.
     """
 
+    from sentence_transformers.data_collator import SentenceTransformerDataCollator
     from sentence_transformers.models import Transformer
 
     from optimum.habana.sentence_transformers import (
@@ -30,7 +31,4 @@ def adapt_sentence_transformers_to_gaudi():
 
     Transformer.tokenize = st_gaudi_transformer_tokenize
     Transformer.save = st_gaudi_transformer_save
-
-    from sentence_transformers.data_collator import SentenceTransformerDataCollator
-
     SentenceTransformerDataCollator.__call__ = st_gaudi_data_collator_call
