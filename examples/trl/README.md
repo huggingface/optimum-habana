@@ -46,7 +46,7 @@ $ pip install -U -r requirements.txt
 
     ```
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
-        --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+        --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
         --streaming False \
