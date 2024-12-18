@@ -43,6 +43,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
+            ("google/gemma-2-27b", 1, False, 36.578709544111, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
             ("Deci/DeciLM-7B", 1, False, 120, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
@@ -87,6 +88,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
             ("google/gemma-2-9b", 8, 1, 110.12610917383735),
+            ("google/gemma-2-27b", 8, 1, 87.578709544111),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -109,6 +111,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "bigcode/starcoder2-3b": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_with_name(name):\n    print("Hello World, " + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print("Hello World, " + name + ", " + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print("Hello',
         "google/gemma-7b": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models. DeepSpeed is designed to be scalable, and it can be used to train models on a single machine or on a cluster of machines. DeepSpeed is designed to be efficient,",
         "google/gemma-2-9b": "DeepSpeed is a machine learning framework that enables training of large-scale deep learning models on a single GPU or across multiple GPUs. It is designed to be easy to use and highly scalable, making it a powerful tool for researchers and practitioners working with large-scale deep learning models.\n\nDeepSpeed is built on top of PyTorch, a popular deep learning framework, and provides a set of tools and libraries that make it easy to train large-scale models. It includes features such as zero-shot inference, which allows models to be",
+        "google/gemma-2-27b": "DeepSpeed is a machine learning framework that enables you to train models with trillions of parameters and beyond, using model parallelism to partition large models over multiple GPUs.\n\nThe following is a brief introduction to the DeepSpeed model parallel training.\n\n<h2>1. Introduction</h2>\n\nThe DeepSpeed model parallel training is a simple and effective way to train large models. It is a framework that enables you to train models with trillions of parameters and beyond.\n\nDeepSpeed is a distributed deep learning optimization toolkit that makes it easy and efficient",
         "meta-llama/Llama-2-7b-hf": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
         "mistralai/Mistral-7B-v0.1": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
         "mistralai/Mixtral-8x7B-v0.1": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
