@@ -20,6 +20,8 @@
 
 """PyTorch Mixtral model."""
 
+import os
+
 import contextlib
 import math
 from typing import List, Optional, Tuple, Union
@@ -355,6 +357,15 @@ class GaudiMixtralAttention(MixtralAttention):
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
+
+
+def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    # We need this workaround until moe op in hpu is supporting fp8
+    if not self.training and not os.environ.get("QUANT_CONFIG"):
+        return self.dynamic_moe_forward(hidden_states)
+
+    return self.sparse_moe_forward(hidden_states)
 
 
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
