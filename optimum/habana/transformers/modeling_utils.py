@@ -28,6 +28,7 @@ from .generation import (
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
+    GAUDI_QWEN2_VL_ATTENTION_CLASSES,
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
     BaichuanForCausalLM,
@@ -140,6 +141,10 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -683,6 +688,15 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
     transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
+
+    # Optimization for Qwen2-VL on Gaudi
+    transformers.models.qwen2_vl.modeling_qwen2_vl.QWEN2_VL_ATTENTION_CLASSES = GAUDI_QWEN2_VL_ATTENTION_CLASSES
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLDecoderLayer = GaudiQwen2VLDecoderLayer
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLSdpaAttention = GaudiQwen2VLSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLModel = GaudiQwen2VLModel
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
+        GaudiQwen2VLForConditionalGeneration
+    )
 
     # Optimization for mllama on Gaudi
     transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
