@@ -224,6 +224,11 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if hasattr(self.model, "is_hpu_graph_enabled"):
             self.model.is_hpu_graph_enabled = True
 
+        if _is_peft_model(self.model):
+            base_model = self.model.get_base_model()
+            if hasattr(base_model, "is_hpu_graph_enabled"):
+                base_model.is_hpu_graph_enabled = True
+
         if loss is None:
             logger.info("No `loss` passed, using `losses.CoSENTLoss` as a default option.")
             loss = CoSENTLoss(self.model)
