@@ -1094,6 +1094,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     "gemma2",
                     "baichuan",
                     "chatglm",
+                    "deepseek_v2",
                 ]
             ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
             if not generation_config.bucket_internal:
@@ -1301,6 +1302,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "qwen2_moe",
                 "baichuan",
+                "deepseek_v2",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
