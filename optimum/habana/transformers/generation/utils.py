@@ -112,6 +112,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "paligemma",
     "idefics2",
     "mllama",
+    "video_llava",
     "minicpm3",
     "baichuan",
     "deepseek_v2",
