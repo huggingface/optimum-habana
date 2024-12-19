@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
         "--show_graphs_count",
         action="store_true",
         help="Show statistics of HPU graph compilation.",
