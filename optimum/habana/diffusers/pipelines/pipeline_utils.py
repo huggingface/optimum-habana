@@ -392,13 +392,14 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             unet_lora_layers = to_device_dtype(unet_lora_layers, target_device=torch.device("cpu"))
         if text_encoder_lora_layers:
             text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
-        if text_encoder_2_lora_layers:
-            text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
+        # TODO: add back text_encoder_2_lora_layers when the correct save_lora_weights function is identified
+        #if text_encoder_2_lora_layers:
+        #    text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
         return super().save_lora_weights(
             save_directory,
             unet_lora_layers,
             text_encoder_lora_layers,
-            text_encoder_2_lora_layers,
+            #text_encoder_2_lora_layers,
             is_main_process,
             weight_name,
             save_function,
