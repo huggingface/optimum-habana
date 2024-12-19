@@ -394,13 +394,26 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
         if text_encoder_2_lora_layers:
             text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
-        return super().save_lora_weights(
-            save_directory,
-            unet_lora_layers,
-            text_encoder_lora_layers,
-            text_encoder_2_lora_layers,
-            is_main_process,
-            weight_name,
-            save_function,
-            safe_serialization,
-        )
+
+        # text_encoder_2_lora_layers is only supported by some diffuser pipelines
+        if text_encoder_2_lora_layers:
+            return super().save_lora_weights(
+                save_directory,
+                unet_lora_layers,
+                text_encoder_lora_layers,
+                text_encoder_2_lora_layers,
+                is_main_process,
+                weight_name,
+                save_function,
+                safe_serialization,
+            )
+        else:
+            return super().save_lora_weights(
+                save_directory,
+                unet_lora_layers,
+                text_encoder_lora_layers,
+                is_main_process,
+                weight_name,
+                save_function,
+                safe_serialization,
+            )
