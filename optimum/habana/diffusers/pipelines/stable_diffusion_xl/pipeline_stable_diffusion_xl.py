@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -33,6 +34,7 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
+from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
@@ -141,6 +143,36 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         self.unet.set_default_attn_processor = set_default_attn_processor_hpu
 
         self.to(self._device)
+
+    @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        # Move the state dict from HPU to CPU before saving
+        if unet_lora_layers:
+            unet_lora_layers = to_device_dtype(unet_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_lora_layers:
+            text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_2_lora_layers:
+            text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
+        return StableDiffusionXLPipeline.save_lora_weights(
+            save_directory,
+            unet_lora_layers,
+            text_encoder_lora_layers,
+            text_encoder_2_lora_layers,
+            is_main_process,
+            weight_name,
+            save_function,
+            safe_serialization,
+        )
 
     def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (num_images, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
