@@ -198,7 +198,6 @@ python train_controlnet.py \
  --train_batch_size=4 \
  --throughput_warmup_steps=3 \
  --use_hpu_graphs \
- --sdp_on_bf16 \
  --bf16 \
  --trust_remote_code
 ```
@@ -218,7 +217,6 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --train_batch_size=4 \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs \
-  --sdp_on_bf16 \
   --bf16 \
   --trust_remote_code
 ```

@@ -2550,7 +2550,6 @@ class TrainControlNet(TestCase):
                     --checkpointing_steps 1000
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
-                    --sdp_on_bf16
                     --bf16
                     --max_train_steps 10
                     --output_dir {tmpdir}
