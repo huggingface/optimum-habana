@@ -28,10 +28,10 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
-from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
+from ...utils import to_device_dtype
 
 
 logger = logging.get_logger(__name__)
@@ -396,7 +396,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
 
         # text_encoder_2_lora_layers is only supported by some diffuser pipelines
-        if text_encoder_2_lora_layers:
+        signature = inspect.signature(super().save_lora_weights)
+        if "text_encoder_2_lora_layers" in signature.parameters:
             return super().save_lora_weights(
                 save_directory,
                 unet_lora_layers,
