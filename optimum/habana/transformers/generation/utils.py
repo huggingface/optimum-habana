@@ -2458,7 +2458,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
-                    next_token_logits = outputs.logits[:, token_idx - 1, :].float()
+                    next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     if model_kwargs.get("num_virtual_tokens", 0) > 0:
@@ -2472,8 +2472,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
-                # .float() is needed to retain precision for later logits manipulations
-                next_token_logits = outputs.logits[:, -1, :].float()
+                next_token_logits = outputs.logits[:, -1, :]
                 if token_idx is not None and self.config.is_encoder_decoder:
                     # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
                     next_token_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
