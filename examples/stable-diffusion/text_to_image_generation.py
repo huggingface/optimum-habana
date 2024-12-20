@@ -440,9 +440,11 @@ def main():
 
     kwargs_call["quant_mode"] = args.quant_mode
 
-    # Instantiate a Stable Diffusion pipeline class
-    import habana_frameworks.torch.core as htcore  # noqa: F401
+    if args.quant_mode != "disable":
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
 
+    # Instantiate a Stable Diffusion pipeline class
     if sdxl:
         # SDXL pipelines
         if controlnet:
