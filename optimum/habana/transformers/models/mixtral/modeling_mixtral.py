@@ -19,9 +19,10 @@
 # limitations under the License.
 
 """PyTorch Mixtral model."""
-import os
+
 import contextlib
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -46,6 +47,8 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
+from optimum.habana.utils import get_device_name
+
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaLinearScalingRotaryEmbedding,
@@ -53,7 +56,7 @@ from ..llama.modeling_llama import (
 )
 from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
-from optimum.habana.utils import get_device_name
+
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
@@ -356,8 +359,8 @@ class GaudiMixtralAttention(MixtralAttention):
 
         return attn_output, attn_weights, past_key_value
 
-def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
+def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     # We need this workaround until moe op in hpu is supporting fp8
     if not self.training and not os.environ.get("QUANT_CONFIG"):
         if get_device_name() == "gaudi":
@@ -367,6 +370,7 @@ def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[
             return self.dynamic_moe_forward(hidden_states)
 
     return self.sparse_moe_forward(hidden_states)
+
 
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
