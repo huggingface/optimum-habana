@@ -944,7 +944,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_fast_softmax
         """
         if attn_batch_split > 1 and past_key_value is None:
-            print(" ##########################   PRROMPT")
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = attention_mask.size(0)
             base_split_size = batch_size // attn_batch_split
