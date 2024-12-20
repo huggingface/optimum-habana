@@ -396,7 +396,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
 
         # text_encoder_2_lora_layers is only supported by some diffuser pipelines
-        if text_encoder_2_lora_layers:
+        signature = inspect.signature(super().save_lora_weights)
+        if "text_encoder_2_lora_layers" in signature.parameters:
             return super().save_lora_weights(
                 save_directory,
                 unet_lora_layers,
