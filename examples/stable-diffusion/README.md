@@ -372,7 +372,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 4 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -399,7 +399,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -420,7 +420,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -440,7 +440,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
