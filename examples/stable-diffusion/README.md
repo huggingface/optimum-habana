@@ -577,7 +577,7 @@ python text_to_image_generation.py \
 
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1 \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
