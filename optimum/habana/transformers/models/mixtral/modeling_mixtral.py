@@ -55,7 +55,7 @@ from ..llama.modeling_llama import (
 )
 from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
-from .utils import get_device_name
+from optimum.habana.utils import get_device_name
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
