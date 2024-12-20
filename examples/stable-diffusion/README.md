@@ -48,6 +48,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -90,6 +91,7 @@ python ../gaudi_spawn.py \
     --distributed
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -114,6 +116,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > There are two different checkpoints for Stable Diffusion 2:
 >
 > - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
@@ -160,6 +163,7 @@ python ../gaudi_spawn.py \
     --distributed
 ```
 
+> [!NOTE]
 > There are three different checkpoints for LDM3D:
 >
 > - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
@@ -187,6 +191,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -286,6 +291,7 @@ QUANT_CONFIG=./quantization/quant_config.json python text_to_image_generation.py
     --optimize
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -314,11 +320,14 @@ python text_to_image_generation.py \
     --timestep_spacing trailing
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-> Note: there is a regression with "--guidance_scale 0.0" in current release which will be addressed in later releases. Setting `--guidance_scale` to a value larger than 1 resolves the regression.
+> [!NOTE]
+> There is a regression with `--guidance_scale 0.0` in current release which will be addressed in later releases.
+> Setting `--guidance_scale` to a value larger than 1 resolves the regression.
 
 ### Stable Diffusion 3 (SD3)
 
@@ -353,6 +362,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 
@@ -616,6 +626,7 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -642,6 +653,7 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -834,6 +846,7 @@ python image_to_video_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 
@@ -859,6 +872,7 @@ python image_to_video_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 
@@ -871,19 +885,19 @@ python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
     --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
     --control_image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_0.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_1.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_2.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_3.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_4.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_5.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_6.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_7.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_8.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_9.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_10.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_11.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_12.png?raw=true" \
-             "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_13.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_1.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_2.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_3.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_4.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_5.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_6.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_7.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_8.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_9.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_10.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_11.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_12.png?raw=true" \
+        "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/depth/frame_13.png?raw=true" \
     --image_path "https://github.com/CiaraStrawberry/svd-temporal-controlnet/blob/main/validation_demo/chair.png?raw=true" \
     --video_save_dir SVD_controlnet \
     --save_frames_as_images \
