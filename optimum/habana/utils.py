@@ -399,5 +399,7 @@ def get_device_name():
         return "gaudi"
     elif device_type == htexp.synDeviceType.synDeviceGaudi2:
         return "gaudi2"
+    elif device_type == htexp.synDeviceType.synDeviceGaudi3:
+        return "gaudi3"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
