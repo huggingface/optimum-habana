@@ -180,6 +180,7 @@ from .mixtral import (
     MixtralConfig,
     gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
+    gaudi_mixtral_block_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .mllama import (
