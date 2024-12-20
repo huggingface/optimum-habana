@@ -1909,6 +1909,14 @@ class GaudiTrainer(Trainer):
         # set a default dtype of logits
         logits_dtype: str = "float32"
 
+        hb_profiler = HabanaProfile(
+            warmup=self.args.profiling_warmup_steps,
+            active=self.args.profiling_steps,
+            record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
+        )
+        hb_profiler.start()
+
         # Main evaluation loop
         start_time_eval = time.time()
         for step, inputs in enumerate(dataloader):
@@ -2000,6 +2008,9 @@ class GaudiTrainer(Trainer):
             if args.use_lazy_mode:
                 self.htcore.mark_step()
 
+            hb_profiler.step()
+            
+        hb_profiler.stop()
         # After all calls to `.gather_function`, reset to `gather_for_metrics`:
         self.gather_function = self.accelerator.gather_for_metrics
         if args.past_index and hasattr(self, "_past"):

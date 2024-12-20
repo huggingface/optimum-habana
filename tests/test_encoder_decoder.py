@@ -16,15 +16,15 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 3.673, 28.9801, 2, 2),
-                ("t5-3b", "Habana/t5", 2.955, 21.8877, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 4.64, 28.9801, 2, 2),
+                ("t5-3b", "Habana/t5", 3.65, 21.8877, 2, 1),
             ],
         },
         "translation": {
             "bf16": [
-                ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1509, 2, 1),
-                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.815, 0.8132, 2, 1),
-                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.284, 1.2599, 2, 1),
+                ("Babelscape/mrebel-large", "Habana/t5", 5.60, 0.1509, 2, 1),
+                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 12.52, 0.8132, 2, 1),
+                ("facebook/nllb-200-distilled-600M", "Habana/t5", 5.80, 1.2599, 2, 1),
                 ("t5-small", "Habana/t5", 11.164, 11.7277, 2, 1),
             ],
         },
@@ -152,6 +152,7 @@ class TestEncoderDecoderModels:
             "--use_hpu_graphs_for_inference",
             "--use_lazy_mode",
             "--max_predict_samples 200",
+            "--throughput_warmup_steps 3",
         ]
 
         command = self._build_command(
@@ -201,6 +202,7 @@ class TestEncoderDecoderModels:
             "--ignore_pad_token_for_loss False",
             "--pad_to_max_length",
             "--max_predict_samples 200",
+            "--throughput_warmup_steps 3",
         ]
 
         if "opus-mt-zh-en" in model_name:
