@@ -441,7 +441,7 @@ def main():
     kwargs_call["quant_mode"] = args.quant_mode
 
     # Instantiate a Stable Diffusion pipeline class
-    #import habana_frameworks.torch.core as htcore  # noqa: F401
+    import habana_frameworks.torch.core as htcore  # noqa: F401
 
     if sdxl:
         # SDXL pipelines
