@@ -343,7 +343,7 @@ def setup_parser(parser):
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
-    quant_parser_group.add_argument(
+    parser.add_argument(
         "--attn_batch_split",
         default=1,
         type=int,

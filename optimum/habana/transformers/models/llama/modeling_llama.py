@@ -944,6 +944,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_fast_softmax
         """
         if attn_batch_split > 1 and past_key_value is None:
+            print(" ##########################   PRROMPT")
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = attention_mask.size(0)
             base_split_size = batch_size // attn_batch_split
@@ -1295,6 +1296,7 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         split_prompt = False
+        prev_layer_residual = None
         if attn_batch_split > 1 and past_key_values is None:
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = hidden_states.size(0)
@@ -1304,7 +1306,6 @@ class GaudiLlamaModel(LlamaModel):
             # Split tensors using the calculated sizes
             hidden_states = torch.split(hidden_states, split_sizes, dim=0)
             split_prompt = True
-            prev_layer_residual = None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
             if (
@@ -1342,53 +1343,32 @@ class GaudiLlamaModel(LlamaModel):
                     None,
                 )
             else:
-                if attn_batch_split > 1 and past_key_values is None:
-                    layer_outputs = decoder_layer(
-                        hidden_states,
-                        attention_mask=causal_mask,
-                        position_ids=position_ids,
-                        past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                        output_attentions=output_attentions,
-                        use_cache=use_cache,
-                        cache_position=cache_position,
-                        position_embeddings=position_embeddings,
-                        token_idx=token_idx,
-                        attn_softmax_bf16=attn_softmax_bf16,
-                        reuse_cache=reuse_cache,
-                        use_flash_attention=use_flash_attention,
-                        flash_attention_recompute=flash_attention_recompute,
-                        flash_attention_causal_mask=flash_attention_causal_mask,
-                        flash_attention_fast_softmax=flash_attention_fast_softmax,
-                        valid_sequence_lengths=valid_sequence_lengths,
-                        cache_idx=cache_idx,
-                        num_virtual_tokens=num_virtual_tokens,
-                        attn_batch_split=attn_batch_split,
-                        prev_layer_residual=prev_layer_residual,
-                    )
+                use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
+                layer_outputs = decoder_layer(
+                    hidden_states,
+                    attention_mask=causal_mask,
+                    position_ids=position_ids,
+                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    token_idx=token_idx,
+                    attn_softmax_bf16=attn_softmax_bf16,
+                    reuse_cache=reuse_cache,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
+                    flash_attention_causal_mask=flash_attention_causal_mask,
+                    flash_attention_fast_softmax=flash_attention_fast_softmax,
+                    valid_sequence_lengths=valid_sequence_lengths,
+                    cache_idx=cache_idx,
+                    num_virtual_tokens=num_virtual_tokens,
+                    attn_batch_split=attn_batch_split,
+                    prev_layer_residual=prev_layer_residual,
+                )
+                if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)
                     prev_layer_residual = layer_outputs[index]
-                else:
-                    layer_outputs = decoder_layer(
-                        hidden_states,
-                        attention_mask=causal_mask,
-                        position_ids=position_ids,
-                        past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                        output_attentions=output_attentions,
-                        use_cache=use_cache,
-                        cache_position=cache_position,
-                        position_embeddings=position_embeddings,
-                        token_idx=token_idx,
-                        attn_softmax_bf16=attn_softmax_bf16,
-                        reuse_cache=reuse_cache,
-                        use_flash_attention=use_flash_attention,
-                        flash_attention_recompute=flash_attention_recompute,
-                        flash_attention_causal_mask=flash_attention_causal_mask,
-                        flash_attention_fast_softmax=flash_attention_fast_softmax,
-                        valid_sequence_lengths=valid_sequence_lengths,
-                        cache_idx=cache_idx,
-                        num_virtual_tokens=num_virtual_tokens,
-                        attn_batch_split=attn_batch_split,
-                    )
 
             hidden_states = layer_outputs[0]
 
