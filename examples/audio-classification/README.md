@@ -164,6 +164,7 @@ python run_audio_classification.py \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
+    --bf16 \
     --do_eval \
     --max_length_seconds 1 \
     --attention_mask False \
@@ -172,11 +173,9 @@ python run_audio_classification.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
     --gaudi_config_name Habana/wav2vec2 \
-    --bf16 \
-    --trust_remote_code True\
-    --torch_compile \
-    --torch_compile_backend hpu_backend
+    --trust_remote_code
 ```
 
 

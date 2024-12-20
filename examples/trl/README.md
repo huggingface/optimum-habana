@@ -39,7 +39,8 @@ $ pip install -U -r requirements.txt
         --lora_dropout=0.05 \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
-        --adam_epsilon 1e-08
+        --adam_epsilon 1e-08 \
+        --use_flash_attention
     ```
 
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-v0.1 on 4 cards:
