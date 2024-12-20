@@ -120,6 +120,7 @@ def log_validation(
         use_habana=True,
         use_hpu_graphs=args.use_hpu_graphs,
         gaudi_config=gaudi_config,
+        sdp_on_bf16=args.sdp_on_bf16,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
@@ -437,6 +438,12 @@ def parse_args(input_args=None):
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
+    )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument(
         "--bf16",
