@@ -219,6 +219,18 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --sdp_on_bf16
 > ```
 
+To run Mamba-130m inference on 1 Gaudi2 card, use the following command, for example if default custom kernel path is in /root/.cache/huggingface/hub/models--Habana--mamba/blobs/libcustom_tpc_perf_lib.so, if libcustom_tpc_perf_lib.so is in different folder, set accordingly,
+```bash
+GC_KERNEL_PATH=/root/.cache/huggingface/hub/models--Habana--mamba/blobs/libcustom_tpc_perf_lib.so:$GC_KERNEL_PATH python run_generation.py \
+--model_name_or_path state-spaces/mamba-130m-hf \
+--max_input_tokens 128 \
+--max_new_tokens 128 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1024
+```
+
 ### Use any dataset from the Hugging Face Hub
 
 You can also provide the name of a dataset from the Hugging Face Hub to perform generation on it with the argument `--dataset_name`.
