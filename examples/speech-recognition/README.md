@@ -34,6 +34,11 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+
+> [!NOTE]
+> If custom models on hub is being used, please add --trust_remote_code
+
+
 ## Connectionist Temporal Classification
 
 The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
