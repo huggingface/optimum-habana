@@ -36,7 +36,7 @@ pip install -r requirements.txt
 
 
 > [!NOTE]
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true or use --trust_remote_code
+> If custom models on hub is being used, please add --trust_remote_code
 
 
 ## Connectionist Temporal Classification
