@@ -123,6 +123,7 @@ class GaudiAccelerator(Accelerator):
         dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        use_regional_compilation: bool | None = None,
     ):
         self.trackers = []
         self.mpu = parallel_state
@@ -315,6 +316,7 @@ class GaudiAccelerator(Accelerator):
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
         self.dynamic = dynamic
+        self.use_regional_compilation = use_regional_compilation
 
         # Mixed precision attributes
         self.scaler = None
@@ -577,6 +579,19 @@ class GaudiAccelerator(Accelerator):
                 model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
+    def compile_regions(self, model):
+        if isinstance(model, torch.nn.ModuleList):
+            for name, module in model.named_children():
+                if self.dynamic is not None:
+                    module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+                else:
+                    module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
+                module.__dict__.pop("_parameters", None)
+                setattr(model, name, module)
+        else:
+            for _, module in model.named_children():
+                self.compile_regions(module)
+
     def _prepare_deepspeed(self, *args):
         import deepspeed
 
@@ -783,7 +798,10 @@ class GaudiAccelerator(Accelerator):
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                engine.compile(compile_kwargs={"dynamic": self.dynamic})
+                if self.use_regional_compilation:
+                    self.compile_regions(engine.module)
+                else:
+                    engine.compile(compile_kwargs={"dynamic": self.dynamic})
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:

@@ -2463,6 +2463,7 @@ class GaudiTrainer(Trainer):
             "distribution_strategy": self.args.distribution_strategy,
             "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
+            "use_regional_compilation": self.args.use_regional_compilation,
         }
 
         # create accelerator object
