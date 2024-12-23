@@ -853,24 +853,7 @@ class DeepseekV2Attention(nn.Module):
         self.v_head_dim = config.v_head_dim
         self.qk_nope_head_dim = config.qk_nope_head_dim
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        
-        self.fused_scaled_dot_product_attention = (
-            ModuleFusedSDPA(
-                FusedSDPA,
-                scale=self.norm_factor,
-                attention_dropout=self.attention_dropout,
-                enable_recompute=False,
-                flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
-            )
-            if FusedSDPA
-            else None
-        )
-
-        
-        #self.head_dim = self.hidden_size // self.num_heads
-        
-        
+         
         self.is_causal = True
 
         if self.q_lora_rank is None:
@@ -913,6 +896,19 @@ class DeepseekV2Attention(nn.Module):
             if mscale_all_dim:
                 mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
+
+        self.norm_factor = self.softmax_scale
+        self.fused_scaled_dot_product_attention = (
+            ModuleFusedSDPA(
+                FusedSDPA,
+                scale=self.norm_factor,
+                attention_dropout=self.attention_dropout,
+                enable_recompute=False,
+                flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+            )
+            if FusedSDPA
+            else None
+        )
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -1090,13 +1086,11 @@ class DeepseekV2Attention(nn.Module):
                     else:
                         kv_seq_len += past_key_value[0].shape[-2]
                 else:
-                    if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
-                        kv_seq_len = past_key_value[0][-2]
+                    ######## zhejiang fix
+                    if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
+                        kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
                     else:
-                        if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
-                            kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
-                        else:
-                            kv_seq_len = past_key_value[0].shape[-2]
+                        kv_seq_len = past_key_value[0].shape[-2]
                 
                 #############
                 #kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
@@ -1110,55 +1104,13 @@ class DeepseekV2Attention(nn.Module):
             key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
             key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
-            #################optimization
-            if use_cache:
-                # reuse k, v, self_attention
-                if reuse_cache:
-                    if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
-                        # prefix tuning case. attach past_key_value to generate first token.
-                        key_states = torch.cat((past_key_value[0], key_states), -2)
-                        value_states = torch.cat((past_key_value[1], value_states), -2)
-                    key_states = self.k_cache(key_states, 2, token_idx)
-                    value_states = self.v_cache(value_states, 2, token_idx)
-                    past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
-                else:
-                    if past_key_value is None:
-                        past_key = torch.zeros(key_states.shape, dtype=self.kv_b_proj.weight.dtype, device=key_states.device)
-                        past_value = torch.zeros(
-                            key_states.shape, dtype=self.kv_b_proj.weight.dtype, device=key_states.device
-                        )
-                        # Return list instead of tuple
-                        past_key_value = [past_key, past_value]
-                    if (
-                        token_idx is not None
-                        and num_virtual_tokens is not None
-                        and num_virtual_tokens == past_key_value[0].shape[-2]
-                    ):
-                        # prefix tuning case. attach past_key_value to generate first token.
-                        key_states = torch.cat((past_key_value[0], key_states), -2)
-                        value_states = torch.cat((past_key_value[1], value_states), -2)
-                        past_key_value = (key_states, value_states)
-                    else:
-                        key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                        value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-
-                    if token_idx is None:
-                        past_key_value = (key_states, value_states)
-
-                if cache_idx is not None and q_len == 1:
-                    key_states = key_states[:, :, :cache_idx, :]
-                    value_states = value_states[:, :, :cache_idx, :]
-                    if attention_mask is not None:
-                        attention_mask = attention_mask[:, :, :, :cache_idx]
-                    kv_seq_len = key_states.shape[-2]
-            else:
-                past_key_value = None
-            ##############
-            # if past_key_value is not None:
-            #     cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            #     key_states, value_states = past_key_value.update(
-            #         key_states, value_states, self.layer_idx, cache_kwargs
-            #     )
+            
+            ##### zhejiang fix
+            if past_key_value is not None:
+                cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
             ##################optimization
             if use_flash_attention and FusedSDPA is not None:
                 if q_len == 1:
@@ -1213,7 +1165,6 @@ class DeepseekV2Attention(nn.Module):
                     query_states, key_states, value_states, attention_mask, self.num_key_value_groups
                 )
                 
-
                 #query_states = query_states * self.norm_factor
                 #attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
                 attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
@@ -1235,34 +1186,6 @@ class DeepseekV2Attention(nn.Module):
                 attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
                 attn_output = self.matmul_av(attn_weights, value_states)
                 #attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-            '''
-            ###############    
-            if FusedSDPA:
-                with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            else:
-                attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
-
-                if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-                    raise ValueError(
-                        f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                        f" {attn_weights.size()}"
-                    )
-                assert attention_mask is not None
-                if attention_mask is not None:
-                    if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                        raise ValueError(
-                            f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                        )
-                    attn_weights = attn_weights + attention_mask
-
-                # upcast attention to fp32
-                attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-                attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-                attn_output = torch.matmul(attn_weights, value_states)
-            '''
         else:
             hidden_states_q = hidden_states
             hidden_states_kv = hidden_states
