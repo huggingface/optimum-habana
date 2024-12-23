@@ -414,8 +414,8 @@ def test_text_generation_bf16_1x(
         check_output=check_output,
     )
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
 )
@@ -444,8 +444,7 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -481,23 +480,20 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, world_size:
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
     world_size = 8
@@ -520,8 +516,7 @@ def test_text_generation_contrastive_search(
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))),
-                    reason="Skipping test for G1")
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
