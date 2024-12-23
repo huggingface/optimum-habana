@@ -26,8 +26,7 @@ import time
 
 import lm_eval.evaluator
 import lm_eval.tasks
-from lm_eval.models.huggingface import (HFLM, 
-        _get_accelerate_args)
+from lm_eval.models.huggingface import HFLM
 from lm_eval.models.utils import get_dtype
 import psutil
 import torch
@@ -40,7 +39,6 @@ from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
-import optimum.habana.accelerate
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 logger = logging.getLogger(__name__)
@@ -225,21 +223,11 @@ class HabanaModelAdapter(HFLM):
         from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
         adapt_transformers_to_gaudi()
 
-        model_kwargs = kwargs if kwargs else {}
-        model_kwargs.update(
-                _get_accelerate_args(
-                max_memory_per_gpu=max_memory_per_gpu,
-                max_cpu_memory=max_cpu_memory,
-                offload_folder=offload_folder,
-                )
-        )
-
         self._model = self.AUTO_MODEL_CLASS.from_pretrained(
             pretrained,
             revision=revision,
             torch_dtype=get_dtype(dtype),
             trust_remote_code=trust_remote_code,
-            **model_kwargs,
         )
 
 def main() -> None:
