@@ -192,7 +192,7 @@ class HabanaModelAdapter(HFLM):
                 self._model.allocate_kv_cache(bs, bucket_length + 1, bucket_length)
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self._model.config.pad_token_id)
-        logits = self._model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
+        logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"].cpu()
 
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
@@ -219,7 +219,7 @@ def main() -> None:
     eval_start = time.perf_counter()
     with torch.no_grad():
         #results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        results = lm_eval.evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
