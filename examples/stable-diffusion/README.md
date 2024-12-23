@@ -897,6 +897,8 @@ python image_to_video_generation.py \
     --width=512 \
     --height=512
 ```
-Gaudi3 Notes:
-1. Due to a known issues, batch sizes for models needs to be reduced. It will be fixed in the future release.
-2. The Image-to-video ControlNet command is not enabled on Gaudi3.
+
+> [!NOTE]
+> For Gaudi3 only:
+> 1. Due to a known issue, batch sizes for models needs to be reduced. It will be fixed in the future release.
+> 2. The Image-to-video ControlNet command is not enabled on Gaudi3.
