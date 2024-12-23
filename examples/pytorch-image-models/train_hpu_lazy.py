@@ -637,7 +637,6 @@ def _parse_args():
     return args, args_text
 
 
-
 def cleanup():
     dist.destroy_process_group()
 
