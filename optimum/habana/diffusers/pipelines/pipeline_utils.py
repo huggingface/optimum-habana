@@ -165,8 +165,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         "`torch_dtype=torch.bfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
-                else:
-                    self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
@@ -370,6 +368,13 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
 
+        # Need to load custom ops lists before instantiating htcore
+        gaudi_config = GaudiConfig.from_pretrained(kwargs["gaudi_config"])
+        gaudi_config.declare_autocast_bf16_fp32_ops()
+        kwargs["gaudi_config"] = gaudi_config
+
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
