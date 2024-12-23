@@ -21,7 +21,7 @@ from accelerate.utils import is_deepspeed_available, parse_choice_from_env, pars
 
 from optimum.utils import logging
 
-from .. import parallel_state
+from ..distributed import parallel_state
 from .utils import GaudiDistributedType
 
 

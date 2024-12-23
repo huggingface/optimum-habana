@@ -59,7 +59,7 @@ from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
-from .. import parallel_state
+from ..distributed import parallel_state
 
 
 if is_deepspeed_available():
