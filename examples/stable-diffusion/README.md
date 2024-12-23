@@ -138,9 +138,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d \
-    --sdp_on_bf16 \
-    --bf16
+    --ldm3d
 ```
 
 Here is how to generate images and depth maps with two prompts on two HPUs:
@@ -756,7 +754,7 @@ Here is how to run the example of controlling brightness. For more details,
 please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_MAX_COMPOUND_OP_SIZE=1 python text_to_image_generation.py \
     --model_name_or_path ptx0/pseudo-journey-v2 \
     --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
     --num_images_per_prompt 1 \
@@ -899,3 +897,4 @@ python image_to_video_generation.py \
     --width=512 \
     --height=512
 ```
+Please note: this command is not enabled on Gaudi3.
