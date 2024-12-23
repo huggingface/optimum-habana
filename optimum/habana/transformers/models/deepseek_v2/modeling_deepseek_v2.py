@@ -708,19 +708,45 @@ class DeepseekV2MoE(nn.Module):
 
         return final_hidden_states
 
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
 
-# Copied from transformers.models.llama.modeling_llama.repeat_kv
-def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    def forward(self, x, y):
+        return torch.matmul(x, y)
+    
+def gaudi_deepseekv2_repeat_kv(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor,
+    n_rep: int,
+):
     """
-    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
+    The only differences are:
+    - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
+    - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
+    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
+    The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
-    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
-    if n_rep == 1:
-        return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+    batch, num_key_value_heads, kv_len, head_dim = key_states.shape
+    if n_rep == 1 or num_key_value_heads == 1:
+        return query_states, key_states, value_states, attention_mask
 
+    new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
+    key_states = key_states.reshape(new_kv_shape)
+    value_states = value_states.reshape(new_kv_shape)
+
+    batch, q_heads, q_len, head_dim = query_states.shape
+    new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
+    query_states = query_states.reshape(new_q_shape)
+
+    if attention_mask is not None:
+        # Add groups dim and set to 1
+        attention_mask = attention_mask.unsqueeze(1)
+
+    return query_states, key_states, value_states, attention_mask
 
 class KVCache(torch.nn.Module):
     def __init__(self):
@@ -763,6 +789,42 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+        self.scale = scale
+        self.attention_dropout = attention_dropout
+        self.enable_recompute = enable_recompute
+        self.flash_attention_fp8 = flash_attention_fp8
+
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_casual,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_casual,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
 
 # Copied from transformers.models.llama.modeling_llama.LlamaAttention with Llama->DeepseekV2
 class DeepseekV2Attention(nn.Module):
@@ -778,7 +840,7 @@ class DeepseekV2Attention(nn.Module):
                 "to errors during the forward call, if caching is used. Please make sure to provide a `layer_idx` "
                 "when creating this class."
             )
-
+        
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -791,7 +853,24 @@ class DeepseekV2Attention(nn.Module):
         self.v_head_dim = config.v_head_dim
         self.qk_nope_head_dim = config.qk_nope_head_dim
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        
+        self.fused_scaled_dot_product_attention = (
+            ModuleFusedSDPA(
+                FusedSDPA,
+                scale=self.norm_factor,
+                attention_dropout=self.attention_dropout,
+                enable_recompute=False,
+                flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+            )
+            if FusedSDPA
+            else None
+        )
 
+        
+        #self.head_dim = self.hidden_size // self.num_heads
+        
+        
         self.is_causal = True
 
         if self.q_lora_rank is None:
@@ -819,6 +898,10 @@ class DeepseekV2Attention(nn.Module):
             bias=config.attention_bias,
         )
         self._init_rope()
+        
+        self.num_key_value_groups = self.num_heads // config.num_key_value_heads
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
@@ -892,7 +975,7 @@ class DeepseekV2Attention(nn.Module):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            _, _ = self.rotary_emb(self.k_b_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -946,13 +1029,22 @@ class DeepseekV2Attention(nn.Module):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        ######
+        cache_position: Optional[torch.LongTensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,        
+        num_virtual_tokens: int = None,
+        ######
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Attention masks and past cache are removed.
         Input:
-        - hidden_states: [bsz, q_len, hidden_size]
-        - compressed_kv: [bsz, kv_len, kv_lora_rank]
+        - hidden_states: [bsz, q_len, hidden_size]        
         - position_ids: [bsz, q_len]
         """
 
@@ -991,10 +1083,26 @@ class DeepseekV2Attention(nn.Module):
                         "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                         "with a layer index."
                     )
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                ##########
+                if token_idx is None:
+                    if hasattr(past_key_value, "get_usable_length"):
+                        kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                    else:
+                        kv_seq_len += past_key_value[0].shape[-2]
+                else:
+                    if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
+                        kv_seq_len = past_key_value[0][-2]
+                    else:
+                        if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
+                            kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
+                        else:
+                            kv_seq_len = past_key_value[0].shape[-2]
+                
+                #############
+                #kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
             q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
-
+            
             query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
             query_states[:, :, :, self.qk_nope_head_dim :] = q_pe
@@ -1002,12 +1110,133 @@ class DeepseekV2Attention(nn.Module):
             key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
             key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
-            if past_key_value is not None:
-                cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-                key_states, value_states = past_key_value.update(
-                    key_states, value_states, self.layer_idx, cache_kwargs
-                )
+            #################optimization
+            if use_cache:
+                # reuse k, v, self_attention
+                if reuse_cache:
+                    if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
+                        # prefix tuning case. attach past_key_value to generate first token.
+                        key_states = torch.cat((past_key_value[0], key_states), -2)
+                        value_states = torch.cat((past_key_value[1], value_states), -2)
+                    key_states = self.k_cache(key_states, 2, token_idx)
+                    value_states = self.v_cache(value_states, 2, token_idx)
+                    past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+                else:
+                    if past_key_value is None:
+                        past_key = torch.zeros(key_states.shape, dtype=self.kv_b_proj.weight.dtype, device=key_states.device)
+                        past_value = torch.zeros(
+                            key_states.shape, dtype=self.kv_b_proj.weight.dtype, device=key_states.device
+                        )
+                        # Return list instead of tuple
+                        past_key_value = [past_key, past_value]
+                    if (
+                        token_idx is not None
+                        and num_virtual_tokens is not None
+                        and num_virtual_tokens == past_key_value[0].shape[-2]
+                    ):
+                        # prefix tuning case. attach past_key_value to generate first token.
+                        key_states = torch.cat((past_key_value[0], key_states), -2)
+                        value_states = torch.cat((past_key_value[1], value_states), -2)
+                        past_key_value = (key_states, value_states)
+                    else:
+                        key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                        value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
+                    if token_idx is None:
+                        past_key_value = (key_states, value_states)
+
+                if cache_idx is not None and q_len == 1:
+                    key_states = key_states[:, :, :cache_idx, :]
+                    value_states = value_states[:, :, :cache_idx, :]
+                    if attention_mask is not None:
+                        attention_mask = attention_mask[:, :, :, :cache_idx]
+                    kv_seq_len = key_states.shape[-2]
+            else:
+                past_key_value = None
+            ##############
+            # if past_key_value is not None:
+            #     cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            #     key_states, value_states = past_key_value.update(
+            #         key_states, value_states, self.layer_idx, cache_kwargs
+            #     )
+            ##################optimization
+            if use_flash_attention and FusedSDPA is not None:
+                if q_len == 1:
+                    # next token
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states,
+                        key_states,
+                        value_states,
+                        attention_mask,
+                        0.0,
+                        False,
+                        None,
+                        "None",
+                        False,
+                        None,
+                        "None",
+                    )
+                else:
+                    # first token
+                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+                    if flash_attention_causal_mask:
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            None,
+                            0.0,
+                            True,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            valid_sequence_lengths,
+                            "left",
+                        )
+                    else:
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            attention_mask,
+                            0.0,
+                            False,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            None,
+                            "None",
+                        )
+
+            else:
+                query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
+                    query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+                )
+                
+
+                #query_states = query_states * self.norm_factor
+                #attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
+                attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
+                htcore.mark_step()
+
+                if attention_mask is not None:  # no matter the length, we just slice it
+                    causal_mask = attention_mask
+                    if cache_position is not None:
+                        causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                    attn_weights = attn_weights + causal_mask.float()
+
+                if attn_softmax_bf16:
+                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+                else:
+                    # upcast attention to fp32
+                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                        query_states.dtype
+                    )
+                attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+                attn_output = self.matmul_av(attn_weights, value_states)
+                #attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
+            '''
+            ###############    
             if FusedSDPA:
                 with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
                     attn_output = FusedSDPA.apply(
@@ -1033,6 +1262,7 @@ class DeepseekV2Attention(nn.Module):
                 attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
                 attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
                 attn_output = torch.matmul(attn_weights, value_states)
+            '''
         else:
             hidden_states_q = hidden_states
             hidden_states_kv = hidden_states
@@ -1199,6 +1429,14 @@ class DeepseekV2DecoderLayer(nn.Module):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,        
+        num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -1234,6 +1472,14 @@ class DeepseekV2DecoderLayer(nn.Module):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            cache_position=cache_position,
+            attn_softmax_bf16=attn_softmax_bf16,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            valid_sequence_lengths=valid_sequence_lengths,
+            num_virtual_tokens=num_virtual_tokens,
             **kwargs,
         )
         hidden_states = residual + hidden_states
@@ -1424,7 +1670,9 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
+        
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1522,18 +1770,20 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     causal_mask,
                     position_ids,
                     past_key_values,
-                    output_attentions,
-                    output_router_logits,
+                    output_attentions,                    
                     use_cache,
-                    cache_position,
-                    None,
-                    attn_softmax_bf16,
-                    False,
+                    token_idx,
+                    reuse_cache,
+                    cache_idx,                    
+                    cache_position,                    
+                    attn_softmax_bf16,                    
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
                     flash_attention_fast_softmax,
-                    None,
+                    valid_sequence_lengths,
+                    num_virtual_tokens,     
+                    kwargs,               
                 )
             else:
                 if (
@@ -1711,6 +1961,15 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        ########
+        cache_position: Optional[torch.LongTensor] = None,             
+        trim_logits: Optional[bool] = False,        
+        attn_softmax_bf16: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,        
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: torch.Tensor = None,
+        #########
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
@@ -1751,15 +2010,29 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
+            valid_sequence_lengths=valid_sequence_lengths,
             num_virtual_tokens=num_virtual_tokens,
         )
 
         hidden_states = outputs[0]
+
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
+
         logits = self.lm_head(hidden_states)
         logits = logits.float()
 
@@ -1802,13 +2075,18 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
             attentions=outputs.attentions,
             router_logits=outputs.router_logits,
         )
-
+    '''
     def prepare_inputs_for_generation(
         self,
         input_ids,
         past_key_values=None,
         attention_mask=None,
         inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        num_logits_to_keep=None,
+        token_idx=None,
         **kwargs,
     ):
         token_idx = kwargs.get("token_idx")
@@ -1878,7 +2156,85 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
-                # "use_dynamic_moe": kwargs.get("use_dynamic_moe"),
+                
+                "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
+            }
+        )
+        return model_inputs
+    '''
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        position_ids=None,
+        use_cache=True,
+        num_logits_to_keep=None,
+        token_idx=None,
+        **kwargs,
+    ):
+        reuse_cache = kwargs.get("reuse_cache")
+        bucket_internal = kwargs.get("bucket_internal")
+
+        if past_key_values is not None:
+            if token_idx is not None:
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
+            else:
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif (
+                    input_ids.shape[1] != cache_position.shape[0]
+                ):  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
+        elif (reuse_cache or bucket_internal) and token_idx is not None:
+            # KV cache is pre allocated with reuse cache or will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
+
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                if token_idx is not None:
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                else:
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
+
+        # keep cache_position implementation as None for HPU
+        cache_position = None
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids.contiguous()}
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
+                "attention_mask": attention_mask,
+                "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "reuse_cache": reuse_cache,
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
+                "valid_sequence_lengths": kwargs.get("valid_sequence_lengths"),
+                "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
                 "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
             }
         )
