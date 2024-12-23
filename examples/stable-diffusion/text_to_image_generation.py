@@ -326,6 +326,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
@@ -586,9 +587,6 @@ def main():
             raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
 
         pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
-
-    if args.sdp_on_bf16:
-        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:

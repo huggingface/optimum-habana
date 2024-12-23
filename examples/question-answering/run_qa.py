@@ -27,7 +27,6 @@ from typing import Optional
 
 import datasets
 import evaluate
-import torch
 import transformers
 from datasets import load_dataset
 from trainer_qa import QuestionAnsweringTrainer
@@ -276,9 +275,6 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
     )
-
-    if training_args.sdp_on_bf16:
-        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
