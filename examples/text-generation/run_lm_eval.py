@@ -226,6 +226,7 @@ def main():
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
         json.dump(results, open(args.output_file, "w"), indent=2)
+        print(json.dumps(results, indent=2))
     if args.quant_config:
         finalize_quantization(model)
 
