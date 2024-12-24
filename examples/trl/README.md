@@ -363,7 +363,7 @@ python ddpo.py \
   --push_to_hub False
 ```
 > [!NOTE]
-> Due to a known issue on Gaudi3, sample_batch_sizes should be changed to 3. It will be fixed in the future release.
+> Due to a known issue on Gaudi3, sample_batch_sizes should be changed to 3. The issue will be fixed in the future release.
 
 
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
