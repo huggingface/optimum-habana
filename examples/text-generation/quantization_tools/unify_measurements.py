@@ -153,10 +153,10 @@ def unify_measurements(
         layers[layer] = {}
         layers[layer]["inputs"] = [np.array(x) for x in dlayer["inputs"]]
         if dlayer.get("outputs") is not None:
-            layers[layer]["outputs"] = np.array(dlayer["outputs"])
+            layers[layer]["outputs"] = [np.array(x) for x in dlayer["outputs"]]
         if dlayer.get("params") is not None and dlayer["params"].get("weight") is not None:
             layers[layer]["params"] = {}
-            layers[layer]["params"]["weight"] = np.array(dlayer["params"]["weight"])
+            layers[layer]["params"]["weight"] = [np.array(x) for x in dlayer["params"]["weight"]]
     df = {"GlobalRank": global_rank, "LocalRank": local_rank, "Mode": mode, "Nodes": layers}
     with open(unified_npz_path, "w"):
         np.savez(unified_npz_path, df)
