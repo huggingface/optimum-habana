@@ -55,6 +55,9 @@ class KVCache(torch.nn.Module):
 
     @staticmethod
     def update(prev, cur, dim, idx, inp_seq_len):
+        cur = cur.to(prev.device)
+        if idx is not None:
+            idx = idx.to(prev.device)
         orig_cur = cur
         if prev.shape == cur.shape:
             prev.copy_(cur)
