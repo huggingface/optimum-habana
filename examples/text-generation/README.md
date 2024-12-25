@@ -364,7 +364,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B, phi-2 and Llama-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B, phi-2 and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -487,8 +487,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_causal_mask
 ```
 
-Here is an example to measure the tensor quantization statistics on Llama-405B with 8 cards:
-> Please note that Llama-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
+> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
@@ -499,13 +499,14 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --trim_logits \
 --batch_size 1 \
 --bf16 \
+--reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
 
-Here is an example to quantize the model based on previous measurements for Llama-405B with 8 cards:
-> Please note that Llama-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
+> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
