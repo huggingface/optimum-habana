@@ -42,7 +42,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 
 > Tests should be run in a Docker container based on Intel Gaudi Docker images.
 >
-> The current version has been validated for SynapseAI 1.18.
+> The current version has been validated for SynapseAI 1.19.
 
 
 ## Install the library and get example scripts
@@ -88,7 +88,7 @@ git clone -b transformers_future https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 >```
 
 To install the requirements for every example:
