@@ -56,6 +56,7 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True
 ```
@@ -93,6 +94,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --use_lazy_mode False\
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True \
     --torch_compile \
@@ -110,7 +112,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -159,7 +161,7 @@ For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset
 ```bash
 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb \
+    --dataset_name superb  \
     --dataset_config_name ks \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \

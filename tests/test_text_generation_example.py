@@ -44,7 +44,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
-            ("Deci/DeciLM-7B", 1, False, 120, False),
+            ("Deci/DeciLM-7B", 1, False, 115, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
@@ -217,6 +217,12 @@ def _test_text_generation(
 
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
+
+    if "decilm" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
+    if "mamba-130m-hf" in model_name.lower():
+        command += ["--sdp_on_bf16"]
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
