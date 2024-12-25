@@ -360,7 +360,8 @@ python ddpo.py \
   --use_hpu_graphs \
   --bf16 \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
-  --push_to_hub False
+  --push_to_hub False \
+  --sdp_on_bf16
 ```
 
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
