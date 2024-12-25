@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y pdsh && \
 RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
    sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config && \
    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+   /usr/bin/ssh-keygen -A && \
    service ssh restart
 
 # Installs Optimum Habana and Habana's fork of DeepSpeed
