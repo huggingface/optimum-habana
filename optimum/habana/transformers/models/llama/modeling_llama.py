@@ -635,7 +635,9 @@ class GaudiLlamaAttention(LlamaAttention):
             )
             position_ids = position_ids.unsqueeze(0)
 
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
