@@ -727,6 +727,36 @@ python run_generation.py \
 --load_quantized_model_with_autogptq
 ```
 
+### Store KV Cache on CPU
+
+Keeping key/value cache on CPU (host) side can decrease HPU VRAM usage at the price of slower generation latency. It's a practical solution in long context serving scenarios with a large LLM on a single card.
+
+You can add the `--kv_cache_on_host` argument to enable it. [Pytorch SDPA operator](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) will be automatically used to generate the next token for saving data transfer time. The first token is not affected.
+
+For exmaple:
+```bash
+python run_generation.py \
+--model_name_or_path 01-ai/Yi-34B-Chat \
+--use_kv_cache \
+--bf16 \
+--attn_softmax_bf16 \
+--reuse_cache \
+--do_sample \
+--dataset_name emozilla/pg19-test \
+--batch_size 1 \
+--max_input_tokens 11200 \
+--column_name "text" \
+--dataset_max_samples 1 \
+--warmup 0 \
+--n_iterations 1 \
+--max_new_tokens 5000 \
+--kv_cache_on_host
+```
+
+> [!NOTE]
+> 1. `--kv_cache_on_host` only supports Llama for now. It also does not work with `--use_hpu_graphs` and FP8 data type.
+> 2. Try to use it only when you meet an out-of-memory error on the HPU device since it will increase latency.
+
 ## Language Model Evaluation Harness
 
 The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
