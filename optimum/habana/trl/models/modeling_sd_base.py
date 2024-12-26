@@ -323,6 +323,7 @@ class GaudiDefaultDDPOStableDiffusionPipeline(DefaultDDPOStableDiffusionPipeline
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         """
         Adapted from: https://github.com/huggingface/trl/blob/v0.7.8/trl/models/modeling_sd_base.py#L531
@@ -337,6 +338,7 @@ class GaudiDefaultDDPOStableDiffusionPipeline(DefaultDDPOStableDiffusionPipeline
             use_hpu_graphs=use_hpu_graphs,
             gaudi_config=gaudi_config,
             torch_dtype=torch.bfloat16 if bf16_full_eval else torch.float32,
+            sdp_on_bf16=sdp_on_bf16,
         )
 
         self.use_lora = use_lora

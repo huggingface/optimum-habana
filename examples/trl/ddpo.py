@@ -79,6 +79,9 @@ class ScriptArguments:
     push_to_hub: bool = field(default=False, metadata={"help": "Whether or not to push the model to the Hub."})
     use_habana: bool = field(default=True, metadata={"help": "Whether or not to use HPU."})
     use_hpu_graphs: bool = field(default=True, metadata={"help": "Whether or not to use hpu graphs."})
+    sdp_on_bf16: bool = field(
+        default=False, metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend."}
+    )
 
 
 class MLP(nn.Module):
@@ -225,6 +228,7 @@ if __name__ == "__main__":
         use_habana=args.use_habana,
         use_hpu_graphs=args.use_hpu_graphs,
         gaudi_config=gaudi_config,
+        sdp_on_bf16=args.sdp_on_bf16,
     )
 
     trainer = GaudiDDPOTrainer(
