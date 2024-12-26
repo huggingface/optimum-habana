@@ -27,6 +27,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
 
@@ -40,7 +41,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def main():
         type=str,
         nargs="*",
         default=None,
-        help="The second prompt or prompts to guide the image generation (applicable to SDXL).",
+        help="The second prompt or prompts to guide the image generation (applicable to SDXL and FLUX).",
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -99,6 +100,18 @@ def main():
         help=(
             "The number of denoising steps. More denoising steps usually lead to a higher quality image at the expense"
             " of slower inference."
+        ),
+    )
+    parser.add_argument(
+        "--strength",
+        type=float,
+        default=0.9,
+        help=(
+            "Applicable to FLUX. Indicates extent to transform the reference image. Must be between 0 and 1. Image is used as a"
+            " starting point and more noise is added the higher the `strength`. The number of denoising steps depends"
+            " on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising"
+            " process runs for the full number of iterations specified in `num_inference_steps`. A value of 1 essentially"
+            " ignores reference image."
         ),
     )
     parser.add_argument(
@@ -181,6 +194,12 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -210,6 +229,9 @@ def main():
         res["height"] = args.height
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sdxl = False
+    flux_models = ["FLUX.1"]
+    flux = False
+
     kwargs = {
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
@@ -221,6 +243,10 @@ def main():
         from optimum.habana.diffusers import GaudiStableDiffusionXLImg2ImgPipeline as Img2ImgPipeline
 
         sdxl = True
+    elif any(model in args.model_name_or_path for model in flux_models):
+        from optimum.habana.diffusers import GaudiFluxImg2ImgPipeline as Img2ImgPipeline
+
+        flux = True
     elif "instruct-pix2pix" in args.model_name_or_path:
         from optimum.habana.diffusers import GaudiStableDiffusionInstructPix2PixPipeline as Img2ImgPipeline
 
@@ -274,10 +300,14 @@ def main():
         pipeline.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
     elif pipeline.scheduler.config._class_name == "EulerDiscreteScheduler":
         pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+    elif pipeline.scheduler.config._class_name == "FlowMatchEulerDiscreteScheduler":
+        pipeline.scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
     else:
         pipeline.scheduler = GaudiDDIMScheduler.from_config(pipeline.scheduler.config)
+
     # Set seed before running the model
     set_seed(args.seed)
+
     # Generate images
     if sdxl:
         outputs = pipeline(
@@ -291,6 +321,22 @@ def main():
             negative_prompt=args.negative_prompts,
             negative_prompt_2=args.negative_prompts_2,
             eta=args.eta,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            sdp_on_bf16=args.sdp_on_bf16,
+            **res,
+        )
+    elif flux:
+        outputs = pipeline(
+            image=image,
+            prompt=args.prompts,
+            prompt_2=args.prompts_2,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            strength=args.strength,
+            guidance_scale=args.guidance_scale,
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,

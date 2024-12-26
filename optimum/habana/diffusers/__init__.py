@@ -5,6 +5,8 @@ from .pipelines.controlnet.pipeline_stable_video_diffusion_controlnet import (
 )
 from .pipelines.ddpm.pipeline_ddpm import GaudiDDPMPipeline
 from .pipelines.i2vgen_xl.pipeline_i2vgen_xl import GaudiI2VGenXLPipeline
+from .pipelines.flux.pipeline_flux import GaudiFluxPipeline
+from .pipelines.flux.pipeline_flux_img2img import GaudiFluxImg2ImgPipeline
 from .pipelines.pipeline_utils import GaudiDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_depth2img import GaudiStableDiffusionDepth2ImgPipeline
@@ -24,4 +26,9 @@ from .pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img import 
 from .pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 from .pipelines.stable_video_diffusion.pipeline_stable_video_diffusion import GaudiStableVideoDiffusionPipeline
 from .pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import GaudiTextToVideoSDPipeline
-from .schedulers import GaudiDDIMScheduler, GaudiEulerAncestralDiscreteScheduler, GaudiEulerDiscreteScheduler
+from .schedulers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler,
+)

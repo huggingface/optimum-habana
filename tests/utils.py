@@ -53,7 +53,7 @@ MODELS_TO_TEST_MAPPING = {
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
-    "llama": [("huggyllama/llama-7b", "Habana/llama")],
+    "llama": [("huggyllama/llama-7b", "Habana/llama"), ("meta-llama/Llama-3.1-8B", "Habana/llama")],
     "falcon": [("tiiuae/falcon-40b", "Habana/falcon")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
@@ -63,6 +63,8 @@ MODELS_TO_TEST_MAPPING = {
     "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen"), ("Qwen/Qwen2-72B", "Habana/qwen")],
     "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
+    "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
+    "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -81,7 +83,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma", "chatglm"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 

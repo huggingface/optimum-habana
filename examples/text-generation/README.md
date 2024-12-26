@@ -26,9 +26,14 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+For `run_lm_eval.py`:
+```bash
+pip install -r requirements_lm_eval.txt
+```
+
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 ```
 
 
@@ -74,7 +79,8 @@ python run_generation.py \
 --use_kv_cache \
 --max_new_tokens 100 \
 --do_sample \
---prompt "Here is my prompt"
+--prompt "Here is my prompt" \
+--sdp_on_bf16
 ```
 
 If you want to provide several prompts as inputs, here is how to do it:
@@ -86,7 +92,8 @@ python run_generation.py \
 --max_new_tokens 100 \
 --do_sample \
 --batch_size 2 \
---prompt "Hello world" "How are you?"
+--prompt "Hello world" "How are you?" \
+--sdp_on_bf16
 ```
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
@@ -105,7 +112,8 @@ python run_generation.py \
 --use_kv_cache \
 --num_return_sequences 1 \
 --temperature 0 \
---prompt "Alice and Bob"
+--prompt "Alice and Bob" \
+--sdp_on_bf16
 ```
 
 ### Benchmark
@@ -132,7 +140,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --batch_size 1 \
 --use_hpu_graphs \
 --use_kv_cache \
---max_new_tokens 100
+--max_new_tokens 100 \
+--sdp_on_bf16
 ```
 
 You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
@@ -147,7 +156,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --attn_softmax_bf16 \
 --limit_hpu_graphs \
 --reuse_cache \
---trim_logits
+--trim_logits \
+--sdp_on_bf16
 ```
 
 To run Falcon-7B inference, use the following command:
@@ -159,13 +169,28 @@ python run_generation.py \
  --use_kv_cache \
  --batch_size 1 \
  --max_new_tokens 128 \
- --do_sample
+ --do_sample \
+ --sdp_on_bf16
 ```
 
 To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path tiiuae/falcon-40b \
+--max_new_tokens 2048 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--do_sample \
+--use_flash_attention \
+--flash_attention_causal_mask
+```
+
+To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
 --bf16 \
 --use_hpu_graphs \
@@ -190,7 +215,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --use_hpu_graphs \
 > --use_kv_cache \
 > --max_new_tokens 100 \
-> --bf16
+> --bf16 \
+> --sdp_on_bf16
 > ```
 
 ### Use any dataset from the Hugging Face Hub
@@ -209,7 +235,8 @@ python run_generation.py \
 --use_kv_cache \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
@@ -228,7 +255,8 @@ python run_generation.py \
 --bf16 \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
---peft_model yard1/llama-2-7b-sql-lora-test
+--peft_model yard1/llama-2-7b-sql-lora-test \
+--sdp_on_bf16
 ```
 
 ### Using growing bucket optimization
@@ -254,6 +282,30 @@ python run_generation.py \
 Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25 35 45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
+
+
+### Using Beam Search
+
+> Restriction: When `reuse_cache` is not applied, currently beam search can only work for the models with model type of `llama` or `qwen2` since it requires `_reorder_cache` implemented in the modeling. The group beam search and constrained beam search is not supported by optimum-habana yet.
+
+Here is an example:
+```bash
+python run_generation.py \
+--model_name_or_path Qwen/Qwen2-7b-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--use_flash_attention \
+--max_input_tokens 128 \
+--max_new_tokens 128 \
+--batch_size 4 \
+--limit_hpu_graphs \
+--reuse_cache \
+--bucket_internal \
+--bucket_size 128 \
+--bf16 \
+--num_beams 3
+```
 
 
 ### Running with torch.compile
@@ -300,7 +352,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B, phi-2 and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -423,6 +475,44 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_causal_mask
 ```
 
+Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
+> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_lm_eval.py \
+-o acc_llama3_405b_bs1_quant.txt \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
+```
+
+Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
+> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--max_input_tokens 2048 \
+--max_new_tokens 2048 \
+--batch_size 2 \
+--bf16 \
+--reuse_cache \
+--trim_logits \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
+```
+
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
 
 ```bash
@@ -461,7 +551,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --max_new_tokens 100 \
 --batch_size 1 \
 --reuse_cache \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
@@ -473,7 +564,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation
 --max_new_tokens 100 \
 --batch_size 1 \
 --reuse_cache \
---bf16
+--bf16 \
+--sdp_on_bf16
 ```
 
 
@@ -483,14 +575,13 @@ Some bf16 models don't fit on one card due to hpu memory limitation, but in fp8 
 As measurement is being calculated in bf16 precision, to be able to run fp8 model on single card you should use `unify_measurements` script.
 Here are the steps:
 1. Measure the model on a number of cards that are enough for the model to fit in BF16.
-2. Quantize the model on the same amount of cards for scales to be saved.
-3. Run unify_measurements.py script using the measurement files created after running steps 1 and 2. A unified measurement is then calculated.
+2. Run unify_measurements.py script using the measurement files created in step 1. A unified measurement is then calculated.
 ```bash
 python quantization_tools/unify_measurements.py -g 01234567 -m *path_to_8x_measurements* -o *path_to_output_1x_measurement*
 ```
 In the above example, the measurements of cards 0-7 will be unified to a single measurement. For example, if you specify `-g 0123 4567`,
 cards 0-3 and cards 4-7 will be unified in two different measurement files. All different group combinations are supported.
-4. Run quantization using the unified measurement file/s.
+3. Run quantization using the unified measurement file/s.
 
 More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
@@ -538,10 +629,8 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UI
 
 Below is an example to load a model with 4bit checkpoints from Hugging Face.
 Please note that model name is denoted as `<model_path_in_hugging_face>`.
-Additionally, the below env vars are used for performance optimizations, and are planned to be removed in future version:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
 python run_lm_eval.py \
 -o acc_load_uint4_model.txt \
 --model_name_or_path <model_path_in_hugging_face> \
@@ -564,12 +653,10 @@ Currently, only uint4 checkpoints and single-device configurations are supported
 More information on enabling 4-bit inference in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_UINT4.html?highlight=inference%20using%20int4#enabling-and-running-uint4-in-pytorch-models.
 
-Below is an example of loading a llama7b model with a 4bit checkpoint quantized in INC.
+Below is an example of loading a llama2-7b model with a 4bit checkpoint quantized in INC.
 Please note that the model checkpoint name is denoted as `<local_model_path_from_inc>`.
-Additionally, the following environment variables are used for performance optimizations and are planned to be removed in future versions:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1`
+
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=1 \
 python run_lm_eval.py \
 -o acc_load_uint4_model.txt \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
@@ -614,26 +701,18 @@ For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Mo
 
 ### Running with UINT4 weight quantization using AutoGPTQ
 
-
-Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
+Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ](https://github.com/AutoGPTQ/AutoGPTQ), which provides quantization capabilities in PyTorch.
 Currently, the support is for UINT4 inference of pre-quantized models only.
 
 ```bash
-BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
+BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/AutoGPTQ/AutoGPTQ
 ```
 
-You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
-`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
-and by adding the argument `--load_quantized_model_with_autogptq`.
-
-***Note:***
-Setting the above environment variables improves performance. These variables will be removed in future releases.
- 
+You can run a *UINT4 weight quantized* model using AutoGPTQ by adding the argument `--load_quantized_model_with_autogptq`.
 
 Here is an example to run a quantized model <quantized_gptq_model>:
 ```bash
-SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false \
-ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
+python run_generation.py \
 --attn_softmax_bf16 \
 --model_name_or_path <quantized_gptq_model> \
 --use_hpu_graphs \

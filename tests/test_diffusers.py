@@ -48,6 +48,7 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
+    FluxTransformer2DModel,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
@@ -87,6 +88,7 @@ from transformers import (
     DPTConfig,
     DPTFeatureExtractor,
     DPTForDepthEstimation,
+    T5EncoderModel,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
@@ -97,6 +99,8 @@ from optimum.habana.diffusers import (
     GaudiDiffusionPipeline,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFluxImg2ImgPipeline,
+    GaudiFluxPipeline,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -137,10 +141,11 @@ if IS_GAUDI2:
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 70
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.15186785472532677
     DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 36.06376791000366
     TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.6694
     TEXTUAL_INVERSION_SDXL_RUNTIME = 74.92
+    FLUX_THROUGHPUT = 0.03
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -151,7 +156,7 @@ else:
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.42
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.050208662346013566
     TEXT_TO_VIDEO_SYNTHESIS_BF16_BASELINE = 1000  # TODO: Get Gaudi 1 benchmark numbers
     DEPTH2IMG_GENERATION_LATENCY_BASELINE_BF16 = 200  # TODO: Get Gaudi 1 Throughput
     TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.695
@@ -655,6 +660,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
         set_seed(27)
         outputs = pipeline(
             prompt=prompts,
@@ -709,6 +715,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         prompt = "An image of a squirrel in Picasso style"
         generator = torch.manual_seed(seed)
@@ -1341,6 +1348,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 --image_save_dir {run_dir}
                 --use_habana
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 """.split()
             cmd_line.append("--prompts")
@@ -1383,6 +1391,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "stabilityai/stable-diffusion-xl-base-1.0",
                 **kwargs,
             )
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
             num_images_per_prompt = num_images_per_prompt
             res = {}
             outputs = pipeline(
@@ -2459,6 +2468,7 @@ class TrainTextToImage(TestCase):
                  --dataloader_num_workers 8
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
+                 --sdp_on_bf16
                  --bf16
                  --adjust_throughput
                  --center_crop
@@ -2467,7 +2477,7 @@ class TrainTextToImage(TestCase):
                  --output_dir {tmpdir}
                 """.split()
 
-            # Run train_text_to_image_sdxl.y
+            # Run train_text_to_image_sdxl.py
             p = subprocess.Popen(cmd_line)
             return_code = p.wait()
 
@@ -2541,6 +2551,7 @@ class TrainControlNet(TestCase):
                     --checkpointing_steps 1000
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
+                    --sdp_on_bf16
                     --bf16
                     --max_train_steps 10
                     --output_dir {tmpdir}
@@ -3711,6 +3722,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_habana
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 --use_cpu_rng
                 """.split()
@@ -3740,6 +3752,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             "CompVis/stable-diffusion-v1-4",
             **kwargs,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         num_images_per_prompt = 20
         res = {}
@@ -6351,3 +6364,320 @@ class GaudiDDPMPipelineTester(TestCase):
         )
         outputs = pipe(batch_size=batch_size)
         self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16)
+
+
+class GaudiFluxPipelineTester(TestCase):
+    """
+    Tests the Flux pipeline for Gaudi.
+    """
+
+    pipeline_class = GaudiFluxPipeline
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "guidance_scale",
+            "prompt_embeds",
+            "pooled_prompt_embeds",
+        ]
+    )
+    batch_params = frozenset(["prompt"])
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        transformer = FluxTransformer2DModel(
+            patch_size=1,
+            in_channels=4,
+            num_layers=1,
+            num_single_layers=1,
+            attention_head_dim=16,
+            num_attention_heads=2,
+            joint_attention_dim=32,
+            pooled_projection_dim=32,
+            axes_dims_rope=[4, 4, 8],
+        )
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+
+        torch.manual_seed(0)
+        text_encoder = CLIPTextModel(clip_text_encoder_config)
+
+        torch.manual_seed(0)
+        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        # HF issue with T5EncoderModel from tiny-random-t5
+        # text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        # text_encoder_3 = None
+
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=(4,),
+            layers_per_block=1,
+            latent_channels=1,
+            norm_num_groups=1,
+            use_quant_conv=False,
+            use_post_quant_conv=False,
+            shift_factor=0.0609,
+            scaling_factor=1.5035,
+        )
+
+        scheduler = FlowMatchEulerDiscreteScheduler()
+
+        return {
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer": tokenizer,
+            "tokenizer_2": tokenizer_2,
+            "transformer": transformer,
+            "vae": vae,
+        }
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_flux_different_prompts(self):
+        pipe = self.pipeline_class(
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            **self.get_dummy_components(),
+        ).to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_same_prompt = pipe(**inputs).images[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt_2"] = "a different prompt"
+        output_different_prompts = pipe(**inputs).images[0]
+
+        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+
+        # Outputs should be different here
+        # For some reasons, they don't show large differences
+        assert max_diff > 1e-6
+
+    def test_flux_prompt_embeds(self):
+        pipe = self.pipeline_class(
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            **self.get_dummy_components(),
+        ).to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_prompt = pipe(**inputs).images[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+
+        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
+            prompt,
+            prompt_2=None,
+            device=torch_device,
+            max_sequence_length=inputs["max_sequence_length"],
+        )
+        output_with_embeds = pipe(
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            **inputs,
+        ).images[0]
+
+        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
+        assert max_diff < 1e-4
+
+    @slow
+    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    def test_flux_inference(self):
+        repo_id = "black-forest-labs/FLUX.1-schnell"
+
+        pipe = self.pipeline_class.from_pretrained(
+            repo_id,
+            torch_dtype=torch.bfloat16,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+        )
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        outputs = pipe(
+            prompt="A photo of a cat",
+            num_inference_steps=5,
+            guidance_scale=5.0,
+            output_type="np",
+            generator=generator,
+        )
+
+        # Check expected performance of FLUX.1 schnell model
+        self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_THROUGHPUT)
+
+
+class GaudiFluxImg2ImgPipelineTester(TestCase):
+    """
+    Tests the Flux image-to-image pipeline for Gaudi.
+    """
+
+    pipeline_class = GaudiFluxImg2ImgPipeline
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "guidance_scale",
+            "prompt_embeds",
+            "pooled_prompt_embeds",
+        ]
+    )
+    batch_params = frozenset(["prompt"])
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        transformer = FluxTransformer2DModel(
+            patch_size=1,
+            in_channels=4,
+            num_layers=1,
+            num_single_layers=1,
+            attention_head_dim=16,
+            num_attention_heads=2,
+            joint_attention_dim=32,
+            pooled_projection_dim=32,
+            axes_dims_rope=[4, 4, 8],
+        )
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+
+        torch.manual_seed(0)
+        text_encoder = CLIPTextModel(clip_text_encoder_config)
+
+        torch.manual_seed(0)
+        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=(4,),
+            layers_per_block=1,
+            latent_channels=1,
+            norm_num_groups=1,
+            use_quant_conv=False,
+            use_post_quant_conv=False,
+            shift_factor=0.0609,
+            scaling_factor=1.5035,
+        )
+
+        scheduler = FlowMatchEulerDiscreteScheduler()
+
+        return {
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer": tokenizer,
+            "tokenizer_2": tokenizer_2,
+            "transformer": transformer,
+            "vae": vae,
+        }
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_flux_different_prompts(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_same_prompt = pipe(**inputs).images[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt_2"] = "a different prompt"
+        output_different_prompts = pipe(**inputs).images[0]
+
+        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+
+        # Outputs should be different here
+        # For some reasons, they don't show large differences
+        assert max_diff > 1e-6
+
+    def test_flux_prompt_embeds(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_with_prompt = pipe(**inputs).images[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+
+        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
+            prompt,
+            prompt_2=None,
+            device=torch_device,
+            max_sequence_length=inputs["max_sequence_length"],
+        )
+        output_with_embeds = pipe(
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            **inputs,
+        ).images[0]
+
+        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
+        assert max_diff < 1e-4

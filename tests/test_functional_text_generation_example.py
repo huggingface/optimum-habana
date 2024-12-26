@@ -22,7 +22,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     }
 else:
     # Functional testing only on G2 onwards
-    MODEL_OUTPUTS = []
+    MODEL_OUTPUTS = {}
 
 
 def _test_text_generation(

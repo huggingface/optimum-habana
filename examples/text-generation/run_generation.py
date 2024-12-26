@@ -28,6 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
+from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -248,7 +249,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -301,9 +306,9 @@ def setup_parser(parser):
     parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
     )
     parser.add_argument(
         "--input_embeds",
@@ -314,6 +319,9 @@ def setup_parser(parser):
         "--run_partial_dataset",
         action="store_true",
         help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
@@ -384,6 +392,9 @@ def main():
 
     import habana_frameworks.torch.hpu as torch_hpu
 
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
@@ -452,20 +463,31 @@ def main():
             encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
                     attn_mask = input_tokens["attention_mask"]
-                    return torch.sum(attn_mask, dim=1)
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
 
                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
                 generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -569,7 +591,7 @@ def main():
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i+1}.{j+1}: {output}")
                 all_outputs.append(output)
             print()
 

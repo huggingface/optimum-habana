@@ -12,11 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+The Gaudi Trainer class, to easily train a 🤗 Transformers from scratch or finetune it on a new task.
+"""
 
 import contextlib
 import copy
 import functools
-import importlib.metadata
 import inspect
 import json
 import math
@@ -35,9 +37,15 @@ import numpy as np
 import torch
 from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
-from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
+from accelerate.utils import (
+    DistributedDataParallelKwargs,
+    GradientAccumulationPlugin,
+    load_fsdp_model,
+    load_fsdp_optimizer,
+    save_fsdp_model,
+    save_fsdp_optimizer,
+)
 from huggingface_hub import upload_folder
-from packaging import version
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -50,7 +58,7 @@ from transformers.integrations.deepspeed import (
 )
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.trainer import _get_fsdp_ckpt_kwargs
+from transformers.trainer import _get_fsdp_ckpt_kwargs, _is_peft_model
 from transformers.trainer_callback import ExportableState, TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
     DistributedTensorGatherer,
@@ -72,6 +80,7 @@ from transformers.trainer_utils import (
     HPSearchBackend,
     HubStrategy,
     IntervalStrategy,
+    PredictionOutput,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
@@ -90,7 +99,6 @@ from transformers.utils import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     PushInProgress,
-    is_accelerate_available,
     is_datasets_available,
     is_peft_available,
     is_safetensors_available,
@@ -116,52 +124,76 @@ from .training_args import GaudiTrainingArguments
 if is_datasets_available():
     import datasets
 
-
 if is_safetensors_available():
     import safetensors.torch
-
 
 if is_peft_available():
     from peft import PeftModel
     from peft.utils import PeftType
 
-
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
-if is_accelerate_available():
-    from accelerate.utils import (
-        load_fsdp_optimizer,
-        save_fsdp_optimizer,
+from accelerate.utils import DataLoaderConfiguration
+
+
+def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
+    """
+    Determines whether the input settings need to be updated.
+
+    Currently (attn_softmax_bf16, use_flash_attention, flash_attention_recompute,
+    flash_attention_causal_mask) are enabled only for llama, qwen2, starcoder2, gemma, baichuan
+    and chatglm
+
+    lazy_mode for llama, qwen2, starcoder2 and mistral
+
+    Args:
+        model: The model instance for which the input update settings are being evaluated
+        lazy_mode[Optional[bool]]: Whether to use lazy mode for the model (defaults to `None`)
+
+    Returns:
+        Tuple[bool, Dict]: A flag indicating whether the input settings should be updated.
+        A dictionary containing the specific input settings that need to be updated, if any
+    """
+    inputs_update: Dict = {}
+
+    should_update_inputs = (getattr(model, "generation_config", None) is not None) and (
+        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan", "chatglm")
     )
+    if should_update_inputs:
+        if model.generation_config.attn_softmax_bf16:
+            inputs_update["attn_softmax_bf16"] = True
+        if model.generation_config.use_flash_attention:
+            inputs_update["use_flash_attention"] = True
+        if model.generation_config.flash_attention_recompute:
+            inputs_update["flash_attention_recompute"] = True
+        if model.generation_config.flash_attention_causal_mask:
+            inputs_update["flash_attention_causal_mask"] = True
+
+    should_update_inputs = (
+        (getattr(model, "generation_config", None) is not None)
+        and (model.config.model_type in ("llama", "qwen2", "starcoder2", "mistral"))
+        and (lazy_mode is not None)
+    )
+    if should_update_inputs:
+        if _is_peft_model(model):
+            forward_method = getattr(model.get_base_model(), "forward")
+        else:
+            forward_method = getattr(model, "forward")
+        signature = inspect.signature(forward_method)
+        if "lazy_mode" in signature.parameters:
+            inputs_update["lazy_mode"] = lazy_mode
+
+    should_update_inputs: bool = len(inputs_update) > 0
+
+    return should_update_inputs, inputs_update
+
 
 if TYPE_CHECKING:
     import optuna
 
 
 DATA_SAMPLERS = [RandomSampler, SeedableRandomSampler]
-
-
-if is_accelerate_available("0.28.0"):
-    from accelerate.utils import DataLoaderConfiguration
-
-
-def _is_peft_model(model):
-    if is_peft_available():
-        classes_to_check = (PeftModel,) if is_peft_available() else ()
-        # Here we also check if the model is an instance of `PeftMixedModel` introduced in peft>=0.7.0: https://github.com/huggingface/transformers/pull/28321
-        if version.parse(importlib.metadata.version("peft")) >= version.parse("0.7.0"):
-            from peft import PeftMixedModel
-
-            classes_to_check = (*classes_to_check, PeftMixedModel)
-        return isinstance(model, classes_to_check)
-    return False
-
-
-if TYPE_CHECKING:
-    if is_datasets_available():
-        import datasets
-
 
 logger = logging.get_logger(__name__)
 
@@ -327,13 +359,12 @@ class GaudiTrainer(Trainer):
             num_samples = len(self.train_dataset)
             if (
                 not self.args.dataloader_drop_last
-                and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                and num_samples % self.args.per_device_train_batch_size != 0
                 and self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ):
                 # Make the total number of samples divisible by the batch size in lazy mode if needed
                 num_samples += (
-                    self.args.per_device_train_batch_size
-                    - len(self.train_dataset) % self.args.per_device_train_batch_size
+                    self.args.per_device_train_batch_size - num_samples % self.args.per_device_train_batch_size
                 )
             return RandomSampler(self.train_dataset, num_samples=num_samples)
 
@@ -574,7 +605,7 @@ class GaudiTrainer(Trainer):
                 (self.model_wrapped,) = release_memory(self.model_wrapped)
                 self.model_wrapped = self.model
 
-                # Check for DeepSpeed *after* the intial pass and modify the config
+                # Check for DeepSpeed *after* the initial pass and modify the config
                 if self.is_deepspeed_enabled:
                     # Temporarily unset `self.args.train_batch_size`
                     original_bs = self.args.per_device_train_batch_size
@@ -591,12 +622,17 @@ class GaudiTrainer(Trainer):
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
+        if (
+            self.accelerator.mpu.sequence_parallel_is_initialized()
+            and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
+        ):
+            total_train_batch_size = total_train_batch_size / self.accelerator.mpu.get_sequence_parallel_world_size()
 
         len_dataloader = None
         num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = len(train_dataloader) // args.gradient_accumulation_steps
+            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
@@ -685,14 +721,14 @@ class GaudiTrainer(Trainer):
 
                 # HACK because outputs should always be tuples
                 def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
-                    """DeepSpeed acitvation checkpointing."""
+                    """DeepSpeed activation checkpointing."""
                     if use_reentrant is None:
                         use_reentrant = True
                     if use_reentrant:
                         all_outputs = []
                         CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
                     else:
-                        logger.info("DeepSpeed acitvation checkpointing=non_reentrant_checkpoint")
+                        logger.info("DeepSpeed activation checkpointing=non_reentrant_checkpoint")
                         all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
 
                     # Always return a tuple
@@ -862,11 +898,20 @@ class GaudiTrainer(Trainer):
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
-        # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
+        # _total_loss_scalar is updated every time .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
         _grad_norm: Optional[float] = None
+        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED and (
+            # Gradient clipping
+            args.max_grad_norm is not None and args.max_grad_norm > 0
+        )
+
+        # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
+        # lazy_mode for llama, qwen2, starcoder2 and mistral
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model, lazy_mode=args.use_lazy_mode)
+
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
         if args.eval_on_start:
@@ -881,6 +926,7 @@ class GaudiTrainer(Trainer):
             warmup=self.args.profiling_warmup_steps,
             active=self.args.profiling_steps,
             record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
         )
         hb_profiler.start()
 
@@ -966,17 +1012,10 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2 and gemma
-                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                    if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
-                        if self.model.generation_config.attn_softmax_bf16:
-                            inputs["attn_softmax_bf16"] = True
-                        if self.model.generation_config.use_flash_attention:
-                            inputs["use_flash_attention"] = True
-                        if self.model.generation_config.flash_attention_recompute:
-                            inputs["flash_attention_recompute"] = True
-                        if self.model.generation_config.flash_attention_causal_mask:
-                            inputs["flash_attention_causal_mask"] = True
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
+                # lazy_mode for llama, qwen2, starcoder2 and mistral
+                if _should_update_inputs:
+                    inputs.update(_inputs_update)
 
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
@@ -1022,10 +1061,9 @@ class GaudiTrainer(Trainer):
                     if is_last_step_and_steps_less_than_grad_acc:
                         self.accelerator.gradient_state._set_sync_gradients(True)
 
-                    # Gradient clipping
-                    if args.max_grad_norm is not None and args.max_grad_norm > 0:
+                    # If the condition is true, we need to compute _grad_norm
+                    if _should_compute_grad_norm:
                         # deepspeed does its own clipping
-
                         if self.gaudi_config.use_fused_clip_norm and args.use_habana:
                             # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                             _grad_norm = self.FusedNorm.clip_norm(model.parameters())
@@ -1038,7 +1076,6 @@ class GaudiTrainer(Trainer):
 
                     self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
 
-                    optimizer_was_run = True
                     self.optimizer.step()
 
                     self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
@@ -1048,8 +1085,8 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
-                    self._zero_model_grad(model)
 
+                    self._zero_model_grad(model)
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
                     if args.use_lazy_mode:
@@ -1148,22 +1185,22 @@ class GaudiTrainer(Trainer):
         best_safe_adapter_model_path = os.path.join(self.state.best_model_checkpoint, ADAPTER_SAFE_WEIGHTS_NAME)
 
         model = self.model
-        # TODO: check if the code below works
-        # if self.is_deepspeed_enabled:
-        #     deepspeed_load_checkpoint(
-        #         self.model_wrapped,
-        #         self.state.best_model_checkpoint,
-        #         load_module_strict=not _is_peft_model(self.model),
-        #     )
-        # elif self.is_fsdp_enabled:
-        #     load_result = load_fsdp_model(
-        #         self.accelerator.state.fsdp_plugin,
-        #         self.accelerator,
-        #         model,
-        #         self.state.best_model_checkpoint,
-        #         **_get_fsdp_ckpt_kwargs(),
-        #     )
-        if (
+
+        if self.is_deepspeed_enabled:
+            deepspeed_load_checkpoint(
+                self.model_wrapped,
+                self.state.best_model_checkpoint,
+                load_module_strict=not _is_peft_model(self.model),
+            )
+        elif self.is_fsdp_enabled:
+            load_result = load_fsdp_model(
+                self.accelerator.state.fsdp_plugin,
+                self.accelerator,
+                model,
+                self.state.best_model_checkpoint,
+                **_get_fsdp_ckpt_kwargs(),
+            )
+        elif (
             os.path.exists(best_model_path)
             or os.path.exists(best_safe_model_path)
             or os.path.exists(best_adapter_model_path)
@@ -1241,9 +1278,9 @@ class GaudiTrainer(Trainer):
             tr_loss -= tr_loss
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
-            # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradataion.
+            # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
@@ -1254,7 +1291,7 @@ class GaudiTrainer(Trainer):
                     and self.accelerator.distributed_type != GaudiDistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
-                    grad_norm = _grad_norm.item()
+                    grad_norm = _grad_norm.detach().item()
                 else:
                     grad_norm = None
 
@@ -1318,72 +1355,6 @@ class GaudiTrainer(Trainer):
                         "\nThis won't yield the same results as if the training had not been interrupted."
                     )
 
-    def _save_checkpoint(self, model, trial, metrics=None):
-        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
-        # want to save except FullyShardedDDP.
-        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
-
-        # Save model checkpoint
-        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-
-        if self.hp_search_backend is None and trial is None:
-            self.store_flos()
-
-        run_dir = self._get_output_dir(trial=trial)
-        output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
-
-        if not self.args.save_only_model:
-            # Save optimizer and scheduler
-            self._save_optimizer_and_scheduler(output_dir)
-            # Save RNG state
-            self._save_rng_state(output_dir)
-
-        # Determine the new best metric / best model checkpoint
-        if metrics is not None and self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-            if not metric_to_check.startswith("eval_"):
-                metric_to_check = f"eval_{metric_to_check}"
-            try:
-                metric_value = metrics[metric_to_check]
-            except KeyError as exc:
-                raise KeyError(
-                    f"The `metric_for_best_model` training argument is set to '{metric_to_check}', which is not found in the evaluation metrics. "
-                    f"The available evaluation metrics are: {list(metrics.keys())}. Consider changing the `metric_for_best_model` via the TrainingArguments."
-                ) from exc
-
-            operator = np.greater if self.args.greater_is_better else np.less
-            if (
-                self.state.best_metric is None
-                or self.state.best_model_checkpoint is None
-                or operator(metric_value, self.state.best_metric)
-            ):
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-        # Save the Trainer state
-        if self.args.should_save:
-            # Update `ExportableState` callbacks and `TrainerControl` state to where we are currently
-            for cb in [
-                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
-            ]:
-                cb_name = cb.__class__.__name__
-                cb_state = cb.state()
-                if isinstance(self.state.stateful_callbacks[cb_name], list):
-                    self.state.stateful_callbacks[cb_name].append(cb_state)
-                else:
-                    self.state.stateful_callbacks[cb_name] = cb_state
-            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-
-        if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
-
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            # Solely rely on numerical checkpoint id for rotation.
-            # mtime is not reliable especially on some fuse fs in cloud environments.
-            self._rotate_checkpoints(use_mtime=False, output_dir=run_dir)
-
     def _save_rng_state(self, output_dir):
         # Save RNG state in non-distributed training
         rng_states = {
@@ -1429,7 +1400,7 @@ class GaudiTrainer(Trainer):
             )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
-            # This block is exectuted by the main process only
+            # This block is executed by the main process only
             optim_dict = self.optimizer.state_dict()
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
@@ -1534,6 +1505,15 @@ class GaudiTrainer(Trainer):
         elif isinstance(data, (tuple, list)):
             return type(data)(self._prepare_input(v) for v in data)
         elif isinstance(data, torch.Tensor):
+            if (
+                self.accelerator.mpu.sequence_parallel_is_initialized()
+                and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
+            ):
+                seq_parallel_world_rank = self.accelerator.mpu.get_sequence_parallel_rank()
+                sub_seq_length = int(data.size()[1] / self.accelerator.mpu.get_sequence_parallel_world_size())
+                data = data[
+                    :, seq_parallel_world_rank * sub_seq_length : (seq_parallel_world_rank + 1) * sub_seq_length
+                ]
             kwargs = {"device": self.args.device}
             if self.is_deepspeed_enabled and (torch.is_floating_point(data) or torch.is_complex(data)):
                 # NLP models inputs are int/uint and those get adjusted to the right dtype of the
@@ -1552,7 +1532,7 @@ class GaudiTrainer(Trainer):
         arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
         """
         if self.use_cpu_amp:
-            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
         elif self.use_hpu_amp:
             ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
         else:
@@ -1595,7 +1575,7 @@ class GaudiTrainer(Trainer):
         del inputs
         kwargs = {}
 
-        # For LOMO optimizers you need to explicitly use the learnign rate
+        # For LOMO optimizers you need to explicitly use the learning rate
         if self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             kwargs["learning_rate"] = self._get_learning_rate()
 
@@ -1719,10 +1699,9 @@ class GaudiTrainer(Trainer):
     ) -> Dict[str, float]:
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
-        1. comment out TPU related
-        2. use throughput_warmup_steps in evaluation throughput calculation
+        1. use throughput_warmup_steps in evaluation throughput calculation
         """
-        # handle multipe eval datasets
+        # handle multiple eval datasets
         override = eval_dataset is not None
         eval_dataset = eval_dataset if override else self.eval_dataset
         if isinstance(eval_dataset, dict):
@@ -1763,6 +1742,14 @@ class GaudiTrainer(Trainer):
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
 
+        eval_steps = math.ceil(output.num_samples / total_batch_size)
+        if eval_steps <= self.args.throughput_warmup_steps:
+            logger.warning(
+                f" Warmup steps are taken into account for the throughput calculation because the number of evaluation steps ({eval_steps}) is smaller than the number of warmup steps ({self.args.throughput_warmup_steps})"
+            )
+            num_samples = output.num_samples
+            num_steps = eval_steps
+
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
@@ -1778,8 +1765,52 @@ class GaudiTrainer(Trainer):
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-
         return output.metrics
+
+    def predict(
+        self, test_dataset: Dataset, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "test"
+    ) -> PredictionOutput:
+        """
+        From https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/trainer.py#L3904 with the following modification
+        1. comment out TPU related
+        2. use throughput_warmup_steps in evaluation throughput calculation
+        """
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        test_dataloader = self.get_test_dataloader(test_dataset)
+        start_time = time.time()
+        self.start_time_after_warmup = None
+
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        output = eval_loop(
+            test_dataloader, description="Prediction", ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix
+        )
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
+        if f"{metric_key_prefix}_model_preparation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_model_preparation_time"]
+
+        num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
+        num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
+
+        logger.info(f"num_samples : {num_samples}, num_steps: {num_steps}")
+
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=num_samples,
+                num_steps=num_steps,
+                start_time_after_warmup=self.start_time_after_warmup,
+            )
+        )
+
+        self.control = self.callback_handler.on_predict(self.args, self.state, self.control, output.metrics)
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
     def evaluation_loop(
         self,
@@ -1872,7 +1903,14 @@ class GaudiTrainer(Trainer):
         # Will be useful when we have an iterable dataset so don't know its length.
         observed_num_examples = 0
 
+        # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model)
+
+        # set a default dtype of logits
+        logits_dtype: str = "float32"
+
         # Main evaluation loop
+        start_time_eval = time.time()
         for step, inputs in enumerate(dataloader):
             if (
                 self.args.throughput_warmup_steps > 0
@@ -1880,6 +1918,8 @@ class GaudiTrainer(Trainer):
                 and step == self.args.throughput_warmup_steps
             ):
                 self.start_time_after_warmup = time.time()
+                self.compilation_time = self.start_time_after_warmup - start_time_eval
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -1888,43 +1928,31 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2 and gemma
-            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-                if self.model.config.model_type in ["llama", "qwen2", "starcoder2", "gemma"]:
-                    if self.model.generation_config.attn_softmax_bf16:
-                        inputs["attn_softmax_bf16"] = True
-                    if self.model.generation_config.use_flash_attention:
-                        inputs["use_flash_attention"] = True
-                    if self.model.generation_config.flash_attention_recompute:
-                        inputs["flash_attention_recompute"] = True
-                    if self.model.generation_config.flash_attention_causal_mask:
-                        inputs["flash_attention_causal_mask"] = True
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
+            if _should_update_inputs:
+                inputs.update(_inputs_update)
 
             # Prediction step
             losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             main_input_name = getattr(self.model, "main_input_name", "input_ids")
             inputs_decode = self._prepare_input(inputs[main_input_name]) if args.include_inputs_for_metrics else None
 
-            # Save the logits dtype since we need to convert them into floats during the process
-            # They will be converted back into their original dtype right before computing metrics
-            if logits is not None:
-                logits_dtype = get_dtype(logits)
-
             # Update containers
             if losses is not None:
                 losses = self.gather_function((losses.repeat(batch_size)))
                 all_losses.add(losses)
-            if labels is not None:
-                labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
-                labels = self.gather_function((labels))
-                if not self.args.batch_eval_metrics or description == "Prediction":
-                    all_labels.add(labels)
             if inputs_decode is not None:
                 inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
                 inputs_decode = self.gather_function((inputs_decode))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_inputs.add(inputs_decode)
+            if labels is not None:
+                # Pad labels here, preparing for preprocess_logits_for_metrics in next logits block.
+                labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+            # Save the logits dtype since we need to convert them into floats during the process
+            # They will be converted back into their original dtype right before computing metrics
             if logits is not None:
+                logits_dtype = get_dtype(logits)
                 if args.use_habana and logits_dtype != "float32":
                     logits = to_device_dtype(logits, target_dtype=torch.float32)
                 logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
@@ -1933,6 +1961,12 @@ class GaudiTrainer(Trainer):
                 logits = self.gather_function((logits))
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_preds.add(logits)
+            if labels is not None:
+                if self.args.context_parallel_size != 1:
+                    labels = labels.clone()
+                labels = self.gather_function((labels))
+                if not self.args.batch_eval_metrics or description == "Prediction":
+                    all_labels.add(labels)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
@@ -2022,6 +2056,8 @@ class GaudiTrainer(Trainer):
             metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
         if hasattr(self, "model_preparation_time"):
             metrics[f"{metric_key_prefix}_model_preparation_time"] = self.model_preparation_time
+        if hasattr(self, "compilation_time"):
+            metrics[f"{metric_key_prefix}_graph_compliation_duration"] = self.compilation_time
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
@@ -2232,6 +2268,7 @@ class GaudiTrainer(Trainer):
             # backward compatibility
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
+
         model.eval()
         # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
         #     self.optimizer.eval()
@@ -2385,7 +2422,7 @@ class GaudiTrainer(Trainer):
 
     def create_accelerator_and_postprocess(self):
         grad_acc_kwargs = {}
-        if is_accelerate_available("0.28.0") and self.args.accelerator_config.gradient_accumulation_kwargs is not None:
+        if self.args.accelerator_config.gradient_accumulation_kwargs is not None:
             grad_acc_kwargs = self.args.accelerator_config.gradient_accumulation_kwargs
 
         # check if num_steps is attempted to be passed in gradient_accumulation_kwargs
@@ -2405,25 +2442,18 @@ class GaudiTrainer(Trainer):
 
         accelerator_config = self.args.accelerator_config.to_dict()
 
-        if is_accelerate_available("0.28.0"):
-            dataloader_config = DataLoaderConfiguration(
-                split_batches=accelerator_config.pop("split_batches"),
-                dispatch_batches=accelerator_config.pop("dispatch_batches"),
-                even_batches=accelerator_config.pop("even_batches"),
-                use_seedable_sampler=accelerator_config.pop("use_seedable_sampler"),
-            )
+        dataloader_config = DataLoaderConfiguration(
+            split_batches=accelerator_config.pop("split_batches"),
+            dispatch_batches=accelerator_config.pop("dispatch_batches"),
+            even_batches=accelerator_config.pop("even_batches"),
+            use_seedable_sampler=accelerator_config.pop("use_seedable_sampler"),
+        )
         non_blocking = accelerator_config.pop("non_blocking")
-        if not is_accelerate_available("0.30.0"):
-            if non_blocking:
-                raise ImportError(
-                    "`non_blocking` is only supported in accelerate v0.30.0 and above. Please upgrade accelerate to use this feature."
-                )
-        else:
-            if non_blocking and not self.args.dataloader_pin_memory:
-                logger.warning(
-                    "`non_blocking` is enabled but `dataloader_pin_memory` is not. For the best performance, it's recommended to enable both."
-                )
-            dataloader_config.non_blocking = non_blocking
+        if non_blocking and not self.args.dataloader_pin_memory:
+            logger.warning(
+                "`non_blocking` is enabled but `dataloader_pin_memory` is not. For the best performance, it's recommended to enable both."
+            )
+        dataloader_config.non_blocking = non_blocking
         # this would have been updated above, no need for it anymore
         accelerator_config.pop("gradient_accumulation_kwargs")
 
@@ -2432,11 +2462,8 @@ class GaudiTrainer(Trainer):
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "distribution_strategy": self.args.distribution_strategy,
             "dynamic": self.args.compile_dynamic,
+            "dataloader_config": dataloader_config,
         }
-        if is_accelerate_available("0.28.0"):
-            args["dataloader_config"] = dataloader_config
-        else:
-            args.update(accelerator_config)
 
         # create accelerator object
         self.accelerator = GaudiAccelerator(**args)
