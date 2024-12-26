@@ -35,6 +35,7 @@ Models that have been validated:
   - [meta-llama/Llama-3.2-90B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-90B-Vision-Instruct)
   - [tiiuae/falcon-11B-vlm](https://huggingface.co/tiiuae/falcon-11B-vlm)
   - [google/paligemma-3b-mix-224](https://huggingface.co/google/paligemma-3b-mix-224)
+  - [THUDM/glm-4v-9b](https://huggingface.co/THUDM/glm-4v-9b)
 
 ### Inference with BF16
 
@@ -130,6 +131,15 @@ python3 run_pipeline.py \
     --bf16 \
     --sdp_on_bf16
 ```
+
+To run THUDM/glm-4v-9b inference, use the following command (Note that we need a env variable "GLM=4v" to distinguish between glm4v and chatglm, this is because these models are all customized models and share the same model_type named "chatglm"):
+```bash
+GLM=4v python3 run_pipeline.py \
+    --model_name_or_path THUDM/glm-4v-9b \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention \
+    --use_kv_cache
 
 ### Inference with FP8
 Inference for Llava-1.5-7b, Llava-1.5-13b, Llava-v1.6-mistral-7b and Llava-v1.6-vicuna-13b in FP8 precision are enabled using  [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch.
