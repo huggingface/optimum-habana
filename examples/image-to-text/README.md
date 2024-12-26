@@ -33,6 +33,16 @@ python3 run_pipeline.py \
 ```
 > SDPA may introduce [reduced precison](https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-reduction-for-fp16-and-bf16-in-scaled-dot-product-attention-sdpa)
 
+To run inference with THUDM/glm-4v-9b, use the following command (Note that you need to set the environment variable `GLM=4v` to distinguish between glm4v and chatglm, as these models are customized and share the same model type named "chatglm"):
+```bash
+GLM=4v python3 run_pipeline.py \
+    --model_name_or_path THUDM/glm-4v-9b \
+    --use_hpu_graphs \
+    --bf16 \
+    --sdp_on_bf16 \
+    --use_flash_attention \
+    --use_kv_cache
+
 
 ### Multi-cards inference with BF16
 

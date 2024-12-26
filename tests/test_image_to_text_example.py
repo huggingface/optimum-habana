@@ -25,6 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("tiiuae/falcon-11B-vlm", 1),
             ("Qwen/Qwen2-VL-2B-Instruct", 1),
             ("Qwen/Qwen2-VL-7B-Instruct", 1),
+            ("THUDM/glm-4v-9b", 1),
         ],
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
@@ -64,6 +65,9 @@ def _test_image_to_text(
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
     ]
+
+    if model_name == "THUDM/glm-4v-9b":
+        env_variables["GLM"] = "4v"
 
     command += [
         "--use_hpu_graphs",
