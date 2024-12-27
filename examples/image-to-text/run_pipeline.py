@@ -23,10 +23,19 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, LlavaNextProcessor, LlavaProcessor, pipeline
-from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
+from transformers import (
+    AutoConfig,
+    AutoModelForVision2Seq,
+    AutoProcessor,
+    LlavaNextProcessor,
+    LlavaProcessor,
+    pipeline,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import (
+    set_seed,
+)
 
 
 logging.basicConfig(
@@ -172,6 +181,23 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
+    parser.add_argument(
+        "--max_input_tokens",
+        type=int,
+        default=None,
+        help="If > 0 then pad the input sequences to this specified length of tokens. will not apply truncate to avoid deleting the image tag",
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="Whether to use sampling for generation.",
+    )
+    parser.add_argument(
+        "--seed",
+        default=27,
+        type=int,
+        help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+    )
 
     args = parser.parse_args()
 
@@ -185,8 +211,11 @@ def main():
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     adapt_transformers_to_gaudi()
 
-    model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
-    if args.image_path is None and model_type in ["llava", "mllama"]:
+    set_seed(args.seed)
+
+    config = AutoConfig.from_pretrained(args.model_name_or_path)
+    model_type = config.model_type
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "llava_next":
         args.image_path = [
@@ -197,8 +226,8 @@ def main():
             processor = LlavaProcessor.from_pretrained(args.model_name_or_path)
         elif model_type == "llava_next":
             processor = LlavaNextProcessor.from_pretrained(args.model_name_or_path)
-        elif model_type == "mllama": 
-            processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+        elif model_type == "mllama":
+            processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
             conversation = [
                 {
                     "role": "user",
@@ -273,6 +302,7 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "do_sample": args.do_sample,
     }
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
@@ -286,8 +316,12 @@ def main():
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
+            kwargs = {}
+            if args.max_input_tokens is not None and args.max_input_tokens > 0:
+                kwargs["max_length"] = args.max_input_tokens
+                kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
