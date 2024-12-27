@@ -118,8 +118,17 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
-            if self.model.config.model_type != "falcon":
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "qwen2",
+            "falcon",
+            "starcoder2",
+            "gemma",
+            "baichuan",
+            "gpt_bigcode",
+        ]:
+            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
