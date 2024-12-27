@@ -199,7 +199,7 @@ def main():
 
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -210,7 +210,7 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "chatglm"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -316,17 +316,35 @@ def main():
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
+    if model_type == "chatglm":
+        generate_kwargs["reuse_cache"] = True
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "chatglm"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            if model_type == "chatglm":
+                query = "What is shown in this image?"
+                prompt = [{"role": "user", "image": image, "content": query}]
+
+                model_inputs = processor.apply_chat_template(
+                    prompt,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors=None,
+                    return_dict=True,
+                )
+                generator.model.adjust_multimodal_inputs(model_inputs)
+                model_inputs.convert_to_tensors(tensor_type="pt")
+                model_inputs.to("hpu")
+            else:
+                model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
