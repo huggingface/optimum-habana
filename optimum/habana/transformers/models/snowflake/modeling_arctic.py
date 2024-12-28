@@ -56,6 +56,14 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+
+    has_fused_rms_norm = True
+except ImportError:
+    has_fused_rms_norm = False
+    print("Not using HPU fused kernel for RMSNorm")
+
 from .configuration_arctic import ArcticConfig
 
 
@@ -206,11 +214,27 @@ class ArcticRMSNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
+        """
+        Modified from original ArcticRMS implementation:
+        - Use Habana fused RMSNorm
+
+        Modifications copied from ../llama/modeling_llama.py:gaudi_llama_rmsnorm_forward()
+        """
+        if hidden_states.device.type == "hpu" and has_fused_rms_norm:
+            # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+            if hidden_states.dtype != self.weight.dtype:
+                orig_dtype = hidden_states.dtype
+                hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+                return hidden_states.to(orig_dtype)
+            else:
+                hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+                return hidden_states
+        else:
+            input_dtype = hidden_states.dtype
+            hidden_states = hidden_states.to(torch.float32)
+            variance = hidden_states.pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+            return self.weight * hidden_states.to(input_dtype)
 
 
 # Copied from transformers.models.llama.modeling_llama.LlamaRotaryEmbedding with Llama->Arctic
@@ -1518,7 +1542,7 @@ class ArcticForCausalLM(ArcticPreTrainedModel, GenerationMixin):
     ]
     _tied_weights_keys = []  # ["lm_head.weight"]
 
-    def __init__(self, config, **kwargs):
+    def __init__(self, config: ArcticConfig, **kwargs):
         super().__init__(config)
         self.model = ArcticModel(config, **kwargs)
         self.vocab_size = config.vocab_size
