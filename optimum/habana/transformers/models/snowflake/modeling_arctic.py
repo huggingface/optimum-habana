@@ -884,7 +884,7 @@ class ArcticSdpaAttention(ArcticAttention):
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.trainig)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
