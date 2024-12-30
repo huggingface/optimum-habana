@@ -17,7 +17,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch Arctic model. Copied from https://huggingface.co/Snowflake/snowflake-arctic-instruct/tree/be318cae5aba5291208f27d30991a5150500887d."""
+"""PyTorch Arctic model. Adapted from https://huggingface.co/Snowflake/snowflake-arctic-instruct/tree/be318cae5aba5291208f27d30991a5150500887d.
+
+Changes made:
+- Use HPU FusedRoPE implementation
+- Use HPU FusedRMSNorm implementation
+"""
 
 import copy
 import inspect
@@ -56,23 +61,26 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
+from .configuration_arctic import ArcticConfig
+from ..modeling_all_models import KVCache, apply_customized_rope_module
+
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-
-    has_fused_rope = True
 except ImportError:
-    has_fused_rope = False
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-
-    has_fused_rms_norm = True
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
 except ImportError:
-    has_fused_rms_norm = False
     print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
 
-from .configuration_arctic import ArcticConfig
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
 
 
 if is_deepspeed_available():
@@ -228,11 +236,13 @@ class ArcticRMSNorm(nn.Module):
 
         Modifications copied from ../llama/modeling_llama.py:gaudi_llama_rmsnorm_forward()
         """
-        if hidden_states.device.type == "hpu" and has_fused_rms_norm:
+        if hidden_states.device.type == "hpu" and FusedRMSNorm:
             # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
             if hidden_states.dtype != self.weight.dtype:
                 orig_dtype = hidden_states.dtype
-                hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+                hidden_states = FusedRMSNorm.apply(
+                    hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon
+                )
                 return hidden_states.to(orig_dtype)
             else:
                 hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
@@ -453,7 +463,7 @@ class ArcticAttention(nn.Module):
                 )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
@@ -559,7 +569,7 @@ class ArcticFlashAttention2(ArcticAttention):
         rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
         cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         use_sliding_windows = (
             _flash_supports_window_size
@@ -874,7 +884,7 @@ class ArcticSdpaAttention(ArcticAttention):
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.trainig)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
@@ -2055,23 +2065,9 @@ class ArcticForSequenceClassification(ArcticPreTrainedModel):
         )
 
 # Copied from optimum.habana.transformers.models.llama.modeling_llama:apply_customized_rope()
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         # keep the same implementation as Transformers v4.37.2
-        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids], position_ids)
