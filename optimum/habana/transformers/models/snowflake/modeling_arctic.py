@@ -1518,6 +1518,7 @@ class ArcticModel(ArcticPreTrainedModel):
                 all_self_attns += (layer_outputs[1],)
 
             all_router_losses += (layer_outputs[-1],)
+            htcore.mark_step()
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer
