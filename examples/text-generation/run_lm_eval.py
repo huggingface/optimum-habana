@@ -86,6 +86,7 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
     return args
