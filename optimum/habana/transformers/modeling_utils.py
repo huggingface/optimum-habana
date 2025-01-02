@@ -209,8 +209,10 @@ from .models import (
     gaudi_gpt_neox_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_MambaCache_update_conv_state,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+    gaudi_MambaMixer,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_dynamic_moe_forward,
     gaudi_mixtral_block_moe_forward,
@@ -668,6 +670,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+    transformers.models.mamba.modeling_mamba.MambaMixer = gaudi_MambaMixer
+    transformers.cache_utils.MambaCache.update_conv_state = gaudi_MambaCache_update_conv_state
+    
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaForCausalLM.prepare_inputs_for_generation = (
         gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
     )
