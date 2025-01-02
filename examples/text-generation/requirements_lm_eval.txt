@@ -1,1 +1,1 @@
-https://github.com/EleutherAI/lm-evaluation-harness/archive/refs/tags/v0.4.2.zip
+https://github.com/EleutherAI/lm-evaluation-harness/archive/refs/tags/v0.4.7.zip
