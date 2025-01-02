@@ -115,6 +115,7 @@ PT_HPU_LAZY_MODE=0 python run_clip.py \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code \
     --torch_compile_backend=hpu_backend \
@@ -274,6 +275,7 @@ python run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --bf16 \
+    --sdp_on_bf16 \
     --mediapipe_dataloader \
     --trust_remote_code
 ```

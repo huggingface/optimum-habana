@@ -21,7 +21,7 @@ from accelerate.utils import is_deepspeed_available, parse_choice_from_env, pars
 
 from optimum.utils import logging
 
-from .. import parallel_state
+from ..distributed import parallel_state
 from .utils import GaudiDistributedType
 
 
@@ -56,7 +56,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed

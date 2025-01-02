@@ -80,7 +80,10 @@ def run(
     warm_up_epcohs: int,
     use_hpu_graphs: bool,
     cast_bf16: bool,
+    sdp_on_bf16: bool,
 ):
+    if sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
     processor = VideoMAEImageProcessor.from_pretrained(model_name)
     device = torch.device("hpu")
     model = VideoMAEForVideoClassification.from_pretrained(model_name)
@@ -153,6 +156,9 @@ def main():
         help="Whether to perform in bf16 precision.",
     )
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--log_level",
         default=None,
         type=int,
@@ -176,6 +182,7 @@ def main():
         args.warm_up_epochs,
         args.use_hpu_graphs,
         args.bf16,
+        args.sdp_on_bf16,
     )
 
 

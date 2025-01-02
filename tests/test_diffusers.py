@@ -1348,6 +1348,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 --image_save_dir {run_dir}
                 --use_habana
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 """.split()
             cmd_line.append("--prompts")
@@ -1390,6 +1391,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "stabilityai/stable-diffusion-xl-base-1.0",
                 **kwargs,
             )
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
             num_images_per_prompt = num_images_per_prompt
             res = {}
             outputs = pipeline(
@@ -2466,6 +2468,7 @@ class TrainTextToImage(TestCase):
                  --dataloader_num_workers 8
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
+                 --sdp_on_bf16
                  --bf16
                  --adjust_throughput
                  --center_crop
@@ -2474,7 +2477,7 @@ class TrainTextToImage(TestCase):
                  --output_dir {tmpdir}
                 """.split()
 
-            # Run train_text_to_image_sdxl.y
+            # Run train_text_to_image_sdxl.py
             p = subprocess.Popen(cmd_line)
             return_code = p.wait()
 
@@ -2548,6 +2551,7 @@ class TrainControlNet(TestCase):
                     --checkpointing_steps 1000
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
+                    --sdp_on_bf16
                     --bf16
                     --max_train_steps 10
                     --output_dir {tmpdir}
@@ -3718,6 +3722,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_habana
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 --use_cpu_rng
                 """.split()
