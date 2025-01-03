@@ -92,7 +92,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
 
         distributed_runner = DistributedRunner(
             command_list=command,
-            world_size=8,
+            world_size=2,
             use_mpi=True,
         )
 

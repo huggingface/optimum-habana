@@ -101,6 +101,7 @@ args = SentenceTransformerGaudiTrainingArguments(
     warmup_ratio=0.1,
     # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
     # bf16=False,  # Set to True if you have a GPU that supports BF16
+    # sdp_on_bf16=True, #Set to True for better performance (but this setting can affect accuracy)
     batch_sampler=BatchSamplers.NO_DUPLICATES,  # MultipleNegativesRankingLoss benefits from no duplicate samples in a batch
     # We can use ROUND_ROBIN or PROPORTIONAL - to avoid focusing too much on one dataset, we will
     # use round robin, which samples the same amount of batches from each dataset, until one dataset is empty

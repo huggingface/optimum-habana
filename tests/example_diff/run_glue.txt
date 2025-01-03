@@ -77,6 +77,10 @@
 >     trainer = GaudiTrainer(
 529a561
 >         gaudi_config=gaudi_config,
+534c566
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 629,633d660
 < 
 < 

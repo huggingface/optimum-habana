@@ -16,16 +16,16 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 3.9, 28.9801, 2, 2),
+                ("facebook/bart-large-cnn", "Habana/bart", 3.673, 28.9801, 2, 2),
                 ("t5-3b", "Habana/t5", 2.955, 21.8877, 2, 1),
             ],
         },
         "translation": {
             "bf16": [
-                ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1618, 2, 1),
+                ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1509, 2, 1),
                 ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.815, 0.8132, 2, 1),
-                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.401, 1.2599, 2, 1),
-                ("t5-small", "Habana/t5", 14.482, 11.7277, 2, 1),
+                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.284, 1.2599, 2, 1),
+                ("t5-small", "Habana/t5", 11.164, 11.7277, 2, 1),
             ],
         },
     }
@@ -205,6 +205,9 @@ class TestEncoderDecoderModels:
 
         if "opus-mt-zh-en" in model_name:
             command_args.append("--max_source_length 512")
+
+        if "Babelscape/mrebel-large" in model_name or "nllb-200-distilled-600M" in model_name:
+            command_args.append("--sdp_on_bf16")
 
         command = self._build_command(
             task=task,

@@ -97,6 +97,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        use_compiled_autograd (`bool`, *optional*, defaults to `False`):
+            Whether to use compiled autograd for training. Currently only for summarization models.
+        compile_dynamic (`bool|None`, *optional*, defaults to `None`):
+            Set value of 'dynamic' parameter for torch.compile.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -115,7 +119,7 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profling.
+            Number of steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
     """
@@ -156,6 +160,16 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    use_compiled_autograd: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use compiled autograd for training. Currently only for summarization models.")},
+    )
+
+    compile_dynamic: Optional[bool | None] = field(
+        default=None,
+        metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
+    )
+
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use a tensor cache for hpu graphs."},
@@ -174,6 +188,11 @@ class GaudiTrainingArguments(TrainingArguments):
             "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
             "choices": ["ddp", "fast_ddp"],
         },
+    )
+
+    context_parallel_size: Optional[int] = field(
+        default=1,
+        metadata={"help": ("Determines how many ranks are divided into context parallel group.")},
     )
 
     throughput_warmup_steps: Optional[int] = field(
@@ -216,7 +235,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
+        metadata={"help": ("Number of steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
@@ -227,6 +246,11 @@ class GaudiTrainingArguments(TrainingArguments):
     profiling_record_shapes: Optional[bool] = field(
         default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
+    )
+
+    profiling_with_stack: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("record source information (file and line number) for the ops when enabling profiling.")},
     )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
@@ -284,6 +308,11 @@ class GaudiTrainingArguments(TrainingArguments):
             "help": "The backend to be used for distributed training.",
             "choices": ["hccl"],
         },
+    )
+
+    sdp_on_bf16: bool = field(
+        default=False,
+        metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend"},
     )
 
     fp8: Optional[bool] = field(
@@ -828,6 +857,9 @@ class GaudiTrainingArguments(TrainingArguments):
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
+        if self.sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
@@ -894,6 +926,7 @@ class GaudiTrainingArguments(TrainingArguments):
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

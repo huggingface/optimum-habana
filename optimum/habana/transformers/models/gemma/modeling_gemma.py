@@ -20,6 +20,7 @@
 """PyTorch Gemma model."""
 
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -41,6 +42,7 @@ from transformers.utils import is_torchdynamo_compiling, logging
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 try:
@@ -79,6 +81,36 @@ def gaudi_gemma_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
+
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_casual,
+        scale,
+        enable_recompute,
+    ):
+        import habana_frameworks.torch.hpu as ht
+
+        with ht.sdp_kernel(enable_recompute=enable_recompute):
+            return self._hpu_kernel_fsdpa.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_casual,
+                scale,
+            )
 
 
 class Matmul(torch.nn.Module):
@@ -133,7 +165,7 @@ class KVCache(torch.nn.Module):
 class GaudiGemmaAttention(GemmaAttention):
     def __init__(self, config: GemmaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -141,6 +173,9 @@ class GaudiGemmaAttention(GemmaAttention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
+
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -155,7 +190,7 @@ class GaudiGemmaAttention(GemmaAttention):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            self.rotary_emb._set_cos_sin_cache(seq_len, self.k_proj.weight.device, self.k_proj.weight.dtype)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -171,7 +206,9 @@ class GaudiGemmaAttention(GemmaAttention):
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
-    def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size):
+    def gaudi_flash_attn_v1(
+        self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size, enable_recompute
+    ):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
         Causal mask is not supported in this optimization
@@ -188,7 +225,9 @@ class GaudiGemmaAttention(GemmaAttention):
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = query_layer[:, :, s:e, :]
             row_mask = attention_mask[:, :, s:e, :]
-            attn_output_partial = FusedSDPA.apply(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None)
+            attn_output_partial = self.fused_scaled_dot_product_attention(
+                row_q, key_layer, value_layer, row_mask, dropout_rate, False, None, enable_recompute
+            )
             row_o_list.append(attn_output_partial)
         attn_output = torch.cat(row_o_list, dim=-2)
 
@@ -212,7 +251,7 @@ class GaudiGemmaAttention(GemmaAttention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: int = None,
+        cache_idx: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -252,8 +291,8 @@ class GaudiGemmaAttention(GemmaAttention):
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
 
-        cos, sin = self.rotary_emb(value_states, position_ids, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos[position_ids], sin[position_ids])
 
         if use_cache:
             # reuse k, v, self_attention
@@ -283,31 +322,42 @@ class GaudiGemmaAttention(GemmaAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA:
-            import habana_frameworks.torch.hpu as ht
-
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                attn_output = self.fused_scaled_dot_product_attention(
+                    query_states, key_states, value_states, attention_mask, 0.0, False, None, use_recompute
+                )
             else:
                 # first token
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states, key_states, value_states, None, 0.0, True, None, flash_attention_recompute
+                    )
                 else:
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        if q_len > 16384:
-                            attn_output = self.gaudi_flash_attn_v1(
-                                query_states, key_states, value_states, attention_mask, 0.0, self.block_size
-                            )
-                            htcore.mark_step()
-                        else:
-                            attn_output = FusedSDPA.apply(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None
-                            )
+                    if q_len > 16384:
+                        attn_output = self.gaudi_flash_attn_v1(
+                            query_states,
+                            key_states,
+                            value_states,
+                            attention_mask,
+                            0.0,
+                            self.block_size,
+                            flash_attention_recompute,
+                        )
+                        htcore.mark_step()
+                    else:
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            attention_mask,
+                            0.0,
+                            False,
+                            None,
+                            flash_attention_recompute,
+                        )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_gemma_repeat_kv(
@@ -355,7 +405,7 @@ class GaudiGemmaAttention(GemmaAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -405,23 +455,23 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: int = None,
+        cache_idx: Optional[int] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
-            use_flash_attention,
-            flash_attention_recompute,
-            flash_attention_causal_mask,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
         )
         return hidden_states, attn_weights, present_key_value
@@ -441,26 +491,27 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: int = None,
+        cache_idx: Optional[int] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
         - add new args token_idx
+        - add new args attn_softmax_bf16
         """
         residual = hidden_states
 
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -601,12 +652,13 @@ class GaudiGemmaModel(GemmaModel):
             position_ids = position_ids.unsqueeze(0)
 
         # HPU specific mask generation
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-            attention_mask,
-            input_ids.shape if input_ids is not None else (batch_size, seq_length),
-            inputs_embeds,
-            past_seen_tokens,
-        )
+        if attention_mask is None or attention_mask.dim() != 4:
+            attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+                attention_mask,
+                input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                inputs_embeds,
+                past_seen_tokens,
+            )
         # embed positions
         hidden_states = inputs_embeds
 
@@ -697,6 +749,15 @@ class GaudiGemmaModel(GemmaModel):
 
 
 class GaudiGemmaForCausalLM(GemmaForCausalLM):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        return self.model.reorder_kv_cache(beam_idx)
+
+    def update_sincos_cache(self, seq_len):
+        self.model.update_sincos_cache(seq_len)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -706,6 +767,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
+        reuse_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -715,11 +777,13 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
         - add new args token_idx
+        - add new args attn_softmax_bf16
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -735,6 +799,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
+            reuse_cache=reuse_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
@@ -743,6 +808,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
 
         hidden_states = outputs[0]
@@ -848,9 +914,14 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
                 "cache_position": cache_position,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
+                "reuse_cache": kwargs.get("reuse_cache"),
                 "attention_mask": attention_mask,
                 "num_logits_to_keep": num_logits_to_keep,
                 "token_idx": token_idx,
+                "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
             }
         )
         return model_inputs

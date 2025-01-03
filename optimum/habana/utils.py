@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.17.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.19.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -285,6 +285,7 @@ class HabanaProfile(object):
         warmup: int = 0,
         active: int = 0,
         record_shapes: bool = True,
+        with_stack: bool = False,
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
@@ -306,7 +307,7 @@ class HabanaProfile(object):
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
-                with_stack=False,
+                with_stack=with_stack,
             )
             self.start = profiler.start
             self.stop = profiler.stop

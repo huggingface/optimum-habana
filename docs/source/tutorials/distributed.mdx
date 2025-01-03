@@ -14,41 +14,55 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Distributed training with Optimum Habana
+# Distributed training with Optimum for Intel Gaudi
 
 As models get bigger, parallelism has emerged as a strategy for training larger models on limited hardware and accelerating training speed by several orders of magnitude.
 
-All the [PyTorch examples](https://github.com/huggingface/optimum-habana/tree/main/examples) and the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) script work out of the box with distributed training.
+All the [PyTorch examples](https://github.com/huggingface/optimum-habana/tree/main/examples) and the `GaudiTrainer` script work out of the box with distributed training.
 There are two ways of launching them:
 
 1. Using the [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) script:
 
-```bash
-python gaudi_spawn.py \
-    --world_size number_of_hpu_you_have --use_mpi \
-    path_to_script.py --args1 --args2 ... --argsN
-```
-where `--argX` is an argument of the script to run in a distributed way.
-Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
+   - Use MPI for distributed training:
 
-2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/habana/package_reference/distributed_runner) directly in code:
+     ```bash
+     python gaudi_spawn.py \
+         --world_size number_of_hpu_you_have --use_mpi \
+         path_to_script.py --args1 --args2 ... --argsN
+     ```
 
-```python
-from optimum.habana.distributed import DistributedRunner
-from optimum.utils import logging
+     where `--argX` is an argument of the script to run in a distributed way.
+     Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
 
-world_size=8 # Number of HPUs to use (1 or 8)
+   - Use DeepSpeed for distributed training:
 
-# define distributed runner
-distributed_runner = DistributedRunner(
-    command_list=["scripts/train.py --args1 --args2 ... --argsN"],
-    world_size=world_size,
-    use_mpi=True,
-)
+     ```bash
+     python gaudi_spawn.py \
+         --world_size number_of_hpu_you_have --use_deepspeed \
+         path_to_script.py --args1 --args2 ... --argsN
+     ```
 
-# start job
-ret_code = distributed_runner.run()
-```
+     where `--argX` is an argument of the script to run in a distributed way.
+     Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#using-deepspeed) and text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#using-deepspeed).
+
+2. Using the `DistributedRunner` directly in code:
+
+   ```python
+   from optimum.habana.distributed import DistributedRunner
+   from optimum.utils import logging
+
+   world_size=8 # Number of HPUs to use (1 or 8)
+
+   # define distributed runner
+   distributed_runner = DistributedRunner(
+       command_list=["scripts/train.py --args1 --args2 ... --argsN"],
+       world_size=world_size,
+       use_mpi=True,
+   )
+
+   # start job
+   ret_code = distributed_runner.run()
+   ```
 
 <Tip>
 

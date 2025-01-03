@@ -110,6 +110,10 @@
 >     trainer = GaudiTrainer(
 585a623
 >         gaudi_config=gaudi_config,
+589c627
+<         processing_class=tokenizer,
+---
+>         tokenizer=tokenizer,
 592,595c630,631
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics

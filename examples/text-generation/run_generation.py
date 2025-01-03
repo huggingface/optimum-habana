@@ -28,6 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
+from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -248,7 +249,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -294,31 +299,52 @@ def setup_parser(parser):
         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
     )
     parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
-        "--load_quantized_model",
-        action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
-    )
-    parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
     )
     parser.add_argument(
         "--input_embeds",
         action="store_true",
         help="Whether to enable inputs_embeds or not.",
+    )
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+
+    quant_parser_group = parser.add_mutually_exclusive_group()
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autogptq",
+        action="store_true",
+        help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_inc",
+        action="store_true",
+        help="Load a Huggingface quantized checkpoint using INC.",
+    )
+    quant_parser_group.add_argument(
+        "--local_quantized_inc_model_path",
+        type=str,
+        default=None,
+        help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
 
     args = parser.parse_args()
@@ -333,6 +359,9 @@ def setup_parser(parser):
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
@@ -362,6 +391,9 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -431,13 +463,31 @@ def main():
             encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
+
+                def compute_valid_sequence_lengths_tensor(input_tokens):
+                    attn_mask = input_tokens["attention_mask"]
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
+
+                valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
+                generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -533,12 +583,16 @@ def main():
 
         print()
         print("Input/outputs:")
+        all_inputs = []
+        all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
             print(f"input {i+1}: {input_sentence}")
+            all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i+1}.{j+1}: {output}")
+                all_outputs.append(output)
             print()
 
         # Store results if necessary
@@ -548,7 +602,8 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "output": output,
+                "input": all_inputs,
+                "output": all_outputs,
             }
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
@@ -698,6 +753,8 @@ def main():
                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
             )
             print(separator)
+            if args.run_partial_dataset and args.n_iterations == i + 1:
+                break
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration

@@ -24,7 +24,12 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.gpt_bigcode.modeling_gpt_bigcode import GPTBigCodeAttention, GPTBigCodeForCausalLM
+from transformers.models.gpt_bigcode.modeling_gpt_bigcode import (
+    GPTBigCodeAttention,
+    GPTBigCodeForCausalLM,
+    upcast_masked_softmax,
+    upcast_softmax,
+)
 
 from ...modeling_attn_mask_utils import GaudiAttentionMaskConverter
 
@@ -56,6 +61,90 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA is not None else None
         self.block_size = 4096
+
+    def _attn(self, query, key, value, attention_mask=None, head_mask=None):
+        """
+        This method should be deleted when https://github.com/huggingface/transformers/pull/34508 is merged.
+        Copied from GPTBigCodeAttention._attn: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
+        The only differences are:
+        - in self._attn, use torch.matmul instead of torch.baddbmm when the device used for query is not cpu
+        """
+        dtype = query.dtype
+        softmax_dtype = torch.float32 if self.attention_softmax_in_fp32 else dtype
+        upcast = dtype != softmax_dtype
+
+        unscale = self.layer_idx + 1 if self.scale_attention_softmax_in_fp32 and upcast else 1
+        scale_factor = unscale**-1
+        if self.scale_attn_weights:
+            scale_factor /= self.head_dim**0.5
+
+        # MQA models: (batch_size, query_length, num_heads * head_dim)
+        # MHA models: (batch_size, num_heads, query_length, head_dim)
+        query_shape = query.shape
+        batch_size = query_shape[0]
+        key_length = key.size(-1)
+        if self.multi_query:
+            # (batch_size, query_length, num_heads, head_dim) x (batch_size, head_dim, key_length)
+            # -> (batch_size, query_length, num_heads, key_length)
+            query_length = query_shape[1]
+            attn_shape = (batch_size, query_length, self.num_heads, key_length)
+            attn_view = (batch_size, query_length * self.num_heads, key_length)
+            # No copy needed for MQA 2, or when layer_past is provided.
+            query = query.reshape(batch_size, query_length * self.num_heads, self.head_dim)
+        else:
+            # (batch_size, num_heads, query_length, head_dim) x (batch_size, num_heads, head_dim, key_length)
+            # -> (batch_size, num_heads, query_length, key_length)
+            query_length = query_shape[2]
+            attn_shape = (batch_size, self.num_heads, query_length, key_length)
+            attn_view = (batch_size * self.num_heads, query_length, key_length)
+            # Always copies
+            query = query.reshape(batch_size * self.num_heads, query_length, self.head_dim)
+            # No copy when layer_past is provided.
+            key = key.reshape(batch_size * self.num_heads, self.head_dim, key_length)
+
+        attn_weights = torch.empty(attn_view, device=query.device, dtype=query.dtype)
+        if query.device.type == "cpu":
+            # This is needed because of a bug in pytorch https://github.com/pytorch/pytorch/issues/80588.
+            # The bug was fixed in https://github.com/pytorch/pytorch/pull/96086,
+            # but the fix has not been released as of pytorch version 2.0.0.
+            attn_weights = torch.zeros_like(attn_weights)
+            attn_weights = torch.baddbmm(attn_weights, query, key, beta=1, alpha=scale_factor).view(attn_shape)
+        else:
+            # Formula for torch.baddbmm: out = beta * attn_weights + scale_factor * (query ⋅ key)
+            # for beta = 0, it simplifies to: out = scale_factor * (query ⋅ key)
+            attn_weights = (torch.matmul(query, key) * scale_factor).view(attn_shape)
+
+        if upcast:
+            # Use a fused kernel to prevent a large overhead from casting and scaling.
+            # Sub-optimal when the key length is not a multiple of 8.
+            if attention_mask is None:
+                attn_weights = upcast_softmax(attn_weights, unscale, softmax_dtype)
+            else:
+                mask_value = self._get_mask_value(attn_weights.device, softmax_dtype)
+                attn_weights = upcast_masked_softmax(attn_weights, attention_mask, mask_value, unscale, softmax_dtype)
+        else:
+            if attention_mask is not None:
+                mask_value = self._get_mask_value(attn_weights.device, softmax_dtype)
+
+                # The fused kernel is very slow when the key length is not a multiple of 8, so we skip fusion.
+                attn_weights = torch.where(attention_mask, attn_weights, mask_value)
+
+            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
+
+        attn_weights = self.attn_dropout(attn_weights)
+
+        # Mask heads if we want to
+        if head_mask is not None:
+            if self.multi_query:
+                head_mask = head_mask.transpose(1, 2)
+            attn_weights = attn_weights * head_mask
+
+        if self.multi_query:
+            attn_output = torch.bmm(attn_weights.view(attn_view), value).view(query_shape)
+        else:
+            attn_output = torch.matmul(attn_weights, value)
+
+        return attn_output, attn_weights
 
     def gaudi_flash_attn_v1(
         self,
@@ -205,6 +294,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
     ) -> Union[
         Tuple[torch.Tensor, Optional[torch.Tensor]],
         Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, ...]],
@@ -245,18 +335,37 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
         key, value = key_value.split((self.head_dim, self.head_dim), dim=-1)
 
-        if layer_past is not None:
+        _, q_len, _ = hidden_states.size()
+        bucket_internal_decode_stage = cache_idx is not None and q_len == 1
+
+        if not bucket_internal_decode_stage:
+            if layer_past is not None:
+                past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
+                if token_idx is not None:
+                    # Using out of place version of index_add_() to ensure the intermediate tensors are not lost when HPU graphs are enabled.
+                    key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
+                    value = past_value.index_add(
+                        1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1)
+                    )
+                else:
+                    key = torch.cat((past_key, key), dim=-2)
+                    value = torch.cat((past_value, value), dim=-2)
+            present = torch.cat((key, value), dim=-1) if use_cache else None
+        else:
+            assert token_idx is not None, "Invalid parameters: token_idx is None at decode stage with bucket_internal"
+            assert (
+                layer_past is not None
+            ), "Invalid parameters: layer_past is None at decode stage with bucket_internal"
+
             past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
-            if token_idx is not None:
-                # Using out of place version of index_add_() to ensure the intermediate tensors are not lost when HPU graphs are enabled.
-                key = past_key.index_add(1, token_idx - 1, key - torch.index_select(past_key, 1, token_idx - 1))
-                value = past_value.index_add(
-                    1, token_idx - 1, value - torch.index_select(past_value, 1, token_idx - 1)
-                )
-            else:
-                key = torch.cat((past_key, key), dim=-2)
-                value = torch.cat((past_value, value), dim=-2)
-        present = torch.cat((key, value), dim=-1) if use_cache else None
+            key = past_key.index_copy_(1, token_idx - 1, key)
+            value = past_value.index_copy_(1, token_idx - 1, value)
+            present = layer_past
+
+        if bucket_internal_decode_stage:
+            key = key[:, :cache_idx, :]
+            value = value[:, :cache_idx, :]
+            attention_mask = attention_mask[:, :, :, :cache_idx]
 
         if not output_attentions and head_mask is None and use_flash_attention:
             # Difference with the original implementation: there is no need to transpose the key here,
@@ -277,6 +386,11 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
             attn_output = attn_output.transpose(1, 2).reshape(hidden_states.shape)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
+
+        if bucket_internal_decode_stage:
+            # Return only past key value shapes and not the tensors during decode phase (q len is 1)
+            # to avoid making past key values as persistent output tensors of HPU graphs.
+            present = present.shape
 
         outputs = (attn_output, present)
         if output_attentions:
@@ -303,6 +417,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    cache_idx: Optional[int] = None,
     **kwargs,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
@@ -324,6 +439,7 @@ def gaudi_gpt_bigcode_block_forward(
         flash_attention_recompute=flash_attention_recompute,
         flash_attention_fast_softmax=flash_attention_fast_softmax,
         flash_attention_causal_mask=flash_attention_causal_mask,
+        cache_idx=cache_idx,
     )
     attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
     outputs = attn_outputs[1:]
@@ -386,6 +502,7 @@ def gaudi_gpt_bigcode_model_forward(
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
+    cache_idx: Optional[int] = None,
 ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTBigCodeModel.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -549,6 +666,7 @@ def gaudi_gpt_bigcode_model_forward(
                 flash_attention_recompute=flash_attention_recompute,
                 flash_attention_fast_softmax=flash_attention_fast_softmax,
                 flash_attention_causal_mask=flash_attention_causal_mask,
+                cache_idx=cache_idx,
             )
 
         hidden_states = outputs[0]
@@ -661,6 +779,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute", False),
                 "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax", False),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask", False),
+                "cache_idx": kwargs.get("cache_idx", None),
             }
         )
         return model_inputs
@@ -686,6 +805,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -714,6 +834,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            cache_idx=cache_idx,
         )
         hidden_states = transformer_outputs[0]
 

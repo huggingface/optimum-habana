@@ -59,6 +59,8 @@ from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
+from ..distributed import parallel_state
+
 
 if is_deepspeed_available():
     from accelerate.utils import (
@@ -118,10 +120,12 @@ class GaudiAccelerator(Accelerator):
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
         dynamo_backend: GaudiDynamoBackend | str | None = None,
+        dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
     ):
         self.trackers = []
+        self.mpu = parallel_state
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -152,7 +156,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
                 )
 
             mixed_precision = (
@@ -310,6 +314,7 @@ class GaudiAccelerator(Accelerator):
                 FutureWarning,
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
+        self.dynamic = dynamic
 
         # Mixed precision attributes
         self.scaler = None
@@ -566,7 +571,10 @@ class GaudiAccelerator(Accelerator):
                 self._models[-1] = model
         # torch.compile should be called last and only if the model isn't already compiled.
         if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
-            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+            if self.dynamic is not None:
+                model = torch.compile(model, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+            else:
+                model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
     def _prepare_deepspeed(self, *args):
@@ -770,13 +778,12 @@ class GaudiAccelerator(Accelerator):
                 # This env variable is initialized here to make sure it is set to "true"
                 # It should be done by the launcher but it does not work for multi-node runs
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
-
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                engine.compile()
+                engine.compile(compile_kwargs={"dynamic": self.dynamic})
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:

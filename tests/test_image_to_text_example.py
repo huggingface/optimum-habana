@@ -19,6 +19,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
+            ("google/paligemma-3b-mix-224", 1, 132.8949150246155),
+            ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
+            ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1, 18.974541922240313),
+            ("tiiuae/falcon-11B-vlm", 1, 23.69260849957278),
         ],
         "fp8": [
             ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
@@ -63,7 +67,13 @@ def _test_image_to_text(
         "--use_hpu_graphs",
     ]
 
+    if "meta-llama/Llama-3.2-11B-Vision-Instruct" in model_name or "tiiuae/falcon-11B-vlm" in model_name:
+        command += [
+            "--sdp_on_bf16",
+        ]
+
     command.append("--bf16")
+    command.append("--sdp_on_bf16")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -80,9 +90,17 @@ def _test_image_to_text(
                 path_to_example_dir, "image-to-text/quantization_config/maxabs_measure_include_outputs.json"
             )
             subprocess.run(command, env=env_variables)
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "image-to-text/quantization_config/maxabs_quant.json"
-            )
+            quant_file_path = "image-to-text/quantization_config/maxabs_quant.json"
+            if model_name in [
+                "llava-hf/llava-v1.6-mistral-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-13b-hf",
+                "llava-hf/llava-1.5-7b-hf",
+                "llava-hf/llava-1.5-13b-hf",
+            ]:
+                quant_file_path = "image-to-text/quantization_config/maxabs_quant_scale_format_const.json"
+
+            env_variables["QUANT_CONFIG"] = os.path.join(path_to_example_dir, quant_file_path)
 
         proc = subprocess.run(command, env=env_variables)
 

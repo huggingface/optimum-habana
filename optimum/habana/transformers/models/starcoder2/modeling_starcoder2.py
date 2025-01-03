@@ -17,6 +17,7 @@
 ###############################################################################
 
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -38,6 +39,15 @@ from transformers.utils import is_torchdynamo_compiling, logging
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
+
+
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
 
 
 try:
@@ -45,12 +55,6 @@ try:
 except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
-
-try:
-    from habana_frameworks.torch.hpex.kernels import FusedSDPA
-except ImportError:
-    print("Not using HPU fused scaled dot-product attention kernel.")
-    FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
 
@@ -60,17 +64,19 @@ logger = logging.get_logger(__name__)
 
 class GaudiStarcoder2MLP(Starcoder2MLP):
     def pre_mlp_forward(self, x):
-        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
-        output = self.down_proj(inputs)
-        return output
+        x = self.c_fc(x)
+        x = self.act(x)
+        x = self.c_proj(x)
+        x = F.dropout(x, p=self.residual_dropout, training=self.training)
+        return x
 
     def mlp_all_reduce(self, x):
-        if hasattr(self.down_proj, "all_reduce"):
-            self.down_proj.all_reduce(x)
+        if hasattr(self.c_proj, "all_reduce"):
+            self.c_proj.all_reduce(x)
 
     def post_mlp_forward(self, x):
-        if hasattr(self.down_proj, "post_all_reduce"):
-            return self.down_proj.post_all_reduce(x)
+        if hasattr(self.c_proj, "post_all_reduce"):
+            return self.c_proj.post_all_reduce(x)
         return x
 
 
@@ -100,55 +106,6 @@ def gaudi_starcoder2_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def update(self, prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-
 class GaudiStarcoder2Attention(Starcoder2Attention):
     def __init__(self, config: Starcoder2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -160,6 +117,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -276,14 +234,14 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
-                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+                past_key_value = [self.k_cache.get_shape(), self.v_cache.get_shape()]
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
-                    past_key_value = (past_key, past_value)
+                    past_key_value = [past_key, past_value]
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
                 if token_idx is None:
@@ -303,7 +261,8 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -370,7 +329,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -429,13 +388,10 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
         )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        self.self_attn.attention_all_reduce(hidden_states)
+        hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
+        self.mlp.mlp_all_reduce(hidden_states)
+        hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
 
@@ -628,13 +584,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if (
-                lazy_mode
-                and not self.training
-                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-            ):
-                htcore.mark_step()
-
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -897,23 +846,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
-        if not is_training and (q.dtype == torch.bfloat16 or k.dtype == torch.bfloat16):
-            return FusedRoPE.apply(
-                q,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            )
-        else:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-            ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

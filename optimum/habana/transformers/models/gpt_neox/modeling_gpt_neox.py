@@ -4,6 +4,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.gpt_neox.configuration_gpt_neox import GPTNeoXConfig
 from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXAttention,
     GPTNeoXForCausalLM,
@@ -15,6 +16,7 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
 )
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+from ...modeling_rope_utils import GaudiRotaryEmbedding
 
 
 try:
@@ -23,86 +25,93 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+from ..modeling_all_models import apply_customized_rope_module
 
-def gaudi_gpt_neox_attention_forward(
-    self,
-    hidden_states: torch.FloatTensor,
-    attention_mask: torch.FloatTensor,
-    position_ids: torch.LongTensor,
-    head_mask: Optional[torch.FloatTensor] = None,
-    layer_past: Optional[Cache] = None,
-    use_cache: Optional[bool] = False,
-    output_attentions: Optional[bool] = False,
-    padding_mask: Optional[torch.Tensor] = None,
-    cache_position: Optional[torch.LongTensor] = None,
-    token_idx: Optional[torch.Tensor] = None,
-):
-    """
-    Copied from GPTNeoXAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    has_layer_past = layer_past is not None
 
-    # Compute QKV
-    # Attention heads [batch, seq_len, hidden_size]
-    #   --> [batch, seq_len, (np * 3 * head_size)]
-    qkv = self.query_key_value(hidden_states)
+class GaudiGPTNeoXAttention(GPTNeoXAttention):
+    def __init__(self, config: GPTNeoXConfig, layer_idx=None):
+        super().__init__(config, layer_idx)
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
-    # [batch, seq_len, (num_heads * 3 * head_size)]
-    #   --> [batch, seq_len, num_heads, 3 * head_size]
-    new_qkv_shape = qkv.size()[:-1] + (self.num_attention_heads, 3 * self.head_size)
-    qkv = qkv.view(*new_qkv_shape)
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: torch.FloatTensor,
+        position_ids: torch.LongTensor,
+        head_mask: Optional[torch.FloatTensor] = None,
+        layer_past: Optional[Cache] = None,
+        use_cache: Optional[bool] = False,
+        output_attentions: Optional[bool] = False,
+        padding_mask: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+    ):
+        """
+        Copied from GPTNeoXAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        """
+        has_layer_past = layer_past is not None
 
-    # [batch, seq_len, num_attention_heads, 3 * head_size] --> 3 [batch, num_attention_heads, seq_len, head_size]
-    query = qkv[..., : self.head_size].permute(0, 2, 1, 3)
-    key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
-    value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
+        # Compute QKV
+        # Attention heads [batch, seq_len, hidden_size]
+        #   --> [batch, seq_len, (np * 3 * head_size)]
+        qkv = self.query_key_value(hidden_states)
 
-    # Compute rotary embeddings on rotary_ndims
-    query_rot = query[..., : self.rotary_ndims]
-    query_pass = query[..., self.rotary_ndims :]
-    key_rot = key[..., : self.rotary_ndims]
-    key_pass = key[..., self.rotary_ndims :]
+        # [batch, seq_len, (num_heads * 3 * head_size)]
+        #   --> [batch, seq_len, num_heads, 3 * head_size]
+        new_qkv_shape = qkv.size()[:-1] + (self.num_attention_heads, 3 * self.head_size)
+        qkv = qkv.view(*new_qkv_shape)
 
-    # Compute token offset for rotary embeddings (when decoding)
-    seq_len = key.shape[-2]
-    if has_layer_past:
-        seq_len += layer_past[0].shape[-2]
-    cos, sin = self.rotary_emb(value, seq_len=seq_len)
-    query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids, training=self.training)
-    query = torch.cat((query, query_pass), dim=-1).contiguous()
-    key = torch.cat((key, key_pass), dim=-1).contiguous()
-    value = value.contiguous()
+        # [batch, seq_len, num_attention_heads, 3 * head_size] --> 3 [batch, num_attention_heads, seq_len, head_size]
+        query = qkv[..., : self.head_size].permute(0, 2, 1, 3)
+        key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
+        value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
 
-    # Cache QKV values
-    if has_layer_past:
-        past_key = layer_past[0]
-        past_value = layer_past[1]
-        if token_idx is not None:
-            past_key.index_copy_(2, token_idx - 1, key)
-            past_value.index_copy_(2, token_idx - 1, value)
-            key = past_key
-            value = past_value
-        else:
-            key = torch.cat((past_key, key), dim=-2)
-            value = torch.cat((past_value, value), dim=-2)
+        # Compute rotary embeddings on rotary_ndims
+        query_rot = query[..., : self.rotary_ndims]
+        query_pass = query[..., self.rotary_ndims :]
+        key_rot = key[..., : self.rotary_ndims]
+        key_pass = key[..., self.rotary_ndims :]
 
-    present = (key, value) if use_cache else None
+        # Compute token offset for rotary embeddings (when decoding)
+        seq_len = key.shape[-2]
+        if has_layer_past:
+            seq_len += layer_past[0].shape[-2]
+        cos, sin = self.rotary_emb(value, seq_len=seq_len)
+        query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids, training=self.training)
+        query = torch.cat((query, query_pass), dim=-1).contiguous()
+        key = torch.cat((key, key_pass), dim=-1).contiguous()
+        value = value.contiguous()
 
-    # Compute attention
-    attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        # Cache QKV values
+        if has_layer_past:
+            past_key = layer_past[0]
+            past_value = layer_past[1]
+            if token_idx is not None:
+                past_key.index_copy_(2, token_idx - 1, key)
+                past_value.index_copy_(2, token_idx - 1, value)
+                key = past_key
+                value = past_value
+            else:
+                key = torch.cat((past_key, key), dim=-2)
+                value = torch.cat((past_value, value), dim=-2)
 
-    # Reshape outputs
-    attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
-    attn_output = self.dense(attn_output)
+        present = (key, value) if use_cache else None
 
-    outputs = (attn_output, present)
-    if output_attentions:
-        outputs += (attn_weights,)
+        # Compute attention
+        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
 
-    return outputs
+        # Reshape outputs
+        attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
+        attn_output = self.dense(attn_output)
+
+        outputs = (attn_output, present)
+        if output_attentions:
+            outputs += (attn_weights,)
+
+        return outputs
 
 
 class GaudiGPTNeoXLayer(GPTNeoXLayer):
@@ -113,7 +122,7 @@ class GaudiGPTNeoXLayer(GPTNeoXLayer):
         self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_attention_dropout = torch.nn.Dropout(config.hidden_dropout)
         self.post_mlp_dropout = torch.nn.Dropout(config.hidden_dropout)
-        self.attention = GPTNeoXAttention(config, layer_idx)
+        self.attention = GaudiGPTNeoXAttention(config, layer_idx)
         self.mlp = GPTNeoXMLP(config)
 
     def forward(
@@ -448,41 +457,11 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return model_inputs
 
 
-def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dtype):
-    self.max_seq_len_cached = seq_len
-    t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
-    freqs = torch.outer(t, self.inv_freq)
-    # Different from paper, but it uses a different permutation in order to obtain the same calculation
-    emb = torch.cat((freqs, freqs), dim=-1)
-    self.cos_cached = emb.cos()
-    self.sin_cached = emb.sin()
-
-
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
-    if q.device.type == "hpu" and FusedRoPE:
+    if q.device.type == "hpu" and FusedRoPE is not None:
         if training:
-            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+            return apply_customized_rope_module(q.to(torch.float), k.to(torch.float), cos, sin, position_ids, training)
         else:
-            if q.dtype == torch.bfloat16:
-                rope_q = FusedRoPE.apply(
-                    q,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-            if k.dtype == torch.bfloat16:
-                rope_k = FusedRoPE.apply(
-                    k,
-                    cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                    position_ids,
-                )
-            else:
-                rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        return rope_q, rope_k
+            return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+        return apply_rotary_pos_emb(q.to(torch.float), k.to(torch.float), cos[position_ids], sin[position_ids])

@@ -1,7 +1,7 @@
-ARG GAUDI_SW_VER=1.17.0
+ARG GAUDI_SW_VER=1.19.0
 ARG OS=ubuntu22.04
-ARG TORCH_VER=2.3.1
-ARG OPTIMUM_HABANA_VER=1.13.0
+ARG TORCH_VER=2.5.1
+ARG OPTIMUM_HABANA_VER=1.15.0
 
 FROM vault.habana.ai/gaudi-docker/${GAUDI_SW_VER}/${OS}/habanalabs/pytorch-installer-${TORCH_VER}:latest AS optimum-habana
 
