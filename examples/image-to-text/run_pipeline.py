@@ -199,7 +199,7 @@ def main():
 
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -210,7 +210,7 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path)
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -289,13 +289,19 @@ def main():
         generator = pipeline(
             "image-to-text",
             model=args.model_name_or_path,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-
-            generator.model = wrap_in_hpu_graph(generator.model)
+            if "Qwen2-VL" in args.model_name_or_path:
+                # only wrap language model part
+                generator.model.model = wrap_in_hpu_graph(generator.model.model)
+            else:
+                generator.model = wrap_in_hpu_graph(generator.model)
 
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
@@ -310,7 +316,7 @@ def main():
         "limit_hpu_graphs": args.limit_hpu_graphs,
     }
 
-    if args.sdp_on_bf16:
+    if args.sdp_on_bf16 and "Llama-3.2-11B-Vision-Instruct" in args.model_name_or_path:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.use_kv_cache:
@@ -321,7 +327,7 @@ def main():
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
