@@ -635,10 +635,6 @@ def _parse_args():
     return args, args_text
 
 
-def setup():
-    dist.init_process_group(backend="hccl")
-
-
 def cleanup():
     dist.destroy_process_group()
 
@@ -663,8 +659,6 @@ def main():
         device = torch.device("hpu")
 
     if args.distributed:
-        setup()
-
         _logger.info(
             "Training in distributed mode with multiple processes, 1 device per process."
             f"Process {args.rank}, total {args.world_size}, device {args.device}."
