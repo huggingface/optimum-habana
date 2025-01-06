@@ -38,6 +38,10 @@ from ..pipeline_utils import GaudiDiffusionPipeline
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from ....transformers.gaudi_configuration import GaudiConfig
 
+from ...models.attention_processor import (
+    AttentionProcessor,
+    AttnProcessor2_0,
+)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -152,6 +156,7 @@ class GaudiI2VGenXLPipeline(
             scheduler,
         )
         
+        self.unet.set_attn_processor(AttnProcessor2_0())
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -743,8 +748,8 @@ class GaudiI2VGenXLPipeline(
                         return_dict=False,
                     )
                     
-                    import pdb; pdb.set_trace()
-                    breakpoint() 
+                    # import pdb; pdb.set_trace()
+                    # breakpoint() 
                     #noise_pred.to(torch.float)
                     # perform guidance
                     if self.do_classifier_free_guidance:

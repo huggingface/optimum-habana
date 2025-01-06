@@ -4,6 +4,7 @@ from diffusers.utils import export_to_gif, load_image
 from optimum.habana.diffusers import GaudiI2VGenXLPipeline
 
 def main() :
+    torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
     pipeline = GaudiI2VGenXLPipeline.from_pretrained(
         "ali-vilab/i2vgen-xl",
         torch_dtype=torch.bfloat16,
