@@ -88,7 +88,18 @@ class GaudiPartialState(PartialState):
                     self.device = torch.device("hpu")
                 if not is_deepspeed_available():
                     context_parallel_size = 1
-                parallel_state.initialize_model_parallel(sequence_parallel_size=context_parallel_size, use_fp8=False)
+                if parallel_state.is_unitialized():
+                    parallel_state.initialize_model_parallel(
+                        sequence_parallel_size=context_parallel_size, use_fp8=False
+                    )
+                else:
+                    if parallel_state.get_sequence_parallel_world_size() != context_parallel_size:
+                        raise ValueError(
+                            "The initialized sequence parallel world size does not match the context parallel size."
+                        )
+                    # Ensure that the parallel_state is initialized similarly with use_fp8=False
+                    if parallel_state._AMAX_REDUCTION_GROUP is not None:
+                        raise ValueError("FP8 amax reduction group is already initialized.")
             else:
                 self.distributed_type = (
                     GaudiDistributedType.NO
