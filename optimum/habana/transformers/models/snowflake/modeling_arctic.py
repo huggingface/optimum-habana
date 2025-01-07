@@ -486,6 +486,15 @@ class ArcticAttention(nn.Module):
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        """
+        Allocate KV cache. Copied from ../mixtral/modeling_mixtral.py GaudiMixtralAttention.allocate_kv_cache
+        """
+        cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
+        device = self.k_proj.weight.device
+        dtype = self.config.torch_dtype
+        self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -494,6 +503,10 @@ class ArcticAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -518,7 +531,16 @@ class ArcticAttention(nn.Module):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            if token_idx is None:
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
+            else:
+                if reuse_cache:
+                    kv_seq_len = past_key_value[0][-2]
+                else:
+                    kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
@@ -818,6 +840,9 @@ class ArcticDecoderLayer(nn.Module):
                 shard_base_weights_if_doing_lora=True,
             )  # for the residual layer. always shard the base weight if doing deepspeed lora.
 
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1043,6 +1068,10 @@ class ArcticModel(ArcticPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        for layer in self.layers:
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+
     def get_input_embeddings(self):
         return self.embed_tokens
 
@@ -1200,7 +1229,6 @@ class ArcticModel(ArcticPreTrainedModel):
                 if use_legacy_cache and hasattr(next_decoder_cache, "to_legacy_cache")
                 else next_decoder_cache
             )
-        torch.cuda.empty_cache()
 
         if not return_dict:
             return tuple(
@@ -1244,6 +1272,10 @@ class ArcticForCausalLM(ArcticPreTrainedModel, GenerationMixin):
         # self.shard_base_weights_if_doing_lora = kwargs.get("shard_base_weights_if_doing_lora", False)
         # Initialize weights and apply final processing
         self.post_init()
+
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+        self.kv_cache_len = max_seq_len
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
