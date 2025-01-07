@@ -97,9 +97,8 @@ class GaudiPartialState(PartialState):
                         raise ValueError(
                             "The initialized sequence parallel world size does not match the context parallel size."
                         )
-                    # Ensure that the parallel_state is initialized similarly with use_fp8=False
-                    if parallel_state._AMAX_REDUCTION_GROUP is not None:
-                        raise ValueError("FP8 amax reduction group is already initialized.")
+                    if parallel_state.amax_reduction_is_initialized():
+                        logger.info("FP8 amax reduction group is already initialized.")
             else:
                 self.distributed_type = (
                     GaudiDistributedType.NO
