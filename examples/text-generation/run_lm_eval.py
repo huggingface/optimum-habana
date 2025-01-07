@@ -137,6 +137,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             self.model_inputs.update(
                 {
                     "use_flash_attention": self.options.use_flash_attention,
+                    "flash_attention_fast_softmax": self.options.flash_attention_fast_softmax,
                     "flash_attention_recompute": self.options.flash_attention_recompute,
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
