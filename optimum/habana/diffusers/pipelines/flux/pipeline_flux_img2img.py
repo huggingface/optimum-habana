@@ -382,7 +382,7 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
 
             # Pad guidance if necessary
             if guidance is not None:
-                guidance_batches[-1]=guidance_batches[-1].unsqueeze(1)
+                guidance_batches[-1] = guidance_batches[-1].unsqueeze(1)
                 sequence_to_stack = (guidance_batches[-1],) + tuple(
                     torch.zeros_like(guidance_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
