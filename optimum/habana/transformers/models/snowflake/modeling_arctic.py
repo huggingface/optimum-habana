@@ -375,6 +375,7 @@ class ArcticAttention(nn.Module):
 
     def __init__(self, config: ArcticConfig, layer_idx: Optional[int] = None, **kwargs):
         super().__init__()
+        config.rope_scaling = getattr(config, "rope_scaling", None)
         self.config = config
         self.layer_idx = layer_idx
         if layer_idx is None:
