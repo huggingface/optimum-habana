@@ -20,6 +20,7 @@ class GaudiOPTLearnedPositionalEmbedding(OPTLearnedPositionalEmbedding):
         self,
         attention_mask: torch.LongTensor,
         past_key_values_length: int = 0,
+        position_ids: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ):
         attention_mask = attention_mask.long()
@@ -42,6 +43,8 @@ def gaudi_opt_attention_forward(
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    # isn't needed in normal attention, but needed in flash attention so to keep the signature same
+    position_ids: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
@@ -170,6 +173,7 @@ def gaudi_opt_decoder_layer_forward(
     past_key_value: Optional[Tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = False,
+    position_ids: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
@@ -187,6 +191,7 @@ def gaudi_opt_decoder_layer_forward(
     hidden_states, self_attn_weights, present_key_value = self.self_attn(
         hidden_states=hidden_states,
         past_key_value=past_key_value,
+        position_ids=position_ids,
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
@@ -242,6 +247,7 @@ def gaudi_opt_decoder_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    position_ids: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
@@ -342,12 +348,14 @@ def gaudi_opt_decoder_forward(
                 None,
                 output_attentions,
                 use_cache,
+                position_ids,
                 None,
             )
         else:
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=causal_attention_mask,
+                position_ids=position_ids,
                 layer_head_mask=(head_mask[idx] if head_mask is not None else None),
                 past_key_value=past_key_value,
                 output_attentions=output_attentions,
@@ -395,6 +403,7 @@ def gaudi_opt_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    position_ids: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
@@ -413,6 +422,7 @@ def gaudi_opt_model_forward(
     decoder_outputs = self.decoder(
         input_ids=input_ids,
         attention_mask=attention_mask,
+        position_ids=position_ids,
         head_mask=head_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
@@ -455,6 +465,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -467,6 +478,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         outputs = self.model.decoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
+            position_ids=position_ids,
             head_mask=head_mask,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,

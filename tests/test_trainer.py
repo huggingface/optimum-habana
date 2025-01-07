@@ -28,12 +28,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
+from huggingface_hub import HfFolder, ModelCard, create_branch, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
-from requests.exceptions import HTTPError
 from transformers import (
+    AutoFeatureExtractor,
+    AutoImageProcessor,
     AutoModelForCausalLM,
+    AutoProcessor,
     AutoTokenizer,
     GPT2LMHeadModel,
     IntervalStrategy,
@@ -50,6 +52,7 @@ from transformers.testing_utils import (
     USER,
     CaptureLogger,
     LoggingLevel,
+    TemporaryHubRepo,
     TestCasePlus,
     get_gpu_count,
     get_tests_dir,
@@ -62,6 +65,7 @@ from transformers.testing_utils import (
     require_tensorboard,
     require_tokenizers,
     require_torch,
+    require_vision,
 )
 from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
@@ -659,7 +663,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 
     def test_gradient_accumulation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Training with half the batch size but accumulation steps as 2 should give the same results.
+            # Training with half the batch size but accumulation steps as 2 should give the same training losses.
             trainer = get_regression_trainer(
                 output_dir=tmpdir, gradient_accumulation_steps=2, per_device_train_batch_size=4, learning_rate=0.1
             )
@@ -1051,14 +1055,18 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 use_lazy_mode=True,
             )
             gaudi_config = get_gaudi_config()
-            trainer = GaudiTrainer(tiny_model, gaudi_config, args, tokenizer=tokenizer, train_dataset=train_dataset)
+            trainer = GaudiTrainer(
+                tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset
+            )
 
             trainer.train()
             parameters = dict(tiny_model.named_parameters())
             state = dataclasses.asdict(trainer.state)
 
             # Reinitialize trainer
-            trainer = GaudiTrainer(tiny_model, gaudi_config, args, tokenizer=tokenizer, train_dataset=train_dataset)
+            trainer = GaudiTrainer(
+                tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset
+            )
 
             checkpoint = os.path.join(tmpdir, "checkpoint-5")
 
@@ -2455,9 +2463,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
 
-            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
-
     def test_accelerator_config_from_yaml(self):
         # Checks that accelerator kwargs can be passed through
         # and the accelerator is initialized respectively
@@ -2470,8 +2475,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     "even_batches": False,
                     "use_seedable_sampler": False,
                 }
-                if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                    accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
                 json.dump(accelerator_config, f)
             config = RegressionModelConfig(a=1.5, b=2.5)
             model = RegressionPreTrainedModel(config)
@@ -2485,9 +2488,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
-
-            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
 
     def test_accelerator_config_from_dataclass(self):
         # Checks that accelerator kwargs can be passed through
@@ -2540,10 +2540,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
             )
             trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 10)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["adjust_scheduler"], False)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_with_dataloader"], False)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+            self.assertEqual(trainer.args.gradient_accumulation_steps, 10)
 
     def test_accelerator_config_from_partial(self):
         # Checks that accelerator kwargs can be passed through
@@ -2754,6 +2751,191 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             _ = trainer.evaluate()
             _ = trainer.predict(eval_dataset)
 
+    def test_trainer_saves_tokenizer(self):
+        MODEL_ID = "google-bert/bert-base-uncased"
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=False)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=tokenizer,
+            )
+            trainer.save_model()
+
+            reloaded_tokenizer = AutoTokenizer.from_pretrained(tmp_dir)
+
+        # For tokenizers, there isn't a direct to_dict method and the properties stored in the configs e.g.
+        # saved tokens change overtime, so we check that two tokenizers are equal by comparing their encoded outputs
+        test_sentence = "This is a test sentence"
+        self.assertListEqual(
+            tokenizer(test_sentence, padding="max_length").input_ids,
+            reloaded_tokenizer(test_sentence, padding="max_length").input_ids,
+        )
+
+    @require_vision
+    def test_trainer_saves_image_processor(self):
+        MODEL_ID = "openai/clip-vit-base-patch32"
+        image_processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=image_processor,
+            )
+            trainer.save_model()
+            reloaded_image_processor = AutoImageProcessor.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(image_processor.to_dict(), reloaded_image_processor.to_dict())
+
+    def test_trainer_saves_feature_extractor(self):
+        MODEL_ID = "facebook/wav2vec2-base-960h"
+        feature_extractor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=feature_extractor,
+            )
+            trainer.save_model()
+
+            reloaded_feature_extractor = AutoFeatureExtractor.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(feature_extractor.to_dict(), reloaded_feature_extractor.to_dict())
+
+    @require_vision
+    def test_trainer_saves_processor(self):
+        MODEL_ID = "openai/clip-vit-base-patch32"
+        image_processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=False)
+        processor = AutoProcessor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=processor,
+            )
+            trainer.save_model()
+
+            reloaded_processor = AutoProcessor.from_pretrained(tmp_dir)
+            reloaded_image_processor = AutoImageProcessor.from_pretrained(tmp_dir)
+            reloaded_tokenizer = AutoTokenizer.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(reloaded_processor.to_dict(), processor.to_dict())
+
+        image_processor_dict = image_processor.to_dict()
+        reloaded_image_processor_dict = reloaded_image_processor.to_dict()
+        # When the processor is saved in the trainer, the _processor_class gets set in the reload_image_processor dict
+        image_processor_dict.pop("_processor_class")
+        reloaded_image_processor_dict.pop("_processor_class")
+        self.assertDictEqual(image_processor_dict, reloaded_image_processor_dict)
+
+        # For tokenizers, there isn't a direct to_dict method and the properties stored in the configs e.g.
+        # saved tokens change overtime, so we check that two tokenizers are equal by comparing their encoded outputs
+        test_sentence = "This is a test sentence"
+        self.assertListEqual(
+            tokenizer(test_sentence, padding="max_length").input_ids,
+            reloaded_tokenizer(test_sentence, padding="max_length").input_ids,
+        )
+
+    def test_save_best_checkpoint(self):
+        freq = int(64 / self.batch_size)
+        total = int(self.n_epochs * 64 / self.batch_size)
+
+        # Case 1: args.metric_for_best_model == "accuracy".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="epoch",
+                save_strategy="best",
+                metric_for_best_model="accuracy",
+                compute_metrics=AlmostAccuracy(),
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "accuracy")
+
+            with unittest.mock.patch.object(
+                trainer,
+                "_evaluate",
+                side_effect=[
+                    {"eval_loss": 0.03, "eval_accuracy": 0.60, "epoch": 1.0},
+                    {"eval_loss": 0.02, "eval_accuracy": 0.65, "epoch": 2.0},
+                    {"eval_loss": 0.01, "eval_accuracy": 0.64, "epoch": 3.0},
+                ],
+            ):
+                trainer.train()
+
+                self.assertEqual(len(os.listdir(tmpdir)), 2)
+                self.check_saved_checkpoints(
+                    output_dir=tmpdir,
+                    freq=freq,
+                    total=total,
+                )
+
+        # Case 2: args.metric_for_best_model == "loss".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="epoch",
+                save_strategy="best",
+                metric_for_best_model="loss",
+                compute_metrics=AlmostAccuracy(),
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "loss")
+
+            with unittest.mock.patch.object(
+                trainer,
+                "_evaluate",
+                side_effect=[
+                    {"eval_loss": 0.03, "eval_accuracy": 0.60, "epoch": 1.0},
+                    {"eval_loss": 0.02, "eval_accuracy": 0.65, "epoch": 2.0},
+                    {"eval_loss": 0.03, "eval_accuracy": 0.66, "epoch": 3.0},
+                ],
+            ):
+                trainer.train()
+
+                self.assertEqual(len(os.listdir(tmpdir)), 2)
+                self.check_saved_checkpoints(
+                    output_dir=tmpdir,
+                    freq=freq,
+                    total=total,
+                )
+
+        # Case 3: Metric name not provided; throw error.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                trainer = get_regression_trainer(
+                    a=1.5,
+                    b=2.5,
+                    output_dir=tmpdir,
+                    learning_rate=0.1,
+                    eval_strategy="epoch",
+                    save_strategy="best",
+                    compute_metrics=AlmostAccuracy(),
+                )
+
+            self.assertIn("`args.metric_for_best_model` must be provided", str(context.exception))
+
     def test_profiling(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             # 24 total steps and compilation takes place during the 1st three steps
@@ -2769,64 +2951,49 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         cls._token = TOKEN
         HfFolder.save_token(TOKEN)
 
-    @classmethod
-    def tearDownClass(cls):
-        for model in [
-            "test-trainer",
-            "test-trainer-epoch",
-            "test-trainer-step",
-            "test-trainer-tensorboard",
-            "test-trainer-tags",
-        ]:
-            try:
-                delete_repo(token=cls._token, repo_id=model)
-            except HTTPError:
-                pass
-
-        try:
-            delete_repo(token=cls._token, repo_id="valid_org/test-trainer-org")
-        except HTTPError:
-            pass
-
     def test_push_to_hub(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
-            url = trainer.push_to_hub()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            output_dir_name = tmp_repo.repo_name
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
 
-            self.assertEqual(repo_name, f"{USER}/test-trainer")
+            self.assertEqual(repo_name, f"{USER}/{output_dir_name}")
 
             model = RegressionPreTrainedModel.from_pretrained(repo_name)
             self.assertEqual(model.a.item(), trainer.model.a.item())
             self.assertEqual(model.b.item(), trainer.model.b.item())
 
     def test_push_to_hub_in_organization(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(output_dir=tmp_dir)
-            trainer.save_model()
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-org"),
-                push_to_hub=True,
-                hub_model_id="valid_org/test-trainer-org",
-                hub_token=self._token,
-            )
-            url = trainer.push_to_hub()
+        with TemporaryHubRepo(namespace="valid_org", token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                trainer = get_regression_trainer(output_dir=tmp_dir)
+                trainer.save_model()
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_model_id=f"valid_org/{output_dir_name}",
+                    hub_token=self._token,
+                )
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
-            self.assertEqual(repo_name, "valid_org/test-trainer-org")
+            self.assertEqual(repo_name, f"valid_org/{output_dir_name}")
 
-            model = RegressionPreTrainedModel.from_pretrained("valid_org/test-trainer-org")
+            model = RegressionPreTrainedModel.from_pretrained(f"valid_org/{output_dir_name}")
             self.assertEqual(model.a.item(), trainer.model.a.item())
             self.assertEqual(model.b.item(), trainer.model.b.item())
 
@@ -2843,19 +3010,21 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         return [commit.strip() for commit in commits]
 
     def test_push_to_hub_with_saves_each_epoch(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertLogs(level="WARNING") as logs:
-                trainer = get_regression_trainer(
-                    output_dir=os.path.join(tmp_dir, "test-trainer-epoch"),
-                    push_to_hub=True,
-                    hub_token=self._token,
-                    # To avoid any flakiness if the training goes faster than the uploads.
-                    hub_always_push=True,
-                    save_strategy="epoch",
-                )
-                trainer.train()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with self.assertLogs(level="WARNING") as logs:
+                    output_dir_name = tmp_repo.repo_name
+                    trainer = get_regression_trainer(
+                        output_dir=os.path.join(tmp_dir, output_dir_name),
+                        push_to_hub=True,
+                        hub_token=self._token,
+                        # To avoid any flakiness if the training goes faster than the uploads.
+                        hub_always_push=True,
+                        save_strategy="epoch",
+                    )
+                    trainer.train()
 
-        commits = list_repo_commits(f"{USER}/test-trainer-epoch", token=self._token)
+        commits = list_repo_commits(f"{USER}/{output_dir_name}", token=self._token)
         commits = [c.title for c in commits]
         self.assertIn("initial commit", commits)
         self.assertIn("Training in progress, epoch 1", commits)
@@ -2868,20 +3037,22 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         if num_gpus > 2:
             self.skipTest(reason="More than 2 GPUs available")
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertLogs(level="WARNING") as logs:
-                trainer = get_regression_trainer(
-                    output_dir=os.path.join(tmp_dir, "test-trainer-step"),
-                    push_to_hub=True,
-                    hub_token=self._token,
-                    # To avoid any flakiness if the training goes faster than the uploads.
-                    hub_always_push=True,
-                    save_strategy="steps",
-                    save_steps=5,
-                )
-                trainer.train()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with self.assertLogs(level="WARNING") as logs:
+                    output_dir_name = tmp_repo.repo_name
+                    trainer = get_regression_trainer(
+                        output_dir=os.path.join(tmp_dir, output_dir_name),
+                        push_to_hub=True,
+                        hub_token=self._token,
+                        # To avoid any flakiness if the training goes faster than the uploads.
+                        hub_always_push=True,
+                        save_strategy="steps",
+                        save_steps=5,
+                    )
+                    trainer.train()
 
-        commits = list_repo_commits(f"{USER}/test-trainer-step", token=self._token)
+        commits = list_repo_commits(f"{USER}/{output_dir_name}", token=self._token)
         commits = [c.title for c in commits]
         self.assertIn("initial commit", commits)
 
@@ -2901,19 +3072,21 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
     @require_tensorboard
     def test_push_to_hub_with_tensorboard_logs(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-tensorboard"),
-                hub_token=self._token,
-                save_strategy="epoch",
-                report_to=["tensorboard"],
-                keep_report_to=True,
-            )
-            trainer.train()
-            # Push the runs via `push_to_hub()`
-            trainer.push_to_hub()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    hub_token=self._token,
+                    save_strategy="epoch",
+                    report_to=["tensorboard"],
+                    keep_report_to=True,
+                )
+                trainer.train()
+                # Push the runs via `push_to_hub()`
+                trainer.push_to_hub()
 
-        files = list_repo_files(f"{USER}/test-trainer-tensorboard", token=self._token)
+        files = list_repo_files(f"{USER}/{output_dir_name}", token=self._token)
         found_log = False
         for f in files:
             if len(f.split("runs")) > 1 and "events.out.tfevents" in f:
@@ -2925,38 +3098,42 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         # Checks if `trainer.push_to_hub()` works correctly by adding the desired
         # tag without having to pass `tags` in `push_to_hub`
         # see:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-tags"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
 
-            trainer.model.add_model_tags(["test-trainer-tags"])
+                trainer.model.add_model_tags(["test-trainer-tags"])
 
-            url = trainer.push_to_hub()
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
 
-            self.assertEqual(repo_name, f"{USER}/test-trainer-tags")
+            self.assertEqual(repo_name, f"{USER}/{output_dir_name}")
 
             model_card = ModelCard.load(repo_name)
             self.assertTrue("test-trainer-tags" in model_card.data.tags)
 
     def test_push_to_hub_with_revision(self):
         # Checks if `trainer.push_to_hub()` works correctly by adding revision
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-revision"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
-            branch = "v1.0"
-            create_branch(repo_id=trainer.hub_model_id, branch=branch, token=self._token, exist_ok=True)
-            url = trainer.push_to_hub(revision=branch)
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
+                branch = "v1.0"
+                create_branch(repo_id=trainer.hub_model_id, branch=branch, token=self._token, exist_ok=True)
+                url = trainer.push_to_hub(revision=branch)
 
             # Extract branch from the url
             re_search = re.search(r"tree/([^/]+)/", url)

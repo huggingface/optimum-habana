@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.cohere.modeling_cohere import (
     Cache,
@@ -192,9 +191,7 @@ def gaudi_cohere_model_forward(
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if (input_ids is None) ^ (inputs_embeds is not None):
-        raise ValueError(
-            "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-        )
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
     if self.gradient_checkpointing and self.training and use_cache:
         logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.")
@@ -232,7 +229,7 @@ def gaudi_cohere_model_forward(
     all_self_attns = () if output_attentions else None
     next_decoder_cache = None
 
-    for decoder_layer in self.layers:
+    for decoder_layer in self.layers[: self.config.num_hidden_layers]:
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
@@ -310,7 +307,9 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        **loss_kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -334,22 +333,13 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
         )
 
         hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
         logits = logits * self.logit_scale
-        logits = logits.float()
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

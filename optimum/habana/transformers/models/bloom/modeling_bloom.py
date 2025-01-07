@@ -357,7 +357,7 @@ def gaudi_bloom_model_forward(
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         batch_size, seq_length = input_ids.shape
     elif inputs_embeds is not None:

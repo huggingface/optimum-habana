@@ -208,7 +208,7 @@ def gaudi_gpt_neox_model_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
