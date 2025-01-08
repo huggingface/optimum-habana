@@ -19,7 +19,6 @@
 # limitations under the License.
 """PyTorch DeepSeekV2 model. Adapted from https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite/resolve/main/modeling_deepseek.py"""
 
-import contextlib
 import math
 import os
 import warnings
@@ -28,12 +27,11 @@ from typing import List, Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.distributed as dist
-
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from transformers import PretrainedConfig  
+from transformers import PretrainedConfig
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
@@ -56,11 +54,11 @@ from transformers.utils import (
     add_start_docstrings_to_model_forward,
     logging,
 )
-
 from transformers.utils.import_utils import is_torch_fx_available
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_deepseek_v2 import DeepseekV2Config
+
 
 # This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
 # It means that the function will not be traced through and simply appear as a node in the graph.
@@ -95,13 +93,6 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
-
-try:
-    from habana_frameworks.torch.hpu import sdp_kernel
-
-    SDPContext = True
-except ImportError:
-    SDPContext = False
 
 logger = logging.get_logger(__name__)
 
@@ -636,7 +627,7 @@ class DeepseekV2MoE(nn.Module):
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = DeepseekV2MLP(config=config, intermediate_size=intermediate_size)
         SLICE_MAX_EXPERT = 80
-        self.expert_slice = math.ceil(config.n_routed_experts/SLICE_MAX_EXPERT)
+        self.expert_slice = math.ceil(config.n_routed_experts / SLICE_MAX_EXPERT)
         self.expert_chunk = self.config.n_routed_experts // self.expert_slice
 
     def forward(self, hidden_states):
@@ -672,15 +663,21 @@ class DeepseekV2MoE(nn.Module):
             final_hidden_states = final_hidden_states.type(hidden_states.dtype)
             final_hidden_states = final_hidden_states.view(*orig_shape)
             final_hidden_states = AddAuxiliaryLoss.apply(final_hidden_states, aux_loss)
-        else:            
+        else:
             final_hidden_states = torch.zeros(
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
             for idx in range(self.expert_slice):
                 experts_range = range(self.expert_chunk)
-                gate_proj_list = [self.experts[idx * self.expert_chunk + i].gate_proj.weight.squeeze() for i in experts_range]
-                down_proj_list = [self.experts[idx * self.expert_chunk + i].down_proj.weight.squeeze() for i in experts_range]
-                up_proj_list = [self.experts[idx * self.expert_chunk + i].up_proj.weight.squeeze() for i in experts_range]
+                gate_proj_list = [
+                    self.experts[idx * self.expert_chunk + i].gate_proj.weight.squeeze() for i in experts_range
+                ]
+                down_proj_list = [
+                    self.experts[idx * self.expert_chunk + i].down_proj.weight.squeeze() for i in experts_range
+                ]
+                up_proj_list = [
+                    self.experts[idx * self.expert_chunk + i].up_proj.weight.squeeze() for i in experts_range
+                ]
 
                 hidden_states_slice = torch.ops.hpu.mixture_of_experts(
                     hidden_states=hidden_states,
@@ -711,13 +708,15 @@ class DeepseekV2MoE(nn.Module):
 
         return final_hidden_states
 
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x, y):
         return torch.matmul(x, y)
-    
+
+
 def gaudi_deepseekv2_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -750,6 +749,7 @@ def gaudi_deepseekv2_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
 
 class KVCache(torch.nn.Module):
     def __init__(self):
@@ -792,6 +792,7 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -829,6 +830,7 @@ class ModuleFusedSDPA(torch.nn.Module):
             padding_side,
         )
 
+
 # Copied from transformers.models.llama.modeling_llama.LlamaAttention with Llama->DeepseekV2
 class DeepseekV2Attention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -843,7 +845,7 @@ class DeepseekV2Attention(nn.Module):
                 "to errors during the forward call, if caching is used. Please make sure to provide a `layer_idx` "
                 "when creating this class."
             )
-        
+
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -856,7 +858,7 @@ class DeepseekV2Attention(nn.Module):
         self.v_head_dim = config.v_head_dim
         self.qk_nope_head_dim = config.qk_nope_head_dim
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
-         
+
         self.is_causal = True
 
         if self.q_lora_rank is None:
@@ -884,7 +886,7 @@ class DeepseekV2Attention(nn.Module):
             bias=config.attention_bias,
         )
         self._init_rope()
-        
+
         self.num_key_value_groups = self.num_heads // config.num_key_value_heads
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
@@ -995,10 +997,8 @@ class DeepseekV2Attention(nn.Module):
 
     def split_kv_b_proj(self):
         kv_b_proj_weight = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
-        self.q_absorb = (
-            kv_b_proj_weight[:, : self.qk_nope_head_dim, :].unsqueeze(0).transpose(0, 1)
-        )  
-        self.out_absorb = kv_b_proj_weight[:, self.qk_nope_head_dim :, :].unsqueeze(0)          
+        self.q_absorb = kv_b_proj_weight[:, : self.qk_nope_head_dim, :].unsqueeze(0).transpose(0, 1)
+        self.out_absorb = kv_b_proj_weight[:, self.qk_nope_head_dim :, :].unsqueeze(0)
 
     def compress_kv(
         self,
@@ -1026,21 +1026,21 @@ class DeepseekV2Attention(nn.Module):
         use_cache: bool = False,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
-        cache_idx: int = None,        
+        cache_idx: int = None,
         cache_position: Optional[torch.LongTensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: Optional[torch.Tensor] = None,        
-        num_virtual_tokens: int = None,        
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
+        num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Attention masks and past cache are removed.
         Input:
-        - hidden_states: [bsz, q_len, hidden_size]        
+        - hidden_states: [bsz, q_len, hidden_size]
         - position_ids: [bsz, q_len]
         """
 
@@ -1079,22 +1079,21 @@ class DeepseekV2Attention(nn.Module):
                         "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                         "with a layer index."
                     )
-                
+
                 if token_idx is None:
                     if hasattr(past_key_value, "get_usable_length"):
                         kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
                     else:
                         kv_seq_len += past_key_value[0].shape[-2]
                 else:
-                    
                     if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
                         kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
                     else:
                         kv_seq_len = past_key_value[0].shape[-2]
-                
+
             cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
             q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
-            
+
             query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
             query_states[:, :, :, self.qk_nope_head_dim :] = q_pe
@@ -1102,14 +1101,13 @@ class DeepseekV2Attention(nn.Module):
             key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
             key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
-            
-            
+
             if past_key_value is not None:
                 cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
                 key_states, value_states = past_key_value.update(
                     key_states, value_states, self.layer_idx, cache_kwargs
                 )
-            #optimization
+            # optimization
             if use_flash_attention and FusedSDPA is not None:
                 if q_len == 1:
                     # next token
@@ -1161,8 +1159,8 @@ class DeepseekV2Attention(nn.Module):
             else:
                 query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
                     query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-                )                
-                
+                )
+
                 attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
                 htcore.mark_step()
 
@@ -1179,8 +1177,10 @@ class DeepseekV2Attention(nn.Module):
                     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
                         query_states.dtype
                     )
-                attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-                attn_output = self.matmul_av(attn_weights, value_states)                
+                attn_weights = torch.nn.functional.dropout(
+                    attn_weights, p=self.attention_dropout, training=self.training
+                )
+                attn_output = self.matmul_av(attn_weights, value_states)
         else:
             hidden_states_q = hidden_states
             hidden_states_kv = hidden_states
@@ -1285,9 +1285,7 @@ class DeepseekV2Attention(nn.Module):
             attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
             attn_output = torch.einsum("bhql,blc->bhqc", attn_weights, compressed_kv)
 
-            attn_output = torch.matmul(attn_output.permute(2, 1, 0, 3), self.out_absorb.mT).permute(
-                2, 1, 0, 3
-            )            
+            attn_output = torch.matmul(attn_output.permute(2, 1, 0, 3), self.out_absorb.mT).permute(2, 1, 0, 3)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.v_head_dim):
             raise ValueError(
@@ -1352,7 +1350,7 @@ class DeepseekV2DecoderLayer(nn.Module):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: Optional[torch.Tensor] = None,        
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -1589,7 +1587,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         lazy_mode: Optional[bool] = True,
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
-        
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1687,20 +1684,19 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     causal_mask,
                     position_ids,
                     past_key_values,
-                    output_attentions,                    
+                    output_attentions,
                     use_cache,
                     token_idx,
                     reuse_cache,
-                    cache_idx,                    
-                    cache_position,                    
-                    attn_softmax_bf16,                    
+                    cache_idx,
+                    cache_position,
+                    attn_softmax_bf16,
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
                     flash_attention_fast_softmax,
                     valid_sequence_lengths,
-                    num_virtual_tokens,     
-                    kwargs,               
+                    num_virtual_tokens,
                 )
             else:
                 if (
@@ -1871,20 +1867,20 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = False, 
+        output_hidden_states: Optional[bool] = False,
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
-        cache_idx: int = None,        
-        cache_position: Optional[torch.LongTensor] = None,             
-        trim_logits: Optional[bool] = False,        
+        cache_idx: int = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,        
+        use_flash_attention: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
-        valid_sequence_lengths: torch.Tensor = None,        
+        valid_sequence_lengths: torch.Tensor = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
@@ -1990,7 +1986,7 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
             attentions=outputs.attentions,
             router_logits=outputs.router_logits,
         )
-    
+
     def prepare_inputs_for_generation(
         self,
         input_ids,
