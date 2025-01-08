@@ -158,7 +158,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config:
+        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -667,7 +667,7 @@ def exclude_hpu_graph_configs(args):
         if "falcon-180B" in args.model_name_or_path or "falcon-180b" in args.model_name_or_path:
             return False
         if args.world_size == 2 or args.world_size == 4 or args.world_size == 8:
-            if args.quant_config:
+            if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
                 if args.max_input_tokens >= 8192 and args.max_new_tokens >= 128:
                     return False
             else:
@@ -710,7 +710,7 @@ def initialize_model(args, logger):
 
     model, assistant_model = (
         setup_model(args, model_dtype, model_kwargs, logger)
-        if not use_deepspeed
+        if not use_deepspeed or args.load_quantized_model_with_inc
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
         if args.parallel_strategy == "none"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
@@ -723,10 +723,18 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.quant_config:
+    if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, assistant_model, tokenizer, generation_config
+
+
+def save_model(model, tokenizer, save_path):
+    """Saves the model and tokenizer in the huggingface format with neural_compressor."""
+    from neural_compressor.torch.quantization import save
+
+    save(model, save_path, format="huggingface")
+    tokenizer.save_pretrained(save_path)
