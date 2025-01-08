@@ -436,15 +436,9 @@ class KVCache(torch.nn.Module):
 
 
 class GaudiDistributedAttention(torch.nn.Module):
-    def __init__(self, scale, attention_dropout, enable_recompute, flash_attention_fp8):
+    def __init__(self, hpu_module_fsdpa, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
-        self._hpu_module_fsdpa = ModuleFusedSDPA(
-            FusedSDPA,
-            scale=scale,
-            attention_dropout=attention_dropout,
-            enable_recompute=enable_recompute,
-            flash_attention_fp8=flash_attention_fp8,
-        )
+        self._hpu_module_fsdpa = hpu_module_fsdpa
         if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
             from deepspeed.sequence.layer import DistributedAttention
 
@@ -498,6 +492,13 @@ class GaudiDistributedAttention(torch.nn.Module):
             )
 
 
+def GetGaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
+
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -523,7 +524,8 @@ class GaudiLlamaAttention(LlamaAttention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.fused_scaled_dot_product_attention = (
-            GaudiDistributedAttention(
+            ModuleFusedSDPA(
+                FusedSDPA,
                 scale=self.norm_factor,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
@@ -532,6 +534,21 @@ class GaudiLlamaAttention(LlamaAttention):
             if FusedSDPA
             else None
         )
+        # https://github.com/microsoft/DeepSpeed/issues/4359
+        # for all2all comm, Distributed Attention cares about sequence (s) and number of heads (h) dimensions. In HPU, they are at 1 and 2 indices
+        self.fused_scaled_dot_product_attention_distributed = None
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            self.fused_scaled_dot_product_attention_distributed = (
+                GaudiDistributedAttention(
+                    self.fused_scaled_dot_product_attention,
+                    scale=self.norm_factor,
+                    attention_dropout=self.attention_dropout,
+                    enable_recompute=False,
+                    flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+                )
+                if FusedSDPA
+                else None
+            )
 
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
@@ -741,11 +758,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-
+        fused_scaled_dot_product_attention = GetGaudiDistributedAttention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
         if use_flash_attention and FusedSDPA is not None:
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -763,7 +782,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -777,7 +796,7 @@ class GaudiLlamaAttention(LlamaAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
