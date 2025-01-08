@@ -660,6 +660,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
         set_seed(27)
         outputs = pipeline(
             prompt=prompts,
@@ -714,6 +715,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         prompt = "An image of a squirrel in Picasso style"
         generator = torch.manual_seed(seed)
@@ -1346,6 +1348,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 --image_save_dir {run_dir}
                 --use_habana
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 """.split()
             cmd_line.append("--prompts")
@@ -1388,6 +1391,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "stabilityai/stable-diffusion-xl-base-1.0",
                 **kwargs,
             )
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
             num_images_per_prompt = num_images_per_prompt
             res = {}
             outputs = pipeline(
@@ -2464,6 +2468,7 @@ class TrainTextToImage(TestCase):
                  --dataloader_num_workers 8
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
+                 --sdp_on_bf16
                  --bf16
                  --adjust_throughput
                  --center_crop
@@ -2472,7 +2477,7 @@ class TrainTextToImage(TestCase):
                  --output_dir {tmpdir}
                 """.split()
 
-            # Run train_text_to_image_sdxl.y
+            # Run train_text_to_image_sdxl.py
             p = subprocess.Popen(cmd_line)
             return_code = p.wait()
 
@@ -2546,6 +2551,7 @@ class TrainControlNet(TestCase):
                     --checkpointing_steps 1000
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
+                    --sdp_on_bf16
                     --bf16
                     --max_train_steps 10
                     --output_dir {tmpdir}
@@ -3716,6 +3722,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_habana
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 --use_cpu_rng
                 """.split()
@@ -3745,6 +3752,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             "CompVis/stable-diffusion-v1-4",
             **kwargs,
         )
+        pipeline.unet.set_default_attn_processor(pipeline.unet)
 
         num_images_per_prompt = 20
         res = {}

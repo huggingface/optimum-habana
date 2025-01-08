@@ -51,7 +51,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ```bash
 python train_hpu_lazy.py \
     --data-dir ./ \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
@@ -65,7 +65,7 @@ python train_hpu_lazy.py --data-dir='./' --dataset hfds/johnowhitaker/imagenette
 ```bash
 python train_hpu_graph.py \
     --data-dir ./ \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
@@ -98,7 +98,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_lazy.py \
     --data-dir ./ \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
@@ -111,7 +111,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_graph.py \
     --data-dir ./ \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
     --model resnet50.a1_in1k \
     --train-split train \
@@ -142,7 +142,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ```bash
 python inference.py \
     --data-dir='./' \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device='hpu' \
     --model resnet50.a1_in1k \
     --split train \
@@ -153,7 +153,7 @@ python inference.py \
 ```bash
 python inference.py \
     --data-dir='./' \
-    --dataset hfds/johnowhitaker/imagenette2-320 \    
+    --dataset hfds/johnowhitaker/imagenette2-320 \
     --device='hpu' \
     --model resnet50.a1_in1k \
     --split train

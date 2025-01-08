@@ -59,7 +59,7 @@ from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
-from .. import parallel_state
+from ..distributed import parallel_state
 
 
 if is_deepspeed_available():
@@ -156,7 +156,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
                 )
 
             mixed_precision = (

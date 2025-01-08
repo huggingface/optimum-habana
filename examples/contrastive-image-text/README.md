@@ -115,6 +115,7 @@ PT_HPU_LAZY_MODE=0 python run_clip.py \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
+    --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code \
     --torch_compile_backend=hpu_backend \
@@ -127,32 +128,34 @@ PT_HPU_LAZY_MODE=0 python run_clip.py \
 Run the following command for distributed training:
 
 ```bash
-PT_HPU_LAZY_MODE=0 \
-python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
-    --output_dir ./clip-roberta-finetuned \
-    --model_name_or_path ./clip-roberta \
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 \
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
+    --output_dir=/tmp/clip_roberta \
+    --model_name_or_path=./clip-roberta \
     --data_dir $PWD/data \
     --dataset_name ydshieh/coco_dataset_script \
-    --dataset_config_name=2017 \
+    --dataset_config_name 2017 \
     --image_column image_path \
     --caption_column caption \
     --remove_unused_columns=False \
-    --do_train  --do_eval \
-    --per_device_train_batch_size="512" \
+    --do_train --do_eval \
+    --mediapipe_dataloader \
+    --per_device_train_batch_size="64" \
     --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
-    --save_strategy epoch \
     --use_habana \
-    --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3 \
-    --dataloader_num_workers 16 \
-    --mediapipe_dataloader \
-    --bf16 \
-    --distribution_strategy fast_ddp \
-    --trust_remote_code \
+    --use_lazy_mode=False \
+    --gaudi_config_name="Habana/clip" \
+    --throughput_warmup_steps=3 \
+    --save_strategy="no" \
+    --dataloader_num_workers=2 \
+    --use_hpu_graphs \
+    --max_steps=100 \
     --torch_compile_backend=hpu_backend \
-    --torch_compile
+    --torch_compile \
+    --logging_nan_inf_filter \
+    --trust_remote_code
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -163,29 +166,36 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
 Run the following command for training with DeepSpeed:
 
 ```bash
-PT_HPU_LAZY_MODE=0 \
-python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
-    --output_dir ./clip-roberta-finetuned \
-    --model_name_or_path ./clip-roberta \
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 \
+python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
+    --output_dir=/tmp/clip_roberta \
+    --model_name_or_path=./clip-roberta \
     --data_dir $PWD/data \
     --dataset_name ydshieh/coco_dataset_script \
-    --dataset_config_name=2017 \
+    --dataset_config_name 2017 \
     --image_column image_path \
     --caption_column caption \
     --remove_unused_columns=False \
-    --do_train  --do_eval \
-    --per_device_train_batch_size="512" \
+    --do_train --do_eval \
+    --mediapipe_dataloader \
+    --per_device_train_batch_size="64" \
     --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
-    --save_strategy epoch \
     --use_habana \
-    --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config \
-    --trust_remote_code \
+    --use_lazy_mode=False \
+    --gaudi_config_name="Habana/clip" \
+    --throughput_warmup_steps=30 \
+    --save_strategy="no" \
+    --dataloader_num_workers=2 \
+    --use_hpu_graphs \
+    --max_steps=100 \
     --torch_compile_backend=hpu_backend \
-    --torch_compile
+    --torch_compile \
+    --logging_nan_inf_filter \
+    --trust_remote_code \
+    --deepspeed <path_to_my_deepspeed_config>
+
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -265,6 +275,7 @@ python run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --bf16 \
+    --sdp_on_bf16 \
     --mediapipe_dataloader \
     --trust_remote_code
 ```

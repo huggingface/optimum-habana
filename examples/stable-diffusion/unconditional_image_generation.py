@@ -20,7 +20,7 @@ except ImportError:
 
 
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 # Setup logging
 logging.basicConfig(
@@ -69,6 +69,12 @@ def main():
         help="Whether to use bf16 precision for classification.",
     )
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--save_outputs",
         action="store_true",
         help="Whether to save the generated images to jpg.",
@@ -104,6 +110,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": gaudi_config,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     kwargs_call = {"throughput_warmup_steps": args.throughput_warmup_steps}
