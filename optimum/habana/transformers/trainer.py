@@ -262,9 +262,11 @@ class GaudiTrainer(Trainer):
             eval_dataset,
             processing_class,
             model_init,
+            compute_loss_func,
             compute_metrics,
             callbacks,
             optimizers,
+            optimizer_cls_and_kwargs,
             preprocess_logits_for_metrics,
         )
 
