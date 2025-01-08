@@ -156,6 +156,40 @@ class ModelArguments:
             )
         },
     )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable recompute in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
     low_cpu_mem_usage: bool = field(
         default=False,
         metadata={
@@ -481,6 +515,14 @@ def main():
         embedding_size = model.get_input_embeddings().weight.shape[0]
         if len(tokenizer) > embedding_size:
             model.resize_token_embeddings(len(tokenizer))
+
+    # We need to add these fused kernels config
+    if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
+    if model_args.use_flash_attention:
+            model.generation_config.use_flash_attention = True
+            model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+            model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
