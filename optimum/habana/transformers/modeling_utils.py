@@ -12,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-
 import accelerate
 import transformers
 import transformers.utils.fx
@@ -83,6 +81,7 @@ from .models import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMixtralSparseMoeBlock,
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
@@ -184,8 +183,6 @@ from .models import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
-    gaudi_mixtral_block_dynamic_moe_forward,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
@@ -505,15 +502,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
-    # We need this workaround until moe op in hpu is supporting fp8
-    if os.environ.get("QUANT_CONFIG"):
-        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
-            gaudi_mixtral_block_sparse_moe_forward
-        )
-    else:
-        transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = (
-            gaudi_mixtral_block_dynamic_moe_forward
-        )
+    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock = GaudiMixtralSparseMoeBlock
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
     transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig
