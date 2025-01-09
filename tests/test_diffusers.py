@@ -33,6 +33,7 @@ from unittest import TestCase, skipUnless
 import diffusers
 import habana_frameworks.torch.hpu as hthpu
 import numpy as np
+import PIL
 import pytest
 import requests
 import safetensors
@@ -69,7 +70,8 @@ from diffusers.utils.testing_utils import (
     require_torch,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from huggingface_hub import snapshot_download
+from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
 from transformers import (
@@ -140,7 +142,9 @@ if IS_GAUDI2:
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.145
     SDXL_THROUGHPUT = 0.301
     SVD_THROUGHPUT = 0.012
+    SD3_THROUGHPUT = 0.006
     FLUX_THROUGHPUT = 0.03
+    FLUX_DEV_I2I_THROUGHPUT = 0.12
 else:
     THROUGHPUT_BASELINE_BF16 = 0.275
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -169,6 +173,21 @@ def custom_bf16_ops(test_case):
 
     """
     return skipUnless(_run_custom_bf16_ops_test_, "test requires custom bf16 ops")(test_case)
+
+
+def check_gated_model_access(model):
+    """
+    Skip test for a gated model if access is not granted; this occurs when an account
+    with the required permissions is not logged into the HF Hub.
+    """
+    try:
+        hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
+        gated = False
+
+    except HfHubHTTPError:
+        gated = True
+
+    return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -1514,6 +1533,32 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
             "Original outputs should match when fused QKV projections are disabled."
         )
+
+    @slow
+    @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
+    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    def test_sd3_inference(self):
+        repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
+
+        pipe = self.pipeline_class.from_pretrained(
+            repo_id,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            torch_dtype=torch.bfloat16,
+            sdp_on_bf16=True,
+        )
+
+        outputs = pipe(
+            prompt="Sailing ship painting by Van Gogh",
+            num_inference_steps=28,
+            batch_size=1,
+            num_images_per_prompt=10,
+            output_type="np",
+        )
+
+        # Check expected performance of FLUX.1 dev img-to-img model
+        self.assertGreaterEqual(outputs.throughput, 0.95 * SD3_THROUGHPUT)
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
@@ -5947,3 +5992,36 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
 
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
         assert max_diff < 1e-4
+
+    @slow
+    @check_gated_model_access("black-forest-labs/FLUX.1-dev")
+    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    def test_flux_img2img_inference(self):
+        repo_id = "black-forest-labs/FLUX.1-dev"
+        image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
+        image = PIL.Image.open(requests.get(image_path, stream=True).raw)
+        image = PIL.ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+
+        pipe = self.pipeline_class.from_pretrained(
+            repo_id,
+            torch_dtype=torch.bfloat16,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            sdp_on_bf16=True,
+        )
+
+        outputs = pipe(
+            image=image,
+            prompt="cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k",
+            num_inference_steps=30,
+            guidance_scale=3.5,
+            strength=0.9,
+            batch_size=1,
+            num_images_per_prompt=10,
+            output_type="np",
+        )
+
+        # Check expected performance of FLUX.1 dev img-to-img model
+        self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_DEV_I2I_THROUGHPUT)
