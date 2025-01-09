@@ -16,10 +16,10 @@ limitations under the License.
 
 # Stable Diffusion Examples
 
-This directory contains sample scripts that showcase how to perform diffusion-based generative tasks on Intel® Gaudi® AI Accelerators.
+This directory contains sample scripts demonstrating how to perform diffusion-based generative tasks on Intel® Gaudi® AI Accelerators.
 
-Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser
-and Robin Rombach and the Stability AI team.
+Stable Diffusion was introduced in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser,
+Robin Rombach and the Stability AI team.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 ### Stable Diffusion
 
-Here is how to generate images using Stable Diffusion 1.4 model with one prompt:
+Here's how to generate images using the Stable Diffusion 1.4 model with a single prompt:
 
 ```bash
 python text_to_image_generation.py \
@@ -53,7 +53,7 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-To generate images with several prompts, simply include 2 prompts in your input as follows:
+To generate images with multiple prompts, simply include two prompts in your input as shown below:
 
 ```bash
 python text_to_image_generation.py \
@@ -69,8 +69,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-Distributed inference with multiple HPUs is also supported. Here is an example which shows
-how to generate images with two prompts on two HPUs:
+Distributed inference with multiple HPUs is also supported. Below is an example demonstrating how to generate images with two prompts on two HPUs:
 
 ```bash
 python ../gaudi_spawn.py \
@@ -88,9 +87,8 @@ python ../gaudi_spawn.py \
     --distributed
 ```
 
-You can run other older Stable Diffusion models in a similar manner. For example, to perform image generation with
-Stable Diffusion 1.5, use the option: `--model_name_or_path stable-diffusion-v1-5/stable-diffusion-v1-5`. Examples
-showcasing Stable Diffusion 2 are given next.
+You can run other older Stable Diffusion models in a similar manner. For example, to generate images with Stable Diffusion 1.5, use the option:
+`--model_name_or_path stable-diffusion-v1-5/stable-diffusion-v1-5`. Examples showcasing Stable Diffusion 2 are provided next.
 
 ### Stable Diffusion 2
 
@@ -165,7 +163,8 @@ There are three different checkpoints for LDM3D:
 
 ### Stable Diffusion XL (SDXL)
 
-Stable Diffusion XL was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://arxiv.org/pdf/2307.01952.pdf) by the Stability AI team.
+Stable Diffusion XL was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://arxiv.org/pdf/2307.01952.pdf)
+by the Stability AI team.
 
 Here is how to generate SDXL images with a single prompt:
 
@@ -190,10 +189,7 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-SDXL incorporates a second text encoder (OpenCLIP ViT-bigG/14) alongside the original Stable Diffusion text encoder,
-significantly increasing the number of parameters and enabling more detailed and descriptive prompts. Here is an
-example of how to generate images using multiple prompts for both `prompt` (primary text encoder) and `prompt_2`
-(secondary text encoder), along with their respective negative prompts:
+SDXL integrates a second text encoder (OpenCLIP ViT-bigG/14), alongside the original Stable Diffusion text encoder. This addition significantly increases the number of parameters, enabling more detailed and descriptive prompts. Below is an example of how to generate images using multiple prompts for both `prompt` (primary text encoder) and `prompt_2` (secondary text encoder), along with their respective negative prompts:
 
 ```bash
 python text_to_image_generation.py \
@@ -213,8 +209,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-Distributed inferencing with Intel Gaudi accelerators is also supported for SDXL.  Here is an example of generating
-SDXL images in a distributed manner using two prompts on two HPUs:
+SDXL also supports distributed inferencing with Intel Gaudi accelerators. Below is an example of generating SDXL images in a distributed manner using two prompts on two HPUs:
 
 ```bash
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
@@ -235,8 +230,7 @@ python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
     --distributed
 ```
 
-The performance-optimized SDXL pipeline can be enabled using the `--optimize` option. This option leverages a more
-aggressively optimized modified attention mechanism for improved performance. Additionally, it supports running
+The performance-optimized SDXL pipeline can be enabled using the `--optimize` option. This option utilizes a more aggressively optimized attention mechanism for enhanced performance. Additionally, it supports running
 inference in mixed FP8 precision.
 
 Here is how to generate SDXL images with optimized pipeline in FP8 precision:
@@ -259,9 +253,7 @@ python text_to_image_generation.py \
 
 #### SDXL-Turbo
 
-Knowledge distillation technique can be used to train a distilled version of SDXL, where fewer
-inference steps are sufficient to generate high-quality images. SDXL-Turbo is a distilled
-version of Stable Diffusion XL 1.0, trained for real-time synthesis.
+The knowledge distillation technique can be used to train a distilled version of SDXL, allowing for high-quality image generation with fewer inference steps. SDXL-Turbo is a distilled version of Stable Diffusion XL 1.0, optimized for real-time synthesis.
 
 Here is how to generate images with multiple prompts:
 
@@ -283,7 +275,7 @@ python text_to_image_generation.py \
     --timestep_spacing trailing
 ```
 
-> [!NOTE]
+> [!WARNING]
 > There is a regression with "--guidance_scale 0.0" in current release which will be addressed in later releases.
 > Setting `--guidance_scale` to a value larger than 1 resolves the regression.
 
@@ -417,11 +409,9 @@ python text_to_image_generation.py \
 
 ## ControlNet
 
-Here is how to generate images conditioned by the canny edge model:
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543)
-by Lvmin Zhang and Maneesh Agrawala. It enables conditioning the Stable Diffusion model with an additional input image, allowing
-for precise control over the composition of the generated images using various features such as edges, pose, depth, and more.
+by Lvmin Zhang and Maneesh Agrawala, enables conditioning the Stable Diffusion model with an additional input image. This allows for precise control over the composition of generated images using various features such as edges, pose, depth, and more.
 
 Here is how to generate images conditioned by Canny edge model:
 
@@ -442,8 +432,7 @@ python text_to_image_generation.py \
 ```
 
 The ControlNet example can be run with multiple prompts by supplying more than one prompt in the input.
-In addition, it can also be run in a distributed manner. Here is how to generate images conditioned by
-Canny edge model and with two prompts on two HPUs:
+Additionally, it supports distributed execution. Below is an example of generating images conditioned by the Canny edge model using two prompts on two HPUs:
 
 ```bash
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
@@ -462,9 +451,7 @@ python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
     --distributed
 ```
 
-These ControlNet examples will also do preprocessing of the input image and derive Canny edges from it. More generally,
-we can use `--control_preprocessing_type none` and supply preprocessed control image directly which allows running many 
-additional use cases.
+These ControlNet examples will preprocess the input image to derive Canny edges. Alternatively, you can use `--control_preprocessing_type none` to supply a preprocessed control image directly, enabling many additional use cases.
 
 ## Inpainting
 
@@ -512,13 +499,12 @@ python text_to_image_generation.py \
 
 ## Additional Stable Diffusion-based Inference Techniques
 
-This section provides examples demonstrating additional inference techniques based on Stable Diffusion.
-For more details, please refer to
+This section provides examples of additional inference techniques based on Stable Diffusion. For more details, please refer to
 [Hugging Face Diffusers documentation](https://huggingface.co/docs/diffusers/main/en/using-diffusers/overview_techniques).
 
 ### Unconditional Image Generation
 
-Here is how to perform unconditional image generation on Intel Gaudi. For more details, please see
+Here is how to perform unconditional image generation on Intel Gaudi. For more details,  please refer to the 
 [Unconditional Image Generation](https://huggingface.co/docs/diffusers/using-diffusers/unconditional_image_generation)
 section in the Hugging Face documentation.
 
@@ -537,7 +523,7 @@ python unconditional_image_generation.py \
 
 ### Controlling Brightness
 
-Here is how to run an example of controlling brightness. For more information, please refer to the
+Here is an example of how to control brightness. For more information, please refer to the
 [Control Brightness](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness)
 section in the Hugging Face documentation.
 
@@ -559,7 +545,7 @@ python text_to_image_generation.py \
 
 ### Prompt Weighting
 
-Here is how to run an example of prompt weighting. For more information, please refer to the
+Here is an example of how to run prompt weighting. For more information, please refer to the
 [Weighted Prompts](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts)
 section in the Hugging Face documentation.
 
@@ -580,7 +566,7 @@ python text_to_image_generation.py \
 
 ### Controlling Image Quality
 
-Here is how to run an example of improving image quality. For more details, please see
+Here is an example of how to improve image quality. For more details, please refer to the
 [Image Quality](https://huggingface.co/docs/diffusers/main/en/using-diffusers/image_quality)
 section in the Hugging Face documentation.
 
@@ -600,11 +586,11 @@ python text_to_image_generation.py \
 
 ## Image-to-Image Generation
 
-Images can also be generated from initial input images that guide the diffusion-based image generation process
+Images can also be generated using initial input images to guide the diffusion-based image generation process.
 
 ### Stable Diffusion-based Image-to-Image
 
-Here is how to generate images with one prompt and one image using `timbrooks/instruct-pix2pix` model which is based on the Stable Diffusion:
+Here is how to generate images using a single prompt and an input image with the `timbrooks/instruct-pix2pix` model, which is based on Stable Diffusion:
 
 ```bash
 python image_to_image_generation.py \
@@ -633,7 +619,7 @@ This example can also be run with multiple prompts by supplying more than one pr
 
 ### Stable Diffusion XL Refiner
 
-Here is how to refine SDXL images with a single image and prompt:
+Here is how to refine SDXL images using a single image and prompt:
 
 ```bash
 python image_to_image_generation.py \
@@ -654,7 +640,7 @@ python image_to_image_generation.py \
 
 ### FLUX.1 Image-to-Image
 
-Here is how to generate FLUX.1 image with one input image and a single prompt:
+Here is how to generate a FLUX.1 image using a single input image and prompt:
 
 ```bash
 python image_to_image_generation.py \
@@ -711,11 +697,11 @@ python depth_to_image_generation.py \
 
 ## Text-to-Video Generation
 
-This section showcases how to use the `GaudiTextToVideoSDPipeline` to run text-to-video generation tasks on HPUs.
-The pipeline uses a UNet3D structure and implements video generation through the iterative denoising process.
+This section demonstrates how to use the `GaudiTextToVideoSDPipeline` for text-to-video generation tasks on HPUs.
+The pipeline employs a UNet3D structure and generates videos through an iterative denoising process.
 
 ```bash
-python3 text_to_video_generation.py \
+python text_to_video_generation.py \
     --model_name_or_path ali-vilab/text-to-video-ms-1.7b \
     --prompts "An astronaut riding a horse" \
     --use_habana \
