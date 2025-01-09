@@ -1363,7 +1363,7 @@ class GaudiLlamaModel(LlamaModel):
                     cache_idx=cache_idx,
                     num_virtual_tokens=num_virtual_tokens,
                     attn_batch_split=attn_batch_split,
-                    prev_layer_residual=prev_layer_residual,
+                    prev_layer_residual=prev_layer_residual if use_prev_layer_residual else None,
                 )
                 if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)
