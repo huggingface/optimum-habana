@@ -14,7 +14,7 @@
 # limitations under the License.
 
 ###############################################################################
-# Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
+# Copyright (C) 2020-2024 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
 import argparse
@@ -24,12 +24,16 @@ import multiprocessing as mp
 import os
 import time
 
-import lm_eval.evaluator
-import lm_eval.tasks
 import psutil
 import torch
 import torch.nn.functional as F
+from lm_eval import evaluator
+from lm_eval.models.huggingface import HFLM, TemplateLM
+
+# Local imports
 from run_generation import setup_parser
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -90,24 +94,35 @@ def setup_lm_eval_parser():
     return args
 
 
-class HabanaModelAdapter(lm_eval.base.BaseLM):
-    def __init__(self, tokenizer, model, args, options):
-        super().__init__()
+class HabanaModelAdapter(HFLM):
+    def __init__(
+        self,
+        tokenizer: AutoTokenizer,
+        model: AutoModelForCausalLM,
+        args: argparse.Namespace,
+        options: GenerationConfig,
+    ) -> None:
+        # do not call direct parent costructor as it executes
+        # some GPU and CPU related code which are not needed in habana impl
+        TemplateLM.__init__(self)
         self.tokenizer = tokenizer
-        self.model = model
+        self._model = model
         self._batch_size = args.batch_size
         self.buckets = sorted(args.buckets)
         self.options = options
         self._device = args.device
+        self._get_backend(self.model.config, "default", args.trust_remote_code)
+        self.add_bos_token = False
+        self.logits_cache = True
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
+        if self._model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
-            if self.model.config.model_type != "falcon":
+        if self._model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
+            if self._model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -123,27 +138,19 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         if args.warmup:
             self.warm_up()
 
-    def warm_up(self):
+    def warm_up(self) -> None:
         for bucket_size in reversed(self.buckets):
             inps = torch.ones((self._batch_size, bucket_size), dtype=torch.int64)
             self._model_call(inps)
             pass
 
     @property
-    def eot_token_id(self):
+    def eot_token_id(self) -> int:
         return self.model.config.eos_token_id
 
     @property
-    def max_length(self):
+    def max_length(self) -> int:
         return self.buckets[-1]
-
-    @property
-    def max_gen_toks(self):
-        raise NotImplementedError()
-
-    @property
-    def batch_size(self):
-        return self._batch_size
 
     @property
     def device(self):
@@ -151,19 +158,18 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         # Returning 'cpu' to keep tensors on CPU in lm_eval code
         return "cpu"
 
-    def tok_encode(self, string):
-        return self.tokenizer.encode(string)
+    @property
+    def batch_size(self):
+        return self._batch_size
 
-    def tok_decode(self, tokens):
-        return self.tokenizer.decode(tokens)
+    @property
+    def config(self):
+        return self._model.config
 
-    def _model_generate(self, context, max_length, eos_token_id):
-        raise NotImplementedError()
-
-    def find_bucket(self, length):
+    def find_bucket(self, length: int) -> list[int]:
         return [b for b in self.buckets if b >= length][0]
 
-    def _model_call(self, inps):
+    def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
         bs, seq_length = inps.shape
         padding_length = 0
         if self.options.static_shapes:
@@ -173,7 +179,6 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
         logits = self.model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
-
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
@@ -183,8 +188,6 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
-
-    lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
 
     run_modes = ["pt2e_quant_not_used"]
     if args.pt2e_quant and model.config.model_type == "llama":
@@ -202,7 +205,7 @@ def main():
         eval_start = time.perf_counter()
         results = {}
         with torch.no_grad():
-            results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
 
