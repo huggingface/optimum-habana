@@ -31,7 +31,8 @@ from diffusers.utils.torch_utils import randn_tensor
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics
+from ...models.unet_2d_condition import set_default_attn_processor_hpu
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -107,7 +108,12 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             scheduler,
             feature_extractor,
         )
+        self.unet.set_default_attn_processor = set_default_attn_processor_hpu
+        self.unet.set_default_attn_processor(self.unet)
+        if use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
+            self.unet = wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
         self.to(self._device)
 
     @classmethod
@@ -240,6 +246,8 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
         output_type: Optional[str] = "pil",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         return_dict: bool = True,
         **kwargs,
     ):
@@ -469,6 +477,13 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             t0 = time.time()
             t1 = t0
 
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
+
             # 10. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
@@ -525,6 +540,9 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch).prev_sample
 
+                    if not self.use_hpu_graphs:
+                        self.htcore.mark_step()
+
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -532,6 +550,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                         callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
+                    hb_profiler.step()
 
                 if not output_type == "latent":
                     # cast back to fp16/bf16 if needed
@@ -544,7 +563,10 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
                     frames = latents_batch
 
                 outputs["frames"].append(frames)
+                if not self.use_hpu_graphs:
+                    self.htcore.mark_step()
 
+            hb_profiler.stop()
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
