@@ -19,13 +19,14 @@
 
 import argparse
 import json
-import logging
 import multiprocessing as mp
 import os
 import time
+from typing import Any, Dict
 
 import lm_eval.evaluator
 import lm_eval.tasks
+from lm_eval import utils
 from lm_eval.models.huggingface import HFLM
 from lm_eval.models.utils import get_dtype
 import psutil
@@ -41,8 +42,8 @@ from utils import finalize_quantization, initialize_model
 from optimum.habana.utils import get_hpu_memory_stats
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-logger = logging.getLogger(__name__)
-
+#logger = logging.getLogger(__name__)
+logger = utils.eval_logger
 
 # This hack is a workaround to limitations of lm_eval which always allocates
 # mp.Pool with max cpu count which explodes on multinode scenarios and for hpu
@@ -230,6 +231,23 @@ class HabanaModelAdapter(HFLM):
             trust_remote_code=trust_remote_code,
         )
 
+# Modified from https://github.com/huggingface/transformers/blob/main/src/transformers/configuration_utils.py/#L991
+def dict_torch_dtype_to_str(d: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Checks whether the passed dictionary and its nested dicts have a *torch_dtype* key and if it's not None,
+    converts torch.dtype to a string of just the type. For example, `torch.float32` get converted into *"float32"*
+    string, which can then be stored in the json format.
+    """
+    if d.get("model_dtype", None) is not None and not isinstance(d["model_dtype"], str):
+        d["model_dtype"] = str(d["model_dtype"]).split(".")[1]
+    if d.get("torch_dtype", None) is not None and not isinstance(d["torch_dtype"], str):
+        import pdb; pdb.set_trace()
+        d["torch_dtype"] = str(d["torch_dtype"]).split(".")[1]
+    for value in d.values():
+        if isinstance(value, dict):
+            dict_torch_dtype_to_str(value)
+    return d
+
 def main() -> None:
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
@@ -263,6 +281,7 @@ def main() -> None:
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+        results = dict_torch_dtype_to_str(results)
         json.dump(results, open(args.output_file, "w"), indent=2)
         print(json.dumps(results, indent=2))
     if args.quant_config:
