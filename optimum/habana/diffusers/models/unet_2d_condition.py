@@ -215,15 +215,7 @@ def gaudi_unet_2d_condition_model_forward(
     # 2. pre-process
     import habana_frameworks.torch.hpu as hthpu
 
-    # Workaround for SynapseAI 1.11 for Torch Autocast
-    # TODO: to remove in SynapseAI 1.13?
-    if hthpu.is_autocast_hpu_enabled():
-        sample = self.conv_in(sample.to(torch.float))
-    # Workaround for Synapse 1.11 for full bf16
-    elif self.conv_in.bias.dtype == torch.float and sample.dtype == torch.bfloat16:
-        sample = self.conv_in(sample.to(torch.float)).to(torch.bfloat16)
-    else:
-        sample = self.conv_in(sample)
+    sample = self.conv_in(sample)
 
     # 2.5 GLIGEN position net
     if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
