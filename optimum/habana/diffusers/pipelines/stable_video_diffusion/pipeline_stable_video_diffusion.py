@@ -110,8 +110,9 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             scheduler,
             feature_extractor,
         )
-        self.unet.set_default_attn_processor = set_default_attn_processor_hpu
-        self.unet.set_default_attn_processor(self.unet)
+        if use_habana:
+            self.unet.set_default_attn_processor = set_default_attn_processor_hpu
+            self.unet.set_default_attn_processor(self.unet)
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
@@ -382,7 +383,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             # 4. Encode input image using VAE
             image = self.video_processor.preprocess(image, height=height, width=width)
             # torch.randn is broken on HPU so running it on CPU
-            rand_device = "cpu" if device.type == "hpu" else device
+            rand_device = torch.device("cpu") if device.type == "hpu" else device
             noise = randn_tensor(image.shape, generator=generator, device=rand_device, dtype=image.dtype).to(device)
             # image = self.image_processor.preprocess(image, height=height, width=width).to(device)
             # noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)

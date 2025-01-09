@@ -86,6 +86,7 @@ class GaudiStableDiffusionImageVariationPipeline(GaudiDiffusionPipeline, StableD
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -93,6 +94,7 @@ class GaudiStableDiffusionImageVariationPipeline(GaudiDiffusionPipeline, StableD
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
+            sdp_on_bf16,
         )
 
         # Workaround for Synapse 1.11 for full bf16

@@ -236,6 +236,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     # Import selected pipeline
@@ -290,7 +291,7 @@ def main():
         kwargs["torch_dtype"] = torch.bfloat16
 
     if args.throughput_warmup_steps is not None:
-        kwargs["throughput_warmup_steps"] = args.throughput_warmup_steps
+        res["throughput_warmup_steps"] = args.throughput_warmup_steps
 
     pipeline = Img2ImgPipeline.from_pretrained(
         args.model_name_or_path,
@@ -324,7 +325,6 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            sdp_on_bf16=args.sdp_on_bf16,
             **res,
         )
     elif flux:

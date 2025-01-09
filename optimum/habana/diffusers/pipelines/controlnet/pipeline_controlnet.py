@@ -100,7 +100,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
-        sdp_on_bf16: bool = True,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
