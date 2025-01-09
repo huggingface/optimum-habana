@@ -102,7 +102,7 @@ class HabanaModelAdapter(HFLM):
         args: argparse.Namespace,
         options: GenerationConfig,
     ) -> None:
-        super().__init__(device=args.device, pretrained=model)
+        super().__init__(device=args.device, pretrained=args.model_name_or_path)
         self.tokenizer = tokenizer
         self._model = model
         self._batch_size = args.batch_size
@@ -233,7 +233,6 @@ class HabanaModelAdapter(HFLM):
 def main() -> None:
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
-
     if args.trust_remote_code:
         # trust_remote_code fix was introduced in lm_eval 0.4.3
         # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
