@@ -222,8 +222,10 @@ def _test_text_generation(
         command += ["--sdp_on_bf16"]
 
     if "mamba" in model_name.lower():
-        from optimum.habana.utils import  get_habana_frameworks_version
         from huggingface_hub import hf_hub_download
+
+        from optimum.habana.utils import get_habana_frameworks_version
+
         version_no = get_habana_frameworks_version()
 
         name_kernel = "libcustom_tpc_perf_lib.so"
@@ -244,7 +246,7 @@ def _test_text_generation(
 
         default_path = env_variables["GC_KERNEL_PATH"]
         env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
-        
+
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 

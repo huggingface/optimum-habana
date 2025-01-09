@@ -14,6 +14,7 @@ from transformers.utils import (
 
 from .util_mamba import set_mamba_lib
 
+
 env_variables = os.environ.copy()
 new_file_op, new_file_kernel = set_mamba_lib()
 realpath_kfn = os.path.realpath(new_file_kernel)
@@ -38,6 +39,7 @@ is_fast_path_available = False
 use_pscan_kernel = False
 if os.path.exists(custom_op_lib_path) and default_path != orig_path:
     use_pscan_kernel = True
+
 
 def Run_Mamba_Forward_Gaudi(in_state, in_x, in_dt, in_A, in_B, in_C, in_D, in_z):
     in_state_h = in_state.unsqueeze(1).transpose(2, 3)
@@ -162,6 +164,7 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
         }
     )
     return model_inputs
+
 
 class gaudi_MambaMixer(nn.Module):
     """
