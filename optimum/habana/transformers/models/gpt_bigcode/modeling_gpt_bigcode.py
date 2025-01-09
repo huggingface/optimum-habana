@@ -306,9 +306,9 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         - optimize KV cache
         """
         if use_flash_attention:
-            assert (
-                self.fused_scaled_dot_product_attention is not None
-            ), "Can't load HPU fused scaled dot-product attention kernel. Please retry without flash attention"
+            assert self.fused_scaled_dot_product_attention is not None, (
+                "Can't load HPU fused scaled dot-product attention kernel. Please retry without flash attention"
+            )
 
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn") or not self.is_cross_attention:
@@ -353,9 +353,9 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
             present = torch.cat((key, value), dim=-1) if use_cache else None
         else:
             assert token_idx is not None, "Invalid parameters: token_idx is None at decode stage with bucket_internal"
-            assert (
-                layer_past is not None
-            ), "Invalid parameters: layer_past is None at decode stage with bucket_internal"
+            assert layer_past is not None, (
+                "Invalid parameters: layer_past is None at decode stage with bucket_internal"
+            )
 
             past_key, past_value = layer_past.split((self.head_dim, self.head_dim), dim=-1)
             key = past_key.index_copy_(1, token_idx - 1, key)

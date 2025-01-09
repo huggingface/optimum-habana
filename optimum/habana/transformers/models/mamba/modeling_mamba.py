@@ -17,13 +17,12 @@ from .util_mamba import set_mamba_lib
 env_variables = os.environ.copy()
 new_file_op, new_file_kernel = set_mamba_lib()
 realpath_kfn = os.path.realpath(new_file_kernel)
-kfn = os.path.basename(realpath_kfn)
 new_kfn = os.path.join(os.path.dirname(realpath_kfn), "libcustom_tpc_perf_lib.so")
 os.rename(realpath_kfn, new_kfn)
 
 env_variables["HABANA_CUSTOM_OP_DIR"] = os.path.dirname(new_file_op)
 default_path = env_variables["GC_KERNEL_PATH"]
-orig_path = '/usr/lib/habanalabs/libtpc_kernels.so'
+orig_path = "/usr/lib/habanalabs/libtpc_kernels.so"
 env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
 
 base_dir = env_variables["HABANA_CUSTOM_OP_DIR"]
@@ -318,4 +317,4 @@ class gaudi_MambaMixer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
     ):
-        return self.slow_forward(hidden_states, cache_params, cache_position, attention_mask)    
+        return self.slow_forward(hidden_states, cache_params, cache_position, attention_mask)

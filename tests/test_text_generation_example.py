@@ -239,7 +239,6 @@ def _test_text_generation(
             os.rename(file_kernel, new_file_kernel)
 
         realpath_kfn = os.path.realpath(new_file_kernel)
-        kfn = os.path.basename(realpath_kfn)
         new_kfn = os.path.join(os.path.dirname(realpath_kfn), "libcustom_tpc_perf_lib.so")
         os.rename(realpath_kfn, new_kfn)
 
@@ -391,9 +390,9 @@ def _test_text_generation(
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            assert (
-                model_name in MODEL_OUTPUTS
-            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            assert model_name in MODEL_OUTPUTS, (
+                f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            )
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
