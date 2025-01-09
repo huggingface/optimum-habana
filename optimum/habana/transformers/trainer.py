@@ -1633,9 +1633,9 @@ class GaudiTrainer(Trainer):
             loss = loss / self.args.gradient_accumulation_steps
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (
-                self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing
-            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
+            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
+            )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
@@ -2596,3 +2596,28 @@ class GaudiTrainer(Trainer):
             except TypeError:
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
+
+    def get_batch_samples(self, epoch_iterator, num_batches):
+        batch_samples = []
+        num_items_in_batch = None
+        for _ in range(num_batches):
+            try:
+                batch_samples += [next(epoch_iterator)]
+            except StopIteration:
+                break
+
+        # TODO: execute get_batch_samples outside of the training loop (before training) and uncomment the following lines
+        # if len(batch_samples) > 0 and "labels" in batch_samples[0]:
+        #     # For now we don't support object detection
+        #     try:
+        #         num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+        #     except (TypeError, AttributeError):
+        #         pass
+
+        # if self.args.average_tokens_across_devices:
+        #     num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
+
+        # if torch.is_tensor(num_items_in_batch):
+        #     num_items_in_batch = num_items_in_batch.item()
+
+        return batch_samples, num_items_in_batch
