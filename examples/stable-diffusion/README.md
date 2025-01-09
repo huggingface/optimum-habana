@@ -235,7 +235,7 @@ inference in mixed FP8 precision.
 
 Here is how to generate SDXL images with optimized pipeline in FP8 precision:
 ```bash
-QUANT_CONFIG=./quantization/stable-diffusion-xl/quant_config.json \
+QUANT_CONFIG=quantization/stable-diffusion-xl/quantize_config.json \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
