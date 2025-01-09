@@ -102,7 +102,7 @@ class HabanaModelAdapter(HFLM):
         args: argparse.Namespace,
         options: GenerationConfig,
     ) -> None:
-        super().__init__(device=args.device)
+        super().__init__(device=args.device, pretrained=model)
         self.tokenizer = tokenizer
         self._model = model
         self._batch_size = args.batch_size
