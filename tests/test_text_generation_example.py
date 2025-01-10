@@ -81,6 +81,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "load_quantized_model_with_autogptq": [
             ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
         ],
+        "load_quantized_model_with_autoawq": [
+            ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048, 456.7),
+        ],
         "deepspeed": [
             ("bigscience/bloomz", 8, 1, 36.77314954096159),
             ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
@@ -139,6 +142,7 @@ else:
         ],
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
+        "load_quantized_model_with_autoawq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
@@ -164,6 +168,7 @@ def _test_text_generation(
     torch_compile: bool = False,
     fp8: bool = False,
     load_quantized_model_with_autogptq: bool = False,
+    load_quantized_model_with_autoawq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -297,6 +302,8 @@ def _test_text_generation(
         ]
     if load_quantized_model_with_autogptq:
         command += ["--load_quantized_model_with_autogptq"]
+    if load_quantized_model_with_autoawq:
+        command += ["--load_quantized_model_with_autoawq"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -443,6 +450,37 @@ def test_text_generation_gptq(
         world_size=world_size,
         fp8=False,
         load_quantized_model_with_autogptq=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
+    MODELS_TO_TEST["load_quantized_model_with_autoawq"],
+)
+def test_text_generation_awq(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=False,
+        load_quantized_model_with_autoawq=True,
         batch_size=batch_size,
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,
