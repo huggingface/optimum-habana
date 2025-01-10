@@ -28,6 +28,56 @@ except ImportError:
 from ..modeling_all_models import apply_customized_rope_module
 
 
+def gaudi_eager_attention_forward(
+    query, key, value, attention_mask, head_mask, norm_factor, attention_dropout, training, **_kwargs
+):
+    """
+    Copied from: https://github.com/huggingface/transformers/blob/v4.47.1/src/transformers/models/gpt_neox/modeling_gpt_neox.py#L98
+    Changes:
+    - transposition at the end is commented
+    """
+    # q, k, v: [bs, num_attention_heads, seq_len, attn_head_size]
+    batch_size, num_attention_heads, query_length, attn_head_size = query.size()
+    key_length = key.size(-2)
+
+    query = query.view(batch_size * num_attention_heads, query_length, attn_head_size)
+    key = key.view(batch_size * num_attention_heads, key_length, attn_head_size)
+    attn_scores = torch.zeros(
+        batch_size * num_attention_heads,
+        query_length,
+        key_length,
+        dtype=query.dtype,
+        device=key.device,
+    )
+    attn_scores = torch.baddbmm(
+        attn_scores,
+        query,
+        key.transpose(1, 2),
+        beta=1.0,
+        alpha=norm_factor,
+    )
+    attn_scores = attn_scores.view(batch_size, num_attention_heads, query_length, key_length)
+
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key.shape[-2]]
+        attn_scores = attn_scores + causal_mask
+
+    attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+    attn_weights = attn_weights.to(value.dtype)
+
+    # Mask heads if we want to
+    if head_mask is not None:
+        attn_weights = attn_weights * head_mask
+
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=attention_dropout, training=training)
+    attn_output = torch.matmul(attn_weights, value)
+
+    # # Reshape outputs
+    # attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
         super().__init__(config, layer_idx)
@@ -52,6 +102,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         - add new args token_idx
         - optimize KV cache
         """
+        bsz, seq_len, _ = hidden_states.shape
         has_layer_past = layer_past is not None
 
         # Compute QKV
@@ -101,9 +152,18 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         present = (key, value) if use_cache else None
 
         # Compute attention
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = gaudi_eager_attention_forward(
+            query,
+            key,
+            value,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            norm_factor=self.norm_factor,
+            attention_dropout=self.config.attention_dropout,
+            training=self.training,
+        )
 
-        # Reshape outputs
+        # Reshape outputs and final projection
         attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
         attn_output = self.dense(attn_output)
 

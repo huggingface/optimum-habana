@@ -2491,12 +2491,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 **hpu_graphs_kwargs,
             )
 
-            # synced_gpus: don't waste resources running the code we don't need; kwargs must be updated before skipping
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs,
-                model_kwargs,
-                is_encoder_decoder=self.config.is_encoder_decoder,
-            )
+            # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 continue
 
@@ -2575,6 +2570,12 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if streamer is not None:
                 streamer.put(next_tokens.cpu())
+
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs,
+                model_kwargs,
+                is_encoder_decoder=self.config.is_encoder_decoder,
+            )
 
             cur_len = cur_len + 1
             if bucket_size > 0 and bucket_internal:
@@ -2997,12 +2998,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     **hpu_graphs_kwargs,
                 )
 
-            # synced_gpus: don't waste resources running the code we don't need; kwargs must be updated before skipping
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs,
-                model_kwargs,
-                is_encoder_decoder=self.config.is_encoder_decoder,
-            )
+            # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue
@@ -3136,6 +3132,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 input_ids = torch.cat([input_ids[beam_idx, :], beam_next_tokens.unsqueeze(-1)], dim=-1)
+
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs,
+                model_kwargs,
+                is_encoder_decoder=self.config.is_encoder_decoder,
+            )
 
             if model_kwargs.get("past_key_values", None) is not None:
                 if model_kwargs["reuse_cache"]:
@@ -3479,12 +3481,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 **hpu_graphs_kwargs,
             )
 
-            # synced_gpus: don't waste resources running the code we don't need; kwargs must be updated before skipping
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs,
-                model_kwargs,
-                is_encoder_decoder=self.config.is_encoder_decoder,
-            )
+            # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue
@@ -3571,6 +3568,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 input_ids = torch.cat([input_ids[beam_idx, :], beam_next_tokens.unsqueeze(-1)], dim=-1)
+
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs,
+                model_kwargs,
+                is_encoder_decoder=self.config.is_encoder_decoder,
+            )
 
             # This is needed to properly delete outputs.logits which may be very large for first iteration
             # Otherwise a reference to outputs is kept which keeps the logits alive in the next iteration

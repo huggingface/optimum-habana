@@ -119,6 +119,7 @@ from .models import (
     GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
+    GaudiOPTDecoderLayer,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPaliGemmaForConditionalGeneration,
@@ -218,7 +219,6 @@ from .models import (
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
-    gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
     gaudi_owlvitclasspredictionhead_forward,
     gaudi_persimmon_model_forward,
@@ -407,7 +407,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTDecoder.forward = gaudi_opt_decoder_forward
     transformers.models.opt.modeling_opt.OPTForCausalLM = GaudiOPTForCausalLM
     transformers.models.opt.modeling_opt.OPTModel.forward = gaudi_opt_model_forward
-    transformers.models.opt.modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
+    transformers.models.opt.modeling_opt.OPTDecoderLayer = GaudiOPTDecoderLayer
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
