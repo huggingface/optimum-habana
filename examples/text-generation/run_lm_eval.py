@@ -22,11 +22,8 @@ import json
 import multiprocessing as mp
 import os
 import time
-from typing import Any, Dict
 
-import lm_eval.evaluator
-import lm_eval.tasks
-from lm_eval import utils
+from lm_eval import evaluator, tasks, utils
 from lm_eval.models.huggingface import HFLM
 from lm_eval.models.utils import get_dtype
 import psutil
@@ -90,6 +87,13 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument(
+        "--show_config",
+        action="store_true",
+        default=False,
+        help="If True, shows the the full config of all tasks at the end of the evaluation.",
+    )
+
     args = setup_parser(parser)
 
     return args
@@ -158,28 +162,11 @@ class HabanaModelAdapter(HFLM):
     def max_length(self) -> int:
         return self.buckets[-1]
 
-    #@property
-    #def max_gen_toks(self):
-    #    raise NotImplementedError()
-
-    #@property
-    #def batch_size(self):
-    #    return self._batch_size
-
     @property
     def device(self):
         # We need to do padding ourselves, otherwise we'll end up with recompilations
         # Returning 'cpu' to keep tensors on CPU in lm_eval code
         return "cpu"
-
-    #def tok_encode(self, string):
-    #    return self.tokenizer.encode(string)
-
-    #def tok_decode(self, tokens):
-    #    return self.tokenizer.decode(tokens)
-
-    #def _model_generate(self, context, max_length, eos_token_id):
-    #    raise NotImplementedError()
 
     def find_bucket(self, length: int) -> list[int]:
         return [b for b in self.buckets if b >= length][0]
@@ -231,30 +218,12 @@ class HabanaModelAdapter(HFLM):
             trust_remote_code=trust_remote_code,
         )
 
-# Modified from https://github.com/huggingface/transformers/blob/main/src/transformers/configuration_utils.py/#L991
-def dict_torch_dtype_to_str(d: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Checks whether the passed dictionary and its nested dicts have a *torch_dtype* key and if it's not None,
-    converts torch.dtype to a string of just the type. For example, `torch.float32` get converted into *"float32"*
-    string, which can then be stored in the json format.
-    """
-    if d.get("model_dtype", None) is not None and not isinstance(d["model_dtype"], str):
-        d["model_dtype"] = str(d["model_dtype"]).split(".")[1]
-    if d.get("torch_dtype", None) is not None and not isinstance(d["torch_dtype"], str):
-        import pdb; pdb.set_trace()
-        d["torch_dtype"] = str(d["torch_dtype"]).split(".")[1]
-    for value in d.values():
-        if isinstance(value, dict):
-            dict_torch_dtype_to_str(value)
-    return d
-
 def main() -> None:
+    # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
         # trust_remote_code fix was introduced in lm_eval 0.4.3
-        # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
-        # We need to cherry-pick the fix manually untill we upgrade (SW-190418)
         import datasets
 
         datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
@@ -265,8 +234,8 @@ def main() -> None:
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        #results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-        results = lm_eval.evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        #results = evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -281,9 +250,10 @@ def main() -> None:
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        results = dict_torch_dtype_to_str(results)
-        json.dump(results, open(args.output_file, "w"), indent=2)
-        print(json.dumps(results, indent=2))
+    
+        json.dump(results, open(args.output_file, "w"), indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
+        if args.show_config:
+            print(json.dumps(results, indent=2,default=utils.handle_non_serializable, ensure_ascii=False))
     if args.quant_config:
         finalize_quantization(model)
 
