@@ -320,6 +320,9 @@ def setup_parser(parser):
         action="store_true",
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
@@ -389,6 +392,9 @@ def main():
 
     import habana_frameworks.torch.hpu as torch_hpu
 
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
@@ -457,12 +463,18 @@ def main():
             encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):

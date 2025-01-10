@@ -36,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
@@ -171,6 +177,7 @@ from .mixtral import (
     GaudiMixtralModel,
     MixtralConfig,
     gaudi_mixtral_block_dynamic_moe_forward,
+    gaudi_mixtral_block_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )

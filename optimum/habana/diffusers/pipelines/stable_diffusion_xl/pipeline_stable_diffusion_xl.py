@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -38,6 +37,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.unet_2d_condition import set_default_attn_processor_hpu
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
@@ -137,6 +137,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             feature_extractor,
             force_zeros_for_empty_prompt,
         )
+
+        self.unet.set_default_attn_processor = set_default_attn_processor_hpu
 
         self.to(self._device)
 

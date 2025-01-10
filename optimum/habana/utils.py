@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.18.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.19.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -383,15 +383,6 @@ def check_habana_frameworks_version(req_version):
     return (get_habana_frameworks_version().major == version.parse(req_version).major) and (
         get_habana_frameworks_version().minor == version.parse(req_version).minor
     )
-
-
-def check_neural_compressor_min_version(req_version):
-    """
-    Checks if the installed version of `neural_compressor` is larger than or equal to `req_version`.
-    """
-    import neural_compressor
-
-    return version.Version(neural_compressor.__version__) >= version.Version(req_version)
 
 
 def get_device_name():

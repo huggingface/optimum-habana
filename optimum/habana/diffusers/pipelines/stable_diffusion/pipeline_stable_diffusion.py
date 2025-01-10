@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -30,15 +29,11 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from optimum.habana.diffusers.models.attention_processor import (
-    AttentionProcessor,
-    AttnProcessor2_0,
-    ScaledDotProductAttention,
-)
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.unet_2d_condition import set_default_attn_processor_hpu
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -99,59 +94,6 @@ def retrieve_timesteps(
     if hasattr(scheduler, "reset_timestep_dependent_params") and callable(scheduler.reset_timestep_dependent_params):
         scheduler.reset_timestep_dependent_params()
     return timesteps, num_inference_steps
-
-
-def set_attn_processor_hpu(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-    """
-    Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    Added env PATCH_SDPA for HPU specific handle to use ScaledDotProductAttention.
-    Sets the attention processor to use to compute attention.
-    Parameters:
-        processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-            The instantiated processor class or a dictionary of processor classes that will be set as the processor
-            for **all** `Attention` layers.
-
-            If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-            processor. This is strongly recommended when setting trainable attention processors.
-
-    """
-
-    count = len(self.attn_processors.keys())
-
-    if isinstance(processor, dict) and len(processor) != count:
-        raise ValueError(
-            f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-            f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-        )
-
-    def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-        if hasattr(module, "set_processor"):
-            if os.environ.get("PATCH_SDPA") is not None:
-                setattr(module, "attention_module", ScaledDotProductAttention())
-                module.set_processor(processor(module.attention_module))
-            else:
-                if isinstance(processor, dict):
-                    attention_processor = processor.pop(f"{name}.processor", None)
-                    if attention_processor is not None:
-                        module.set_processor(attention_processor)
-                else:
-                    module.set_processor(processor)
-
-        for sub_name, child in module.named_children():
-            fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-    for name, module in self.named_children():
-        fn_recursive_attn_processor(name, module, processor)
-
-
-def set_default_attn_processor_hpu(self):
-    """
-    Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
-    Disables custom attention processors and sets the default attention implementation from HPU.
-    """
-
-    processor = AttnProcessor2_0()
-    set_attn_processor_hpu(self, processor)
 
 
 class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeline):

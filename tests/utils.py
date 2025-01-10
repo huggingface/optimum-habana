@@ -64,6 +64,7 @@ MODELS_TO_TEST_MAPPING = {
     "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
+    "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -82,7 +83,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma", "chatglm"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 

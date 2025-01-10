@@ -29,7 +29,6 @@ import lm_eval.tasks
 import psutil
 import torch
 import torch.nn.functional as F
-from lm_eval.models.huggingface import HFLM
 
 # Local imports
 from run_generation import setup_parser
@@ -92,15 +91,17 @@ def setup_lm_eval_parser():
     return args
 
 
-class HabanaModelAdapter(HFLM):
+class HabanaModelAdapter(lm_eval.base.BaseLM):
     def __init__(self, tokenizer, model, args, options):
-        super().__init__(pretrained=model, tokenizer=tokenizer, batch_size=args.batch_size)
+        super().__init__()
         self.tokenizer = tokenizer
+        self.model = model
+        self._batch_size = args.batch_size
         self.buckets = sorted(args.buckets)
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self._model.config.model_type in [
+        if self.model.config.model_type in [
             "llama",
             "mistral",
             "falcon",
@@ -136,7 +137,7 @@ class HabanaModelAdapter(HFLM):
 
     def warm_up(self):
         for bucket_size in reversed(self.buckets):
-            inps = torch.ones((self.batch_size, bucket_size), dtype=torch.int64)
+            inps = torch.ones((self._batch_size, bucket_size), dtype=torch.int64)
             self._model_call(inps)
             pass
 
@@ -147,6 +148,14 @@ class HabanaModelAdapter(HFLM):
     @property
     def max_length(self):
         return self.buckets[-1]
+
+    @property
+    def max_gen_toks(self):
+        raise NotImplementedError()
+
+    @property
+    def batch_size(self):
+        return self._batch_size
 
     @property
     def device(self):
@@ -217,6 +226,7 @@ def main():
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
         json.dump(results, open(args.output_file, "w"), indent=2)
+        print(json.dumps(results, indent=2))
     if args.quant_config:
         finalize_quantization(model)
 
