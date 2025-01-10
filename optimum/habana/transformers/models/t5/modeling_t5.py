@@ -69,7 +69,7 @@ def gaudi_T5Attention_forward(
     if past_key_value is not None:
         if len(past_key_value) != 2:
             raise ValueError(
-                f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+                f"past_key_value should have 2 past states: keys and values. Got {len(past_key_value)} past states"
             )
         if token_idx is None:
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length

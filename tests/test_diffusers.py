@@ -1527,15 +1527,15 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
@@ -2446,7 +2446,7 @@ class TrainControlNet(TestCase):
 
             cmd_line = f"""
                     python3
-                    {path_to_script.parent.parent.parent / 'gaudi_spawn.py'}
+                    {path_to_script.parent.parent.parent / "gaudi_spawn.py"}
                     --use_mpi
                     --world_size 8
                     {path_to_script}
@@ -2533,7 +2533,7 @@ class DreamBooth(TestCase):
                 python3
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
-                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --instance_data_dir {Path(os.path.dirname(__file__)) / "resource/img"}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -2629,7 +2629,7 @@ class DreamBoothLoRASDXL(TestCase):
                 python3
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
-                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --instance_data_dir {Path(os.path.dirname(__file__)) / "resource/img"}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -5846,9 +5846,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
             latents = pipe_1(**inputs_1).images[0]
 
-            assert (
-                expected_steps_1 == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps_1 == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
             inputs_2 = {
                 **inputs,
@@ -5862,9 +5862,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_3(**inputs_3).images[0]
 
             assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
-            assert (
-                expected_steps == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
         for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):

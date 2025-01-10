@@ -878,9 +878,9 @@ def main(args):
     # download the dataset.
     if args.dataset_name is not None:
         if len(args.mediapipe) > 0:
-            assert (
-                args.resolution == args.crop_resolution
-            ), f"To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})"
+            assert args.resolution == args.crop_resolution, (
+                f"To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})"
+            )
             if args.local_rank == 0:
                 if not os.path.exists(args.mediapipe):
                     os.mkdir(args.mediapipe)
@@ -1525,7 +1525,7 @@ def main(args):
                     image_save_dir.mkdir(parents=True, exist_ok=True)
                     logger.info(f"Saving images in {image_save_dir.resolve()}...")
                     for i, image in enumerate(images):
-                        image.save(image_save_dir / f"image_{epoch}_{i+1}.png")
+                        image.save(image_save_dir / f"image_{epoch}_{i + 1}.png")
                 else:
                     logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

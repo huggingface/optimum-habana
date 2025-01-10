@@ -1057,25 +1057,24 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
         if generation_config.reuse_cache:
-            assert (
-                self.config.model_type
-                in [
-                    "llama",
-                    "mistral",
-                    "falcon",
-                    "mixtral",
-                    "phi",
-                    "qwen2",
-                    "gptj",
-                    "starcoder2",
-                    "qwen2_moe",
-                    "gemma",
-                ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma and starcoder2 at the moment"
+            assert self.config.model_type in [
+                "llama",
+                "mistral",
+                "falcon",
+                "mixtral",
+                "phi",
+                "qwen2",
+                "gptj",
+                "starcoder2",
+                "qwen2_moe",
+                "gemma",
+            ], (
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma and starcoder2 at the moment"
+            )
             if not generation_config.bucket_internal:
-                assert (
-                    generation_config.bucket_size <= 0
-                ), "please set bucket_internal along with reuse_cache and bucket_size"
+                assert generation_config.bucket_size <= 0, (
+                    "please set bucket_internal along with reuse_cache and bucket_size"
+                )
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 
@@ -2186,7 +2185,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 import habana_frameworks.torch.hpu as torch_hpu
 
                 torch_hpu.synchronize()
-                print(f"First Token time(greedy):{time.perf_counter()*1000}")
+                print(f"First Token time(greedy):{time.perf_counter() * 1000}")
                 greedy_first = False
 
             if (
@@ -2635,7 +2634,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 import habana_frameworks.torch.hpu as torch_hpu
 
                 torch_hpu.synchronize()
-                print(f"First Token time(sample):{time.perf_counter()*1000}")
+                print(f"First Token time(sample):{time.perf_counter() * 1000}")
                 sample_first = False
 
         if (

@@ -425,9 +425,9 @@ def setup_parser(parser):
         )
 
     if args.use_mark_dynamic:
-        assert (
-            args.max_input_tokens == -1
-        ), "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
+        assert args.max_input_tokens == -1, (
+            "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
+        )
 
     return args
 
@@ -487,7 +487,7 @@ def main():
             """Generates sequences from the input sentences and returns them."""
 
             t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0*1000}", flush=True)
+            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
 
@@ -677,7 +677,7 @@ def main():
             """Generates sequences from the input sentences and returns them."""
             encode_t0 = time.perf_counter()
             t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0*1000}", flush=True)
+            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -734,7 +734,7 @@ def main():
             outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             duration = time.perf_counter() - t0
             first_token_time = iteration_times[0] + encode_duration
-            logger.info(f"Time to first token = {first_token_time*1000}ms")
+            logger.info(f"Time to first token = {first_token_time * 1000}ms")
             print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
             return outputs
 
@@ -750,10 +750,10 @@ def main():
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -768,7 +768,7 @@ def main():
                 for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -793,11 +793,11 @@ def main():
         print()
         print("Input/outputs:")
         for i, input_sentence in enumerate(zip(input_sentences)):
-            print(f"input {i+1}: {input_sentence}")
+            print(f"input {i + 1}: {input_sentence}")
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {j + 1}: {output}")
             print()
 
         # Store results if necessary
@@ -956,7 +956,7 @@ def main():
                 mark_tensor_dynamic(generation_config, batch)
             print("Warming up", flush=True)
             t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0*1000}", flush=True)
+            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
             generate_dataset(batch)
             if generation_config.use_mark_dynamic:
                 generation_config.use_mark_dynamic = False
@@ -980,10 +980,10 @@ def main():
             duration += time.perf_counter() - t0
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
-            print(f"Batch n°{i+1}")
-            print(f"Input: {prompt[:args.batch_size]}")
+            print(f"Batch n°{i + 1}")
+            print(f"Input: {prompt[: args.batch_size]}")
             print(
-                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[: args.batch_size * args.num_return_sequences]}"
             )
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
