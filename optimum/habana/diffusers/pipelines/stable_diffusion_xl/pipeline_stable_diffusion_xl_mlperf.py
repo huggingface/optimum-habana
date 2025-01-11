@@ -871,6 +871,11 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end_tensor_inputs,
                     )
                     hb_profiler.step()
+            if use_warmup_inference_steps and j == num_batches - 1:
+                ht.hpu.synchronize()
+                t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
+                t_vae_b = time.time()
+
             if not output_type == "latent":
                 # make sure the VAE is in float32 mode, as it overflows in float16
                 needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
@@ -888,15 +893,15 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                 image = latents
 
             output_images.append(image)
-
+            if use_warmup_inference_steps and j == num_batches - 1:
+                ht.hpu.synchronize()
+                t_vae_e = time.time()
+                t1 = t1 + t_vae_e - t_vae_b
 
         hb_profiler.stop()
 
         speed_metrics_prefix = "generation"
         ht.hpu.synchronize()
-        if use_warmup_inference_steps:
-            ht.hpu.synchronize()
-            t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
         if t1 == t0 or use_warmup_inference_steps:
             num_samples = batch_size
             num_steps = batch_size * num_inference_steps
