@@ -160,7 +160,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only."
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning."
             )
         },
     )
@@ -168,7 +168,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
+                "Whether to use Habana flash attention for fine-tuning."
             )
         },
     )
