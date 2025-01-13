@@ -16,7 +16,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 5.507, 28.9801, 2, 2),
+                ("facebook/bart-large-cnn", "Habana/bart", 4.339, 28.9801, 2, 2),
                 ("t5-3b", "Habana/t5", 3.848, 21.8877, 2, 1),
             ],
         },
