@@ -688,8 +688,7 @@ python run_lm_eval.py \
 --load_quantized_model_with_inc
 ```
 
-Below is an example to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on 2 cards.
-
+Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
 ```bash
 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 2 run_lm_eval.py \
