@@ -624,7 +624,7 @@ After quantizing the model, we can save it to a local path.
 
 **Note:** Before executing the command below, please refer to the "Running FP8 Models on a Single Device" section to measure the model quantization statistics.
 
-Here is an example to quantize and save LLama2-7b on 1 card:
+Here is an example of how to quantize and save the LLama2-7b model on a single card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json python run_generation.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
