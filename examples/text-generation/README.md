@@ -646,7 +646,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json python run_gen
 
 ### Loading FP8 Checkpoints saved in Hugging Face format
 
-You can load pre-quantized FP8 models with the argument `--load_quantized_model_with_inc`. The `model_name_or_path` is the model path saved on local disk with upper command.
+You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be the path where the model was saved locally using the previous command in "Saving FP8 Checkpoints in Hugging Face format" section.
 
 Below is an example to load a model with FP8 checkpoints on 1 card.
 Please note that model name is denoted as `<model_path_on_local_disk>`
