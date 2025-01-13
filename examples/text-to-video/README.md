@@ -42,8 +42,8 @@ Models that have been validated:
 
 CogvideoX test:
 ```bash
-python3 cogvideo_generate.py \
-    --model_name_or_path CogVideoX-2b \
+python3 cogvideox_generate.py \
+    --model_name_or_path THUDM/CogVideoX-2b \
     --output_name gaudi_output.mp4
 ```
 
