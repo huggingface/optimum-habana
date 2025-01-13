@@ -670,7 +670,7 @@ python run_lm_eval.py \
 ### Loading FP8 Checkpoints from Hugging Face
 You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127). For these models, you can use any number of cards to load them.
 
-Below is an example to load `neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8` on 1 cards.
+Below is an example of how to load `neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8` on a single card.
 ```bash
 python run_lm_eval.py \
 -o acc_load_fp8_model.txt \
