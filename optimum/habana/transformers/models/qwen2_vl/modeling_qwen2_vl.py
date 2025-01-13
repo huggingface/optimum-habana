@@ -25,17 +25,13 @@ from transformers.modeling_outputs import (
 )
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     Qwen2VisionTransformerPretrainedModel,
-    Qwen2VLAttention,
     Qwen2VLCausalLMOutputWithPast,
     Qwen2VLConfig,
     Qwen2VLDecoderLayer,
-    Qwen2VLFlashAttention2,
     Qwen2VLForConditionalGeneration,
     Qwen2VLModel,
     Qwen2VLSdpaAttention,
     Qwen2VLVisionBlock,
-    VisionAttention,
-    VisionFlashAttention2,
     VisionSdpaAttention,
     _prepare_4d_causal_attention_mask_with_cache_position,
     apply_multimodal_rotary_pos_emb,
@@ -63,7 +59,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
-# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L383
 class GaudiQwen2VisionSdpaAttention(VisionSdpaAttention):
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__(dim, num_heads)
@@ -76,6 +72,12 @@ class GaudiQwen2VisionSdpaAttention(VisionSdpaAttention):
         rotary_pos_emb: torch.Tensor = None,
         use_flash_attention: Optional[bool] = False,
     ) -> torch.Tensor:
+        """
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L390
+        The only differences are:
+        - add new args use_flash_attention
+        - add FusedSDPA
+        """
         seq_length = hidden_states.shape[0]
         q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
         q = apply_rotary_pos_emb_vision(q.unsqueeze(0), rotary_pos_emb).squeeze(0)
@@ -100,20 +102,12 @@ class GaudiQwen2VisionSdpaAttention(VisionSdpaAttention):
         return attn_output
 
 
-GAUDI_QWEN2_VL_VISION_ATTENTION_CLASSES = {
-    "eager": VisionAttention,
-    "flash_attention_2": VisionFlashAttention2,
-    "sdpa": GaudiQwen2VisionSdpaAttention,
-}
-
-
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L418
 class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
     def __init__(self, config, attn_implementation: str = "sdpa") -> None:
         super().__init__(config, attn_implementation)
 
-        self.attn = GAUDI_QWEN2_VL_VISION_ATTENTION_CLASSES[attn_implementation](
-            config.embed_dim, num_heads=config.num_heads
-        )
+        self.attn = GaudiQwen2VisionSdpaAttention(config.embed_dim, num_heads=config.num_heads)
 
     def forward(
         self,
@@ -123,7 +117,7 @@ class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
         use_flash_attention: Optional[bool] = False,
     ) -> torch.Tensor:
         """
-        Copied from https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L418
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L430
         The only differences are:
         - add new args use_flash_attention
         """
@@ -137,6 +131,7 @@ class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
         return hidden_states
 
 
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1058
 class GaudiQwen2VisionTransformerPretrainedModel(Qwen2VisionTransformerPretrainedModel):
     def forward(
         self,
@@ -168,6 +163,7 @@ class GaudiQwen2VisionTransformerPretrainedModel(Qwen2VisionTransformerPretraine
         return self.merger(hidden_states)
 
 
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L821
 class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
     """
     Qwen2 attention module using torch.nn.functional.scaled_dot_product_attention. This module inherits from
@@ -194,10 +190,10 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
-        Copied from https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L821
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L829
         The only differences are:
         - add new args use_flash_attention
-        - add work around for bfloat16 FusedSDPA accuracy issue by using float16
+        - add FusedSDPA
         """
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -293,17 +289,11 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
         return attn_output, None, past_key_value
 
 
-GAUDI_QWEN2_VL_ATTENTION_CLASSES = {
-    "eager": Qwen2VLAttention,
-    "flash_attention_2": Qwen2VLFlashAttention2,
-    "sdpa": GaudiQwen2VLSdpaAttention,
-}
-
-
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L930
 class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
     def __init__(self, config: Qwen2VLConfig, layer_idx: int):
         super().__init__(config, layer_idx)
-        self.self_attn = GAUDI_QWEN2_VL_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
+        self.self_attn = GaudiQwen2VLSdpaAttention(config, layer_idx)
 
     def forward(
         self,
@@ -318,9 +308,9 @@ class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
-        Copied from https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L821
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L946
         The only differences are:
-        - add new args use_flash_attention
+        - add new kwargs use_flash_attention
         """
         """
         Args:
@@ -380,6 +370,7 @@ class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
         return outputs
 
 
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1137
 class GaudiQwen2VLModel(Qwen2VLModel):
     def forward(
         self,
@@ -396,7 +387,7 @@ class GaudiQwen2VLModel(Qwen2VLModel):
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
-        Inherits from Qwen2VLModel https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1137
+        Copied from Qwen2VLModel https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1161
         The only differences are:
         - add new arg use_flash_attention
         - fixes graph recompilation due to torch.arange
@@ -504,6 +495,7 @@ class GaudiQwen2VLModel(Qwen2VLModel):
         )
 
 
+# from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1420
 class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
     def forward(
         self,
@@ -526,7 +518,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, Qwen2VLCausalLMOutputWithPast]:
         """
-        Inherits from Qwen2VLForConditionalGeneration::https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+        Copied from Qwen2VLForConditionalGeneration https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1623
         The only differences are:
         - add new arg token_idx
         - add new arg use_flash_attention
@@ -670,7 +662,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         **kwargs,
     ):
         """
-        Inherits from Qwen2VLForConditionalGeneration https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1748
+        Copied from https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1748
         The only differences are:
         - handle new args token_idx
         - handle new args use_flash_attention
