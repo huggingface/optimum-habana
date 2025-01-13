@@ -648,8 +648,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json python run_gen
 
 You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be the path where the model was saved locally using the previous command in "Saving FP8 Checkpoints in Hugging Face format" section.
 
-Below is an example to load a model with FP8 checkpoints on 1 card.
-Please note that model name is denoted as `<model_path_on_local_disk>`
+Below is an example of how to load a model with FP8 checkpoints on a single card.
+Please note that the model name is represented as `<model_path_on_local_disk>`.
 ```bash
 python run_lm_eval.py \
 -o acc_load_fp8_model.txt \
