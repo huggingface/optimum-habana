@@ -361,12 +361,9 @@ class GaudiMixtralAttention(MixtralAttention):
 
 def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     # We need this workaround until moe op in hpu is supporting fp8
-    if not self.training and not os.environ.get("QUANT_CONFIG"):
-        if get_device_name() == "gaudi":
-            # Regardless, gaudi1 is not supporting dynamic moe
-            return self.sparse_moe_forward(hidden_states)
-        else:
-            return self.dynamic_moe_forward(hidden_states)
+    if not self.training and not os.environ.get("QUANT_CONFIG") and not get_device_name() == "gaudi":
+        # Gaudi1 is not supporting dynamic moe
+        return self.dynamic_moe_forward(hidden_states)
 
     return self.sparse_moe_forward(hidden_states)
 
