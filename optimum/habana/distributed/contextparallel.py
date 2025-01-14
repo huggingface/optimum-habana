@@ -1,6 +1,6 @@
 import torch
 
-from ..parallel_state import (
+from .parallel_state import (
     get_sequence_parallel_group,
     get_sequence_parallel_rank,
     get_sequence_parallel_world_size,

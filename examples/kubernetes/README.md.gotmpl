@@ -43,12 +43,12 @@ Use the the following commands to build the containers:
 
 ```bash
 # Specify the Gaudi SW version, OS, and PyTorch version which will be used for the base container
-export GAUDI_SW_VER=1.18.0
+export GAUDI_SW_VER=1.19.0
 export OS=ubuntu22.04
-export TORCH_VER=2.4.0
+export TORCH_VER=2.5.1
 
 # Specify the version of optimum-habana to install in the container
-export OPTIMUM_HABANA_VER=1.14.0
+export OPTIMUM_HABANA_VER=1.15.0
 
 git clone https://github.com/huggingface/optimum-habana.git
 
