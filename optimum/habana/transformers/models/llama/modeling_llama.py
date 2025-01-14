@@ -773,7 +773,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     False,
                     None,
                     "None",
-                    False,
+                    flash_attention_recompute,
                     None,
                     "None",
                 )
