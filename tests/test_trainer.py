@@ -1847,17 +1847,18 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # Now check failures
 
         # 1. fail to find a bogus checkpoint
-        trainer = get_regression_trainer()
-        with self.assertRaises(Exception) as context:
-            trainer.train(resume_from_checkpoint=f"{checkpoint}-bogus")
-        self.assertTrue("Can't find a valid checkpoint at" in str(context.exception))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(output_dir=tmpdir)
+            with self.assertRaises(Exception) as context:
+                trainer.train(resume_from_checkpoint=f"{checkpoint}-bogus")
+            self.assertTrue("Can't find a valid checkpoint at" in str(context.exception))
 
         # 2. fail to find any checkpoint - due a fresh output_dir
-        output_dir2 = self.get_auto_remove_tmp_dir()
-        trainer = get_regression_trainer(output_dir=output_dir2)
-        with self.assertRaises(Exception) as context:
-            trainer.train(resume_from_checkpoint=True)
-        self.assertTrue("No valid checkpoint found in output directory" in str(context.exception))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(output_dir=tmpdir)
+            with self.assertRaises(Exception) as context:
+                trainer.train(resume_from_checkpoint=True)
+            self.assertTrue("No valid checkpoint found in output directory" in str(context.exception))
 
     def test_resume_training_with_randomness(self):
         train_dataset = RegressionDataset(length=128)
@@ -2929,7 +2930,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     total=total,
                 )
 
-        # Case 3: Metric name not provided; throw error.
+    def test_metric_for_best_model_behavior(self):
+        # Case 1: Metric name not provided when `save_strategy == "best"`.
+        # Should raise ValueError.
         with tempfile.TemporaryDirectory() as tmpdir:
             with self.assertRaises(ValueError) as context:
                 trainer = get_regression_trainer(
@@ -2941,8 +2944,21 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     save_strategy="best",
                     compute_metrics=AlmostAccuracy(),
                 )
-
             self.assertIn("`args.metric_for_best_model` must be provided", str(context.exception))
+
+        # Case 2: Metric name not provided when `load_best_model_at_end == True`.
+        # `metric_for_best_model` should be set to `"loss"` by default.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="steps",
+                save_strategy="steps",
+                load_best_model_at_end=True,
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "loss")
 
     def test_profiling(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
