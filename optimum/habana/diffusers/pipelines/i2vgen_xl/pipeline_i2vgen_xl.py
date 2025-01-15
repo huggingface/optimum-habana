@@ -777,7 +777,7 @@ class GaudiI2VGenXLPipeline(
                 # cast back to fp16/bf16 if needed
                 if needs_upcasting:
                     self.vae.to(dtype=cast_dtype)
-  
+
                 video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
                 video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 

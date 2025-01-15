@@ -8,7 +8,7 @@ def main() :
     pipeline = GaudiI2VGenXLPipeline.from_pretrained(
         "ali-vilab/i2vgen-xl",
         torch_dtype=torch.bfloat16,
-        use_hpu_graphs=False,
+        use_hpu_graphs=True,
         use_habana=True,
         gaudi_config="Habana/stable-diffusion",
     )
