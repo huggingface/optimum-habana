@@ -1303,7 +1303,7 @@ class GaudiLlamaModel(LlamaModel):
             remainder = batch_size % attn_batch_split
             split_sizes = [base_split_size + 1 if i < remainder else base_split_size for i in range(attn_batch_split)]
             # Split tensors using the calculated sizes
-            hidden_states = torch.split(hidden_states, split_sizes, dim=0)
+            hidden_states_split = torch.split(hidden_states, split_sizes, dim=0)
             split_prompt = True
 
         for layer_idx, decoder_layer in enumerate(self.layers):
@@ -1315,10 +1315,7 @@ class GaudiLlamaModel(LlamaModel):
                 htcore.mark_step()
 
             if output_hidden_states:
-                if split_prompt:
-                    all_hidden_states += (torch.cat(hidden_states, dim=0),)
-                else:
-                    all_hidden_states += (hidden_states,)
+                all_hidden_states += (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1341,10 +1338,11 @@ class GaudiLlamaModel(LlamaModel):
                     valid_sequence_lengths,
                     None,
                 )
+                hidden_states = layer_outputs[0]
             else:
                 use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
                 layer_outputs = decoder_layer(
-                    hidden_states,
+                    hidden_states=hidden_states_split if split_prompt else hidden_states,
                     attention_mask=causal_mask,
                     position_ids=position_ids,
                     past_key_value=None if past_key_values is None else past_key_values[layer_idx],
@@ -1368,17 +1366,16 @@ class GaudiLlamaModel(LlamaModel):
                 if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)
                     prev_layer_residual = layer_outputs[index]
-
-            hidden_states = layer_outputs[0]
+                if split_prompt:
+                    hidden_states_split = layer_outputs[0]
+                else:
+                    hidden_states = layer_outputs[0]
 
             if use_cache:
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-
-        if split_prompt:
-            hidden_states = torch.cat(hidden_states, dim=0)
 
         hidden_states = self.norm(hidden_states)
 
