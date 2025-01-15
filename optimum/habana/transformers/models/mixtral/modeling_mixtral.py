@@ -76,6 +76,41 @@ deepspeed_available = is_deepspeed_available()
 logger = logging.get_logger(__name__)
 
 
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths=None,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
+
+
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE is not None:
         return FusedRoPE.apply(
@@ -243,7 +278,7 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
 class GaudiMixtralAttentionLongSequence:
     @staticmethod
-    def forward(q, k, v, mask, causal, q_block_size):
+    def forward(fsdpa, q, k, v, mask, causal, q_block_size):
         """
         Support long sequence at prompt phase
         """
@@ -260,7 +295,7 @@ class GaudiMixtralAttentionLongSequence:
             row_q = q[:, :, s:e, :]
             row_mask = mask[:, :, s:e, :]
             row_o = attn_output[:, :, s:e, :]
-            row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
+            row_o.fill_(fsdpa(row_q, k, v, row_mask, 0.0, causal, None))
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -279,6 +314,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 1024
+        self.fsdpa = ModuleFusedSDPA(FusedSDPA)
 
     def _init_rope(self):
         """
@@ -405,6 +441,7 @@ class GaudiMixtralAttention(MixtralAttention):
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
                 attn_output = GaudiMixtralAttentionLongSequence.forward(
+                    self.fsdpa,
                     query_states,
                     key_states,
                     value_states,
@@ -414,7 +451,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                attn_output = FusedSDPA.apply(
+                attn_output = self.fsdpa(
                     query_states,
                     key_states,
                     value_states,
