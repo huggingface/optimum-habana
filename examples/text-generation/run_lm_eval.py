@@ -256,6 +256,7 @@ def main() -> None:
         )
         if args.show_config:
             print(json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False))
+
     if args.quant_config:
         finalize_quantization(model)
 
