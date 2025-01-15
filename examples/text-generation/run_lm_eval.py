@@ -14,7 +14,7 @@
 # limitations under the License.
 
 ###############################################################################
-# Copyright (C) 2020-2024 Habana Labs, Ltd. an Intel Company
+# Copyright (C) 2020-2025 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
 import argparse
