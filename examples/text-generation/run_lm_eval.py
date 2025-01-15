@@ -40,7 +40,6 @@ from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-# logger = logging.getLogger(__name__)
 logger = utils.eval_logger
 
 # This hack is a workaround to limitations of lm_eval which always allocates
@@ -231,13 +230,11 @@ def main() -> None:
 
         datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
-    # lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        # results = evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
         results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
