@@ -42,7 +42,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -440,9 +440,11 @@ def main():
 
     kwargs_call["quant_mode"] = args.quant_mode
 
-    # Instantiate a Stable Diffusion pipeline class
-    import habana_frameworks.torch.core as htcore  # noqa: F401
+    if args.quant_mode != "disable":
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
 
+    # Instantiate a Stable Diffusion pipeline class
     if sdxl:
         # SDXL pipelines
         if controlnet:
