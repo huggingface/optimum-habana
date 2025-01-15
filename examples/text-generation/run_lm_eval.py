@@ -23,12 +23,12 @@ import multiprocessing as mp
 import os
 import time
 
-from lm_eval import evaluator, tasks, utils
-from lm_eval.models.huggingface import HFLM
-from lm_eval.models.utils import get_dtype
 import psutil
 import torch
 import torch.nn.functional as F
+from lm_eval import evaluator, utils
+from lm_eval.models.huggingface import HFLM
+from lm_eval.models.utils import get_dtype
 
 # Local imports
 from run_generation import setup_parser
@@ -38,8 +38,9 @@ from utils import finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
+
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-#logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 logger = utils.eval_logger
 
 # This hack is a workaround to limitations of lm_eval which always allocates
@@ -153,7 +154,7 @@ class HabanaModelAdapter(HFLM):
         for bucket_size in reversed(self.buckets):
             inps = torch.ones((self._batch_size, bucket_size), dtype=torch.int64)
             self._model_call(inps)
-            
+
     @property
     def eot_token_id(self) -> int:
         return self._model.config.eos_token_id
@@ -209,6 +210,7 @@ class HabanaModelAdapter(HFLM):
         **kwargs,
     ) -> None:
         from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
         adapt_transformers_to_gaudi()
 
         self._model = self.AUTO_MODEL_CLASS.from_pretrained(
@@ -217,6 +219,7 @@ class HabanaModelAdapter(HFLM):
             torch_dtype=get_dtype(dtype),
             trust_remote_code=trust_remote_code,
         )
+
 
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
@@ -228,13 +231,13 @@ def main() -> None:
 
         datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
-    #lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
+    # lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        #results = evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+        # results = evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
         results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
@@ -250,10 +253,12 @@ def main() -> None:
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-    
-        json.dump(results, open(args.output_file, "w"), indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
+
+        json.dump(
+            results, open(args.output_file, "w"), indent=2, default=utils.handle_non_serializable, ensure_ascii=False
+        )
         if args.show_config:
-            print(json.dumps(results, indent=2,default=utils.handle_non_serializable, ensure_ascii=False))
+            print(json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False))
     if args.quant_config:
         finalize_quantization(model)
 
