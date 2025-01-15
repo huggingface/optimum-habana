@@ -1,8 +1,6 @@
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.cohere.modeling_cohere import (
     Cache,
@@ -10,120 +8,104 @@ from transformers.models.cohere.modeling_cohere import (
     CohereConfig,
     CohereDecoderLayer,
     CohereForCausalLM,
-    CohereLayerNorm,
-    CohereMLP,
+    CohereRotaryEmbedding,
     DynamicCache,
+    KwargsForCausalLM,
     StaticCache,
     apply_rotary_pos_emb,
+    eager_attention_forward,
     logger,
-    repeat_kv,
 )
+from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
-def gaudi_cohere_attention_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Cache] = None,
-    output_attentions: bool = False,
-    use_cache: bool = False,
-    cache_position: Optional[torch.LongTensor] = None,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    """
-    Copied from CohereAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/cohere/modeling_cohere.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    bsz, q_len, _ = hidden_states.size()
+class GaudiCohereAttention(CohereAttention):
+    def __init__(self, config: CohereConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
 
-    query_states = self.q_proj(hidden_states)
-    key_states = self.k_proj(hidden_states)
-    value_states = self.v_proj(hidden_states)
+        self.rotary_emb = CohereRotaryEmbedding(config=config)
 
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
-    if self.use_qk_norm:
-        query_states = self.q_norm(query_states)
-        key_states = self.k_norm(key_states)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        Copied from CohereAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/cohere/modeling_cohere.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        """
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-    query_states = query_states.transpose(1, 2)
-    key_states = key_states.transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape)
+        key_states = self.k_proj(hidden_states).view(hidden_shape)
+        value_states = self.v_proj(hidden_states).view(hidden_shape)
 
-    cos, sin = self.rotary_emb(value_states, position_ids)
-    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        if self.use_qk_norm:  # main diff from Llama
+            query_states = self.q_norm(query_states)
+            key_states = self.k_norm(key_states)
 
-    if past_key_value is not None:
-        # sin and cos are specific to RoPE models; position_ids needed for the static cache
-        cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-        if token_idx is not None:
-            if len(past_key_value.key_cache) <= self.layer_idx:
-                past_key_value.key_cache.append(key_states)
-                past_key_value.value_cache.append(value_states)
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+
+        cos, sin = self.rotary_emb(value_states, kwargs["position_ids"])
+        # print("SHAPEEEEEEEEEEEE", cos.shape, sin.shape, query_states.shape, key_states.shape)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        if past_key_value is not None:
+            # sin and cos are specific to RoPE models; position_ids needed for the static cache
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            if token_idx is not None:
+                if len(past_key_value.key_cache) <= self.layer_idx:
+                    past_key_value.key_cache.append(key_states)
+                    past_key_value.value_cache.append(value_states)
+                else:
+                    past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
+                    past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
+                    key_states = past_key_value.key_cache[self.layer_idx]
+                    value_states = past_key_value.value_cache[self.layer_idx]
             else:
-                past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
-                past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
-                key_states = past_key_value.key_cache[self.layer_idx]
-                value_states = past_key_value.value_cache[self.layer_idx]
-        else:
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
-    key_states = repeat_kv(key_states, self.num_key_value_groups)
-    value_states = repeat_kv(value_states, self.num_key_value_groups)
-
-    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-    if attention_mask is not None:  # no matter the length, we just slice it
-        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-        attn_weights = attn_weights + causal_mask
-
-    # upcast attention to fp32
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-    attn_output = torch.matmul(attn_weights, value_states)
-
-    if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-            f" {attn_output.size()}"
+        attn_output, attn_weights = eager_attention_forward(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
         )
 
-    attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
 
-    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-
-    attn_output = self.o_proj(attn_output)
-
-    if not output_attentions:
-        attn_weights = None
-
-    return attn_output, attn_weights, past_key_value
+        return attn_output, attn_weights, past_key_value
 
 
 class GaudiCohereDecoderLayer(CohereDecoderLayer):
-    def __init__(self, config: CohereConfig, layer_idx: int):
-        super(CohereDecoderLayer, self).__init__()
-        self.hidden_size = config.hidden_size
-
-        self.self_attn = CohereAttention(config=config, layer_idx=layer_idx)
-
-        self.mlp = CohereMLP(config)
-        self.input_layernorm = CohereLayerNorm(hidden_size=(config.hidden_size), eps=config.layer_norm_eps)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -144,6 +126,7 @@ class GaudiCohereDecoderLayer(CohereDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
         )
 
@@ -154,10 +137,8 @@ class GaudiCohereDecoderLayer(CohereDecoderLayer):
         hidden_states = residual + hidden_states_attention + hidden_states_mlp
 
         outputs = (hidden_states,)
-
         if output_attentions:
             outputs += (self_attn_weights,)
-
         if use_cache:
             outputs += (present_key_value,)
 
@@ -169,7 +150,7 @@ def gaudi_cohere_model_forward(
     input_ids: torch.LongTensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
@@ -299,7 +280,7 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -309,7 +290,7 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
-        **loss_kwargs,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -335,11 +316,11 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
         hidden_states = outputs[0]
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
-        logits = logits * self.logit_scale
+        logits = logits * self.logit_scale  # main diff from Llama
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

@@ -458,7 +458,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self.save_steps = int(self.save_steps)
 
         # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
-        if self.load_best_model_at_end:
+        if self.load_best_model_at_end and self.save_strategy != SaveStrategy.BEST:
             if self.eval_strategy != self.save_strategy:
                 raise ValueError(
                     "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
@@ -897,7 +897,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if not is_accelerate_available():
             raise ImportError(
                 f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
-                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
+                f"Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         # We delay the init of `PartialState` to the end for clarity
         accelerator_state_kwargs = {"enabled": True, "use_configured_state": False}

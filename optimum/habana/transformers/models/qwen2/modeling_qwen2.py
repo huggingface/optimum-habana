@@ -16,15 +16,14 @@
 # Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 from transformers.models.qwen2.modeling_qwen2 import (
+    KwargsForCausalLM,
     Qwen2Attention,
     Qwen2DecoderLayer,
     Qwen2ForCausalLM,
@@ -34,6 +33,7 @@ from transformers.models.qwen2.modeling_qwen2 import (
     apply_rotary_pos_emb,
     logger,
 )
+from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -166,6 +166,41 @@ class ModuleFusedSDPA(torch.nn.Module):
         )
 
 
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    attn_softmax_bf16: bool = False,
+    **kwargs,
+):
+    bsz, q_len = kwargs["input_shape"]
+    query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    query_states = query_states * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
+    htcore.mark_step()
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+    else:
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
+
+    return attn_output, attn_weights
+
+
 class GaudiQwen2Attention(Qwen2Attention):
     def __init__(self, config: Qwen2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -176,14 +211,13 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.v_cache = KVCache()
 
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
         self.fused_scaled_dot_product_attention = (
             ModuleFusedSDPA(
                 FusedSDPA,
-                scale=self.norm_factor,
+                scale=self.scaling,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
                 flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
@@ -237,10 +271,9 @@ class GaudiQwen2Attention(Qwen2Attention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -267,15 +300,13 @@ class GaudiQwen2Attention(Qwen2Attention):
         - add new arg flash_attention_fast_softmax
         - add new arg num_virtual_tokens
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -295,7 +326,7 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, position_ids, self.training
+            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
         )
 
         if use_cache:
@@ -343,7 +374,16 @@ class GaudiQwen2Attention(Qwen2Attention):
         else:
             past_key_value = None
 
+        sliding_window = None
+        if (
+            self.config.use_sliding_window
+            and getattr(self.config, "sliding_window", None) is not None
+            and self.layer_idx >= self.config.max_window_layers
+        ):
+            sliding_window = self.config.sliding_window
+
         if use_flash_attention and FusedSDPA is not None:
+            attn_weights = None
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -392,45 +432,22 @@ class GaudiQwen2Attention(Qwen2Attention):
                     )
 
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-
-            query_states = query_states * self.norm_factor
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
-            htcore.mark_step()
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask.float()
-
-            if attn_softmax_bf16:
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-            else:
-                # upcast attention to fp32
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                    query_states.dtype
-                )
-            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                sliding_window=sliding_window,  # main diff with Llama
+                attn_softmax_bf16=attn_softmax_bf16,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(bsz, q_len, -1)
-
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
@@ -478,6 +495,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -500,6 +518,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -536,6 +555,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -557,6 +577,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -609,11 +630,10 @@ class GaudiQwen2Model(Qwen2Model):
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList(
+        self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        self.layers = torch.nn.ModuleList(
             [GaudiQwen2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-        self._attn_implementation = config._attn_implementation
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False
@@ -673,12 +693,11 @@ class GaudiQwen2Model(Qwen2Model):
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
+        if self.gradient_checkpointing and self.training and use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
+            )
+            use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -740,7 +759,7 @@ class GaudiQwen2Model(Qwen2Model):
         if lazy_mode:
             htcore.mark_step()
 
-        for layer_idx, decoder_layer in enumerate(self.layers):
+        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             if (
                 lazy_mode
                 and not self.training
@@ -857,7 +876,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-        **loss_kwargs,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -906,7 +925,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

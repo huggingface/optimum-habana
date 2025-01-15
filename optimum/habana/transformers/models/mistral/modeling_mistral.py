@@ -19,18 +19,16 @@
 # limitations under the License.
 """PyTorch Mistral model."""
 
-import math
 import os
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
-from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
+    KwargsForCausalLM,
     MistralAttention,
     MistralDecoderLayer,
     MistralForCausalLM,
@@ -39,16 +37,13 @@ from transformers.models.mistral.modeling_mistral import (
     MistralRMSNorm,
     apply_rotary_pos_emb,
 )
+from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-from ..llama.modeling_llama import (
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
-    GaudiLlamaLinearScalingRotaryEmbedding,
-    GaudiLlamaRotaryEmbedding,
-)
+from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
 from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
@@ -141,10 +136,42 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    attn_softmax_bf16: bool = False,
+    **kwargs,
+):
+    bsz, q_len = kwargs["input_shape"]
+    query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)) * scaling
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+    else:
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
+
+    return attn_output, attn_weights
+
+
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
         self.config = config
         self.k_cache = KVCache()
         self.v_cache = KVCache()
@@ -152,38 +179,8 @@ class GaudiMistralAttention(MistralAttention):
         self.matmul_av = Matmul()
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
-        self._init_rope()
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-
-    def _init_rope(self):
-        """
-        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
-        """
-        if self.config.rope_scaling is None:
-            self.rotary_emb = GaudiLlamaRotaryEmbedding(
-                self.head_dim,
-                max_position_embeddings=self.max_position_embeddings,
-                base=self.rope_theta,
-            )
-        else:
-            scaling_type = self.config.rope_scaling["type"]
-            scaling_factor = self.config.rope_scaling["factor"]
-            if scaling_type == "linear":
-                self.rotary_emb = GaudiLlamaLinearScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            elif scaling_type == "dynamic":
-                self.rotary_emb = GaudiLlamaDynamicNTKScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            else:
-                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
+        self.num_key_value_heads = config.num_key_value_heads
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -217,10 +214,9 @@ class GaudiMistralAttention(MistralAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -239,15 +235,13 @@ class GaudiMistralAttention(MistralAttention):
          - add new args reuse_cache
         - add new args cache_idx
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -268,7 +262,7 @@ class GaudiMistralAttention(MistralAttention):
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, position_ids, self.training
+            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
         )
 
         if use_cache:
@@ -301,6 +295,7 @@ class GaudiMistralAttention(MistralAttention):
         import habana_frameworks.torch.hpu as ht
 
         if FusedSDPA and use_flash_attention:
+            attn_weights = None
             if q_len == 1:
                 # next token
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
@@ -323,38 +318,22 @@ class GaudiMistralAttention(MistralAttention):
                         )
 
         else:
-            # repeat k/v heads if n_kv_heads < n_heads
-            query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
-
-            if attn_softmax_bf16:
-                attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-            else:
-                # upcast attention to fp32
-                attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-            attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                sliding_window=getattr(self.config, "sliding_window", None),  # main diff with Llama
+                attn_softmax_bf16=attn_softmax_bf16,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.view(bsz, q_len, -1)
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         return attn_output, attn_weights, past_key_value
 
@@ -388,6 +367,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -415,6 +395,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -490,7 +471,6 @@ class GaudiMistralModel(MistralModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
         elif input_ids is not None:
@@ -502,7 +482,7 @@ class GaudiMistralModel(MistralModel):
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
             )
             use_cache = False
 
@@ -549,7 +529,7 @@ class GaudiMistralModel(MistralModel):
         if lazy_mode:
             htcore.mark_step()
 
-        for layer_idx, decoder_layer in enumerate(self.layers):
+        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             if layer_idx == len(self.layers) // 2 or (
                 lazy_mode
                 and not self.training
@@ -660,6 +640,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -710,18 +691,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
 
         loss = None
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

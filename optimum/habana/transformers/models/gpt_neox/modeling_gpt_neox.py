@@ -94,6 +94,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         output_attentions: Optional[bool] = False,
         padding_mask: Optional[torch.Tensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ):
         """

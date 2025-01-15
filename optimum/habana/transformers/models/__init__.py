@@ -57,9 +57,9 @@ from .codegen import (
     gaudi_codegen_model_forward,
 )
 from .cohere import (
+    GaudiCohereAttention,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
-    gaudi_cohere_attention_forward,
     gaudi_cohere_model_forward,
 )
 from .decilm import (
@@ -146,9 +146,7 @@ from .idefics2 import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,

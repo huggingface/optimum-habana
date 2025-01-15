@@ -1239,6 +1239,7 @@ class GaudiTrainer(Trainer):
             or os.path.exists(best_safe_adapter_model_path)
         ):
             has_been_loaded = True
+            weights_only_kwarg = {"weights_only": True}
             if _is_peft_model(model):
                 # If train a model using PEFT & LoRA, assume that adapter have been saved properly.
                 # TODO: in the future support only specific min PEFT versions
@@ -1254,7 +1255,22 @@ class GaudiTrainer(Trainer):
                         active_adapter = model.active_adapter
 
                     if os.path.exists(best_adapter_model_path) or os.path.exists(best_safe_adapter_model_path):
-                        model.load_adapter(self.state.best_model_checkpoint, active_adapter)
+                        try:
+                            model.load_adapter(self.state.best_model_checkpoint, active_adapter)
+                        except RuntimeError as exc:
+                            if model.peft_config[active_adapter].is_prompt_learning:
+                                # for context: https://github.com/huggingface/peft/issues/2256
+                                msg = (
+                                    "When using prompt learning PEFT methods such as "
+                                    f"{model.peft_config[active_adapter].peft_type.value}, setting "
+                                    "load_best_model_at_end=True can lead to errors, it is recommended "
+                                    "to set this to False and to load the model manually from the checkpoint "
+                                    "directory using PeftModel.from_pretrained(base_model, <path>) after training "
+                                    "has finished."
+                                )
+                                raise RuntimeError(msg) from exc
+                            else:
+                                raise
                         # Load_adapter has no return value present, modify it when appropriate.
                         from torch.nn.modules.module import _IncompatibleKeys
 
@@ -1277,7 +1293,7 @@ class GaudiTrainer(Trainer):
                     state_dict = torch.load(
                         best_model_path,
                         map_location="cpu",
-                        weights_only=True,
+                        **weights_only_kwarg,
                     )
 
                 # If the model is on the GPU, it still works!
@@ -1613,7 +1629,10 @@ class GaudiTrainer(Trainer):
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
-            loss = self.compute_loss(model, inputs, num_items_in_batch=num_items_in_batch)
+            if self.model_accepts_loss_kwargs:
+                loss = self.compute_loss(model, inputs)
+            else:
+                loss = self.compute_loss(model, inputs, num_items_in_batch=num_items_in_batch)
 
         del inputs
         kwargs = {}
@@ -2607,6 +2626,10 @@ class GaudiTrainer(Trainer):
                 break
 
         # TODO: execute get_batch_samples outside of the training loop (before training) and uncomment the following lines
+        # Keep default behavior the same
+        # if not self.model_accepts_loss_kwargs:
+        #     return batch_samples, None
+
         # if len(batch_samples) > 0 and "labels" in batch_samples[0]:
         #     # For now we don't support object detection
         #     try:
@@ -2614,7 +2637,7 @@ class GaudiTrainer(Trainer):
         #     except (TypeError, AttributeError):
         #         pass
 
-        # if self.args.average_tokens_across_devices:
+        # if self.args.average_tokens_across_devices and num_items_in_batch is not None:
         #     num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
 
         # if torch.is_tensor(num_items_in_batch):

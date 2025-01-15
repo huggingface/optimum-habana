@@ -414,7 +414,15 @@ if is_torch_available():
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
     def get_regression_trainer(
-        a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
+        a=0,
+        b=0,
+        double_output=False,
+        train_len=64,
+        eval_len=64,
+        pretrained=True,
+        keep_report_to=False,
+        output_dir=None,
+        **kwargs,
     ):
         label_names = kwargs.get("label_names", None)
         gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
@@ -442,8 +450,8 @@ if is_torch_available():
         compute_metrics = kwargs.pop("compute_metrics", None)
         data_collator = kwargs.pop("data_collator", None)
         optimizers = kwargs.pop("optimizers", (None, None))
-        output_dir = kwargs.pop("output_dir", "./regression")
         preprocess_logits_for_metrics = kwargs.pop("preprocess_logits_for_metrics", None)
+        assert output_dir is not None, "output_dir should be specified for testing"
 
         args = RegressionGaudiTrainingArguments(
             output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs

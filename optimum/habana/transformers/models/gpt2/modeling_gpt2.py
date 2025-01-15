@@ -9,6 +9,7 @@ from transformers.models.gpt2.modeling_gpt2 import (
     GPT2DoubleHeadsModel,
     GPT2DoubleHeadsModelOutput,
     GPT2LMHeadModel,
+    eager_attention_forward,
     logger,
 )
 
@@ -19,48 +20,6 @@ class GaudiGPT2Attention(GPT2Attention):
     The only differences are:
     - optimize KV cache
     """
-
-    def _attn(self, query, key, value, attention_mask=None, head_mask=None):
-        key = key.contiguous()
-        value = value.contiguous()
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
-
-        if self.scale_attn_weights:
-            attn_weights = attn_weights / torch.full(
-                [], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device
-            )
-
-        # Layer-wise attention scaling
-        if self.scale_attn_by_inverse_layer_idx:
-            attn_weights = attn_weights / float(self.layer_idx + 1)
-
-        if not self.is_cross_attention:
-            # if only "normal" attention layer implements causal mask
-            query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
-            mask_value = torch.finfo(attn_weights.dtype).min
-            # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
-            # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-            mask_value = torch.full([], mask_value, dtype=attn_weights.dtype, device=attn_weights.device)
-            attn_weights = torch.where(causal_mask, attn_weights.to(attn_weights.dtype), mask_value)
-
-        if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
-
-        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
-
-        # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
-        attn_weights = attn_weights.type(value.dtype)
-        attn_weights = self.attn_dropout(attn_weights)
-
-        # Mask heads if we want to
-        if head_mask is not None:
-            attn_weights = attn_weights * head_mask
-
-        attn_output = torch.matmul(attn_weights, value)
-
-        return attn_output, attn_weights
 
     def _upcast_and_reordered_attn(self, query, key, value, attention_mask=None, head_mask=None):
         key = key.contiguous()
@@ -133,38 +92,51 @@ class GaudiGPT2Attention(GPT2Attention):
                     "Please make sure to instantiate class with `GPT2Attention(..., is_cross_attention=True)`."
                 )
 
-            query = self.q_attn(hidden_states)
-            key, value = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
+            query_states = self.q_attn(hidden_states)
+            key_states, value_states = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
             attention_mask = encoder_attention_mask
         else:
-            query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
+            query_states, key_states, value_states = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
-        query = self._split_heads(query, self.num_heads, self.head_dim).contiguous()
-        key = self._split_heads(key, self.num_heads, self.head_dim).contiguous()
-        value = self._split_heads(value, self.num_heads, self.head_dim).contiguous()
+        shape_q = (*query_states.shape[:-1], -1, self.head_dim)
+        shape_kv = (*key_states.shape[:-1], -1, self.head_dim)
+
+        query_states = query_states.view(shape_q).transpose(1, 2).contiguous()
+        key_states = key_states.view(shape_kv).transpose(1, 2).contiguous()
+        value_states = value_states.view(shape_kv).transpose(1, 2).contiguous()
 
         if layer_past is not None:
             past_key, past_value = layer_past
             if token_idx is not None:
-                past_key.index_copy_(2, token_idx - 1, key)
-                past_value.index_copy_(2, token_idx - 1, value)
-                key = past_key
-                value = past_value
+                past_key.index_copy_(2, token_idx - 1, key_states)
+                past_value.index_copy_(2, token_idx - 1, value_states)
+                key_states = past_key
+                value_states = past_value
             else:
-                key = torch.cat((past_key, key), dim=-2)
-                value = torch.cat((past_value, value), dim=-2)
+                key_states = torch.cat((past_key, key_states), dim=-2)
+                value_states = torch.cat((past_value, value_states), dim=-2)
 
         if use_cache is True:
-            present = (key, value)
+            present = (key_states, value_states)
         else:
             present = None
 
         if self.reorder_and_upcast_attn:
-            attn_output, attn_weights = self._upcast_and_reordered_attn(query, key, value, attention_mask, head_mask)
+            attn_output, attn_weights = self._upcast_and_reordered_attn(
+                query_states, key_states, value_states, attention_mask, head_mask
+            )
         else:
-            attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+            attn_output, attn_weights = eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                head_mask=head_mask,
+                dropout=self.attn_dropout.p if self.training else 0.0,
+            )
 
-        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
+        attn_output = attn_output.reshape(*attn_output.shape[:-2], -1).contiguous()
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 

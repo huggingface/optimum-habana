@@ -99,7 +99,7 @@ class GaudiGemma2RotaryEmbedding(torch.nn.Module):
             self.original_max_seq_len = max_position_embeddings
         else:
             # BC: "rope_type" was originally "type"
-            if config.rope_scaling is not None:
+            if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
                 self.rope_type = config.rope_scaling.get("rope_type", config.rope_scaling.get("type"))
             else:
                 self.rope_type = "default"
@@ -243,16 +243,56 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    dropout: float = 0.0,
+    scaling: Optional[float] = None,
+    softcap: Optional[float] = None,
+    **kwargs,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if scaling is None:
+        scaling = module.head_dim**-0.5
+
+    query_states, key_states, value_states, attention_mask = gaudi_gemma2_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(2, 3)) * scaling
+
+    if softcap is not None:
+        attn_weights = attn_weights / softcap
+        attn_weights = torch.tanh(attn_weights)
+        attn_weights = attn_weights * softcap
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    # upcast attention to fp32
+    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = module.matmul_av(attn_weights, value_states)
+    return attn_output, attn_weights
+
+
 class GaudiGemma2Attention(Gemma2Attention):
     def __init__(self, config: Gemma2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+
+        self.rotary_emb = GaudiGemma2RotaryEmbedding(
+            self.head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+        )
 
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -313,10 +353,9 @@ class GaudiGemma2Attention(Gemma2Attention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -338,15 +377,13 @@ class GaudiGemma2Attention(Gemma2Attention):
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -362,7 +399,7 @@ class GaudiGemma2Attention(Gemma2Attention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, kwargs["position_ids"])
 
         if use_cache:
             # reuse k, v, self_attention
@@ -392,6 +429,7 @@ class GaudiGemma2Attention(Gemma2Attention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA:
+            attn_weights = None
             import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
@@ -421,39 +459,23 @@ class GaudiGemma2Attention(Gemma2Attention):
                             )
 
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_gemma2_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
-
-            # upcast attention to fp32
-            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                query_states.dtype
-            )
-            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=self.attention_dropout if self.training else 0.0,
+                scaling=self.scaling,
+                sliding_window=self.sliding_window,
+                softcap=self.attn_logit_softcapping,
+                **kwargs,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
 
-        attn_output = attn_output.reshape(bsz, q_len, -1)
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
@@ -506,6 +528,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     def pre_attn(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -525,6 +548,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
 
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
@@ -545,6 +569,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
@@ -569,6 +594,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
 
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states,
+            position_embeddings,
             attention_mask,
             position_ids,
             past_key_value,

@@ -672,6 +672,7 @@ class GaudiGenerationMixin(GenerationMixin):
         elif (
             model_input_name == "inputs_embeds"
             and input_ids_length != inputs_tensor.shape[1]
+            and input_ids_length != 0
             and not self.config.is_encoder_decoder
         ):
             generation_config.max_length -= inputs_tensor.shape[1]
@@ -3762,9 +3763,10 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
-            #  1. Fetch candidate sequences from a `CandidateGenerator`
+            # 1. Fetch candidate sequences from a `CandidateGenerator` and move to the correct device
             candidate_input_ids, candidate_logits = candidate_generator.get_candidates(input_ids[:, :cur_len])
 
+            candidate_input_ids = candidate_input_ids.to(self.device)
             if candidate_logits is not None:
                 candidate_logits = candidate_logits.to(self.device)
 

@@ -51,6 +51,7 @@ from .models import (
     GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiCohereAttention,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
     GaudiFalconAttention,
@@ -88,9 +89,7 @@ from .models import (
     GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
@@ -189,7 +188,6 @@ from .models import (
     gaudi_check_and_enable_sdpa,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
-    gaudi_cohere_attention_forward,
     gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
@@ -445,10 +443,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
-    transformers.models.llama.modeling_llama.LlamaLinearScalingRotaryEmbedding = GaudiLlamaLinearScalingRotaryEmbedding
-    transformers.models.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding = (
-        GaudiLlamaDynamicNTKScalingRotaryEmbedding
-    )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
     transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
 
@@ -706,7 +700,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
     transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
     transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
-    transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
+    transformers.models.cohere.modeling_cohere.CohereAttention = GaudiCohereAttention
 
     # Optimization for xglm on Gaudi
     transformers.models.xglm.modeling_xglm.XGLMForCausalLM = GaudiXGLMForCausalLM
