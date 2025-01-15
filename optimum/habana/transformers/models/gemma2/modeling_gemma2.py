@@ -254,6 +254,8 @@ def gaudi_eager_attention_forward(
     softcap: Optional[float] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    bsz, q_len = kwargs["input_shape"]
+
     if scaling is None:
         scaling = module.head_dim**-0.5
 
@@ -261,7 +263,7 @@ def gaudi_eager_attention_forward(
         query, key, value, attention_mask, module.num_key_value_groups
     )
 
-    attn_weights = module.matmul_qk(query_states, key_states.transpose(2, 3)) * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)) * scaling
 
     if softcap is not None:
         attn_weights = attn_weights / softcap
@@ -275,6 +277,8 @@ def gaudi_eager_attention_forward(
     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
     attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
     attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
+
     return attn_output, attn_weights
 
 
@@ -469,11 +473,10 @@ class GaudiGemma2Attention(Gemma2Attention):
                 scaling=self.scaling,
                 sliding_window=self.sliding_window,
                 softcap=self.attn_logit_softcapping,
-                **kwargs,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
 

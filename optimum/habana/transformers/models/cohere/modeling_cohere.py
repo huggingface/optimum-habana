@@ -59,7 +59,6 @@ class GaudiCohereAttention(CohereAttention):
         value_states = value_states.transpose(1, 2)
 
         cos, sin = self.rotary_emb(value_states, kwargs["position_ids"])
-        # print("SHAPEEEEEEEEEEEE", cos.shape, sin.shape, query_states.shape, key_states.shape)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:

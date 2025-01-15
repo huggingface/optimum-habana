@@ -364,7 +364,9 @@ def gaudi_eager_attention_forward(
     scaling: float,
     dropout: float = 0.0,
     attn_softmax_bf16: bool = False,
+    **kwargs,
 ):
+    bsz, q_len = kwargs["input_shape"]
     query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
         query, key, value, attention_mask, module.num_key_value_groups
     )
@@ -381,6 +383,7 @@ def gaudi_eager_attention_forward(
         attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
     attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
     attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
 
     return attn_output, attn_weights
 
@@ -681,6 +684,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 dropout=0.0 if not self.training else self.attention_dropout,
                 scaling=self.scaling,
                 attn_softmax_bf16=attn_softmax_bf16,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
