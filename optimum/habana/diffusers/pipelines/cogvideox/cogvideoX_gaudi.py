@@ -22,6 +22,23 @@ class ModuleFusedSDPA(torch.nn.Module):
 
 from diffusers.models.attention import Attention
 
+def apply_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/embeddings.py#L697
+    """
+    cos_, sin_ = freqs_cis  # [S, D]
+
+    cos = cos_[None, None]
+    sin = sin_[None, None]
+    cos, sin = cos.to(x.device), sin.to(x.device)
+
+    x = torch.ops.hpu.rotary_pos_embedding(x, sin, cos, None, 0, 1)
+
+    return x
+
 
 class CogVideoXAttnProcessorGaudi:
     r"""
@@ -70,8 +87,6 @@ class CogVideoXAttnProcessorGaudi:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            from .embeddings import apply_rotary_emb
-
             query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
