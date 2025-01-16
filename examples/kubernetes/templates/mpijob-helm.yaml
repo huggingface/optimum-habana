@@ -1,0 +1,72 @@
+{{- if and .Values.numNodes (gt (int .Values.numNodes) 1) }}
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: {{ .Release.Name }}-mpijob
+spec:
+  slotsPerWorker: {{ .Values.slotsPerWorker }}
+  runPolicy:
+    cleanPodPolicy: {{ .Values.image.cleanPodPolicy }}
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          hostIPC: {{ .Values.hostIPC }}
+          containers:
+            - name: {{ .Release.Name }}-mpijob-container
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/bash", "-c"]
+              args:
+                - >-
+                  /usr/bin/ssh-keygen -A;
+                  /usr/sbin/sshd;
+                  HOSTSFILE=$OMPI_MCA_orte_default_hostfile;
+                  MASTER_ADDR="$(head -n 1 $HOSTSFILE | sed -n s/[[:space:]]slots.*//p)";
+                  echo $MASTER_ADDR;
+                  NUM_NODES=$(wc -l < $HOSTSFILE);
+                  CARDS_PER_NODE={{ .Values.numCards }};
+                  N_CARDS=$((NUM_NODES*CARDS_PER_NODE));
+                     
+                  MODEL_PATH=/optimum-habana/examples/language-modeling;
+                  cd $MODEL_PATH;
+                  mpirun -np $N_CARDS --npernode $CARDS_PER_NODE \
+                    --allow-run-as-root \
+                    --bind-to core \
+                    --map-by ppr:$CARDS_PER_NODE:node:PE=6 \
+                    -rank-by core --report-bindings \
+                    --tag-output \
+                    --merge-stderr-to-stdout --prefix $MPI_ROOT \
+                    -x MASTER_ADDR=$MASTER_ADDR \
+                    -mca btl_tcp_if_include eth0 \
+                    -mca oob_tcp_if_include eth0 \
+                    -mca plm_rsh_no_tree_spawn 1 \
+                    {{ .Values.command | join " " }};
+              resources:
+                limits:
+                  cpu: 16
+                  memory: 64Gi
+                  hugepages-2Mi: 4400Mi
+                requests:
+                  cpu: 16
+                  memory: 64Gi
+                  hugepages-2Mi: 4400Mi
+    Worker:
+      replicas: {{ .Values.numNodes }}
+      template:
+        spec:
+          hostIPC: {{ .Values.hostIPC }}
+          containers:
+            - name: {{ .Release.Name }}-mpijob-container
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/bash", "-c"]
+              args:
+                - >-
+                  /usr/bin/ssh-keygen -A;
+                  /usr/sbin/sshd;
+                  sleep 365d;
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+{{- end }}
