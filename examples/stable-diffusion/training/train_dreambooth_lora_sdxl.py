@@ -94,7 +94,7 @@ def save_model_card(
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
+        - text: '{validation_prompt if validation_prompt else " "}'
           output:
             url:
                 "image_{i}.png"
@@ -1083,7 +1083,7 @@ def main(args):
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
 
-        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:

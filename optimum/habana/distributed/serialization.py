@@ -191,9 +191,9 @@ def load_state_dict(
     assert len(checkpoints) > 0, f"Can't find the requested checkpoint data at {model_path}"
 
     if checkpoint_sharding is not None and checkpoint_sharding != "layer":
-        assert (
-            world_size == len(checkpoints)
-        ), f"Loading a {checkpoint_sharding}-sharded checkpoint with len={len(checkpoints)} but world size is {world_size}"
+        assert world_size == len(checkpoints), (
+            f"Loading a {checkpoint_sharding}-sharded checkpoint with len={len(checkpoints)} but world size is {world_size}"
+        )
 
         checkpoints = [checkpoints[rank]]
 
