@@ -928,7 +928,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
         # sdpa is better for vision model in HPU
         config._attn_implementation = "sdpa"
-        super(GaudiMllamaForConditionalGeneration, self).__init__(config)
+        super().__init__(config)
 
     def forward(
         self,
@@ -1260,13 +1260,8 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
 
         # Collect intermediate layer outputs from encoder output
-        all_intermediate_hidden_states = output[1]
-        intermediate_hidden_states = [
-            hidden_state
-            for idx, hidden_state in enumerate(all_intermediate_hidden_states)
-            if idx in self.intermediate_layers_indices
-        ]
-        intermediate_hidden_states = torch.stack(intermediate_hidden_states, dim=-1)
+        all_intermediate_hidden_states = [output[1][i] for i in self.intermediate_layers_indices]
+        intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
 
         """
         intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)

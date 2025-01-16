@@ -995,7 +995,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
+                batch_samples, num_items_in_batch = self.get_batch_samples_transformers(epoch_iterator, num_batches)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1351,7 +1351,7 @@ class GaudiTrainer(Trainer):
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
 
-            self.log(logs, start_time)
+            self.log(logs, start_time=start_time)
 
         metrics = None
         if self.control.should_evaluate:
@@ -2616,7 +2616,10 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_batch_samples(self, epoch_iterator, num_batches):
+    def get_batch_samples_transformers(self, epoch_iterator, num_batches):
+        """
+        Added "_transformers" at the end of the method name to avoid a wrong call to a similarly named method in TRL trainers.
+        """
         batch_samples = []
         num_items_in_batch = None
         for _ in range(num_batches):

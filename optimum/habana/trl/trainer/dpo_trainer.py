@@ -668,3 +668,16 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, nll_loss, outputs.aux_loss)
 
         return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, nll_loss)
+
+    def log(self, logs: Dict[str, float], **kwargs) -> None:
+        """
+        Changes:
+        - add `**kwargs` to the method arguments to make sure it's compatible with Transformers
+        """
+        # logs either has 'loss' or 'eval_loss'
+        train_eval = "train" if "loss" in logs else "eval"
+        # Add averaged stored metrics to logs
+        for key, metrics in self._stored_metrics[train_eval].items():
+            logs[key] = torch.tensor(metrics).mean().item()
+        del self._stored_metrics[train_eval]
+        return super().log(logs)

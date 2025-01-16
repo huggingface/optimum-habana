@@ -399,6 +399,9 @@ class GaudiLlamaAttention(LlamaAttention):
 
         self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.num_key_value_heads = config.num_key_value_heads
+        self.hidden_size = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = getattr(config, "head_dim", self.hidden_size // self.num_heads)
 
         if hasattr(config, "fused_qkv") and config.fused_qkv:
             self.num_heads = config.num_attention_heads
