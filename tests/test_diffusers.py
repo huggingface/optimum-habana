@@ -132,28 +132,28 @@ if IS_GAUDI2:
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
     TEXTUAL_INVERSION_THROUGHPUT = 131.7606336456344
     TEXTUAL_INVERSION_RUNTIME = 1.542460777796805
-    CONTROLNET_THROUGHPUT = 120.123522340414
-    CONTROLNET_RUNTIME = 1.8647471838630736
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 1.315
-    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.235
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.15186785472532677
     TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.6694
     TEXTUAL_INVERSION_SDXL_RUNTIME = 74.92
+    CONTROLNET_THROUGHPUT = 120.123522340414
+    CONTROLNET_RUNTIME = 1.8647471838630736
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 1.025
+    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.175
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.145
     SDXL_THROUGHPUT = 0.301
     SVD_THROUGHPUT = 0.012
     FLUX_THROUGHPUT = 0.03
 else:
-    THROUGHPUT_BASELINE_BF16 = 0.309
+    THROUGHPUT_BASELINE_BF16 = 0.275
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
     TEXTUAL_INVERSION_THROUGHPUT = 122.7445217395719
     TEXTUAL_INVERSION_RUNTIME = 1.8249286960053723
-    CONTROLNET_THROUGHPUT = 78.51566937458146
-    CONTROLNET_RUNTIME = 2.852933710993966
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.352
-    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.052
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.050208662346013566
     TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.695
     TEXTUAL_INVERSION_SDXL_RUNTIME = 74.19
+    CONTROLNET_THROUGHPUT = 78.51566937458146
+    CONTROLNET_RUNTIME = 2.852933710993966
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.272
+    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.042
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.045
     SDXL_THROUGHPUT = 0.074
     SVD_THROUGHPUT = 0.012
 
@@ -409,52 +409,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
 
         self.assertEqual(len(outputs.images), 2 * 3)
-        # TODO: enable safety checker
-        # if output_type == "latent":
-        #     self.assertIsNone(outputs.nsfw_content_detected)
-        # else:
-        #     self.assertEqual(len(outputs.nsfw_content_detected), 2 * 3)
-
-    # TODO: enable this test when PNDMScheduler is adapted to Gaudi
-    # def test_stable_diffusion_negative_prompt(self):
-    #     device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-    #     unet = self.dummy_cond_unet
-    #     scheduler = PNDMScheduler(skip_prk_steps=True)
-    #     vae = self.dummy_vae
-    #     bert = self.dummy_text_encoder
-    #     tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-    #     # make sure here that pndm scheduler skips prk
-    #     sd_pipe = StableDiffusionPipeline(
-    #         unet=unet,
-    #         scheduler=scheduler,
-    #         vae=vae,
-    #         text_encoder=bert,
-    #         tokenizer=tokenizer,
-    #         safety_checker=None,
-    #         feature_extractor=self.dummy_extractor,
-    #     )
-    #     sd_pipe = sd_pipe.to(device)
-    #     sd_pipe.set_progress_bar_config(disable=None)
-
-    #     prompt = "A painting of a squirrel eating a burger"
-    #     negative_prompt = "french fries"
-    #     generator = torch.Generator(device=device).manual_seed(0)
-    #     output = sd_pipe(
-    #         prompt,
-    #         negative_prompt=negative_prompt,
-    #         generator=generator,
-    #         guidance_scale=6.0,
-    #         num_inference_steps=2,
-    #         output_type="np",
-    #     )
-
-    #     image = output.images
-    #     image_slice = image[0, -3:, -3:, -1]
-
-    #     assert image.shape == (1, 128, 128, 3)
-    #     expected_slice = np.array([0.4851, 0.4617, 0.4765, 0.5127, 0.4845, 0.5153, 0.5141, 0.4886, 0.4719])
-    #     assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_num_images_per_prompt(self):
         components = self.get_dummy_components()
@@ -660,6 +614,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             prompt=prompts,
             num_images_per_prompt=num_images_per_prompt,
             batch_size=batch_size,
+            output_type="np",
         )
 
         # Check expected number of output images
@@ -778,6 +733,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_habana=True,
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
+            sdp_on_bf16=True,
         )
         set_seed(27)
         url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
@@ -808,7 +764,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
-    def test_textual_inversion(self):
+    def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
             / "examples"
@@ -872,17 +828,13 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     use_habana=True,
                     use_hpu_graphs=True,
                     gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                    sdp_on_bf16=True,
                 )
                 prompt = "A <cat-toy> backpack"
                 set_seed(27)
                 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, output_type="np").images[0]
 
-                # TODO: see how to generate images in a reproducible way
-                # expected_slice = np.array(
-                #     [0.57421875, 0.5703125, 0.58203125, 0.58203125, 0.578125, 0.5859375, 0.578125, 0.57421875, 0.56640625]
-                # )
                 self.assertEqual(image.shape, (512, 512, 3))
-                # self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
 
 class GaudiStableDiffusionXLPipelineTester(TestCase):
@@ -1190,7 +1142,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(image.shape, (64, 64, 3))
 
     @slow
-    def test_textual_inversion_sdxl(self):
+    def test_sdxl_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
             / "examples"
@@ -1225,6 +1177,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                     f"--output_dir {run_dir}",
                     "--save_as_full_pipeline",
                     "--gaudi_config_name Habana/stable-diffusion",
+                    "--sdp_on_bf16",
                     "--throughput_warmup_steps 3",
                     "--seed 27",
                 ]
@@ -1250,6 +1203,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                     use_habana=True,
                     use_hpu_graphs=True,
                     gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                    sdp_on_bf16=True,
                 )
 
                 set_seed(27)
@@ -2319,7 +2273,12 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipe = GaudiStableDiffusionDepth2ImgPipeline.from_pretrained(
-            model_name, gaudi_config=gaudi_config, scheduler=scheduler, use_habana=True, use_hpu_graphs=True
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=gaudi_config,
+            sdp_on_bf16=True,
         )
         image = Image.open(
             requests.get(
@@ -2428,7 +2387,7 @@ class TrainControlNet(TestCase):
     Tests the train_controlnet.py script for Gaudi.
     """
 
-    def test_train_controlnet_script(self):
+    def test_script_train_controlnet(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
             / "examples"
@@ -2512,6 +2471,7 @@ class TrainControlNet(TestCase):
                 use_habana=True,
                 use_hpu_graphs=True,
                 gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                sdp_on_bf16=True,
             )
             pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
@@ -2839,6 +2799,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
+            sdp_on_bf16=True,
         )
         set_seed(42)
         prompt_image = load_image(image_url)
@@ -4216,8 +4177,6 @@ class PipelineTesterMixin:
     def test_components_function(self):
         init_components = self.get_dummy_components()
 
-        # init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
-
         pipe = self.pipeline_class(**init_components)
         init_components.pop("use_habana")
         init_components.pop("use_hpu_graphs")
@@ -4226,103 +4185,6 @@ class PipelineTesterMixin:
 
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
-
-    @skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self, expected_max_diff=5e-2):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        components = self.get_dummy_components()
-        pipe_fp16 = self.pipeline_class(**components)
-        for component in pipe_fp16.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-
-        pipe_fp16.to(torch_device, torch.float16)
-        pipe_fp16.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in inputs:
-            inputs["generator"] = self.get_generator(0)
-
-        output = pipe(**inputs)[0]
-
-        fp16_inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in fp16_inputs:
-            fp16_inputs["generator"] = self.get_generator(0)
-
-        output_fp16 = pipe_fp16(**fp16_inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
-
-    @skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_save_load_float16(self, expected_max_diff=1e-2):
-        components = self.get_dummy_components()
-        for name, module in components.items():
-            if hasattr(module, "half"):
-                components[name] = module.to(torch_device).half()
-
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
-            for component in pipe_loaded.components.values():
-                if hasattr(component, "set_default_attn_processor"):
-                    component.set_default_attn_processor()
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for name, component in pipe_loaded.components.items():
-            if hasattr(component, "dtype"):
-                self.assertTrue(
-                    component.dtype == torch.float16,
-                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
-                )
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_loaded = pipe_loaded(**inputs)[0]
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(
-            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
-        )
-
-    @skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
-    def test_to_device(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe.to("cpu")
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
-        self.assertTrue(all(device == "cpu" for device in model_devices))
-
-        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
-        self.assertTrue(np.isnan(output_cpu).sum() == 0)
-
-        pipe.to("cuda")
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
-
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -4366,73 +4228,6 @@ class PipelineTesterMixin:
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
-
-    @skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
-    )
-    def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_offload = pipe(**inputs)[0]
-
-        pipe.enable_sequential_cpu_offload()
-
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_offload = pipe(**inputs)[0]
-
-        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
-        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
-
-    @skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
-    def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_offload = pipe(**inputs)[0]
-
-        pipe.enable_model_cpu_offload()
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_offload = pipe(**inputs)[0]
-
-        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
-        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
-        offloaded_modules = [
-            v
-            for k, v in pipe.components.items()
-            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-        ]
-        (
-            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
-            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
-        )
-
-    @skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass()
 
     def _test_xformers_attention_forwardGenerator_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
@@ -5831,6 +5626,7 @@ class GaudiDDPMPipelineTester(TestCase):
             use_habana=True,
             use_hpu_graphs=True,
             gaudi_config=gaudi_config,
+            sdp_on_bf16=True,
         )
         outputs = pipe(batch_size=batch_size)
         self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16)

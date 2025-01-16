@@ -393,6 +393,9 @@ def parse_args():
         help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
     )
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--throughput_warmup_steps",
         type=int,
         default=0,
@@ -623,6 +626,7 @@ def main():
         use_habana=True,
         use_hpu_graphs=True,
         gaudi_config=args.gaudi_config_name,
+        sdp_on_bf16=args.sdp_on_bf16,
     )
     text_encoder_1 = pipeline.text_encoder.to(accelerator.device)
     text_encoder_2 = pipeline.text_encoder_2.to(accelerator.device)
