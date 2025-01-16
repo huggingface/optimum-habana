@@ -226,6 +226,8 @@ class GaudiQwen2Attention(Qwen2Attention):
             else None
         )
 
+        self.num_key_value_heads = config.num_key_value_heads
+
     def get_k_proj_weight(self):
         """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
         if hasattr(self.k_proj, "qweight"):

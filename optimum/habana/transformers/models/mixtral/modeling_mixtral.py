@@ -213,6 +213,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.inp_seq_len = -1
         self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.block_size = 1024
+        self.num_key_value_heads = config.num_key_value_heads
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
