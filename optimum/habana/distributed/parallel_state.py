@@ -171,9 +171,9 @@ def initialize_model_parallel(
 
     enable_ds_sequence_parallel = sequence_parallel_size > 1
     if enable_ds_sequence_parallel:
-        assert (
-            tensor_model_parallel_size == 1 and pipeline_model_parallel_size == 1
-        ), "DeepSpeed's sequence parallel does not work with tensor parallel or pipeline parallel"
+        assert tensor_model_parallel_size == 1 and pipeline_model_parallel_size == 1, (
+            "DeepSpeed's sequence parallel does not work with tensor parallel or pipeline parallel"
+        )
 
         if world_size % sequence_parallel_size != 0:
             raise RuntimeError(
@@ -193,7 +193,7 @@ def initialize_model_parallel(
 
     if virtual_pipeline_model_parallel_size is not None:
         if not pipeline_model_parallel_size > 2:
-            raise RuntimeError("pipeline-model-parallel size should be greater than 2 with " "interleaved schedule")
+            raise RuntimeError("pipeline-model-parallel size should be greater than 2 with interleaved schedule")
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
