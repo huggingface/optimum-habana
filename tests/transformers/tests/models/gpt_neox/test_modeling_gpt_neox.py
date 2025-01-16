@@ -38,11 +38,7 @@ if is_torch_available():
         GPTNeoXForTokenClassification,
         GPTNeoXModel,
     )
-    from transformers.models.gpt_neox.modeling_gpt_neox import (
-        GPTNeoXDynamicNTKScalingRotaryEmbedding,
-        GPTNeoXLinearScalingRotaryEmbedding,
-        GPTNeoXRotaryEmbedding,
-    )
+    from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXRotaryEmbedding
 
 
 class GPTNeoXModelTester:

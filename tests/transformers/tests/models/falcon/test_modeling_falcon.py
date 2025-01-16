@@ -52,8 +52,6 @@ if is_torch_available():
         FalconModel,
     )
     from transformers.models.falcon.modeling_falcon import (
-        FalconDynamicNTKScalingRotaryEmbedding,
-        FalconLinearScalingRotaryEmbedding,
         FalconRotaryEmbedding,
     )
 
