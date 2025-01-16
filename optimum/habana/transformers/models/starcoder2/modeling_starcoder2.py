@@ -603,22 +603,40 @@ class GaudiStarcoder2Model(Starcoder2Model):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                cache_position=cache_position,
-                token_idx=token_idx,
-                attn_softmax_bf16=attn_softmax_bf16,
-                reuse_cache=reuse_cache,
-                use_flash_attention=use_flash_attention,
-                flash_attention_recompute=flash_attention_recompute,
-                flash_attention_causal_mask=flash_attention_causal_mask,
-                cache_idx=cache_idx,
-            )
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
+                    None,
+                    attn_softmax_bf16,
+                    False,
+                    use_flash_attention,
+                    flash_attention_recompute,
+                    flash_attention_causal_mask,
+                )
+            else:
+                layer_outputs = decoder_layer(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    token_idx=token_idx,
+                    attn_softmax_bf16=attn_softmax_bf16,
+                    reuse_cache=reuse_cache,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
+                    flash_attention_causal_mask=flash_attention_causal_mask,
+                    cache_idx=cache_idx,
+                )
 
             hidden_states = layer_outputs[0]
 
