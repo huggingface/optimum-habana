@@ -17,12 +17,12 @@ limitations under the License.
 # Image to Text Examples
 This directory contains a script that showcases how to perform image to text generation on Intel® Gaudi® AI Accelerators.
 
-Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA optimization as in optimum/habana/transformers/models.  If models are not optimzied with FusedSDPA, it uses SDPA implementation.
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA implementation as in optimum/habana/transformers/models.  If models are not optimzied with FusedSDPA, it uses default SDPA implementation.
 
 ## Inference with mixed-precision(BF16)
 
 ### Single card inference with BF16
-To run Llava-v1.6-mistral-7b inference, use the following command:
+To run Llava-v1.6-mistral-7b inference with SDPA, use the following command:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
@@ -31,7 +31,7 @@ python3 run_pipeline.py \
     --sdp_on_bf16
 ```
 
-To run mllama inference using reduced precision in the SDPA, use the following command:
+To run mllama inference with SDPA, use the following command:
 
 ```bash
 python3 run_pipeline.py \
@@ -55,6 +55,8 @@ PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --w
 ## Inference with FP8
 
 Inference with FP8 precision are enabled using  [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch.
+More information on enabling FP8 in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
 ### Single card inference with FP8
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b with SDPA:
@@ -171,5 +173,5 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
-For different models, please adjust training parapmeters and lora_targe_modules. Such as changing lora_targe_modules as below for HuggingFaceM4/idefics2-8b
-'".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
+> For different models, please adjust training parapmeters and lora_targe_modules. Such as changing lora_targe_modules as below for HuggingFaceM4/idefics2-8b
+> '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'

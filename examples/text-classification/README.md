@@ -27,15 +27,15 @@ and can also be used for a dataset hosted on our [hub](https://huggingface.co/da
 
 GLUE is made up of a total of 9 different tasks where the task name can be cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte or wnli.
 
-Finetune model can be done as single-card, multi-cards with mpi or deepspeed.
-For mult-cards with mpi, add following before run_glue.py where X is card number 
-python ../gaudi_spawn.py \
-    --world_size X --use_mpi run_glue.py \
+Finetune model can be done as single device, multi-devices with mpi or deepspeed.
 
-For multi-cards with deepspeed, add the following before run_glue.py and deepspeed config with --deepspeed after where X is card number
+For multi-devices training with mpi, add the following before run_glue.py where X is device number 
+> python ../gaudi_spawn.py \
+>    --world_size X --use_mpi run_glue.py \
 
-python ../gaudi_spawn.py \
-    --world_size X --use_deepspeed run_glue.py --deepspeed \
+For multi-devices training with deepspeed, add the following before run_glue.py and deepspeed config with --deepspeed after where X is device number
+> python ../gaudi_spawn.py \
+>    --world_size X --use_deepspeed run_glue.py --deepspeed \
 
 ## Requirements
 
@@ -49,10 +49,7 @@ pip install -r requirements.txt
 For the following cases, an example of a Gaudi configuration file is given
 [here](https://github.com/huggingface/optimum-habana#how-to-use-it).
 
-
-### Single-card Training
-
-The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
+The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets) with single device:
 
 ```bash
 python run_glue.py \
@@ -76,13 +73,11 @@ python run_glue.py \
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
-## Llama Guard on MRPC
+## Fine-tuning Llama Guard on MRPC
 
 Llama Guard can be used for text classification. The Transformers library will change the head of the model for you during fine-tuning or inference. You can use the same general command as for BERT, except you need to add `--add_pad_token=True` because Llama based models don't have a `pad_token` in their model and tokenizer configuration files. So `--add_pad_token=True` will add a `pad_token` equal to the `eos_token` to the tokenizer and model configurations if it's not defined.
 
-### Fine-tuning with DeepSpeed
-
-Llama Guard can be fine-tuned with DeepSpeed, here is how you would do it on the text classification MRPC task using DeepSpeed with 8 HPUs:
+Here is the example of Llama Gaurd text classification MRPC task finetune with DeepSpeed on 8 devices:
 
 ```bash
 python ../gaudi_spawn.py \
@@ -111,9 +106,9 @@ You can look at the [documentation](https://huggingface.co/docs/optimum/habana/u
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
-### Inference
+## Inference on MRPC
 
-You can run inference with Llama Guard on GLUE on 1 Gaudi card with the following command:
+You can run inference with Llama Guard on GLUE on single device with the following command:
 
 ```bash
 python run_glue.py \
