@@ -1,6 +1,6 @@
 apiVersion: v2
 name: optimum-habana-example-chart
-description: This Helm chart deploys example jobs using Optimum for Intel® Gaudi® Accelerators to a Kubernetes
+description: This Helm chart deploys example jobs using Optimum for Intel® Gaudi® Accelerators to a Kubernetes cluster
 
 # Compatible Kubernetes versions
 kubeVersion: v1.28.7
