@@ -43,7 +43,7 @@ secret:
 
 storage:
   # -- Name of the storage class to use for the persistent volume claim. To list the available storage classes use: `kubectl get storageclass`.
-  storageClassName: csi-wekafs-fs
+  storageClassName: nfs-client
   # -- [Access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) for the persistent volume.
   accessModes:
   - "ReadWriteMany"
