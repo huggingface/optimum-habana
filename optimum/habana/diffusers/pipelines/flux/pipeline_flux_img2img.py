@@ -382,10 +382,11 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
 
             # Pad guidance if necessary
             if guidance is not None:
+                guidance_batches[-1] = guidance_batches[-1].unsqueeze(1)
                 sequence_to_stack = (guidance_batches[-1],) + tuple(
                     torch.zeros_like(guidance_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
-                guidance_batches[-1] = torch.vstack(sequence_to_stack)
+                guidance_batches[-1] = torch.vstack(sequence_to_stack).squeeze(1)
 
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)
@@ -623,14 +624,14 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
                 f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        latent_timestep = timesteps[:1].repeat(num_prompts * num_images_per_prompt)
 
         # 6. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_image_ids = self.prepare_latents(
             init_image,
             latent_timestep,
-            batch_size * num_images_per_prompt,
+            num_prompts * num_images_per_prompt,
             num_channels_latents,
             height,
             width,

@@ -379,6 +379,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
         # Import htcore here to support model quantization
         import habana_frameworks.torch.core as htcore  # noqa: F401
+
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
