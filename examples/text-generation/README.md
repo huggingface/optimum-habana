@@ -624,10 +624,10 @@ After quantizing the model, we can save it to a local path.
 
 **Note:** Before executing the command below, please refer to the "Running FP8 Models on a Single Device" section to measure the model quantization statistics.
 
-Here is an example of how to quantize and save the LLama2-7b model on a single card:
+Here is an example of how to quantize and save the LLama3.1-8b model on a single card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+--model_name_or_path meta-llama/Llama-3.1-8B-Instruct \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -669,24 +669,6 @@ python run_lm_eval.py \
 
 ### Loading FP8 Checkpoints from Hugging Face
 You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127). For these models, you can use any number of cards to load them.
-
-Below is an example of how to load `neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8` on a single card.
-```bash
-python run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8 \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
 
 Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
 ```bash
