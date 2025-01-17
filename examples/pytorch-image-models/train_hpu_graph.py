@@ -137,6 +137,12 @@ group.add_argument(
     help="Load this checkpoint into model after initialization (default: none)",
 )
 group.add_argument(
+    "--save_checkpoint",
+    action="store_true",
+    default=True,
+    help="saving checkpoint for each epoch",
+)
+group.add_argument(
     "--resume",
     default="",
     type=str,
@@ -1048,17 +1054,18 @@ def main():
                 ]
             )
         output_dir = utils.get_outdir(args.output if args.output else "./output/train", exp_name)
-        saver = utils.CheckpointSaver(
-            model=model,
-            optimizer=optimizer,
-            args=args,
-            model_ema=model_ema,
-            amp_scaler=loss_scaler,
-            checkpoint_dir=output_dir,
-            recovery_dir=output_dir,
-            decreasing=decreasing_metric,
-            max_history=args.checkpoint_hist,
-        )
+        if args.save_checkpoint:
+            saver = utils.CheckpointSaver(
+                model=model,
+                optimizer=optimizer,
+                args=args,
+                model_ema=model_ema,
+                amp_scaler=loss_scaler,
+                checkpoint_dir=output_dir,
+                recovery_dir=output_dir,
+                decreasing=decreasing_metric,
+                max_history=args.checkpoint_hist,
+            )
         with open(os.path.join(output_dir, "args.yaml"), "w") as f:
             f.write(args_text)
 
