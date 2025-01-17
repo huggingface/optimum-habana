@@ -43,8 +43,7 @@ python train_hpu_graph.py \
     --model resnet50.a1_in1k \
     --train-split train \
     --val-split train \
-    --dataset-download \
-    --save_checkpoint False
+    --dataset-download 
 ```
 
 ## Multi-HPU training
@@ -62,8 +61,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --model resnet50.a1_in1k \
     --train-split train \
     --val-split train \
-    --dataset-download \
-    --save_checkpoint False
+    --dataset-download 
 ```
 
 
