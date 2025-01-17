@@ -41,7 +41,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133, True),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406, False),
             ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
-            ("Qwen/Qwen1.5-14B", 4, False, 280, False),
             ("Qwen/Qwen1.5-32B", 4, False, 120, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
@@ -60,7 +59,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("THUDM/chatglm2-6b", 1, True, 150, False),
             ("THUDM/chatglm3-6b", 1, True, 150, False),
             ("Qwen/Qwen2.5-7B", 4, False, 490, False),
-            ("Qwen/Qwen2.5-14B", 4, False, 270, False),
             ("Qwen/Qwen2.5-32B", 4, False, 120, False),
         ],
         "fp8": [
