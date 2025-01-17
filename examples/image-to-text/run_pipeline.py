@@ -32,7 +32,6 @@ from transformers import (
     pipeline,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import (
     set_seed,
 )
@@ -209,6 +208,12 @@ def main():
     args.global_rank = int(os.getenv("RANK", "0"))
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
+    if args.world_size > 0:
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+        os.environ.setdefault("DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API", "1")
+
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
 
     set_seed(args.seed)
