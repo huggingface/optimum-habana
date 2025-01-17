@@ -28,7 +28,26 @@ spec:
                   NUM_NODES=$(wc -l < $HOSTSFILE);
                   CARDS_PER_NODE={{ .Values.numCards }};
                   N_CARDS=$((NUM_NODES*CARDS_PER_NODE));
-                     
+                  
+                  SETUP_CMD="git clone --single-branch --branch v1.15.0 https://github.com/huggingface/optimum-habana.git; \
+                             pip install -r optimum-habana/examples/language-modeling/requirements.txt;
+
+                  eval $SETUP_CMD;
+
+                  mpirun --npernode 1 \
+                     --tag-output \
+                     --allow-run-as-root \
+                     --prefix $MPI_ROOT \
+                     -mca routed direct \
+                     git clone --single-branch --branch v1.15.0 https://github.com/huggingface/optimum-habana.git;
+                  
+                  mpirun --npernode 1 \
+                     --tag-output \
+                     --allow-run-as-root \
+                     --prefix $MPI_ROOT \
+                     -mca routed direct \
+                     pip install -r optimum-habana/examples/language-modeling/requirements.txt;
+
                   MODEL_PATH=/optimum-habana/examples/language-modeling;
                   cd $MODEL_PATH;
                   mpirun -np $N_CARDS --npernode $CARDS_PER_NODE \
