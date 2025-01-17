@@ -105,6 +105,7 @@ def gaudi_replace_with_awq_linear(
     if modules_to_not_convert is None:
         modules_to_not_convert = []
 
+    assert quantization_config is not None
     backend = quantization_config.backend
 
     if not is_auto_awq_available():

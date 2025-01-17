@@ -729,16 +729,16 @@ python run_generation.py \
 
 ### Running with UINT4 weight quantization using AutoAWQ
 
-Llama2-7b in UINT4 weight only quantization is enabled using [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which provides quantization capabilities in PyTorch.
-Currently, the support is for UINT4 inference of pre-quantized models only.
+Llama2-7b supports UINT4 weight-only quantization through [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which offers quantization capabilities in PyTorch.
+Currently, this support is limited to UINT4 inference of pre-quantized models only.
 
 ```bash
 pip install autoawq
 ```
 
-You can run a *UINT4 weight quantized* model using AutoAWQ by adding the argument `--load_quantized_model_with_autoawq`.
+You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.
 
-Here is an example to run a quantized model <quantized_awq_model>:
+Here is an example of how to run a quantized model <quantized_awq_model>:
 ```bash
 python run_generation.py \
 --attn_softmax_bf16 \
