@@ -128,7 +128,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         DiffusionPipeline.__init__(self)
 
         if sdp_on_bf16:
-            if hasattr(torch._C, '_set_math_sdp_allow_fp16_bf16_reduction'):
+            if hasattr(torch._C, "_set_math_sdp_allow_fp16_bf16_reduction"):
                 torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
         self.use_habana = use_habana

@@ -28,7 +28,7 @@ import tempfile
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Union
-from unittest import TestCase, skipIf, skipUnless
+from unittest import TestCase, skipUnless
 
 import diffusers
 import habana_frameworks.torch.hpu as hthpu
@@ -62,7 +62,6 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
-from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
