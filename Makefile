@@ -36,7 +36,7 @@ style: clean
 # Run unit and integration tests
 fast_tests:
 	python -m pip install .[tests]
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py tests/test_habana_profiler.py
 # TODO enable when CI has more servers
 #	python -m pytest test_functional_text_generation_example.py
 
