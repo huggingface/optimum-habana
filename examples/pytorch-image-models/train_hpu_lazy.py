@@ -141,7 +141,7 @@ group.add_argument(
 group.add_argument(
     "--save_checkpoint",
     action="store_true",
-    default=True,
+    default=False,
     help="saving checkpoint for each epoch",
 )
 group.add_argument(
