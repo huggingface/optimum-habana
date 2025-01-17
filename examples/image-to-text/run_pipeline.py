@@ -355,7 +355,7 @@ def main():
     throughput = total_new_tokens_generated / duration
     logger.info(f"result = {result}")
     logger.info(
-        f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
 
     # Store results if necessary

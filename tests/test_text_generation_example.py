@@ -376,9 +376,9 @@ def _test_text_generation(
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            assert (
-                model_name in MODEL_OUTPUTS
-            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            assert model_name in MODEL_OUTPUTS, (
+                f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            )
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
