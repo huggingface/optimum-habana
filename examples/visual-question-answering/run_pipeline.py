@@ -135,7 +135,7 @@ def main():
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
             result = generator(model_input, batch_size=args.batch_size, topk=args.topk)
     end = time.time()
-    logger.info(f"result = {result}, time = {(end-start) * 1000/args.n_iterations}ms")
+    logger.info(f"result = {result}, time = {(end - start) * 1000 / args.n_iterations}ms")
 
 
 if __name__ == "__main__":

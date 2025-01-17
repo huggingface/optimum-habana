@@ -41,7 +41,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -194,6 +194,12 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -318,6 +324,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
+            sdp_on_bf16=args.sdp_on_bf16,
             **res,
         )
     elif flux:
@@ -363,12 +370,12 @@ def main():
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i+1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}.png")
             else:
                 for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i+1}.png")
+                    image.save(image_save_dir / f"image_{i + 1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

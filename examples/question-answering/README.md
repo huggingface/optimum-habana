@@ -190,14 +190,6 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 }
 ```
 
-
-### Training in torch.compile mode
-
-Albert XXL model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command, \
-a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`. \
-b) Run the above commands with `--model_name_or_path albert-xxlarge-v1`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
-
-
 ## Fine-tuning Llama on SQuAD1.1
 
 > [!NOTE]
@@ -301,6 +293,7 @@ python run_seq2seq_qa.py \
   --pad_to_max_length \
   --save_strategy epoch \
   --throughput_warmup_steps 3 \
+  --sdp_on_bf16 \
   --bf16
 ```
 

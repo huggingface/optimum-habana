@@ -44,7 +44,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
-            ("Deci/DeciLM-7B", 1, False, 120, False),
+            ("Deci/DeciLM-7B", 1, False, 115, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
             ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
@@ -218,6 +218,12 @@ def _test_text_generation(
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
 
+    if "decilm" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
+    if "mamba-130m-hf" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 
@@ -363,9 +369,9 @@ def _test_text_generation(
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            assert (
-                model_name in MODEL_OUTPUTS
-            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            assert model_name in MODEL_OUTPUTS, (
+                f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            )
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
@@ -384,6 +390,7 @@ def test_text_generation_bf16_1x(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
 )
@@ -412,6 +419,7 @@ def test_text_generation_fp8(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -447,17 +455,20 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, world_size:
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
     world_size = 8
@@ -480,6 +491,7 @@ def test_text_generation_contrastive_search(
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)

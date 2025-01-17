@@ -39,14 +39,15 @@ $ pip install -U -r requirements.txt
         --lora_dropout=0.05 \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
-        --adam_epsilon 1e-08
+        --adam_epsilon 1e-08 \
+        --use_flash_attention
     ```
 
-2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-v0.1 on 4 cards:
+2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
     ```
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
-        --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+        --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
         --streaming False \
@@ -361,6 +362,9 @@ python ddpo.py \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
   --push_to_hub False
 ```
+> [!NOTE]
+> Due to a known issue on Gaudi3, sample_batch_sizes should be changed to 3. The issue will be fixed in the future release.
+
 
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
 ```python

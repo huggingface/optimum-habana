@@ -189,7 +189,8 @@ class TestEncoderDecoderModels:
             "--do_predict",
             "--source_lang en",
             "--target_lang ro",
-            '--source_prefix "translate English to Romanian: "' "--dataset_name wmt16",
+            '--source_prefix "translate English to Romanian: "',
+            "--dataset_name wmt16",
             "--dataset_config_name ro-en",
             f"--per_device_eval_batch_size {batch_size}",
             f"--generation_num_beams {num_beams}",
@@ -205,6 +206,9 @@ class TestEncoderDecoderModels:
 
         if "opus-mt-zh-en" in model_name:
             command_args.append("--max_source_length 512")
+
+        if "Babelscape/mrebel-large" in model_name or "nllb-200-distilled-600M" in model_name:
+            command_args.append("--sdp_on_bf16")
 
         command = self._build_command(
             task=task,

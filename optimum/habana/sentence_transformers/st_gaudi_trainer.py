@@ -23,7 +23,6 @@ from accelerate.utils import DistributedDataParallelKwargs
 from sentence_transformers.data_collator import SentenceTransformerDataCollator
 from sentence_transformers.evaluation import SentenceEvaluator, SequentialEvaluator
 from sentence_transformers.losses.CoSENTLoss import CoSENTLoss
-from sentence_transformers.model_card import ModelCardCallback
 from sentence_transformers.models.Transformer import Transformer
 from sentence_transformers.sampler import (
     DefaultBatchSampler,
@@ -106,18 +105,6 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
                 )
             self.model_init = model_init
 
-        # Get a dictionary of the default training arguments, so we can determine which arguments have been changed
-        # for the model card
-        default_args_dict = SentenceTransformerGaudiTrainingArguments(
-            output_dir="unused",
-            use_habana=True,
-            gaudi_config_name="Habana/distilbert-base-uncased",
-            use_lazy_mode=True,
-            use_hpu_graphs=True,
-            use_hpu_graphs_for_inference=False,
-            use_hpu_graphs_for_training=True,
-        ).to_dict()
-
         # If the model ID is set via the SentenceTransformerTrainingArguments, but not via the SentenceTransformerModelCardData,
         # then we can set it here for the model card regardless
         if args.hub_model_id and not model.model_card_data.model_id:
@@ -184,11 +171,6 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if evaluator is not None and not isinstance(evaluator, SentenceEvaluator):
             evaluator = SequentialEvaluator(evaluator)
         self.evaluator = evaluator
-
-        # Add a callback responsible for automatically tracking data required for the automatic model card generation
-        model_card_callback = ModelCardCallback(self, default_args_dict)
-        self.add_callback(model_card_callback)
-        model_card_callback.on_init_end(self.args, self.state, self.control, self.model)
 
     def _wrap_model(self, model, training=True, dataloader=None):
         """

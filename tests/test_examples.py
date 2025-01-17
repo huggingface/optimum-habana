@@ -528,6 +528,34 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
+            if self.EXAMPLE_NAME == "run_audio_classification":
+                extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_image_classification":
+                extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_glue":
+                if model_name == "bert-large-uncased-whole-word-masking":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_qa":
+                if model_name == "bert-large-uncased-whole-word-masking" or model_name == "albert-large-v2":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_bridgetower":
+                if model_name == "BridgeTower/bridgetower-large-itm-mlm-itc":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_speech_recognition_seq2seq":
+                if model_name == "openai/whisper-small":
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_image2text_lora_finetune":
+                extra_command_line_arguments.append("--sdp_on_bf16")
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
