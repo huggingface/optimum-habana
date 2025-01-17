@@ -133,9 +133,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
         """
         if num_buckets > 0:
-            assert (
-                data_collator is None
-            ), "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
+            assert data_collator is None, (
+                "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
+            )
         if args is None:
             output_dir = "tmp_trainer"
             warnings.warn(f"No `SFTConfig` passed, using `output_dir={output_dir}`.")

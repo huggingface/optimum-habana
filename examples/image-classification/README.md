@@ -57,6 +57,7 @@ PT_HPU_LAZY_MODE=0 python run_image_classification.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 6 \
     --dataloader_num_workers 1 \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -107,6 +108,7 @@ PT_HPU_LAZY_MODE=0 python run_image_classification.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 1 \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -211,6 +213,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 8 \
     --dataloader_num_workers 1 \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -298,6 +301,7 @@ python run_image_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --dataloader_num_workers 1 \
+    --sdp_on_bf16 \
     --bf16
 ```
 

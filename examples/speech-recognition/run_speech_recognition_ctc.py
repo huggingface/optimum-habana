@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
@@ -504,7 +504,7 @@ def main():
     # E.g. characters, such as `,` and `.` do not really have an acoustic characteristic
     # that could be easily picked up by the model
     chars_to_ignore_regex = (
-        f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
+        f"[{''.join(data_args.chars_to_ignore).replace(' ', '')}]" if data_args.chars_to_ignore is not None else None
     )
     text_column_name = data_args.text_column_name
 
