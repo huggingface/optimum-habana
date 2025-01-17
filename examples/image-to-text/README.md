@@ -17,12 +17,12 @@ limitations under the License.
 # Image to Text Examples
 This directory contains a script that showcases how to perform image to text generation on Intel® Gaudi® AI Accelerators.
 
-Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA implementation as in optimum/habana/transformers/models.  If model is not optimzied with FusedSDPA, it uses default SDPA implementation.
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA implementation as in optimum/habana/transformers/models.  If model is not optimized with FusedSDPA, it uses [SDPA implementation] (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) .
 
 ## Inference with mixed-precision(BF16)
 
 ### Single card inference with BF16
-To run mllama inference with SDPA, use the following command:
+To run Llama inference with SDPA, use the following command:
 
 ```bash
 python3 run_pipeline.py \
@@ -31,7 +31,8 @@ python3 run_pipeline.py \
     --bf16 \
     --sdp_on_bf16
 ```
-### Multi-cards inferece with BF16
+> SDPA may introduce [reduced precison] (https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-reduction-for-fp16-and-bf16-in-scaled-dot-product-attention-sdpa)
+### Multi-cards inference with BF16
 Use the following commands to run Llama-3.2-90B-Vision-Instruct BF16 inference with FusedSDPA on 8 HPUs:
 ```bash
 PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
@@ -164,6 +165,6 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
->  For different models, please adjust training parapmeters and lora_targe_modules. Such as replace lora_targe_modules
+>  For different models, please adjust training parapmeters and lora_target_modules. Such as replace lora_target_modules
 >  with below for HuggingFaceM4/idefics2-8b.
 >  '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'

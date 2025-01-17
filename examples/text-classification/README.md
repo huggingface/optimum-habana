@@ -27,13 +27,13 @@ and can also be used for a dataset hosted on our [hub](https://huggingface.co/da
 
 GLUE is made up of a total of 9 different tasks where the task name can be cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte or wnli.
 
-Finetune model can be done as single device, multi-devices with mpi or deepspeed.
+Fine-tuning of the model can be performed on a single device, across multiple devices using MPI, or with DeepSpeed.
 
-For multi-devices training with mpi, add the following before run_glue.py where X is device number 
+For multi-devices training with MPI, add the following before run_glue.py. X is device number 
 > python ../gaudi_spawn.py \
 >    --world_size X --use_mpi run_glue.py \
 
-For multi-devices training with deepspeed, add the following before run_glue.py and deepspeed config with --deepspeed after where X is device number
+For multi-devices training with DeepSpeed, add the following before run_glue.py and deepspeed config with --deepspeed after. X is device number
 > python ../gaudi_spawn.py \
 >    --world_size X --use_deepspeed run_glue.py --deepspeed \
 
