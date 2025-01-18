@@ -422,9 +422,9 @@ class GaudiI2VGenXLPipeline(
         image_embeddings = image_embeddings.repeat(1, num_videos_per_prompt, 1)
         image_embeddings = image_embeddings.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
-        if self.do_classifier_free_guidance:
-            negative_image_embeddings = torch.zeros_like(image_embeddings)
-            image_embeddings = torch.cat([negative_image_embeddings, image_embeddings])
+        # if self.do_classifier_free_guidance:
+        #     negative_image_embeddings = torch.zeros_like(image_embeddings)
+        #     image_embeddings = torch.cat([negative_image_embeddings, image_embeddings])
 
         return image_embeddings
 
@@ -544,8 +544,8 @@ class GaudiI2VGenXLPipeline(
         # duplicate image_latents for each generation per prompt, using mps friendly method
         image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1, 1)
 
-        if self.do_classifier_free_guidance:
-            image_latents = torch.cat([image_latents] * 2)
+        # if self.do_classifier_free_guidance:
+        #     image_latents = torch.cat([image_latents] * 2)
 
         return image_latents
 
@@ -677,7 +677,8 @@ class GaudiI2VGenXLPipeline(
 
             # 1. Check inputs. Raise error if not correct
             self.check_inputs(prompt, image, height, width, negative_prompt, prompt_embeds, negative_prompt_embeds)
-
+            import pdb; pdb.set_trace()
+            breakpoint()
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
                 num_prompts = 1
@@ -715,8 +716,8 @@ class GaudiI2VGenXLPipeline(
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            if self.do_classifier_free_guidance:
-                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            # if self.do_classifier_free_guidance:
+            #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
             # 3.2 Encode image prompt
             # 3.2.1 Image encodings.
@@ -754,10 +755,10 @@ class GaudiI2VGenXLPipeline(
 
 
             # 3.3 Prepare additional conditions for the UNet.
-            if self.do_classifier_free_guidance:
-                fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
-            else:
-                fps_tensor = torch.tensor([target_fps]).to(device)
+            # if self.do_classifier_free_guidance:
+            #     fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
+            # else:
+            fps_tensor = torch.tensor([target_fps]).to(device)
             fps_tensor = fps_tensor.repeat(num_prompts * num_videos_per_prompt, 1).ravel()
 
             # 4. Prepare timesteps
@@ -783,10 +784,10 @@ class GaudiI2VGenXLPipeline(
 
             # 7 Split into batches (HPU-specific step)
             latents_batches, num_dummy_samples = self._split_and_cat_tensors(batch_size, latents)
-            prompt_embeds_batches, _ = self._split_and_cat_tensors(batch_size, prompt_embeds)
-            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents)
-            image_embeddings_batches, _ = self._split_and_cat_tensors(batch_size, image_embeddings)
-            fps_tensor_batches, _ = self._split_and_cat_tensors(batch_size, fps_tensor)
+            prompt_embeds_batches, _ = self._split_and_cat_tensors(batch_size, prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
+            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents, image_latents, self.do_classifier_free_guidance)
+            image_embeddings_batches, _ = self._split_and_cat_tensors(batch_size, image_embeddings, torch.zeros_like(image_embeddings), self.do_classifier_free_guidance)
+            fps_tensor_batches, _ = self._split_and_cat_tensors(batch_size, fps_tensor, fps_tensor, self.do_classifier_free_guidance)
 
 
             # 8. Denoising loop
