@@ -368,8 +368,7 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             # is why it is reduced here.
             # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
             fps = fps - 1
-            # import pdb; pdb.set_trace()
-            # breakpoint()
+
             # 4. Encode input image using VAE
             image = self.video_processor.preprocess(image, height=height, width=width).to(device)
             # torch.randn is broken on HPU so running it on CPU

@@ -847,7 +847,7 @@ class GaudiI2VGenXLPipeline(
                         image_embeddings=image_embeddings_batch,
                         cross_attention_kwargs=cross_attention_kwargs,
                         return_dict=False,
-                    )
+                    )[0]
 
                     # perform guidance
                     if self.do_classifier_free_guidance:
