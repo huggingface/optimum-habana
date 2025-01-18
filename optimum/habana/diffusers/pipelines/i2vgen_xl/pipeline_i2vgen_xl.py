@@ -831,9 +831,6 @@ class GaudiI2VGenXLPipeline(
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
 
-                    if self.interrupt:
-                        continue
-
                     # expand the latents if we are doing classifier free guidance
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
