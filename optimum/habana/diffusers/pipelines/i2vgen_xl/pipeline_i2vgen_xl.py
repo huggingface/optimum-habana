@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import inspect
+import time
+from math import ceil
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -25,7 +27,7 @@ from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.models import AutoencoderKL
 from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
-#from ...schedulers import GaudiDDIMScheduler
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import (
     BaseOutput,
@@ -93,6 +95,7 @@ class GaudiI2VGenXLPipelineOutput(BaseOutput):
     """
 
     frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
+    throughput: float
 
 
 class GaudiI2VGenXLPipeline(
@@ -155,8 +158,14 @@ class GaudiI2VGenXLPipeline(
             unet,
             scheduler,
         )
-        
-        self.unet.set_attn_processor(AttnProcessor2_0())
+
+        if use_habana:
+            self.unet.set_attn_processor(AttnProcessor2_0())
+
+        if use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            self.unet = wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -181,6 +190,42 @@ class GaudiI2VGenXLPipeline(
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1
+
+    @classmethod
+    def _split_and_cat_tensors(cls, batch_size, input_a, input_b=None, do_classifier_free_guidance=True):
+        if input_a is None:
+            return None, 0
+
+        input_a_batches = list(torch.split(input_a, batch_size))
+        if input_b is not None:
+            input_b_batches = list(torch.split(input_b, batch_size))
+
+        num_dummy_samples = 0
+        if input_a_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - input_a_batches[-1].shape[0]
+            # Pad input a
+            sequence_to_stack = (input_a_batches[-1],) + tuple(
+                torch.zeros_like(input_a_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            input_a_batches[-1] = torch.vstack(sequence_to_stack)
+
+            if input_b is not None:
+                # Pad input a
+                sequence_to_stack = (input_b_batches[-1],) + tuple(
+                    torch.zeros_like(input_b_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                input_b_batches[-1] = torch.vstack(sequence_to_stack)
+
+        if input_b is not None and do_classifier_free_guidance:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (input_b_batch, input_a_batch) in enumerate(zip(input_b_batches, input_a_batches[:])):
+                input_a_batches[i] = torch.cat([input_b_batch, input_a_batch])
+
+        input_a_batches = torch.stack(input_a_batches)
+        return input_a_batches, num_dummy_samples
+
 
     def encode_prompt(
         self,
@@ -554,6 +599,8 @@ class GaudiI2VGenXLPipeline(
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = 1,
+        batch_size: int = 1,
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for image-to-video generation with [`I2VGenXLPipeline`].
@@ -614,6 +661,8 @@ class GaudiI2VGenXLPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            batch_size (`int`, *optional*, defaults to 1):
+                The number of videos in a batch.
 
         Examples:
 
@@ -622,10 +671,6 @@ class GaudiI2VGenXLPipeline(
                 If `return_dict` is `True`, [`pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-        # import pdb;pdb.set_trace()
-        # breakpoint()
-        # 0. Default height and width to unet
-        print("self.gaudi_config.use_torch_autocast", self.gaudi_config.use_torch_autocast)
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             height = height or self.unet.config.sample_size * self.vae_scale_factor
             width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -635,11 +680,20 @@ class GaudiI2VGenXLPipeline(
 
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
-                batch_size = 1
+                num_prompts = 1
             elif prompt is not None and isinstance(prompt, list):
-                batch_size = len(prompt)
+                num_prompts = len(prompt)
             else:
-                batch_size = prompt_embeds.shape[0]
+                num_prompts = prompt_embeds.shape[0]
+
+            num_batches = ceil((num_videos_per_prompt * num_prompts) / batch_size)
+            logger.info(
+                f"{num_prompts} prompt(s) received, {num_videos_per_prompt} generation(s) per prompt,"
+                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+            )
+            if num_batches < 3:
+                logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
+
 
             device = self._execution_device
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -704,7 +758,7 @@ class GaudiI2VGenXLPipeline(
                 fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
             else:
                 fps_tensor = torch.tensor([target_fps]).to(device)
-            fps_tensor = fps_tensor.repeat(batch_size * num_videos_per_prompt, 1).ravel()
+            fps_tensor = fps_tensor.repeat(num_prompts * num_videos_per_prompt, 1).ravel()
 
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -713,7 +767,7 @@ class GaudiI2VGenXLPipeline(
             # 5. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
-                batch_size * num_videos_per_prompt,
+                num_prompts * num_videos_per_prompt,
                 num_channels_latents,
                 num_frames,
                 height,
@@ -727,157 +781,239 @@ class GaudiI2VGenXLPipeline(
             # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-            # 7. Denoising loop
+            # 7 Split into batches (HPU-specific step)
+            latents_batches, num_dummy_samples = self._split_and_cat_tensors(batch_size, latents)
+            prompt_embeds_batches, _ = self._split_and_cat_tensors(batch_size, prompt_embeds)
+            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents)
+            image_embeddings_batches, _ = self._split_and_cat_tensors(batch_size, image_embeddings)
+            fps_tensor_batches, _ = self._split_and_cat_tensors(batch_size, fps_tensor)
+
+
+            # 8. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i in range(len(timesteps)):
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
+            outputs = {
+                "videos": [],
+            }
+            t0 = time.time()
+            t1 = t0
+
+            for j in self.progress_bar(range(num_batches)):
+                # The throughput is calculated from the 3rd iteration
+                # because compilation occurs in the first two iterations
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
+
+                latents_batch = latents_batches[0]
+                latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+                prompt_embeds_batch = prompt_embeds_batches[0]
+                prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
+                fps_tensor_batch = fps_tensor_batches[0]
+                fps_tensor_batches = torch.roll(fps_tensor_batches, shifts=-1, dims=0)
+                image_latents_batch = image_latents_batches[0]
+                image_latents_batches = torch.roll(image_latents_batches, shifts=-1, dims=0)
+                image_embeddings_batch = image_embeddings_batches[0]
+                image_embeddings_batches = torch.roll(image_embeddings_batches, shifts=-1, dims=0)
+
+                if hasattr(self.scheduler, "_init_step_index"):
+                    # Reset scheduler step index for next batch
+                    self.scheduler._init_step_index(timesteps[0])
+
+                for i in self.progress_bar(range(len(timesteps))):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
+                    if self.interrupt:
+                        continue
+
                     # expand the latents if we are doing classifier free guidance
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+
+                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     # predict the noise residual
-                    noise_pred = self.unet_hpu(
+                    noise_pred = self.unet(
                         latent_model_input,
                         t,
-                        encoder_hidden_states=prompt_embeds,
-                        fps=fps_tensor,
-                        image_latents=image_latents,
-                        image_embeddings=image_embeddings,
+                        encoder_hidden_states=prompt_embeds_batch,
+                        fps=fps_tensor_batch,
+                        image_latents=image_latents_batch,
+                        image_embeddings=image_embeddings_batch,
                         cross_attention_kwargs=cross_attention_kwargs,
                         return_dict=False,
                     )
-                    
-                    # import pdb; pdb.set_trace()
-                    # breakpoint() 
-                    #noise_pred.to(torch.float)
+
                     # perform guidance
                     if self.do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # reshape latents
-                    batch_size, channel, frames, width, height = latents.shape
-                    latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channel, width, height)
-                    noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channel, width, height)
+                    bs, channel, frames, width, height = latents_batch.shape
+                    latents_batch = latents_batch.permute(0, 2, 1, 3, 4).reshape(bs * frames, channel, width, height)
+                    noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(bs * frames, channel, width, height)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                    latents_batch = self.scheduler.step(noise_pred, t, latents_batch, **extra_step_kwargs).prev_sample
 
                     # reshape latents back
-                    latents = latents[None, :].reshape(batch_size, frames, channel, width, height).permute(0, 2, 1, 3, 4)
+                    latents_batch = latents_batch[None, :].reshape(bs, frames, channel, width, height).permute(0, 2, 1, 3, 4)
                     # call the callback, if provided
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
-                    
-            # 8. Post processing
-            if output_type == "latent":
-                video = latents
-            else:
-                # cast back to fp16/bf16 if needed
-                if needs_upcasting:
-                    self.vae.to(dtype=cast_dtype)
+                    # if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    #     self.progress_bar.update()
 
-                video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-                video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                            t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+                    
+                # 8. Post processing
+                if output_type == "latent":
+                    video = latents_batch
+                else:
+                    # cast back to fp16/bf16 if needed
+                    if needs_upcasting:
+                        self.vae.to(dtype=cast_dtype)
+
+                    video_tensor = self.decode_latents(latents_batch, decode_chunk_size=decode_chunk_size)
+                    video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
+
+                outputs["videos"].append(video)
+
+            speed_metrics_prefix = "generation"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_batches * batch_size
+                if t1 == t0 or use_warmup_inference_steps
+                else (num_batches - throughput_warmup_steps) * batch_size,
+                num_steps=num_batches * batch_size * num_inference_steps,
+                start_time_after_warmup=t1,
+            )
+            logger.info(f"Speed metrics: {speed_measures}")
+
+            # Remove dummy generations if needed
+            if num_dummy_samples > 0:
+                outputs["videos"][-1] = outputs["videos"][-1][:-num_dummy_samples]
+
+            # Process generated images
+            for i, video in enumerate(outputs["videos"][:]):
+                if i == 0:
+                    outputs["videos"].clear()
+
+                if output_type == "pil":
+                    outputs["videos"] += video
+                else:
+                    outputs["videos"] += [*video]
 
             # 9. Offload all models
             self.maybe_free_model_hooks()
 
             if not return_dict:
-                return (video,)
+                return outputs["frames"]
 
-            return GaudiI2VGenXLPipelineOutput(frames=video)
-
-
-    @torch.no_grad()
-    def unet_hpu(
-        self,
-        latent_model_input,
-        timestep,
-        encoder_hidden_states,
-        fps,
-        image_latents,
-        image_embeddings,
-        cross_attention_kwargs,
-        return_dict=False,
-
-    ):
-        if self.use_hpu_graphs:
-            return self.capture_replay(
-                latent_model_input,
-                timestep,
-                encoder_hidden_states,
-                fps,
-                image_latents,
-                image_embeddings,
-                cross_attention_kwargs,
-                return_dict,
+            return GaudiI2VGenXLPipelineOutput(
+                frames=outputs["videos"],
+                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
-        else:
-            return self.unet(
-                sample=latent_model_input,
-                timestep = timestep,
-                encoder_hidden_states=encoder_hidden_states,
-                fps=fps,
-                image_latents=image_latents,
-                image_embeddings=image_embeddings,
-                cross_attention_kwargs=cross_attention_kwargs,
-                return_dict=return_dict,
-            )[0]
 
-    @torch.no_grad()
-    def capture_replay(
-        self,
-        latent_model_input,
-        timestep,
-        encoder_hidden_states,
-        fps,
-        image_latents,
-        image_embeddings,
-        cross_attention_kwargs,
-        return_dict=False
-    ):
-        inputs = [
-            latent_model_input,
-            timestep,
-            encoder_hidden_states,
-            fps,
-            image_latents,
-            image_embeddings,
-            cross_attention_kwargs,
-            return_dict
-        ]
+
+    # @torch.no_grad()
+    # def unet_hpu(
+    #     self,
+    #     latent_model_input,
+    #     timestep,
+    #     encoder_hidden_states,
+    #     fps,
+    #     image_latents,
+    #     image_embeddings,
+    #     cross_attention_kwargs,
+    #     return_dict=False,
+
+    # ):
+    #     if self.use_hpu_graphs:
+    #         return self.capture_replay(
+    #             latent_model_input,
+    #             timestep,
+    #             encoder_hidden_states,
+    #             fps,
+    #             image_latents,
+    #             image_embeddings,
+    #             cross_attention_kwargs,
+    #             return_dict,
+    #         )
+    #     else:
+    #         return self.unet(
+    #             sample=latent_model_input,
+    #             timestep = timestep,
+    #             encoder_hidden_states=encoder_hidden_states,
+    #             fps=fps,
+    #             image_latents=image_latents,
+    #             image_embeddings=image_embeddings,
+    #             cross_attention_kwargs=cross_attention_kwargs,
+    #             return_dict=return_dict,
+    #         )[0]
+
+    # @torch.no_grad()
+    # def capture_replay(
+    #     self,
+    #     latent_model_input,
+    #     timestep,
+    #     encoder_hidden_states,
+    #     fps,
+    #     image_latents,
+    #     image_embeddings,
+    #     cross_attention_kwargs,
+    #     return_dict=False
+    # ):
+    #     inputs = [
+    #         latent_model_input,
+    #         timestep,
+    #         encoder_hidden_states,
+    #         fps,
+    #         image_latents,
+    #         image_embeddings,
+    #         cross_attention_kwargs,
+    #         return_dict
+    #     ]
         
-        h = self.ht.hpu.graphs.input_hash(inputs)
-        cached = self.cache.get(h)
-        if cached is None:
-            # Capture the graph and cache it
-            with self.ht.hpu.stream(self.hpu_stream):
-                graph = self.ht.hpu.HPUGraph()
-                graph.capture_begin()
-                outputs = self.unet(
-                    sample = inputs[0],
-                    timestep = inputs[1],
-                    encoder_hidden_states=inputs[2],
-                    fps=inputs[3],
-                    image_latents=inputs[4],
-                    image_embeddings=inputs[5],
-                    cross_attention_kwargs=inputs[6],
-                    return_dict=inputs[7],
-                )[0]
-                graph.capture_end()
-                graph_inputs = inputs
-                graph_outputs = outputs
-                self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
-            return outputs
+    #     h = self.ht.hpu.graphs.input_hash(inputs)
+    #     cached = self.cache.get(h)
+    #     if cached is None:
+    #         # Capture the graph and cache it
+    #         with self.ht.hpu.stream(self.hpu_stream):
+    #             graph = self.ht.hpu.HPUGraph()
+    #             graph.capture_begin()
+    #             outputs = self.unet(
+    #                 sample = inputs[0],
+    #                 timestep = inputs[1],
+    #                 encoder_hidden_states=inputs[2],
+    #                 fps=inputs[3],
+    #                 image_latents=inputs[4],
+    #                 image_embeddings=inputs[5],
+    #                 cross_attention_kwargs=inputs[6],
+    #                 return_dict=inputs[7],
+    #             )[0]
+    #             graph.capture_end()
+    #             graph_inputs = inputs
+    #             graph_outputs = outputs
+    #             self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
+    #         return outputs
 
-        # Replay the cached graph with updated inputs
-        self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
-        cached.graph.replay()
-        self.ht.core.hpu.default_stream().synchronize()
+    #     # Replay the cached graph with updated inputs
+    #     self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
+    #     cached.graph.replay()
+    #     self.ht.core.hpu.default_stream().synchronize()
 
-        return cached.graph_outputs
+    #     return cached.graph_outputs
 
 # The following utilities are taken and adapted from
 # https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
