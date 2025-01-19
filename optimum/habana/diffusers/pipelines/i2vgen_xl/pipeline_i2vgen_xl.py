@@ -12,39 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import time
-from math import ceil
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from math import ceil
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
-
-from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL
-from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline
-from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import _center_crop_wide, _resize_bilinear
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
-from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline, _center_crop_wide, _resize_bilinear
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import (
     BaseOutput,
     logging,
     replace_example_docstring,
 )
-from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from ..pipeline_utils import GaudiDiffusionPipeline
-from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from ....transformers.gaudi_configuration import GaudiConfig
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ...models.attention_processor import (
-    AttentionProcessor,
     AttnProcessor2_0,
 )
+from ..pipeline_utils import GaudiDiffusionPipeline
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -152,7 +147,7 @@ class GaudiI2VGenXLPipeline(
             gaudi_config,
             bf16_full_eval,
         )
-        
+
         I2VGenXLPipeline.__init__(
             self,
             vae,
@@ -508,7 +503,6 @@ class GaudiI2VGenXLPipeline(
 
 
             # 8. Denoising loop
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             use_warmup_inference_steps = (
                 num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
@@ -598,7 +592,7 @@ class GaudiI2VGenXLPipeline(
                     t1 = warmup_inference_steps_time_adjustment(
                             t1, t1_inf, num_inference_steps, throughput_warmup_steps
                     )
-                    
+
                 # 8. Post processing
                 if output_type == "latent":
                     video = latents_batch

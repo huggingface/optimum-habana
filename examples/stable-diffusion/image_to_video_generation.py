@@ -19,9 +19,13 @@ import sys
 from pathlib import Path
 
 import torch
-from diffusers.utils import export_to_video, load_image, export_to_gif
+from diffusers.utils import export_to_gif, export_to_video, load_image
 
-from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableVideoDiffusionPipeline, GaudiI2VGenXLPipeline
+from optimum.habana.diffusers import (
+    GaudiEulerDiscreteScheduler,
+    GaudiI2VGenXLPipeline,
+    GaudiStableVideoDiffusionPipeline,
+)
 from optimum.habana.utils import set_seed
 
 

@@ -100,7 +100,7 @@ def gaudi_unet_2d_condition_model_forward(
     timesteps = timesteps.expand(sample.shape[0])
 
     t_emb = self.time_proj(timesteps)
-    print(f"mark_step")
+
     import habana_frameworks.torch.core as htcore
 
     htcore.mark_step()
