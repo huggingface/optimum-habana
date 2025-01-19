@@ -219,7 +219,10 @@ def main():
         args.image_path = [args.image_path]
     for image_path in args.image_path:
         image = load_image(image_path)
-        image = image.resize((args.height, args.width))
+        if i2v_model:
+            image = load_image(image).convert("RGB")
+        else:
+            image = image.resize((args.height, args.width))
         input.append(image)
         logger.info(image_path)
 
@@ -293,8 +296,6 @@ def main():
             image=input,
             num_videos_per_prompt=args.num_videos_per_prompt,
             batch_size=args.batch_size,
-            height=args.height,
-            width=args.width,
             num_frames=args.num_frames,
             num_inference_steps=args.num_inference_steps,
             negative_prompt=args.negative_prompts,
