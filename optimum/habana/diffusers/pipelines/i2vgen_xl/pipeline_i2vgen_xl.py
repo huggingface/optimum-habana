@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import I2VGenXLPipeline
         >>> from diffusers.utils import export_to_gif, load_image
 
-        >>> pipeline = I2VGenXLPipeline.from_pretrained(
+        >>> pipeline = GaudiI2VGenXLPipeline.from_pretrained(
         ...     "ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16"
         ... )
         >>> pipeline.enable_model_cpu_offload()
@@ -86,7 +86,8 @@ EXAMPLE_DOC_STRING = """
 class GaudiI2VGenXLPipelineOutput(BaseOutput):
     r"""
      Output class for image-to-video pipeline.
-
+     Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L75
+        - Add throughputs to the output class
     Args:
          frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
              List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
@@ -104,6 +105,12 @@ class GaudiI2VGenXLPipeline(
     I2VGenXLPipeline,
 ):
     r"""
+    Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L90
+        - Use the GaudiDiffusionPipeline as the base class
+        - Add the GaudiI2VGenXLPipelineOutput as the output class
+        - Add the autocast into the __call__ method
+        - Modify the __init__ method to inherit from GaudiDiffusionPipeline
+
     Pipeline for image-to-video generation as proposed in [I2VGenXL](https://i2vgen-xl.github.io/).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -178,17 +185,6 @@ class GaudiI2VGenXLPipeline(
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
         self.to(self._device)
 
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-    # corresponds to doing no classifier free guidance.
-    @property
-    def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
-
     @classmethod
     def _split_and_cat_tensors(cls, batch_size, input_a, input_b=None, do_classifier_free_guidance=True):
         if input_a is None:
@@ -224,176 +220,9 @@ class GaudiI2VGenXLPipeline(
         input_a_batches = torch.stack(input_a_batches)
         return input_a_batches, num_dummy_samples
 
-
-    # def encode_prompt(
-    #     self,
-    #     prompt,
-    #     device,
-    #     num_videos_per_prompt,
-    #     negative_prompt=None,
-    #     prompt_embeds: Optional[torch.Tensor] = None,
-    #     negative_prompt_embeds: Optional[torch.Tensor] = None,
-    #     clip_skip: Optional[int] = None,
-    # ):
-    #     r"""
-    #     Encodes the prompt into text encoder hidden states.
-
-    #     Args:
-    #         prompt (`str` or `List[str]`, *optional*):
-    #             prompt to be encoded
-    #         device: (`torch.device`):
-    #             torch device
-    #         num_videos_per_prompt (`int`):
-    #             number of images that should be generated per prompt
-    #         do_classifier_free_guidance (`bool`):
-    #             whether to use classifier free guidance or not
-    #         negative_prompt (`str` or `List[str]`, *optional*):
-    #             The prompt or prompts not to guide the image generation. If not defined, one has to pass
-    #             `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-    #             less than `1`).
-    #         prompt_embeds (`torch.Tensor`, *optional*):
-    #             Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-    #             provided, text embeddings will be generated from `prompt` input argument.
-    #         negative_prompt_embeds (`torch.Tensor`, *optional*):
-    #             Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-    #             weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-    #             argument.
-    #         clip_skip (`int`, *optional*):
-    #             Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-    #             the output of the pre-final layer will be used for computing the prompt embeddings.
-    #     """
-    #     if prompt is not None and isinstance(prompt, str):
-    #         batch_size = 1
-    #     elif prompt is not None and isinstance(prompt, list):
-    #         batch_size = len(prompt)
-    #     else:
-    #         batch_size = prompt_embeds.shape[0]
-
-    #     if prompt_embeds is None:
-    #         text_inputs = self.tokenizer(
-    #             prompt,
-    #             padding="max_length",
-    #             max_length=self.tokenizer.model_max_length,
-    #             truncation=True,
-    #             return_tensors="pt",
-    #         )
-    #         text_input_ids = text_inputs.input_ids
-    #         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-    #         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-    #             text_input_ids, untruncated_ids
-    #         ):
-    #             removed_text = self.tokenizer.batch_decode(
-    #                 untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-    #             )
-    #             logger.warning(
-    #                 "The following part of your input was truncated because CLIP can only handle sequences up to"
-    #                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-    #             )
-
-    #         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-    #             attention_mask = text_inputs.attention_mask.to(device)
-    #         else:
-    #             attention_mask = None
-
-    #         if clip_skip is None:
-    #             prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
-    #             prompt_embeds = prompt_embeds[0]
-    #         else:
-    #             prompt_embeds = self.text_encoder(
-    #                 text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-    #             )
-    #             # Access the `hidden_states` first, that contains a tuple of
-    #             # all the hidden states from the encoder layers. Then index into
-    #             # the tuple to access the hidden states from the desired layer.
-    #             prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
-    #             # We also need to apply the final LayerNorm here to not mess with the
-    #             # representations. The `last_hidden_states` that we typically use for
-    #             # obtaining the final prompt representations passes through the LayerNorm
-    #             # layer.
-    #             prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
-
-    #     if self.text_encoder is not None:
-    #         prompt_embeds_dtype = self.text_encoder.dtype
-    #     elif self.unet is not None:
-    #         prompt_embeds_dtype = self.unet.dtype
-    #     else:
-    #         prompt_embeds_dtype = prompt_embeds.dtype
-
-    #     prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-    #     bs_embed, seq_len, _ = prompt_embeds.shape
-    #     # duplicate text embeddings for each generation per prompt, using mps friendly method
-    #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-    #     prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
-
-    #     # get unconditional embeddings for classifier free guidance
-    #     if self.do_classifier_free_guidance and negative_prompt_embeds is None:
-    #         uncond_tokens: List[str]
-    #         if negative_prompt is None:
-    #             uncond_tokens = [""] * batch_size
-    #         elif prompt is not None and type(prompt) is not type(negative_prompt):
-    #             raise TypeError(
-    #                 f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-    #                 f" {type(prompt)}."
-    #             )
-    #         elif isinstance(negative_prompt, str):
-    #             uncond_tokens = [negative_prompt]
-    #         elif batch_size != len(negative_prompt):
-    #             raise ValueError(
-    #                 f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-    #                 f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-    #                 " the batch size of `prompt`."
-    #             )
-    #         else:
-    #             uncond_tokens = negative_prompt
-
-    #         max_length = prompt_embeds.shape[1]
-    #         uncond_input = self.tokenizer(
-    #             uncond_tokens,
-    #             padding="max_length",
-    #             max_length=max_length,
-    #             truncation=True,
-    #             return_tensors="pt",
-    #         )
-
-    #         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-    #             attention_mask = uncond_input.attention_mask.to(device)
-    #         else:
-    #             attention_mask = None
-
-    #         # Apply clip_skip to negative prompt embeds
-    #         if clip_skip is None:
-    #             negative_prompt_embeds = self.text_encoder(
-    #                 uncond_input.input_ids.to(device),
-    #                 attention_mask=attention_mask,
-    #             )
-    #             negative_prompt_embeds = negative_prompt_embeds[0]
-    #         else:
-    #             negative_prompt_embeds = self.text_encoder(
-    #                 uncond_input.input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-    #             )
-    #             # Access the `hidden_states` first, that contains a tuple of
-    #             # all the hidden states from the encoder layers. Then index into
-    #             # the tuple to access the hidden states from the desired layer.
-    #             negative_prompt_embeds = negative_prompt_embeds[-1][-(clip_skip + 1)]
-    #             # We also need to apply the final LayerNorm here to not mess with the
-    #             # representations. The `last_hidden_states` that we typically use for
-    #             # obtaining the final prompt representations passes through the LayerNorm
-    #             # layer.
-    #             negative_prompt_embeds = self.text_encoder.text_model.final_layer_norm(negative_prompt_embeds)
-
-    #     if self.do_classifier_free_guidance:
-    #         # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-    #         seq_len = negative_prompt_embeds.shape[1]
-
-    #         negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-    #         negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-    #         negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-
-    #     return prompt_embeds, negative_prompt_embeds
-
+    """Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L320
+        - Commented out the code for do_classifier_free_guidance
+    """
     def _encode_image(self, image, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -426,95 +255,9 @@ class GaudiI2VGenXLPipeline(
 
         return image_embeddings
 
-    # def decode_latents(self, latents, decode_chunk_size=None):
-    #     latents = 1 / self.vae.config.scaling_factor * latents
-
-    #     batch_size, channels, num_frames, height, width = latents.shape
-    #     latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
-    #     if decode_chunk_size is not None:
-    #         frames = []
-    #         for i in range(0, latents.shape[0], decode_chunk_size):
-    #             frame = self.vae.decode(latents[i : i + decode_chunk_size]).sample
-    #             frames.append(frame)
-    #         image = torch.cat(frames, dim=0)
-    #     else:
-    #         image = self.vae.decode(latents).sample
-
-    #     decode_shape = (batch_size, num_frames, -1) + image.shape[2:]
-    #     video = image[None, :].reshape(decode_shape).permute(0, 2, 1, 3, 4)
-
-    #     # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-    #     video = video.float()
-    #     return video
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    # def prepare_extra_step_kwargs(self, generator, eta):
-    #     # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-    #     # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-    #     # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-    #     # and should be between [0, 1]
-
-    #     accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-    #     extra_step_kwargs = {}
-    #     if accepts_eta:
-    #         extra_step_kwargs["eta"] = eta
-
-    #     # check if the scheduler accepts generator
-    #     accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-    #     if accepts_generator:
-    #         extra_step_kwargs["generator"] = generator
-    #     return extra_step_kwargs
-
-    # def check_inputs(
-    #     self,
-    #     prompt,
-    #     image,
-    #     height,
-    #     width,
-    #     negative_prompt=None,
-    #     prompt_embeds=None,
-    #     negative_prompt_embeds=None,
-    # ):
-    #     if height % 8 != 0 or width % 8 != 0:
-    #         raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-    #     if prompt is not None and prompt_embeds is not None:
-    #         raise ValueError(
-    #             f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-    #             " only forward one of the two."
-    #         )
-    #     elif prompt is None and prompt_embeds is None:
-    #         raise ValueError(
-    #             "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-    #         )
-    #     elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-    #         raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-    #     if negative_prompt is not None and negative_prompt_embeds is not None:
-    #         raise ValueError(
-    #             f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-    #             f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-    #         )
-
-    #     if prompt_embeds is not None and negative_prompt_embeds is not None:
-    #         if prompt_embeds.shape != negative_prompt_embeds.shape:
-    #             raise ValueError(
-    #                 "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-    #                 f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-    #                 f" {negative_prompt_embeds.shape}."
-    #             )
-
-    #     if (
-    #         not isinstance(image, torch.Tensor)
-    #         and not isinstance(image, PIL.Image.Image)
-    #         and not isinstance(image, list)
-    #     ):
-    #         raise ValueError(
-    #             "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
-    #             f" {type(image)}"
-    #         )
-
+    """Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L441
+        - Commented out the code for do_classifier_free_guidance
+    """
     def prepare_image_latents(
         self,
         image,
@@ -547,32 +290,11 @@ class GaudiI2VGenXLPipeline(
 
         return image_latents
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
-    # def prepare_latents(
-    #     self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
-    # ):
-    #     shape = (
-    #         batch_size,
-    #         num_channels_latents,
-    #         num_frames,
-    #         height // self.vae_scale_factor,
-    #         width // self.vae_scale_factor,
-    #     )
-    #     if isinstance(generator, list) and len(generator) != batch_size:
-    #         raise ValueError(
-    #             f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-    #             f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-    #         )
-
-    #     if latents is None:
-    #         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-    #     else:
-    #         latents = latents.to(device)
-
-    #     # scale the initial noise by the standard deviation required by the scheduler
-    #     latents = latents * self.scheduler.init_noise_sigma
-    #     return latents
-
+    """Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L501
+        - Add the autocast
+        - Add the batching support
+        - Add the throughput calculation
+    """
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -598,6 +320,8 @@ class GaudiI2VGenXLPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = 1,
         batch_size: int = 1,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -796,6 +520,13 @@ class GaudiI2VGenXLPipeline(
             t0 = time.time()
             t1 = t0
 
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
+
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
@@ -861,6 +592,8 @@ class GaudiI2VGenXLPipeline(
                     # if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     #     self.progress_bar.update()
 
+                hb_profiler.step()
+
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
                             t1, t1_inf, num_inference_steps, throughput_warmup_steps
@@ -879,6 +612,10 @@ class GaudiI2VGenXLPipeline(
 
                 outputs["videos"].append(video)
 
+                if not self.use_hpu_graphs:
+                    self.htcore.mark_step()
+
+            hb_profiler.stop()
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
