@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 import torch
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import export_to_video, load_image, export_to_gif
 
 from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableVideoDiffusionPipeline, GaudiI2VGenXLPipeline
 from optimum.habana.utils import set_seed
@@ -174,7 +174,7 @@ def main():
         help="Save output frames as images",
     )
 
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for initialization.")
+    parser.add_argument("--seed", type=int, default=8888, help="Random seed for initialization.")
 
     # HPU-specific arguments
     parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
@@ -191,6 +191,7 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument("--gif", action="store_true", help="Whether to generate the video in gif format.")
     parser.add_argument(
         "--sdp_on_bf16",
         action="store_true",
@@ -198,7 +199,6 @@ def main():
         help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
-    parser.add_argument("--seed", type=int, default=8888, help="Random seed for initialization.")
     args = parser.parse_args()
 
     # Setup logging
@@ -282,7 +282,7 @@ def main():
             num_frames=args.num_frames,
         )
     elif i2v_model:
-        kwargs["scheduler"] = None
+        del kwargs["scheduler"]
         pipeline = GaudiI2VGenXLPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
@@ -335,7 +335,11 @@ def main():
             video_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
             for i, frames in enumerate(outputs.frames):
-                export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+                if args.gif:
+                    export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
+                else:
+                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+
                 if args.save_frames_as_images:
                     for j, frame in enumerate(frames):
                         frame.save(
