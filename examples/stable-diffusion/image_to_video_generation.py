@@ -21,7 +21,7 @@ from pathlib import Path
 import torch
 from diffusers.utils import export_to_video, load_image
 
-from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableVideoDiffusionPipeline
+from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableVideoDiffusionPipeline, GaudiI2VGenXLPipeline
 from optimum.habana.utils import set_seed
 
 
@@ -57,6 +57,20 @@ def main():
     )
 
     # Pipeline arguments
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        nargs="*",
+        default="An image of a squirrel in Picasso style",
+        help="The prompt or prompts to guide the image generation.",
+    )
+    parser.add_argument(
+        "--negative_prompts",
+        type=str,
+        nargs="*",
+        default="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+        help="The prompt or prompts not to guide the image generation.",
+    )
     parser.add_argument(
         "--image_path",
         type=str,
@@ -184,6 +198,7 @@ def main():
         help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
+    parser.add_argument("--seed", type=int, default=8888, help="Random seed for initialization.")
     args = parser.parse_args()
 
     # Setup logging
@@ -193,6 +208,9 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     logger.setLevel(logging.INFO)
+
+    i2v_models = ["i2vgen-xl"]
+    i2v_model = True if any(model in args.model_name_or_path for model in i2v_models) else False
 
     # Load input image(s)
     input = []
@@ -262,6 +280,26 @@ def main():
             decode_chunk_size=args.decode_chunk_size,
             output_type=args.output_type,
             num_frames=args.num_frames,
+        )
+    elif i2v_model:
+        kwargs["scheduler"] = None
+        pipeline = GaudiI2VGenXLPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        generator = torch.manual_seed(args.seed)
+        outputs = pipeline(
+            prompt=args.prompts,
+            image=input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            height=args.height,
+            width=args.width,
+            num_frames=args.num_frames,
+            num_inference_steps=args.num_inference_steps,
+            negative_prompt=args.negative_prompts,
+            guidance_scale=9.0,
+            generator=generator,
         )
     else:
         pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(

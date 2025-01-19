@@ -26,6 +26,7 @@ from .pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img import 
 from .pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 from .pipelines.stable_video_diffusion.pipeline_stable_video_diffusion import GaudiStableVideoDiffusionPipeline
 from .pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import GaudiTextToVideoSDPipeline
+from .pipelines.i2vgen_xl.pipeline_i2vgen_xl import GaudiI2VGenXLPipeline
 from .schedulers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,

@@ -26,6 +26,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.models import AutoencoderKL
 from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline
+from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import _center_crop_wide, _resize_bilinear
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from diffusers.schedulers import DDIMScheduler
@@ -137,9 +138,6 @@ class GaudiI2VGenXLPipeline(
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-        # import pdb; pdb.set_trace()
-        # breakpoint()
-        # super.__init__()
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
@@ -227,174 +225,174 @@ class GaudiI2VGenXLPipeline(
         return input_a_batches, num_dummy_samples
 
 
-    def encode_prompt(
-        self,
-        prompt,
-        device,
-        num_videos_per_prompt,
-        negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        clip_skip: Optional[int] = None,
-    ):
-        r"""
-        Encodes the prompt into text encoder hidden states.
+    # def encode_prompt(
+    #     self,
+    #     prompt,
+    #     device,
+    #     num_videos_per_prompt,
+    #     negative_prompt=None,
+    #     prompt_embeds: Optional[torch.Tensor] = None,
+    #     negative_prompt_embeds: Optional[torch.Tensor] = None,
+    #     clip_skip: Optional[int] = None,
+    # ):
+    #     r"""
+    #     Encodes the prompt into text encoder hidden states.
 
-        Args:
-            prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
-            device: (`torch.device`):
-                torch device
-            num_videos_per_prompt (`int`):
-                number of images that should be generated per prompt
-            do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
-        """
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+    #     Args:
+    #         prompt (`str` or `List[str]`, *optional*):
+    #             prompt to be encoded
+    #         device: (`torch.device`):
+    #             torch device
+    #         num_videos_per_prompt (`int`):
+    #             number of images that should be generated per prompt
+    #         do_classifier_free_guidance (`bool`):
+    #             whether to use classifier free guidance or not
+    #         negative_prompt (`str` or `List[str]`, *optional*):
+    #             The prompt or prompts not to guide the image generation. If not defined, one has to pass
+    #             `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+    #             less than `1`).
+    #         prompt_embeds (`torch.Tensor`, *optional*):
+    #             Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+    #             provided, text embeddings will be generated from `prompt` input argument.
+    #         negative_prompt_embeds (`torch.Tensor`, *optional*):
+    #             Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+    #             weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+    #             argument.
+    #         clip_skip (`int`, *optional*):
+    #             Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+    #             the output of the pre-final layer will be used for computing the prompt embeddings.
+    #     """
+    #     if prompt is not None and isinstance(prompt, str):
+    #         batch_size = 1
+    #     elif prompt is not None and isinstance(prompt, list):
+    #         batch_size = len(prompt)
+    #     else:
+    #         batch_size = prompt_embeds.shape[0]
 
-        if prompt_embeds is None:
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+    #     if prompt_embeds is None:
+    #         text_inputs = self.tokenizer(
+    #             prompt,
+    #             padding="max_length",
+    #             max_length=self.tokenizer.model_max_length,
+    #             truncation=True,
+    #             return_tensors="pt",
+    #         )
+    #         text_input_ids = text_inputs.input_ids
+    #         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
+    #         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+    #             text_input_ids, untruncated_ids
+    #         ):
+    #             removed_text = self.tokenizer.batch_decode(
+    #                 untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+    #             )
+    #             logger.warning(
+    #                 "The following part of your input was truncated because CLIP can only handle sequences up to"
+    #                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+    #             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
+    #         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+    #             attention_mask = text_inputs.attention_mask.to(device)
+    #         else:
+    #             attention_mask = None
 
-            if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
-                prompt_embeds = prompt_embeds[0]
-            else:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-                )
-                # Access the `hidden_states` first, that contains a tuple of
-                # all the hidden states from the encoder layers. Then index into
-                # the tuple to access the hidden states from the desired layer.
-                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
-                # We also need to apply the final LayerNorm here to not mess with the
-                # representations. The `last_hidden_states` that we typically use for
-                # obtaining the final prompt representations passes through the LayerNorm
-                # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+    #         if clip_skip is None:
+    #             prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+    #             prompt_embeds = prompt_embeds[0]
+    #         else:
+    #             prompt_embeds = self.text_encoder(
+    #                 text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+    #             )
+    #             # Access the `hidden_states` first, that contains a tuple of
+    #             # all the hidden states from the encoder layers. Then index into
+    #             # the tuple to access the hidden states from the desired layer.
+    #             prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+    #             # We also need to apply the final LayerNorm here to not mess with the
+    #             # representations. The `last_hidden_states` that we typically use for
+    #             # obtaining the final prompt representations passes through the LayerNorm
+    #             # layer.
+    #             prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
-        if self.text_encoder is not None:
-            prompt_embeds_dtype = self.text_encoder.dtype
-        elif self.unet is not None:
-            prompt_embeds_dtype = self.unet.dtype
-        else:
-            prompt_embeds_dtype = prompt_embeds.dtype
+    #     if self.text_encoder is not None:
+    #         prompt_embeds_dtype = self.text_encoder.dtype
+    #     elif self.unet is not None:
+    #         prompt_embeds_dtype = self.unet.dtype
+    #     else:
+    #         prompt_embeds_dtype = prompt_embeds.dtype
 
-        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+    #     prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
+    #     bs_embed, seq_len, _ = prompt_embeds.shape
+    #     # duplicate text embeddings for each generation per prompt, using mps friendly method
+    #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+    #     prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
-        # get unconditional embeddings for classifier free guidance
-        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-            else:
-                uncond_tokens = negative_prompt
+    #     # get unconditional embeddings for classifier free guidance
+    #     if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+    #         uncond_tokens: List[str]
+    #         if negative_prompt is None:
+    #             uncond_tokens = [""] * batch_size
+    #         elif prompt is not None and type(prompt) is not type(negative_prompt):
+    #             raise TypeError(
+    #                 f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+    #                 f" {type(prompt)}."
+    #             )
+    #         elif isinstance(negative_prompt, str):
+    #             uncond_tokens = [negative_prompt]
+    #         elif batch_size != len(negative_prompt):
+    #             raise ValueError(
+    #                 f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+    #                 f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+    #                 " the batch size of `prompt`."
+    #             )
+    #         else:
+    #             uncond_tokens = negative_prompt
 
-            max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+    #         max_length = prompt_embeds.shape[1]
+    #         uncond_input = self.tokenizer(
+    #             uncond_tokens,
+    #             padding="max_length",
+    #             max_length=max_length,
+    #             truncation=True,
+    #             return_tensors="pt",
+    #         )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
-            else:
-                attention_mask = None
+    #         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+    #             attention_mask = uncond_input.attention_mask.to(device)
+    #         else:
+    #             attention_mask = None
 
-            # Apply clip_skip to negative prompt embeds
-            if clip_skip is None:
-                negative_prompt_embeds = self.text_encoder(
-                    uncond_input.input_ids.to(device),
-                    attention_mask=attention_mask,
-                )
-                negative_prompt_embeds = negative_prompt_embeds[0]
-            else:
-                negative_prompt_embeds = self.text_encoder(
-                    uncond_input.input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-                )
-                # Access the `hidden_states` first, that contains a tuple of
-                # all the hidden states from the encoder layers. Then index into
-                # the tuple to access the hidden states from the desired layer.
-                negative_prompt_embeds = negative_prompt_embeds[-1][-(clip_skip + 1)]
-                # We also need to apply the final LayerNorm here to not mess with the
-                # representations. The `last_hidden_states` that we typically use for
-                # obtaining the final prompt representations passes through the LayerNorm
-                # layer.
-                negative_prompt_embeds = self.text_encoder.text_model.final_layer_norm(negative_prompt_embeds)
+    #         # Apply clip_skip to negative prompt embeds
+    #         if clip_skip is None:
+    #             negative_prompt_embeds = self.text_encoder(
+    #                 uncond_input.input_ids.to(device),
+    #                 attention_mask=attention_mask,
+    #             )
+    #             negative_prompt_embeds = negative_prompt_embeds[0]
+    #         else:
+    #             negative_prompt_embeds = self.text_encoder(
+    #                 uncond_input.input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+    #             )
+    #             # Access the `hidden_states` first, that contains a tuple of
+    #             # all the hidden states from the encoder layers. Then index into
+    #             # the tuple to access the hidden states from the desired layer.
+    #             negative_prompt_embeds = negative_prompt_embeds[-1][-(clip_skip + 1)]
+    #             # We also need to apply the final LayerNorm here to not mess with the
+    #             # representations. The `last_hidden_states` that we typically use for
+    #             # obtaining the final prompt representations passes through the LayerNorm
+    #             # layer.
+    #             negative_prompt_embeds = self.text_encoder.text_model.final_layer_norm(negative_prompt_embeds)
 
-        if self.do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
+    #     if self.do_classifier_free_guidance:
+    #         # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+    #         seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+    #         negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+    #         negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+    #         negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        return prompt_embeds, negative_prompt_embeds
+    #     return prompt_embeds, negative_prompt_embeds
 
     def _encode_image(self, image, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -428,94 +426,94 @@ class GaudiI2VGenXLPipeline(
 
         return image_embeddings
 
-    def decode_latents(self, latents, decode_chunk_size=None):
-        latents = 1 / self.vae.config.scaling_factor * latents
+    # def decode_latents(self, latents, decode_chunk_size=None):
+    #     latents = 1 / self.vae.config.scaling_factor * latents
 
-        batch_size, channels, num_frames, height, width = latents.shape
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+    #     batch_size, channels, num_frames, height, width = latents.shape
+    #     latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
-        if decode_chunk_size is not None:
-            frames = []
-            for i in range(0, latents.shape[0], decode_chunk_size):
-                frame = self.vae.decode(latents[i : i + decode_chunk_size]).sample
-                frames.append(frame)
-            image = torch.cat(frames, dim=0)
-        else:
-            image = self.vae.decode(latents).sample
+    #     if decode_chunk_size is not None:
+    #         frames = []
+    #         for i in range(0, latents.shape[0], decode_chunk_size):
+    #             frame = self.vae.decode(latents[i : i + decode_chunk_size]).sample
+    #             frames.append(frame)
+    #         image = torch.cat(frames, dim=0)
+    #     else:
+    #         image = self.vae.decode(latents).sample
 
-        decode_shape = (batch_size, num_frames, -1) + image.shape[2:]
-        video = image[None, :].reshape(decode_shape).permute(0, 2, 1, 3, 4)
+    #     decode_shape = (batch_size, num_frames, -1) + image.shape[2:]
+    #     video = image[None, :].reshape(decode_shape).permute(0, 2, 1, 3, 4)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        video = video.float()
-        return video
+    #     # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+    #     video = video.float()
+    #     return video
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
+    # def prepare_extra_step_kwargs(self, generator, eta):
+    #     # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+    #     # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+    #     # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+    #     # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
+    #     accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+    #     extra_step_kwargs = {}
+    #     if accepts_eta:
+    #         extra_step_kwargs["eta"] = eta
 
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
+    #     # check if the scheduler accepts generator
+    #     accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+    #     if accepts_generator:
+    #         extra_step_kwargs["generator"] = generator
+    #     return extra_step_kwargs
 
-    def check_inputs(
-        self,
-        prompt,
-        image,
-        height,
-        width,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-    ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+    # def check_inputs(
+    #     self,
+    #     prompt,
+    #     image,
+    #     height,
+    #     width,
+    #     negative_prompt=None,
+    #     prompt_embeds=None,
+    #     negative_prompt_embeds=None,
+    # ):
+    #     if height % 8 != 0 or width % 8 != 0:
+    #         raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+    #     if prompt is not None and prompt_embeds is not None:
+    #         raise ValueError(
+    #             f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+    #             " only forward one of the two."
+    #         )
+    #     elif prompt is None and prompt_embeds is None:
+    #         raise ValueError(
+    #             "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+    #         )
+    #     elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+    #         raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
+    #     if negative_prompt is not None and negative_prompt_embeds is not None:
+    #         raise ValueError(
+    #             f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+    #             f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+    #         )
 
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
+    #     if prompt_embeds is not None and negative_prompt_embeds is not None:
+    #         if prompt_embeds.shape != negative_prompt_embeds.shape:
+    #             raise ValueError(
+    #                 "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+    #                 f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+    #                 f" {negative_prompt_embeds.shape}."
+    #             )
 
-        if (
-            not isinstance(image, torch.Tensor)
-            and not isinstance(image, PIL.Image.Image)
-            and not isinstance(image, list)
-        ):
-            raise ValueError(
-                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
-                f" {type(image)}"
-            )
+    #     if (
+    #         not isinstance(image, torch.Tensor)
+    #         and not isinstance(image, PIL.Image.Image)
+    #         and not isinstance(image, list)
+    #     ):
+    #         raise ValueError(
+    #             "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+    #             f" {type(image)}"
+    #         )
 
     def prepare_image_latents(
         self,
@@ -550,30 +548,30 @@ class GaudiI2VGenXLPipeline(
         return image_latents
 
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
-    def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+    # def prepare_latents(
+    #     self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+    # ):
+    #     shape = (
+    #         batch_size,
+    #         num_channels_latents,
+    #         num_frames,
+    #         height // self.vae_scale_factor,
+    #         width // self.vae_scale_factor,
+    #     )
+    #     if isinstance(generator, list) and len(generator) != batch_size:
+    #         raise ValueError(
+    #             f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+    #             f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+    #         )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
+    #     if latents is None:
+    #         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+    #     else:
+    #         latents = latents.to(device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
+    #     # scale the initial noise by the standard deviation required by the scheduler
+    #     latents = latents * self.scheduler.init_noise_sigma
+    #     return latents
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -671,14 +669,12 @@ class GaudiI2VGenXLPipeline(
                 If `return_dict` is `True`, [`pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=(self.dtype != torch.float)):
             height = height or self.unet.config.sample_size * self.vae_scale_factor
             width = width or self.unet.config.sample_size * self.vae_scale_factor
 
             # 1. Check inputs. Raise error if not correct
             self.check_inputs(prompt, image, height, width, negative_prompt, prompt_embeds, negative_prompt_embeds)
-            import pdb; pdb.set_trace()
-            breakpoint()
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
                 num_prompts = 1
@@ -701,8 +697,7 @@ class GaudiI2VGenXLPipeline(
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
             # corresponds to doing no classifier free guidance.
             self._guidance_scale = guidance_scale
-            # import pdb; pdb.set_trace()
-            # breakpoint()
+
             # 3.1 Encode input text prompt
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt,
@@ -731,8 +726,6 @@ class GaudiI2VGenXLPipeline(
             # 3.2.2 Image latents.
             resized_image = _center_crop_wide(image, (width, height))
             image = self.video_processor.preprocess(resized_image).to(device=device)
-            # import pdb; pdb.set_trace()
-            # breakpoint() 
             needs_upcasting = (
                 self.vae.dtype == torch.float16 or self.vae.dtype == torch.bfloat16
             ) and self.vae.config.force_upcast
@@ -922,149 +915,3 @@ class GaudiI2VGenXLPipeline(
                 frames=outputs["videos"],
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
-
-
-    # @torch.no_grad()
-    # def unet_hpu(
-    #     self,
-    #     latent_model_input,
-    #     timestep,
-    #     encoder_hidden_states,
-    #     fps,
-    #     image_latents,
-    #     image_embeddings,
-    #     cross_attention_kwargs,
-    #     return_dict=False,
-
-    # ):
-    #     if self.use_hpu_graphs:
-    #         return self.capture_replay(
-    #             latent_model_input,
-    #             timestep,
-    #             encoder_hidden_states,
-    #             fps,
-    #             image_latents,
-    #             image_embeddings,
-    #             cross_attention_kwargs,
-    #             return_dict,
-    #         )
-    #     else:
-    #         return self.unet(
-    #             sample=latent_model_input,
-    #             timestep = timestep,
-    #             encoder_hidden_states=encoder_hidden_states,
-    #             fps=fps,
-    #             image_latents=image_latents,
-    #             image_embeddings=image_embeddings,
-    #             cross_attention_kwargs=cross_attention_kwargs,
-    #             return_dict=return_dict,
-    #         )[0]
-
-    # @torch.no_grad()
-    # def capture_replay(
-    #     self,
-    #     latent_model_input,
-    #     timestep,
-    #     encoder_hidden_states,
-    #     fps,
-    #     image_latents,
-    #     image_embeddings,
-    #     cross_attention_kwargs,
-    #     return_dict=False
-    # ):
-    #     inputs = [
-    #         latent_model_input,
-    #         timestep,
-    #         encoder_hidden_states,
-    #         fps,
-    #         image_latents,
-    #         image_embeddings,
-    #         cross_attention_kwargs,
-    #         return_dict
-    #     ]
-        
-    #     h = self.ht.hpu.graphs.input_hash(inputs)
-    #     cached = self.cache.get(h)
-    #     if cached is None:
-    #         # Capture the graph and cache it
-    #         with self.ht.hpu.stream(self.hpu_stream):
-    #             graph = self.ht.hpu.HPUGraph()
-    #             graph.capture_begin()
-    #             outputs = self.unet(
-    #                 sample = inputs[0],
-    #                 timestep = inputs[1],
-    #                 encoder_hidden_states=inputs[2],
-    #                 fps=inputs[3],
-    #                 image_latents=inputs[4],
-    #                 image_embeddings=inputs[5],
-    #                 cross_attention_kwargs=inputs[6],
-    #                 return_dict=inputs[7],
-    #             )[0]
-    #             graph.capture_end()
-    #             graph_inputs = inputs
-    #             graph_outputs = outputs
-    #             self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
-    #         return outputs
-
-    #     # Replay the cached graph with updated inputs
-    #     self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
-    #     cached.graph.replay()
-    #     self.ht.core.hpu.default_stream().synchronize()
-
-    #     return cached.graph_outputs
-
-# The following utilities are taken and adapted from
-# https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
-
-
-def _convert_pt_to_pil(image: Union[torch.Tensor, List[torch.Tensor]]):
-    if isinstance(image, list) and isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, 0)
-
-    if isinstance(image, torch.Tensor):
-        if image.ndim == 3:
-            image = image.unsqueeze(0)
-
-        image_numpy = VaeImageProcessor.pt_to_numpy(image)
-        image_pil = VaeImageProcessor.numpy_to_pil(image_numpy)
-        image = image_pil
-
-    return image
-
-
-def _resize_bilinear(
-    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
-):
-    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
-    image = _convert_pt_to_pil(image)
-
-    if isinstance(image, list):
-        image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
-    else:
-        image = image.resize(resolution, PIL.Image.BILINEAR)
-    return image
-
-
-def _center_crop_wide(
-    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
-):
-    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
-    image = _convert_pt_to_pil(image)
-
-    if isinstance(image, list):
-        scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
-        image = [u.resize((round(u.width // scale), round(u.height // scale)), resample=PIL.Image.BOX) for u in image]
-
-        # center crop
-        x1 = (image[0].width - resolution[0]) // 2
-        y1 = (image[0].height - resolution[1]) // 2
-        image = [u.crop((x1, y1, x1 + resolution[0], y1 + resolution[1])) for u in image]
-        return image
-    else:
-        scale = min(image.size[0] / resolution[0], image.size[1] / resolution[1])
-        image = image.resize((round(image.width // scale), round(image.height // scale)), resample=PIL.Image.BOX)
-        x1 = (image.width - resolution[0]) // 2
-        y1 = (image.height - resolution[1]) // 2
-        image = image.crop((x1, y1, x1 + resolution[0], y1 + resolution[1]))
-        return image
-
