@@ -72,7 +72,7 @@ def main():
         "--negative_prompts",
         type=str,
         nargs="*",
-        default=None,
+        default="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
         help="The prompt or prompts not to guide the image generation.",
     )
     parser.add_argument(
