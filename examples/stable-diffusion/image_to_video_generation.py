@@ -65,14 +65,14 @@ def main():
         "--prompts",
         type=str,
         nargs="*",
-        default="An image of a squirrel in Picasso style",
+        default="Papers were floating in the air on a table in the library",
         help="The prompt or prompts to guide the image generation.",
     )
     parser.add_argument(
         "--negative_prompts",
         type=str,
         nargs="*",
-        default="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+        default=None,
         help="The prompt or prompts not to guide the image generation.",
     )
     parser.add_argument(
