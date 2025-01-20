@@ -360,7 +360,8 @@ python ddpo.py \
   --use_hpu_graphs \
   --bf16 \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
-  --push_to_hub False
+  --push_to_hub False \
+  --sdp_on_bf16
 ```
 > [!NOTE]
 > Due to a known issue on Gaudi3, sample_batch_sizes should be changed to 3. The issue will be fixed in the future release.

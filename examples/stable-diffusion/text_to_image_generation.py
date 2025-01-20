@@ -440,10 +440,6 @@ def main():
 
     kwargs_call["quant_mode"] = args.quant_mode
 
-    if args.quant_mode != "disable":
-        # Import htcore here to support model quantization
-        import habana_frameworks.torch.core as htcore  # noqa: F401
-
     # Instantiate a Stable Diffusion pipeline class
     if sdxl:
         # SDXL pipelines
@@ -687,12 +683,12 @@ def main():
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i+1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}.png")
             else:
                 for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i+1}.png")
+                    image.save(image_save_dir / f"image_{i + 1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
