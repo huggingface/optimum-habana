@@ -87,8 +87,8 @@ def main():
         duration += time.perf_counter() - t0
 
         for i, (question, answer) in enumerate(zip(input_questions, responses)):
-            print(f"Question[{iteration+1}][{i+1}]: {question['question']}")
-            print(f"Response[{iteration+1}][{i+1}]: {answer}\n")
+            print(f"Question[{iteration + 1}][{i + 1}]: {question['question']}")
+            print(f"Response[{iteration + 1}][{i + 1}]: {answer}\n")
 
     throughput = args.n_iterations * args.batch_size * args.max_new_tokens / duration
     print(f"Inference Duration (for {args.n_iterations} iterations): {duration} seconds")
