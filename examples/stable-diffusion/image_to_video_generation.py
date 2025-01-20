@@ -178,7 +178,7 @@ def main():
         help="Save output frames as images",
     )
 
-    parser.add_argument("--seed", type=int, default=8888, help="Random seed for initialization.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for initialization.")
 
     # HPU-specific arguments
     parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
