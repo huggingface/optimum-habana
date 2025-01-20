@@ -22,12 +22,13 @@ import json
 import multiprocessing as mp
 import os
 import time
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import psutil
 import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
-from lm_eval.models.huggingface import HFLM
+from lm_eval.models.huggingface import HFLM, TemplateLM
 from lm_eval.models.utils import get_dtype
 
 # Local imports
@@ -106,14 +107,39 @@ class HabanaModelAdapter(HFLM):
         model: AutoModelForCausalLM,
         args: argparse.Namespace,
         options: GenerationConfig,
+        backend: Literal["default", "causal", "seq2seq"] = "default",
+        # override whether the model should be treated as decoder-only (causal) or encoder-decoder (seq2seq)
+        logits_cache: bool = True,
+        add_bos_token: Optional[bool] = False,
+        delta: Optional[str] = None,
+        **kwargs,
     ) -> None:
-        super().__init__(pretrained=args.model_name_or_path, device=args.device)
+        TemplateLM.__init__(self)
         self.tokenizer = tokenizer
         self._model = model
+        self._config = self._model.config
         self._batch_size = args.batch_size
         self.buckets: list[int] = sorted(args.buckets)
         self.options = options
         self.device_ = args.device
+        self.pretrained = model
+        self.peft = args.peft_model
+        self.delta = delta
+        # determine which of 'causal' and 'seq2seq' backends to use for HF models
+        self._get_backend(
+            config=self._config, backend=backend, trust_remote_code=args.trust_remote_code
+        )
+
+        # access self._model through self.model property outside this method
+        if isinstance(self.model, torch.nn.Module):
+            self.model.eval()
+            self.model.tie_weights()
+        
+        self.logits_cache = logits_cache
+        self.add_bos_token = add_bos_token
+        self._max_length = options.max_length
+        self.batch_size_per_gpu = int(args.batch_size)
+        self.revision = args.model_revision
         self.model_inputs = {"use_cache": self.options.use_cache}
         if self._model.config.model_type in [
             "llama",
