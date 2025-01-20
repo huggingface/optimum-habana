@@ -29,14 +29,15 @@ import lm_eval.tasks
 import psutil
 import torch
 import torch.nn.functional as F
+
+# Local imports
 from run_generation import setup_parser
-from utils import finalize_quantization, initialize_model
+from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +86,7 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
     return args
@@ -100,13 +102,23 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "falcon",
+            "phi",
+            "mixtral",
+            "qwen2",
+            "gptj",
+            "starcoder2",
+            "gemma",
+        ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {
@@ -184,50 +196,60 @@ def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
+    if args.trust_remote_code:
+        # trust_remote_code fix was introduced in lm_eval 0.4.3
+        # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
+        # We need to cherry-pick the fix manually untill we upgrade (SW-190418)
+        import datasets
+
+        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
+
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
+    with torch.no_grad():
+        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-    run_modes = ["pt2e_quant_not_used"]
-    if args.pt2e_quant and model.config.model_type == "llama":
-        run_modes = ["pt2e_quant_calibration", "pt2e_quant_inference"]
+    eval_start = time.perf_counter()
+    with torch.no_grad():
+        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+    if args.device == "hpu":
+        import habana_frameworks.torch.hpu as torch_hpu
 
-    for mode in run_modes:
-        if mode == "pt2e_quant_calibration":
-            logger.info("[pt2e_quant] Running in calibration mode...")
-        elif mode == "pt2e_quant_inference":
-            logger.info("[pt2e_quant] Running with quantized model...")
+        torch_hpu.synchronize()
+    eval_end = time.perf_counter()
 
-        with torch.no_grad():
-            lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
+    results["args"] = vars(args)
+    results["duration"] = eval_end - eval_start
 
-        eval_start = time.perf_counter()
-        results = {}
-        with torch.no_grad():
-            results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+    if args.local_rank == 0:
         if args.device == "hpu":
-            import habana_frameworks.torch.hpu as torch_hpu
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+        json.dump(results, open(args.output_file, "w"), indent=2)
+        print(json.dumps(results, indent=2))
 
-            torch_hpu.synchronize()
-        eval_end = time.perf_counter()
+    if args.pt2e_quant:
+        from utils import update_pt2e_quant_context
 
-        results["args"] = vars(args)
-        results["duration"] = eval_end - eval_start
+        repeat = update_pt2e_quant_context(model, logger)
+        if repeat:
+            main()
+            return
+        from utils import pt2e_quant_model_ready_to_save
 
-        if args.local_rank == 0:
-            if args.device == "hpu":
-                mem = get_hpu_memory_stats()
-                for k, v in mem.items():
-                    print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            json.dump(results, open(args.output_file, "w"), indent=2)
-            print(json.dumps(results, indent=2))
-
-        if mode == "pt2e_quant_calibration":
-            # Prepare for next run with quantized model
-            from utils import add_quant_dquant_nodes
-
-            model = add_quant_dquant_nodes(model, logger)
+        if pt2e_quant_model_ready_to_save() and args.pt2e_save:
+            path = args.pt2e_save
+            if os.path.isdir(path):
+                path = path + "pt2e_quant_model.pt2"
+            logger.info(f"[pt2e_quant] Using PT2 Export Save at {path}")
+            with torch.no_grad():
+                torch.export.save(model.model, path)
+                logger.info("[pt2e_quant] Saving Done !")
 
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
