@@ -367,10 +367,11 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
             # Pad guidance if necessary
             if guidance is not None:
+                guidance_batches[-1] = guidance_batches[-1].unsqueeze(1)
                 sequence_to_stack = (guidance_batches[-1],) + tuple(
                     torch.zeros_like(guidance_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
-                guidance_batches[-1] = torch.vstack(sequence_to_stack)
+                guidance_batches[-1] = torch.vstack(sequence_to_stack).squeeze(1)
 
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)
