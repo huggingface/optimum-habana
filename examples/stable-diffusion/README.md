@@ -370,7 +370,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 4 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -397,7 +397,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -418,7 +418,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -438,7 +438,7 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -575,7 +575,7 @@ python text_to_image_generation.py \
 
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1 \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
