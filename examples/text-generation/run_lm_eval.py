@@ -22,7 +22,7 @@ import json
 import multiprocessing as mp
 import os
 import time
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Literal, Optional
 
 import psutil
 import torch
@@ -126,15 +126,13 @@ class HabanaModelAdapter(HFLM):
         self.peft = args.peft_model
         self.delta = delta
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
-        self._get_backend(
-            config=self._config, backend=backend, trust_remote_code=args.trust_remote_code
-        )
+        self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
 
         # access self._model through self.model property outside this method
         if isinstance(self.model, torch.nn.Module):
             self.model.eval()
             self.model.tie_weights()
-        
+
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = options.max_length
