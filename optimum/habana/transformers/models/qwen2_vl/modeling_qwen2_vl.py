@@ -56,6 +56,8 @@ class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
+        Copied from Qwen2VLSdpaAttention.forward https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+
         The only difference are:
         - add new args token_idx
         - optimize KV cache
@@ -177,6 +179,11 @@ class GaudiQwen2VLDecoderLayer(Qwen2VLDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from Qwen2VLDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+        The only differences are:
+        - add new args token_idx
+        """
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -227,6 +234,11 @@ class GaudiQwen2VLModel(Qwen2VLModel):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
+        """
+        Copied from Qwen2VLModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+        The only differences are:
+        - add new args token_idx
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -352,6 +364,11 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         rope_deltas: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ):
+        """
+        Copied from Qwen2VLForConditionalGeneration.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
+        The only differences are:
+        - add new args token_idx
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
