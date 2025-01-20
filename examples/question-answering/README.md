@@ -62,9 +62,33 @@ PT_HPU_LAZY_MODE=0 python run_qa.py \
   --torch_compile \
   --use_lazy_mode false \
   --throughput_warmup_steps 3 \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
 
+For torch.compile mode,
+```bash
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 python run_qa.py \
+  --model_name_or_path bert-large-uncased-whole-word-masking \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --dataset_name squad \
+  --do_train \
+  --do_eval \
+  --per_device_train_batch_size 32 \
+  --per_device_eval_batch_size 8 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 2 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/squad/ \
+  --use_habana \
+  --torch_compile_backend hpu_backend \
+  --torch_compile \
+  --use_lazy_mode false \
+  --throughput_warmup_steps 3 \
+  --bf16 \
+  --sdp_on_bf16
+```
 
 ### Multi-card Training
 
@@ -90,7 +114,33 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --torch_compile \
     --use_lazy_mode false \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --sdp_on_bf16
+```
+
+For torch.compile mode,
+```bash
+PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_qa.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+    --dataset_name squad \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 2 \
+    --max_seq_length 384 \
+    --doc_stride 128 \
+    --output_dir /tmp/squad_output/ \
+    --use_habana \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --use_lazy_mode false \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --sdp_on_bf16
 ```
 
 
@@ -117,7 +167,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_to_my_deepspeed_config \
+    --sdp_on_bf16
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
@@ -139,6 +190,36 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
         "contiguous_gradients": false
     }
 }
+```
+
+## Fine-tuning Llama on SQuAD1.1
+
+> [!NOTE]
+>   Llama/Llama2 for question answering requires Transformers v4.38.0 or newer, which supports the `LlamaForQuestionAnswering` class.
+
+Here is a command you can run to train a Llama model for question answering:
+```bash
+python ../gaudi_spawn.py \
+  --world_size 8 --use_deepspeed run_qa.py \
+  --model_name_or_path FlagAlpha/Llama2-Chinese-13b-Chat \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --dataset_name squad \
+  --do_train \
+  --do_eval \
+  --per_device_train_batch_size 8 \
+  --per_device_eval_batch_size 8 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 2 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/squad_output/ \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs_for_inference \
+  --throughput_warmup_steps 3 \
+  --max_train_samples 45080 \
+  --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+  --sdp_on_bf16
 ```
 
 
@@ -197,7 +278,8 @@ python run_qa.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
-  --bf16
+  --bf16 \
+  --sdp_on_bf16
 ```
 
 
@@ -250,6 +332,7 @@ python run_seq2seq_qa.py \
   --pad_to_max_length \
   --save_strategy epoch \
   --throughput_warmup_steps 3 \
+  --sdp_on_bf16 \
   --bf16
 ```
 

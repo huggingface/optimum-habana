@@ -21,9 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import is_torchdynamo_compiling
 
-from optimum.habana import parallel_state
-
-from .... import distributed
+from .... import distributed, parallel_state
 from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
@@ -32,11 +30,12 @@ from ....distributed.tp import TPModule
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_llama import LlamaConfig
 
 
 try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
     has_fused_rope = True
 except ImportError:
@@ -347,7 +346,7 @@ def gaudi_llama_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-#  FusedScaledDotProductAttention
+# FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -384,14 +383,6 @@ class ModuleFusedSDPA(torch.nn.Module):
             valid_sequence_lengths,
             padding_side,
         )
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
 
 
 class KVCache(torch.nn.Module):
@@ -710,7 +701,9 @@ class GaudiLlamaAttention(LlamaAttention):
             )
             position_ids = position_ids.unsqueeze(0)
 
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -741,7 +734,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
                 ):
-                    # prefix tunining case. attach past_key_value to generate first token.
+                    # prefix tuning case. attach past_key_value to generate first token.
                     key_states = torch.cat((past_key_value[0], key_states), -2)
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                     past_key_value = (key_states, value_states)
@@ -864,7 +857,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -1171,7 +1164,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             cache_idx=cache_idx,
             num_virtual_tokens=num_virtual_tokens,
         )
-
         return hidden_states, attn_weights, present_key_value
 
     def post_attn_pre_mlp(self, hidden_states, residual):
@@ -1648,6 +1640,25 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             attentions=outputs.attentions,
         )
 
+    @staticmethod
+    def _reorder_cache(
+        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+
+        Output shares the same memory storage as `past`.
+        """
+        return tuple(
+            (
+                layer_past[0].index_select(0, beam_idx.to(layer_past[0].device)),
+                layer_past[1].index_select(0, beam_idx.to(layer_past[1].device)),
+            )
+            for layer_past in past
+        )
+
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -1740,23 +1751,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return reordered_past
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
-        # keep the same implementation as Transformers v4.37.2
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])

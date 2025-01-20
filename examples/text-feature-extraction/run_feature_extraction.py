@@ -84,6 +84,9 @@ def parse_args():
         help="Whether to perform generation in bf16 precision.",
     )
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--warmup",
         type=int,
         default=3,
@@ -100,6 +103,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     model = AutoModel.from_pretrained(args.model_name_or_path).to("hpu")

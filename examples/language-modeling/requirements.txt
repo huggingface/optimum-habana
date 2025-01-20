@@ -2,5 +2,5 @@ datasets >= 2.14.0, <= 2.19.2
 sentencepiece != 0.1.92
 protobuf == 3.20.3
 evaluate == 0.4.1
-scikit-learn == 1.4.1.post1
+scikit-learn == 1.5.2
 peft == 0.12.0

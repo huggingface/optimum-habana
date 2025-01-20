@@ -28,6 +28,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
 
@@ -41,7 +42,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.15.0")
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim", "flow_match_euler_discrete"],
         type=str,
         help="Name of scheduler",
     )
@@ -291,6 +292,19 @@ def main():
         help="Use rescale_betas_zero_snr for controlling image brightness",
     )
     parser.add_argument("--optimize", action="store_true", help="Use optimized pipeline.")
+    parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        choices=["measure", "quantize", "quantize-mixed", "disable"],
+        type=str,
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+    )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
     args = parser.parse_args()
 
     if args.optimize and not args.use_habana:
@@ -299,14 +313,21 @@ def main():
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3"]
+    flux_models = ["FLUX.1"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
+    flux = True if any(model in args.model_name_or_path for model in flux_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
-    if args.scheduler == "euler_discrete":
+
+    if flux or args.scheduler == "flow_match_euler_discrete":
+        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
@@ -367,16 +388,18 @@ def main():
                 negative_prompts = negative_prompt
     kwargs_call["negative_prompt"] = negative_prompts
 
-    if sdxl or sd3:
+    if sdxl or sd3 or flux:
         prompts_2 = args.prompts_2
-        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.prompts_2 is not None:
             with distributed_state.split_between_processes(args.prompts_2) as prompt_2:
                 prompts_2 = prompt_2
+        kwargs_call["prompt_2"] = prompts_2
+
+    if sdxl or sd3:
+        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.negative_prompts_2 is not None:
             with distributed_state.split_between_processes(args.negative_prompts_2) as negative_prompt_2:
                 negative_prompts_2 = negative_prompt_2
-        kwargs_call["prompt_2"] = prompts_2
         kwargs_call["negative_prompt_2"] = negative_prompts_2
 
     if sd3:
@@ -414,6 +437,12 @@ def main():
             image = np.concatenate([image, image, image], axis=2)
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
+
+    kwargs_call["quant_mode"] = args.quant_mode
+
+    if args.quant_mode != "disable":
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
 
     # Instantiate a Stable Diffusion pipeline class
     if sdxl:
@@ -492,6 +521,20 @@ def main():
             from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
 
             pipeline = GaudiStableDiffusion3Pipeline.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+    elif flux:
+        # Flux pipelines
+        if controlnet:
+            raise ValueError("Flux+ControlNet pipeline is not currenly supported")
+        elif inpainting:
+            raise ValueError("Flux Inpainting pipeline is not currenly supported")
+        else:
+            # Import Flux pipeline
+            from optimum.habana.diffusers import GaudiFluxPipeline
+
+            pipeline = GaudiFluxPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
@@ -587,6 +630,14 @@ def main():
             raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
 
         pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
+
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:

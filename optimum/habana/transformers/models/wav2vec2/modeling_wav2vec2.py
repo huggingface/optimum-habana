@@ -53,21 +53,9 @@ def _gaudi_wav2vec2_compute_mask_indices(
     min_masks: int = 0,
 ) -> torch.Tensor:
     """
-    Computes random mask spans for a given shape. Used to implement [SpecAugment: A Simple Data Augmentation Method for
-    ASR](https://arxiv.org/abs/1904.08779). Note that this method is not optimized to run on TPU and should be run on
-    CPU as part of the preprocessing during training.
-
-    Args:
-        shape: The shape for which to compute masks. This should be of a tuple of size 2 where
-               the first element is the batch size and the second element is the length of the axis to span.
-        mask_prob:  The percentage of the whole axis (between 0 and 1) which will be masked. The number of
-                    independently generated mask spans of length `mask_length` is computed by
-                    `mask_prob*shape[1]/mask_length`. Note that due to overlaps, `mask_prob` is an upper bound and the
-                    actual percentage will be smaller.
-        mask_length: size of the mask
-        min_masks: minimum number of masked spans
-        attention_mask: A (right-padded) attention mask which independently shortens the feature axis of
-                        each batch dimension.
+    Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L135
+    The only differences are (1) that the processing is performed with PyTorch on HPUs (Numpy is used in Transformers), (2) epsilon is generated on HPU instead of CPU, (3) check
+    to ensure indices are not larger than sequence length is re-written to avoid host sync.
     """
     batch_size, sequence_length = shape
 

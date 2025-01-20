@@ -179,7 +179,7 @@ python ../gaudi_spawn.py \
 
 ## Using DeepSpeed
 
-Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
+Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_summarization.py \
@@ -209,10 +209,9 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --deepspeed ds_flan_t5_z3_config_bf16.json
 ```
 
-Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO2 to fine-tune t5-large:
+Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO2 to fine-tune t5-large:
 ```bash
-MASTER_ADDR=127.0.0.1 MASTER_PORT=12345 PT_HPU_LOG_MOD_MASK=0 PT_HPU_LOG_TYPE_MASK=0 PT_HPU_LAZY_MODE=0 \
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
       --world_size 8 \
       --use_deepspeed run_summarization.py \
       --deepspeed ../../tests/configs/deepspeed_zero_2.json \
@@ -231,8 +230,8 @@ python ../gaudi_spawn.py \
       --dataset_name cnn_dailymail \
       --dataset_config '"3.0.0"' \
       --output_dir /tmp/tst-summarization \
-      --per_device_train_batch_size 4 \
-      --per_device_eval_batch_size 4 \
+      --per_device_train_batch_size 20 \
+      --per_device_eval_batch_size 20 \
       --max_train_samples 2000  \
       --torch_compile_backend hpu_backend \
       --torch_compile

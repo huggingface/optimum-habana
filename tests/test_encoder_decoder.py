@@ -206,6 +206,9 @@ class TestEncoderDecoderModels:
         if "opus-mt-zh-en" in model_name:
             command_args.append("--max_source_length 512")
 
+        if "Babelscape/mrebel-large" in model_name or "nllb-200-distilled-600M" in model_name:
+            command_args.append("--sdp_on_bf16")
+
         command = self._build_command(
             task=task,
             deepspeed=deepspeed,

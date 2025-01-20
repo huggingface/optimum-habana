@@ -1,6 +1,6 @@
 {
     "gaudi": {
-         "databricks/databricks-dolly-15k": {
+        "databricks/databricks-dolly-15k": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -36,7 +36,7 @@
                 }
             }
         },
-       "tatsu-lab/alpaca": {
+        "tatsu-lab/alpaca": {
             "num_train_epochs": 1,
             "eval_batch_size": 2,
             "distribution": {
@@ -165,7 +165,7 @@
                     ]
                 }
             }
-	},
+        },
         "tatsu-lab/alpaca_fsdpcompile": {
             "num_train_epochs": 1,
             "eval_batch_size": 1,
@@ -555,9 +555,9 @@
                 "multi_card": {
                     "learning_rate": 1e-2,
                     "train_batch_size": 8,
-                    "perplexity": 8.68,
-                    "train_runtime": 318.7,
-                    "train_samples_per_second": 126.6,
+                    "perplexity": 9.064502567217577,
+                    "train_runtime": 312.9258,
+                    "train_samples_per_second": 127.305,
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 1",
@@ -621,27 +621,20 @@
                 "deepspeed": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 2.3889,
+                    "perplexity": 2.8889,
                     "train_runtime": 147.3597,
                     "train_samples_per_second": 34.41,
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 4",
-                        "--eval_strategy no",
-                        "--save_strategy no",
-                        "--warmup_ratio  0.03",
-                        "--lr_scheduler_type constant",
                         "--logging_steps 1",
+                        "--validation_split_percentage 10",
                         "--lora_rank 8",
                         "--lora_alpha 16",
                         "--lora_dropout 0.05",
                         "--lora_target_modules q_proj v_proj",
                         "--dataset_concatenation",
                         "--max_seq_length 2048",
-                        "--low_cpu_mem_usage True",
-                        "--adam_epsilon 1e-08",
-                        "--ddp_bucket_cap_mb 50",
-                        "--validation_split_percentage 10",
                         "--pipelining_fwd_bwd",
                         "--throughput_warmup_steps 3",
                         "--use_lazy_mode",

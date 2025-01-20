@@ -125,7 +125,7 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profling.
+            Number of steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
     """
@@ -261,7 +261,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
+        metadata={"help": ("Number of steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
@@ -272,6 +272,11 @@ class GaudiTrainingArguments(TrainingArguments):
     profiling_record_shapes: Optional[bool] = field(
         default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
+    )
+
+    profiling_with_stack: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("record source information (file and line number) for the ops when enabling profiling.")},
     )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(

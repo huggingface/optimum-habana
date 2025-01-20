@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 import accelerate
 import transformers
 import transformers.utils.fx
@@ -27,8 +29,19 @@ from .generation import (
 )
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
     DeciLMConfig,
     DeciLMForCausalLM,
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+    Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
     GaudiCLIPAttention,
@@ -39,11 +52,19 @@ from .models import (
     GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiCohereDecoderLayer,
+    GaudiCohereForCausalLM,
     GaudiFalconAttention,
     GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemma2Attention,
+    GaudiGemma2DecoderLayer,
+    GaudiGemma2ForCausalLM,
+    GaudiGemma2MLP,
+    GaudiGemma2Model,
+    GaudiGemma2RotaryEmbedding,
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
@@ -63,6 +84,9 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiIdefics2ForConditionalGeneration,
+    GaudiIdefics2Model,
+    GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -99,6 +123,7 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPaliGemmaForConditionalGeneration,
     GaudiPersimmonAttention,
     GaudiPersimmonDecoderLayer,
     GaudiPersimmonForCausalLM,
@@ -129,7 +154,10 @@ from .models import (
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
+    GaudiXGLMForCausalLM,
     LlamaConfig,
+    MiniCPM3Config,
+    MiniCPM3ForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -163,11 +191,15 @@ from .models import (
     gaudi_check_support_param_buffer_assignment,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
+    gaudi_cohere_attention_forward,
+    gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_forward,
@@ -224,6 +256,9 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+    gaudi_xglm_attention_forward,
+    gaudi_xglm_decoder_layer_forward,
+    gaudi_xglm_model_forward,
 )
 
 
@@ -426,6 +461,19 @@ def adapt_transformers_to_gaudi():
         GaudiLlavaNextForConditionalGeneration
     )
 
+    # Optimization for paligemma on Gaudi
+    transformers.models.paligemma.modeling_paligemma.PaliGemmaForConditionalGeneration = (
+        GaudiPaliGemmaForConditionalGeneration
+    )
+
+    # Optimization for idefics2 on Gaudi
+    transformers.models.idefics2.modeling_idefics2.Idefics2ForConditionalGeneration = (
+        GaudiIdefics2ForConditionalGeneration
+    )
+    transformers.models.idefics2.modeling_idefics2.Idefics2Model = GaudiIdefics2Model
+    transformers.models.idefics2.image_processing_idefics2.Idefics2ImageProcessor = Gaudi2Idefics2ImageProcessor
+    transformers.models.idefics2.modeling_idefics2.Idefics2VisionEmbeddings = GaudiIdefics2VisionEmbeddings
+
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
     transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
@@ -484,6 +532,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.gemma.modeling_gemma.GemmaAttention = GaudiGemmaAttention
     transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
     transformers.models.gemma.modeling_gemma.GemmaModel = GaudiGemmaModel
+
+    # Optimization for gemma2 on Gaudi
+    transformers.models.gemma2.modeling_gemma2.Gemma2ForCausalLM = GaudiGemma2ForCausalLM
+    transformers.models.gemma2.modeling_gemma2.Gemma2MLP = GaudiGemma2MLP
+    transformers.models.gemma2.modeling_gemma2.Gemma2Attention = GaudiGemma2Attention
+    transformers.models.gemma2.modeling_gemma2.Gemma2DecoderLayer = GaudiGemma2DecoderLayer
+    transformers.models.gemma2.modeling_gemma2.Gemma2Model = GaudiGemma2Model
+    transformers.models.gemma2.modeling_gemma2.Gemma2RotaryEmbedding = GaudiGemma2RotaryEmbedding
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
@@ -609,6 +665,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
         gaudi_MambaForCausalLM_update_model_kwargs_for_generation
     )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
+    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
@@ -635,3 +696,34 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
     transformers.modeling_utils.check_support_param_buffer_assignment = gaudi_check_support_param_buffer_assignment
+    transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
+    transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
+    transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+
+    # Optimization for cohere on Gaudi
+    transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
+    transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
+    transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
+    transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
+
+    # Optimization for xglm on Gaudi
+    transformers.models.xglm.modeling_xglm.XGLMForCausalLM = GaudiXGLMForCausalLM
+    transformers.models.xglm.modeling_xglm.XGLMModel.forward = gaudi_xglm_model_forward
+    transformers.models.xglm.modeling_xglm.XGLMAttention.forward = gaudi_xglm_attention_forward
+    transformers.models.xglm.modeling_xglm.XGLMDecoderLayer.forward = gaudi_xglm_decoder_layer_forward
+
+    transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
+    transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
+
+    # Optimization for Baichuan2 on Gaudi
+    transformers.AutoConfig.register("baichuan", BaichuanConfig)
+    transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
+    transformers.AutoModelForCausalLM.register(BaichuanConfig, BaichuanForCausalLM)
+
+    # Register chatglm with optimization on Gaudi
+    transformers.AutoConfig.register("chatglm", ChatGLMConfig)
+    transformers.AutoTokenizer.register(ChatGLMConfig, ChatGLMTokenizer)
+    transformers.AutoModel.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+    transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+    transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+    transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)

@@ -28,6 +28,7 @@ python run_feature_extraction.py \
         "BERT is a common machine learning architecture for text-based applications." \
         "Alexander Hamilton is one of the founding fathers of the United States." \
     --use_hpu_graphs \
+    --sdp_on_bf16 \
     --bf16
 ```
 

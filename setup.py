@@ -33,9 +33,9 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate >= 0.33.0, < 0.34.0",
-    "diffusers == 0.29.2",
+    "diffusers >= 0.31.0, < 0.32.0",
     "huggingface_hub >= 0.24.7",
-    "sentence-transformers[train] == 3.0.1",
+    "sentence-transformers == 3.2.1",
     "pytest < 8.0.0",
 ]
 

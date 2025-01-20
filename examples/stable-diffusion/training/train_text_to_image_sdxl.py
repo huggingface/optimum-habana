@@ -492,6 +492,12 @@ def parse_args(input_args=None):
         help=("Whether to use bf16 mixed precision."),
     )
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--local_rank",
         type=int,
         default=-1,
@@ -1421,6 +1427,7 @@ def main(args):
                         use_habana=True,
                         use_hpu_graphs=args.use_hpu_graphs_for_inference,
                         gaudi_config=args.gaudi_config_name,
+                        sdp_on_bf16=args.sdp_on_bf16,
                     )
                 else:
                     # vae and text encoders are frozen, only need to update unet

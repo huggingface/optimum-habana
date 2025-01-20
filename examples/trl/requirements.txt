@@ -4,4 +4,4 @@ datasets == 2.19.2
 wandb == 0.17.1
 tyro == 0.8.4
 evaluate == 0.4.2
-scikit-learn == 1.5.0
+scikit-learn == 1.5.2

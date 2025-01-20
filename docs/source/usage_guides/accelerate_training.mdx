@@ -20,11 +20,20 @@ Gaudi offers several possibilities to make training faster.
 They are all compatible with each other and can be coupled with [distributed training](https://huggingface.co/docs/optimum/habana/usage_guides/distributed).
 
 
-## Lazy Mode
+## Execution Modes
 
-Two execution modes are proposed:
-- *Lazy mode*, where operations are accumulated in a graph whose execution is triggered in a lazy manner. This allows the graph compiler to optimize the device execution for these operations.
+The following execution modes are supported:
+- *Lazy mode*, where operations are accumulated in a graph whose execution is triggered in a lazy manner.
+  This allows the graph compiler to optimize the device execution for these operations.
 - *Eager mode*, where one operation at a time is executed.
+- *Eager mode* with *torch.compile*, where a model (or part of a model) is enclosed into a graph.
+
+<Tip  warning={true}>
+
+Not all models are yet supported with Eager mode and Eager mode with torch.compile (still in development).
+Lazy mode is the default mode.
+
+</Tip>
 
 In lazy mode, the graph compiler generates optimized binary code that implements the given model topology on Gaudi. It performs operator fusion, data layout management, parallelization, pipelining and memory management, as well as graph-level optimizations.
 
@@ -57,7 +66,7 @@ To not take them into account in the computation of the throughput at the end of
 ## Mixed-Precision Training
 
 Mixed-precision training enables to compute some operations using lighter data types to accelerate training.
-Optimum Habana enables mixed precision training in a similar fashion as 🤗 Transformers:
+Optimum for Intel Gaudi enables mixed precision training in a similar fashion as 🤗 Transformers:
 - argument `--bf16` enables usage of PyTorch autocast
 - argument `--half_precision_backend [hpu_amp, cpu_amp]` is used to specify a device on which mixed precision operations should be performed
 
@@ -74,13 +83,13 @@ Please refer to the [advanced autocast usage on Gaudi](https://docs.habana.ai/en
 ## HPU Graphs
 
 The flexibility of PyTorch comes at a price - usually the same pythonic logic is processed every training step over and over.
-This may lead to a situation where it takes longer for CPU to schedule the work on Habana accelerator than it is effectively computed by it.
+This may lead to a situation where it takes longer for CPU to schedule the work on Gaudi than it is effectively computed by it.
 To cope with such host-bound workloads, you may want to try enabling the _HPU Graphs_ feature, which records the computational graph once, then only triggers it for execution much faster multiple times.
 
-To do so, specify [`--use_hpu_graphs_for_training True`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.use_hpu_graphs_for_training).
+To do so, specify `--use_hpu_graphs_for_training True`.
 This option will wrap the model in [`habana_frameworks.torch.hpu.ModuleCacher`](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/HPU_Graphs_Training.html#training-loop-with-modulecacher), which automatically records _HPU Graphs_ on the model's usage.
 
-For multi-worker distributed training, you also need to specify [`--distribution_strategy fast_ddp`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.distribution_strategy).
+For multi-worker distributed training, you also need to specify `--distribution_strategy fast_ddp`.
 This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
 
 <Tip warning={true}>
@@ -93,13 +102,13 @@ However, the potential performance gain could be dramatic!
 
 ## Fast DDP
 
-For distributed training on several devices, you can also specify [`--distribution_strategy fast_ddp`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.distribution_strategy).
+For distributed training on several devices, you can also specify `--distribution_strategy fast_ddp`.
 This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
 
 
 ## Pipelining Forward and Backward Passes
 
-There are two stages when running models on Habana HPU: python code interpretation on CPU and HPU recipe computation.
+There are two stages when running models on Intel Gaudi HPU: python code interpretation on CPU and HPU recipe computation.
 The HPU computation stage can be triggered manually or when a copy to the CPU is requested, and generally HPU computation is triggered after `loss.backward()` to make the CPU code interpretation and HPU recipe computation overlap as shown in the following illustration:
 
 ```
@@ -116,7 +125,7 @@ CPU:...forward   ...backward   ...optimizer  ...forward   ...backward   ...optim
 HPU:.............forward.......backward......optimizer......forward.....backward.......optimizer
 ```
 
-To enable this optimization, you can set the following training argument [`--pipelining_fwd_bwd True`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.pipelining_fwd_bwd).
+To enable this optimization, you can set the following training argument `--pipelining_fwd_bwd True`.
 
 **We recommend using it on Gaudi2** as the host will often be the bottleneck.
 You should be able to see a speedup on first-generation Gaudi too, but it will be less significant than on Gaudi2 because your run is more likely to be HPU-bound.
@@ -136,7 +145,7 @@ Besides, using `--dataloader_num_workers 1` should help in most cases as it enab
 ## Non-Blocking Data Copy
 
 This optimization is well-suited for models with a high cost of copying data from the host to the device (e.g. vision models like ViT or Swin).
-You can enable it with the training argument [`--non_blocking_data_copy True`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.non_blocking_data_copy).
+You can enable it with the training argument `--non_blocking_data_copy True`.
 
 **We recommend using it on Gaudi2** where the host can continue to execute other tasks (e.g. graph building) to get a better pipelining between the host and the device.
 On first-generation Gaudi, the device executing time is longer so one should not expect to get any speedup.
@@ -144,27 +153,31 @@ On first-generation Gaudi, the device executing time is longer so one should not
 
 ## Custom Operators
 
-Habana provides a few custom operators that achieve better performance than their PyTorch counterparts on Gaudi.
+Intel Gaudi provides a few custom operators that achieve better performance than their PyTorch counterparts on Gaudi.
 You can also define your own custom operator for Gaudi as described [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_CustomOp_API/page_index.html).
 
 
 ### Fused ADAM
 
-Habana provides a [custom fused ADAM implementation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
+Intel Gaudi offers a [custom fused ADAM implementation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
 It can be used by specifying `"use_fused_adam": true` in the Gaudi configuration file.
 
 <Tip warning={true}>
 
-The default value of *epsilon* is `1e-6` for the Habana fused ADAM optimizer, while it is `1e-8` for `torch.optim.AdamW`.
+The default value of *epsilon* is `1e-6` for the Intel Gaudi fused ADAM optimizer, while it is `1e-8` for `torch.optim.AdamW`.
 
 </Tip>
 
 
 ### Fused Gradient Norm Clipping
 
-Habana provides a [custom gradient norm clipping implementation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
+Intel Gaudi provides a [custom gradient norm clipping implementation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
 It can be used by specifying `"use_fused_clip_norm": true` in the Gaudi configuration file.
 
+### Gaudi Optimized Flash Attention
+
+Flash attention algorithm with additional Intel® Gaudi® AI Accelerator optimizetions is supported for both Lazy and Eager mode.
+See [Using Fused Scaled Dot Product Attention (FusedSDPA)](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-scaled-dot-product-attention-fusedsdpa). 
 
 ## Tracking Memory Usage
 
@@ -181,4 +194,4 @@ In distributed mode, memory stats are communicated only by the main process.
 
 </Tip>
 
-You can take a look at [Intel® Gaudi® AI Accelerator's official documentation](https://docs.habana.ai/en/latest/PyTorch/PyTorch_User_Guide/Python_Packages.html#memory-stats-apis) for more information about the memory stats API.
+You can take a look at [Intel Gaudi AI Accelerator's official documentation](https://docs.habana.ai/en/latest/PyTorch/PyTorch_User_Guide/Python_Packages.html#memory-stats-apis) for more information about the memory stats API.

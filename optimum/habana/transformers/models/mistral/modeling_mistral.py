@@ -49,6 +49,7 @@ from ..llama.modeling_llama import (
     GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
@@ -74,47 +75,6 @@ except ImportError:
 logger = logging.get_logger(__name__)
 
 
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert self.inp_seq_len == inp_seq_len, (
-                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            )
-            self.cache.fill_(0)
-
-    def update(self, prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
         super().__init__()
@@ -122,14 +82,6 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
 
 
 def gaudi_mistral_repeat_kv(
@@ -315,7 +267,9 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -868,22 +822,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when SynapseAI v1.15 is released
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
+    if q.device.type == "hpu" and FusedRoPE:
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin)
