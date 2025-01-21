@@ -622,7 +622,8 @@ python run_generation.py \
 ### Saving FP8 Checkpoints in Hugging Face format
 After quantizing the model, we can save it to a local path.
 
-**Note:** Before executing the command below, please refer to the "Running FP8 Models on a Single Device" section to measure the model quantization statistics.
+> [!NOTE]  
+> Before executing the command below, please refer to the "Running FP8 Models on a Single Device" section to measure the model quantization statistics.
 
 Here is an example of how to quantize and save the LLama3.1-8b model on a single card:
 ```bash
