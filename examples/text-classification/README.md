@@ -29,7 +29,7 @@ GLUE is made up of a total of 9 different tasks where the task name can be cola,
 
 Fine-tuning of the model can be performed on a single device, across multiple devices using MPI, or with DeepSpeed.
 
-For multi-devices training with MPI, add the following before run_glue.py. X is device number 
+For multi-device training with MPI, add the following before `run_glue.py` (X is the device number):
 > python ../gaudi_spawn.py \
 >    --world_size X --use_mpi run_glue.py \
 
