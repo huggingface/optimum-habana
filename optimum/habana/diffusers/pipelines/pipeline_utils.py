@@ -362,6 +362,18 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
 
+        # Need to load custom ops lists before instantiating htcore
+        if kwargs.get("gaudi_config", None) is not None:
+            if isinstance(kwargs["gaudi_config"], str):
+                gaudi_config = GaudiConfig.from_pretrained(kwargs["gaudi_config"])
+            else:
+                gaudi_config = kwargs["gaudi_config"]
+            gaudi_config.declare_autocast_bf16_fp32_ops()
+            kwargs["gaudi_config"] = gaudi_config
+
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
+
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,

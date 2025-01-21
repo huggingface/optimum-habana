@@ -1048,7 +1048,9 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if use_flash_attention:
-            assert FusedSDPA, "`use_flash_attention` is True, but cannot find FusedSDPA. Please import it as `from habana_frameworks.torch.hpex.kernels import FusedSDPA` or set use_flash_attention to False (at the expense of a possible performance degradation)."
+            assert FusedSDPA, (
+                "`use_flash_attention` is True, but cannot find FusedSDPA. Please import it as `from habana_frameworks.torch.hpex.kernels import FusedSDPA` or set use_flash_attention to False (at the expense of a possible performance degradation)."
+            )
         if flash_attention_recompute:
             assert use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
         if flash_attention_causal_mask:
