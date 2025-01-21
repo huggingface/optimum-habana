@@ -167,8 +167,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
 
         if isinstance(ref_model, str):
             warnings.warn(
-                "You passed a ref model_id to the DPOTrainer. This will automatically create an "
-                "`AutoModelForCausalLM`"
+                "You passed a ref model_id to the DPOTrainer. This will automatically create an `AutoModelForCausalLM`"
             )
             ref_model = AutoModelForCausalLM.from_pretrained(ref_model, **ref_model_init_kwargs)
 

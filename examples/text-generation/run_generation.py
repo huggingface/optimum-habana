@@ -28,6 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
+from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -248,7 +249,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -301,9 +306,9 @@ def setup_parser(parser):
     parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
     )
     parser.add_argument(
         "--input_embeds",
@@ -314,6 +319,9 @@ def setup_parser(parser):
         "--run_partial_dataset",
         action="store_true",
         help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
@@ -384,6 +392,9 @@ def main():
 
     import habana_frameworks.torch.hpu as torch_hpu
 
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
@@ -452,20 +463,31 @@ def main():
             encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
                     attn_mask = input_tokens["attention_mask"]
-                    return torch.sum(attn_mask, dim=1)
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
 
                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
                 generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -504,7 +526,7 @@ def main():
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
-            logger.info(f"Time to first token = {first_token_time*1000}ms")
+            logger.info(f"Time to first token = {first_token_time * 1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -519,10 +541,10 @@ def main():
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -537,7 +559,7 @@ def main():
                 for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -561,12 +583,16 @@ def main():
 
         print()
         print("Input/outputs:")
+        all_inputs = []
+        all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
-            print(f"input {i+1}: {input_sentence}")
+            print(f"input {i + 1}: {input_sentence}")
+            all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i + 1}.{j + 1}: {output}")
+                all_outputs.append(output)
             print()
 
         # Store results if necessary
@@ -576,7 +602,8 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "output": output,
+                "input": all_inputs,
+                "output": all_outputs,
             }
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
@@ -692,22 +719,21 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
+        from optimum.habana.utils import HabanaProfile
 
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            logger.info("Graph compilation...")
-            t0 = time.perf_counter()
-            for i, batch in enumerate(dataloader):
-                generate_dataset(batch)
-                # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
-                    break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        logger.info("Graph compilation...")
+        t0 = time.perf_counter()
+        for i, batch in enumerate(dataloader):
+            generate_dataset(batch)
+            # The first three iterations take longer because of graph compilation
+            if (i + 1) == 3:
+                break
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
@@ -720,10 +746,10 @@ def main():
             duration += time.perf_counter() - t0
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
-            print(f"Batch n°{i+1}")
-            print(f"Input: {prompt[:args.batch_size]}")
+            print(f"Batch n°{i + 1}")
+            print(f"Input: {prompt[: args.batch_size]}")
             print(
-                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[: args.batch_size * args.num_return_sequences]}"
             )
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
@@ -743,8 +769,7 @@ def main():
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        if prompt_length > 0:
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
         finalize_quantization(model)

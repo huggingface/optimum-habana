@@ -14,6 +14,8 @@ from transformers.models.clip.modeling_clip import (
     CLIPVisionTransformer,
 )
 
+from ..modeling_all_models import Matmul
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -47,14 +49,6 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
@@ -79,12 +73,14 @@ class GaudiCLIPAttention(CLIPAttention):
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention to enable FusedSDPA
         - add new args flash_attention_recompute
+        - add new args flash_attention_fast_softmax
         """
         bsz, tgt_len, _ = hidden_states.size()
         attn_weights_reshaped = None
@@ -102,9 +98,17 @@ class GaudiCLIPAttention(CLIPAttention):
         if FusedSDPA and use_flash_attention:
             import habana_frameworks.torch.hpu as ht
 
+            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
             with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                 attn_output = self.fused_scaled_dot_product_attention(
-                    query_states, key_states, value_states, attention_mask, self.dropout, False, 1, "fast"
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    self.dropout,
+                    False,
+                    1,
+                    softmax_mode,
                 )
         else:
             attn_weights = self.bmm1(query_states, key_states.transpose(1, 2))

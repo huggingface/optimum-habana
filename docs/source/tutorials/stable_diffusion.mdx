@@ -23,12 +23,12 @@ Check out this [blog post](https://huggingface.co/blog/stable_diffusion) for mor
 ## How to generate images?
 
 To generate images with Stable Diffusion on Gaudi, you need to instantiate two instances:
-- A pipeline with [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline). This pipeline supports *text-to-image generation*.
-- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+- A pipeline with `GaudiStableDiffusionPipeline`. This pipeline supports *text-to-image generation*.
+- A scheduler with `GaudiDDIMScheduler`. This scheduler has been optimized for Gaudi.
 
 When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
 Furthermore, to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
-Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
+Finally, you will need to specify a [Gaudi configuration](../package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
 
 ```python
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
@@ -56,7 +56,7 @@ outputs = pipeline(
 )
 ```
 
-Outputs can be PIL images or Numpy arrays. See [here](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.StableDiffusionPipeline.__call__) all the parameters you can set to tailor generations to your taste.
+Generated images can be returned as either PIL images or NumPy arrays, depending on the `output_type` option.
 
 <Tip>
 
@@ -67,12 +67,11 @@ Check out the [example](https://github.com/huggingface/optimum-habana/tree/main/
 
 ## Stable Diffusion 2
 
-[Stable Diffusion 2](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion_2) can be used with the exact same classes.
+[Stable Diffusion 2](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_2) can be used with the exact same classes.
 Here is an example:
 
 ```python
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
-
 
 model_name = "stabilityai/stable-diffusion-2-1"
 
@@ -114,8 +113,8 @@ See [here](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/
 ### How to upscale low resolution images?
 
 To generate RGB and depth images with Stable Diffusion Upscale on Gaudi, you need to instantiate two instances:
-- A pipeline with [`GaudiStableDiffusionUpscalePipeline`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiStableDiffusionUpscalePipeline).
-- A scheduler with [`GaudiDDIMScheduler`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+- A pipeline with `GaudiStableDiffusionUpscalePipeline`.
+- A scheduler with `GaudiDDIMScheduler`. This scheduler has been optimized for Gaudi.
 
 When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
 Furthermore, to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.

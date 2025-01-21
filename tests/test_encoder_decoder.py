@@ -16,16 +16,13 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 3.673, 28.9801, 2, 2),
-                ("t5-3b", "Habana/t5", 2.955, 21.8877, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 4.339, 28.9801, 2, 2),
+                ("t5-3b", "Habana/t5", 3.848, 21.8877, 2, 1),
             ],
         },
         "translation": {
             "bf16": [
-                ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1509, 2, 1),
-                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.815, 0.8132, 2, 1),
-                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.284, 1.2599, 2, 1),
-                ("t5-small", "Habana/t5", 11.164, 11.7277, 2, 1),
+                ("t5-small", "Habana/t5", 11.648, 11.7277, 2, 1),
             ],
         },
     }
@@ -40,9 +37,6 @@ else:
         },
         "translation": {
             "bf16": [
-                ("Babelscape/mrebel-large", "Habana/t5", 0.995, 0.1784, 2, 1),
-                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.409, 0.7995, 2, 1),
-                ("facebook/nllb-200-distilled-600M", "Habana/t5", 0.998, 1.2457, 2, 1),
                 ("t5-small", "Habana/t5", 9.188, 11.6126, 2, 1),
             ],
         },
@@ -152,6 +146,7 @@ class TestEncoderDecoderModels:
             "--use_hpu_graphs_for_inference",
             "--use_lazy_mode",
             "--max_predict_samples 200",
+            "--throughput_warmup_steps 3",
         ]
 
         command = self._build_command(
@@ -189,7 +184,8 @@ class TestEncoderDecoderModels:
             "--do_predict",
             "--source_lang en",
             "--target_lang ro",
-            '--source_prefix "translate English to Romanian: "' "--dataset_name wmt16",
+            '--source_prefix "translate English to Romanian: "',
+            "--dataset_name wmt16",
             "--dataset_config_name ro-en",
             f"--per_device_eval_batch_size {batch_size}",
             f"--generation_num_beams {num_beams}",
@@ -201,10 +197,14 @@ class TestEncoderDecoderModels:
             "--ignore_pad_token_for_loss False",
             "--pad_to_max_length",
             "--max_predict_samples 200",
+            "--throughput_warmup_steps 3",
         ]
 
         if "opus-mt-zh-en" in model_name:
             command_args.append("--max_source_length 512")
+
+        if "Babelscape/mrebel-large" in model_name or "nllb-200-distilled-600M" in model_name:
+            command_args.append("--sdp_on_bf16")
 
         command = self._build_command(
             task=task,

@@ -28,10 +28,10 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
-from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
+from ...utils import to_device_dtype
 
 
 logger = logging.get_logger(__name__)
@@ -55,6 +55,7 @@ GAUDI_LOADABLE_CLASSES = {
     "optimum.habana.diffusers.schedulers": {
         "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiFlowMatchEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
         "GaudiEulerAncestralDiscreteScheduler": ["save_pretrained", "from_pretrained"],
     },
 }
@@ -112,6 +113,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -120,8 +123,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         DiffusionPipeline.__init__(self)
+
+        if sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
         self.use_habana = use_habana
         if self.use_habana:
@@ -158,8 +165,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         "`torch_dtype=torch.bfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
-                else:
-                    self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
@@ -363,6 +368,18 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
 
+        # Need to load custom ops lists before instantiating htcore
+        if kwargs.get("gaudi_config", None) is not None:
+            if isinstance(kwargs["gaudi_config"], str):
+                gaudi_config = GaudiConfig.from_pretrained(kwargs["gaudi_config"])
+            else:
+                gaudi_config = kwargs["gaudi_config"]
+            gaudi_config.declare_autocast_bf16_fp32_ops()
+            kwargs["gaudi_config"] = gaudi_config
+
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
+
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
@@ -387,13 +404,27 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
         if text_encoder_2_lora_layers:
             text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
-        return super().save_lora_weights(
-            save_directory,
-            unet_lora_layers,
-            text_encoder_lora_layers,
-            text_encoder_2_lora_layers,
-            is_main_process,
-            weight_name,
-            save_function,
-            safe_serialization,
-        )
+
+        # text_encoder_2_lora_layers is only supported by some diffuser pipelines
+        signature = inspect.signature(super().save_lora_weights)
+        if "text_encoder_2_lora_layers" in signature.parameters:
+            return super().save_lora_weights(
+                save_directory,
+                unet_lora_layers,
+                text_encoder_lora_layers,
+                text_encoder_2_lora_layers,
+                is_main_process,
+                weight_name,
+                save_function,
+                safe_serialization,
+            )
+        else:
+            return super().save_lora_weights(
+                save_directory,
+                unet_lora_layers,
+                text_encoder_lora_layers,
+                is_main_process,
+                weight_name,
+                save_function,
+                safe_serialization,
+            )

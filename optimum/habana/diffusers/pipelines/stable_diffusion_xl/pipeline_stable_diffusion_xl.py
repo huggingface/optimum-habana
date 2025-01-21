@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -38,6 +37,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.unet_2d_condition import set_default_attn_processor_hpu
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
@@ -137,6 +137,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             feature_extractor,
             force_zeros_for_empty_prompt,
         )
+
+        self.unet.set_default_attn_processor = set_default_attn_processor_hpu
 
         self.to(self._device)
 
@@ -726,7 +728,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                         continue
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
                         torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
@@ -817,13 +818,17 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
+            if t1 == t0 or use_warmup_inference_steps:
+                num_samples = num_batches * batch_size
+                num_steps = (num_inference_steps - throughput_warmup_steps) * num_batches * batch_size
+            else:
+                num_samples = (num_batches - throughput_warmup_steps) * batch_size
+                num_steps = (num_batches - throughput_warmup_steps) * num_inference_steps * batch_size
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_batches * batch_size
-                if t1 == t0 or use_warmup_inference_steps
-                else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches * batch_size * num_inference_steps,
+                num_samples=num_samples,
+                num_steps=num_steps,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")

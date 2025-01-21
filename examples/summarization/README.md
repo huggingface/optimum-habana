@@ -179,7 +179,7 @@ python ../gaudi_spawn.py \
 
 ## Using DeepSpeed
 
-Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
+Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_summarization.py \
@@ -209,6 +209,34 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --deepspeed ds_flan_t5_z3_config_bf16.json
 ```
 
+Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO2 to fine-tune t5-large:
+```bash
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+      --world_size 8 \
+      --use_deepspeed run_summarization.py \
+      --deepspeed ../../tests/configs/deepspeed_zero_2.json \
+      --do_train \
+      --do_eval \
+      --overwrite_output_dir \
+      --predict_with_generate \
+      --use_habana \
+      --gaudi_config_name Habana/t5  \
+      --ignore_pad_token_for_loss False \
+      --pad_to_max_length \
+      --save_strategy no \
+      --throughput_warmup_steps 15 \
+      --model_name_or_path t5-large \
+      --source_prefix '"summarize:"' \
+      --dataset_name cnn_dailymail \
+      --dataset_config '"3.0.0"' \
+      --output_dir /tmp/tst-summarization \
+      --per_device_train_batch_size 20 \
+      --per_device_eval_batch_size 20 \
+      --max_train_samples 2000  \
+      --torch_compile_backend hpu_backend \
+      --torch_compile
+```
+
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 
 
@@ -234,6 +262,7 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
+    --throughput_warmup_steps 3 \
     --bf16 \
     --bf16_full_eval
 ```
@@ -255,5 +284,6 @@ python run_summarization.py \
     --gaudi_config_name Habana/bart \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
+    --throughput_warmup_steps 3 \
     --num_beams 1
 ```
