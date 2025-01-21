@@ -29,7 +29,6 @@ import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import get_dtype
 
 # Local imports
 from run_generation import setup_parser
@@ -210,38 +209,6 @@ class HabanaModelAdapter(HFLM):
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
         return logits
-
-    def _create_model(
-        self,
-        pretrained: str,
-        revision="main",
-        dtype="auto",
-        trust_remote_code=False,
-        # arguments used for splitting a model across GPUs naively.
-        # only used if `parallelize=True`.
-        # (accelerate naive PP (device_map) options)
-        parallelize=False,
-        gpus=None,
-        max_memory_per_gpu=None,
-        max_cpu_memory=None,
-        offload_folder="./offload",
-        # PEFT, delta weights and quantization options
-        peft=None,
-        delta=None,
-        autogptq=False,
-        gptqmodel=False,
-        **kwargs,
-    ) -> None:
-        from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
-        adapt_transformers_to_gaudi()
-
-        self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-            pretrained,
-            revision=revision,
-            torch_dtype=get_dtype(dtype),
-            trust_remote_code=trust_remote_code,
-        )
 
 
 def main() -> None:
