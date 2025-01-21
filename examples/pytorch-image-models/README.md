@@ -16,7 +16,7 @@ limitations under the License.
 
 # pyTorch-IMage-Models (TIMM) Examples with HPUs
 
-This directory contains the scripts that showcases how to inference/fine-tune the TIMM models on intel's HPUs with the lazy/graph modes.  We support the trainging for single/multiple HPU cards both two. Currently we can support first 10 most downloadable models from [Hugging Face timm link](https://huggingface.co/timm). In our example below for inference/training we will use [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) as our testing model and same usage for other models. 
+This directory contains the scripts that showcase how to inference/fine-tune the TIMM models on Intel's HPUs with the lazy/graph modes. Training is supported for single/multiple HPU cards. Currently we can support first 10 most downloadable models from [Hugging Face timm link](https://huggingface.co/timm). In our example below for inference/training we will use [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) as our testing model and same usage for other models. 
 
 ## Requirements
 
