@@ -17,7 +17,7 @@ limitations under the License.
 # Image to Text Examples
 This directory contains a script that showcases how to perform image to text generation on Intel® Gaudi® AI Accelerators.
 
-Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA implementation as in optimum/habana/transformers/models.  If model is not optimized with FusedSDPA, it uses [SDPA implementation](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) .
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). We optimized many models with FusedSDPA implementation as in [optimum/habana/transformers/models](https://github.com/huggingface/optimum-habana/tree/main/optimum/habana/transformers/models). If a model is not optimized with FusedSDPA, it uses [SDPA implementation](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html).
 
 ## Inference with mixed-precision(BF16)
 
