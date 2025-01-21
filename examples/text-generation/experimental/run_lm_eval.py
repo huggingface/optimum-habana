@@ -72,7 +72,7 @@ def setup_lm_eval_parser():
         type=int,
         nargs="+",
         help="Input length buckets to use with static_shapes",
-        default=[16, 32, 64, 128, 189, 284],
+        default=[16, 32, 64, 128, 189, 284, 384],
     )
 
     parser.add_argument(
@@ -112,13 +112,14 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             "gptj",
             "starcoder2",
             "gemma",
+            "baichuan",
         ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
             if self.model.config.model_type != "falcon":
                 self.model_inputs.update(
                     {

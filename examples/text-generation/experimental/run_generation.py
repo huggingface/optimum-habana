@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -276,7 +277,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         nargs="?",
@@ -340,9 +345,9 @@ def setup_parser(parser):
     parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
     )
     parser.add_argument(
         "--input_embeds",
@@ -364,6 +369,9 @@ def setup_parser(parser):
         type=str,
         default="saved_results",
         help="A path to save quantized checkpoint.",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
     parser.add_argument(
         "--pt2e_quant",
@@ -403,7 +411,7 @@ def setup_parser(parser):
     quant_parser_group.add_argument(
         "--load_quantized_model_with_inc",
         action="store_true",
-        help="Load a quantized Huggingface checkpoint using INC.",
+        help="Load a Huggingface quantized checkpoint using INC.",
     )
     quant_parser_group.add_argument(
         "--local_quantized_inc_model_path",
@@ -442,9 +450,6 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.flash_attention_fast_softmax is None:
-        args.flash_attention_fast_softmax = args.use_flash_attention
-
     if args.use_flash_attention and not args.flash_attention_fast_softmax:
         args.flash_attention_fast_softmax = True
 
@@ -482,10 +487,14 @@ def main():
     args = setup_parser(parser)
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
+    use_lazy_mode = True
     if args.torch_compile or model.config.model_type == "llama":
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.dataset_name == "openorca":
         # Benchmark over the prompts below
@@ -712,12 +721,18 @@ def main():
             print(f"Step4+ starting time is {t0 * 1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
 
                 def compute_valid_sequence_lengths_tensor(input_tokens):
@@ -726,6 +741,11 @@ def main():
 
                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
                 generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -824,12 +844,16 @@ def main():
 
         print()
         print("Input/outputs:")
+        all_inputs = []
+        all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
             print(f"input {i + 1}: {input_sentence}")
+            all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j + 1}: {output}")
+                print(f"output {i + 1}.{j + 1}: {output}")
+                all_outputs.append(output)
             print()
 
         # Store results if necessary
@@ -839,7 +863,8 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "output": output,
+                "input": all_inputs,
+                "output": all_outputs,
             }
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
