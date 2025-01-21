@@ -168,6 +168,6 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
->  For different models, please adjust training parapmeters and lora_target_modules. Such as replace lora_target_modules
+>  For different models, please adjust training parameters and `lora_target_modules`. Such as replace `lora_target_modules`
 >  with below for HuggingFaceM4/idefics2-8b.
 >  '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
