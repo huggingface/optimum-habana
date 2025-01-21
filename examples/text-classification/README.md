@@ -35,7 +35,7 @@ For multi-device training with MPI, add the following before `run_glue.py` (X is
 
 For multi-device training with DeepSpeed, add the following before `run_glue.py` and DeepSpeed config with `--deepspeed` after (X is the device number):
 > python ../gaudi_spawn.py \
->    --world_size X --use_deepspeed run_glue.py --deepspeed \
+>    --world_size X --use_deepspeed run_glue.py --deepspeed path_to_deepspeed_config \
 
 ## Requirements
 
