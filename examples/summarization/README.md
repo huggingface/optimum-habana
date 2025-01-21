@@ -262,6 +262,7 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
+    --throughput_warmup_steps 3 \
     --bf16 \
     --bf16_full_eval
 ```
@@ -283,5 +284,6 @@ python run_summarization.py \
     --gaudi_config_name Habana/bart \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
+    --throughput_warmup_steps 3 \
     --num_beams 1
 ```
