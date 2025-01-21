@@ -53,9 +53,7 @@ def LimitedSpawnPool(_):
     physical_cpu_count = psutil.cpu_count(logical=False)
     pool_size = physical_cpu_count
     world_size = int(os.getenv("WORLD_SIZE", 1))
-    if world_size == 0:
-        world_size = 1
-    pool_size //= world_size
+    pool_size //= max(world_size, 1)
     if (pool_size * world_size) != physical_cpu_count:
         pool_size -= 1
     return spawn_context.Pool(pool_size)
@@ -107,12 +105,12 @@ class HabanaModelAdapter(HFLM):
         args: argparse.Namespace,
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
-        # override whether the model should be treated as decoder-only (causal) or encoder-decoder (seq2seq)
         logits_cache: bool = True,
         add_bos_token: Optional[bool] = False,
         delta: Optional[str] = None,
         **kwargs,
     ) -> None:
+        # To skip cuda code of the HFLM init
         TemplateLM.__init__(self)
         self.tokenizer = tokenizer
         self._model = model
@@ -126,12 +124,6 @@ class HabanaModelAdapter(HFLM):
         self.delta = delta
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
-
-        # access self._model through self.model property outside this method
-        if isinstance(self.model, torch.nn.Module):
-            self.model.eval()
-            self.model.tie_weights()
-
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = options.max_length
@@ -242,11 +234,11 @@ def main() -> None:
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
 
-        json.dump(
-            results, open(args.output_file, "w"), indent=2, default=utils.handle_non_serializable, ensure_ascii=False
-        )
+        json_str = json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(json_str)
         if args.show_config:
-            print(json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False))
+            print(json_str)
 
     if args.quant_config:
         finalize_quantization(model)
