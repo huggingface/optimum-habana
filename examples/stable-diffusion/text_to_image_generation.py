@@ -305,6 +305,12 @@ def main():
         default=None,
         help="The file with prompts (for large number of images generation).",
     )
+    parser.add_argument(
+        "--lora_scale",
+        type=float,
+        default=None,
+        help="A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.",
+    )
     args = parser.parse_args()
 
     if args.optimize and not args.use_habana:
@@ -379,6 +385,9 @@ def main():
 
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
+    
+    if args.lora_scale is not None:
+        kwargs_call["lora_scale"] = args.lora_scale
 
     negative_prompts = args.negative_prompts
     if args.distributed:

@@ -80,7 +80,11 @@ EXAMPLE_DOC_STRING = """
 
 # ToDo: Look into FusedJointAttnProcessor2_0 usage for sd3 pipeline, and check its perf using fused sdpa
 class GaudiJointAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections."""
+    """Attention processor used typically in processing the SD3-like self-attention projections.
+    Copied from JointAttnProcessor2_0.forward: https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/models/attention_processor.py
+        The only differences are:
+        - applied Fused SDPA from Habana's framework.
+    """
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -490,6 +494,14 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             import os
 
             quant_config_path = os.getenv("QUANT_CONFIG")
+
+            if not quant_config_path:
+                raise ImportError(
+                    "Error: QUANT_CONFIG path is not defined. Please define path to quantization configuration JSON file."
+                )
+            elif not os.path.isfile(quant_config_path):
+                raise ImportError(f"Error: QUANT_CONFIG path '{quant_config_path}' is not valid")
+                
             htcore.hpu_set_env()
             from neural_compressor.torch.quantization import FP8Config, convert, prepare
 
@@ -537,6 +549,10 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
         device = self._execution_device
 
+        lora_scale = (
+            kwargs.get("lora_scale", None) if kwargs is not None else None
+        )
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -558,6 +574,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             clip_skip=self.clip_skip,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
 
         # 4. Prepare timesteps
