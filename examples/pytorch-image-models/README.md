@@ -61,7 +61,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
     --model resnet50.a1_in1k \
     --train-split train \
     --val-split train \
-    --dataset-download 
+    --dataset-download
 ```
 
 
