@@ -22,13 +22,13 @@ import json
 import multiprocessing as mp
 import os
 import time
+from typing import Literal, Optional
 
 import psutil
 import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
-from lm_eval.models.huggingface import HFLM
-from lm_eval.models.utils import get_dtype
+from lm_eval.models.huggingface import HFLM, TemplateLM
 
 # Local imports
 from run_generation import setup_parser
@@ -53,9 +53,7 @@ def LimitedSpawnPool(_):
     physical_cpu_count = psutil.cpu_count(logical=False)
     pool_size = physical_cpu_count
     world_size = int(os.getenv("WORLD_SIZE", 1))
-    if world_size == 0:
-        world_size = 1
-    pool_size //= world_size
+    pool_size //= max(world_size, 1)
     if (pool_size * world_size) != physical_cpu_count:
         pool_size -= 1
     return spawn_context.Pool(pool_size)
@@ -106,14 +104,31 @@ class HabanaModelAdapter(HFLM):
         model: AutoModelForCausalLM,
         args: argparse.Namespace,
         options: GenerationConfig,
+        backend: Literal["default", "causal", "seq2seq"] = "default",
+        logits_cache: bool = True,
+        add_bos_token: Optional[bool] = False,
+        delta: Optional[str] = None,
+        **kwargs,
     ) -> None:
-        super().__init__(pretrained=args.model_name_or_path, device=args.device)
+        # To skip cuda code of the HFLM init
+        TemplateLM.__init__(self)
         self.tokenizer = tokenizer
         self._model = model
+        self._config = self._model.config
         self._batch_size = args.batch_size
         self.buckets: list[int] = sorted(args.buckets)
         self.options = options
         self.device_ = args.device
+        self.pretrained = model
+        self.peft = args.peft_model
+        self.delta = delta
+        # determine which of 'causal' and 'seq2seq' backends to use for HF models
+        self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
+        self.logits_cache = logits_cache
+        self.add_bos_token = add_bos_token
+        self._max_length = options.max_length
+        self.batch_size_per_gpu = int(args.batch_size)
+        self.revision = args.model_revision
         self.model_inputs = {"use_cache": self.options.use_cache}
         if self._model.config.model_type in [
             "llama",
@@ -187,38 +202,6 @@ class HabanaModelAdapter(HFLM):
         logits = logits.to(torch.float32)
         return logits
 
-    def _create_model(
-        self,
-        pretrained: str,
-        revision="main",
-        dtype="auto",
-        trust_remote_code=False,
-        # arguments used for splitting a model across GPUs naively.
-        # only used if `parallelize=True`.
-        # (accelerate naive PP (device_map) options)
-        parallelize=False,
-        gpus=None,
-        max_memory_per_gpu=None,
-        max_cpu_memory=None,
-        offload_folder="./offload",
-        # PEFT, delta weights and quantization options
-        peft=None,
-        delta=None,
-        autogptq=False,
-        gptqmodel=False,
-        **kwargs,
-    ) -> None:
-        from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
-        adapt_transformers_to_gaudi()
-
-        self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-            pretrained,
-            revision=revision,
-            torch_dtype=get_dtype(dtype),
-            trust_remote_code=trust_remote_code,
-        )
-
 
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
@@ -251,11 +234,11 @@ def main() -> None:
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
 
-        json.dump(
-            results, open(args.output_file, "w"), indent=2, default=utils.handle_non_serializable, ensure_ascii=False
-        )
+        json_str = json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(json_str)
         if args.show_config:
-            print(json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False))
+            print(json_str)
 
     if args.quant_config:
         finalize_quantization(model)
