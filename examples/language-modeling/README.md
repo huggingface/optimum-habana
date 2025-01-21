@@ -96,6 +96,11 @@ python ../gaudi_spawn.py \
     --bf16
 ```
 
+If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
+concatenates all texts and then splits them into blocks of the same length).
+
+**Note:** On HPU, you should use the flag `--pad_to_max_length` in conjunction with the `--line_by_line` flag to make sure all your batches have the same length.
+
 
 ### Training in torch.compile mode
 RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,
