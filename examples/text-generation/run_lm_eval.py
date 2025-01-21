@@ -84,12 +84,12 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
-    parser.add_argument("--limit",
+    parser.add_argument(
+        "--limit",
         "-L",
         type=float,
         default=None,
-        help="Limit the number of examples per task. "
-        "If <1, limit is a percentage of the total number of examples.",
+        help="Limit the number of examples per task. If <1, limit is a percentage of the total number of examples.",
     )
     parser.add_argument(
         "--show_config",
@@ -221,12 +221,9 @@ class HabanaModelAdapter(HFLM):
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
-    
+
     if args.limit:
-        eval_logger.warning(
-            " --limit SHOULD ONLY BE USED FOR TESTING."
-            "REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT."
-        )
+        logger.warning(" --limit SHOULD ONLY BE USED FOR TESTING.REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.")
 
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
@@ -240,11 +237,13 @@ def main() -> None:
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, 
-                num_fewshot=args.num_fewshot, 
-                device=args.device, 
-                limit=args.limit,
-                )
+        results = evaluator.simple_evaluate(
+            lm,
+            tasks=args.tasks,
+            num_fewshot=args.num_fewshot,
+            device=args.device,
+            limit=args.limit,
+        )
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
