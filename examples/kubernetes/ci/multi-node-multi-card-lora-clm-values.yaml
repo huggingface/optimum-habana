@@ -22,7 +22,7 @@ podAnnotations: {}
 
 # securityContext:
 #   # -- Run as privileged or unprivileged. Certain deployments may require running as privileged, check with your system admin.
-  privileged: false
+  # privileged: false
 
 # -- The default 64MB of shared memory for docker containers can be insufficient when using more than one HPU. Setting hostIPC: true allows reusing the host's shared memory space inside the container.
 hostIPC: true
