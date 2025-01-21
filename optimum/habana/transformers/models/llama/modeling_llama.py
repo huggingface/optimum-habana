@@ -719,12 +719,16 @@ class GaudiLlamaAttention(LlamaAttention):
                 if past_key_value is None:
                     past_key = torch.zeros(
                         key_states.shape,
-                        dtype=self.get_k_proj_weight_dtype(),
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
                         device=key_states.device,
                     )
                     past_value = torch.zeros(
                         key_states.shape,
-                        dtype=self.get_k_proj_weight_dtype(),
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
                         device=key_states.device,
                     )
                     # Return list instead of tuple
