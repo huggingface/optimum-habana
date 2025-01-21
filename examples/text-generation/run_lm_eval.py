@@ -196,7 +196,7 @@ class HabanaModelAdapter(HFLM):
     def device(self):
         # We need to do padding ourselves, otherwise we'll end up with recompilations
         # Returning 'cpu' to keep tensors on CPU in lm_eval code
-        return "cpu"
+        return "hpu"
 
     def find_bucket(self, length: int) -> list[int]:
         return [b for b in self.buckets if b >= length][0]
@@ -236,7 +236,11 @@ def main() -> None:
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     # Regroup some args in gen_kwargs, defined as "String arguments for model generation on greedy_until tasks, e.g. `temperature=0,top_k=0,top_p=0`."
-    gen_kwargs = f"temperature={args.temperature},top_k={args.top_k},top_p={args.top_p}"
+    gen_kwargs = f"temperature={args.temperature}"
+    if args.top_k is not None:
+        gen_kwargs += f",top_k={args.top_k}"
+    gen_kwargs += f",top_p={args.top_p}"
+
     eval_start = time.perf_counter()
     with torch.no_grad():
         results = evaluator.simple_evaluate(
