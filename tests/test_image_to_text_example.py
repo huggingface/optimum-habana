@@ -4,6 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Callable, Union
 
 import pytest
 
@@ -46,6 +47,18 @@ else:
         "fp8": [],
     }
 
+def install_requirements(requirements_filename: Union[str, os.PathLike]):
+    """
+    Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
+    """
+
+    if not Path(requirements_filename).exists():
+        return
+
+    cmd_line = f"pip install -r {requirements_filename}".split()
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
 
 def _test_image_to_text(
     model_name: str,
@@ -57,6 +70,7 @@ def _test_image_to_text(
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
     env_variables = os.environ.copy()
+    install_requirements(path_to_example_dir / 'image-to-text/requirements.txt')
 
     command += [
         f"{path_to_example_dir / 'image-to-text' / 'run_pipeline.py'}",
