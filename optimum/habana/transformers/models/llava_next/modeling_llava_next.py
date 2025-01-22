@@ -368,10 +368,10 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             # In case input_ids.shape[1] == 1 & pixel_values==None & past_key_values != None, we are in the case of
             # generation with cache
             elif past_key_values is not None and pixel_values is not None:
+                seq_len = input_ids.shape[1]
+                pad_len = seq_len - token_idx
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
                 if legacy_processing:
-                    seq_len = input_ids.shape[1]
-                    pad_len = seq_len - token_idx
                     # Retrieve the first layer to inspect the logits and mask out the hidden states
                     # that are set to 0
                     first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
