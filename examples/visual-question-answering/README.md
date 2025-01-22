@@ -16,6 +16,10 @@ limitations under the License.
 
 # Visual Question Answering Examples
 
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU inference
 
 The `run_pipeline.py` script showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
@@ -34,7 +38,7 @@ The `run_openclip_vqa.py` can be used to run zero shot image classification with
 The requirements for `run_openclip_vqa.py` can be installed with `openclip_requirements.txt` as follows:
 
 ```bash
-pip install -r openclip_requirements.txt
+pip install --no-deps -r openclip_requirements.txt
 ```
 
 By default, the script runs the sample outlined in [BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 notebook](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb). One can also can also run other OpenCLIP models by specifying model, classifier labels and image URL(s) like so:
