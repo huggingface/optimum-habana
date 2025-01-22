@@ -28,7 +28,3 @@ python3 run_example.py \
 	--bf16 \
 	--print_result
 ```
-
-Models that have been validated:
-  - [facebook/detr-resnet-101](https://huggingface.co/facebook/detr-resnet-101)
-  - [facebook/detr-resnet-50](https://huggingface.co/facebook/detr-resnet-50)
