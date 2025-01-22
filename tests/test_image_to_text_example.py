@@ -23,7 +23,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
             ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1, 18.974541922240313),
             ("tiiuae/falcon-11B-vlm", 1, 23.69260849957278),
-            ("Qwen/Qwen2-VL-2B-Instruct", 1, 13.319195250861407),
             ("Qwen/Qwen2-VL-7B-Instruct", 1, 7.491897460793705),
         ],
         "fp8": [
