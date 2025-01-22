@@ -732,7 +732,7 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
             elif tgt_lang not in lang_code_to_id:
                 raise ValueError(
                     f"""`tgt_lang={tgt_lang}` is not supported by this model.
-                Please specify a `tgt_lang` in {','.join(lang_code_to_id.keys())}. Note that SeamlessM4T supports
+                Please specify a `tgt_lang` in {",".join(lang_code_to_id.keys())}. Note that SeamlessM4T supports
                 more languages for text translation than for speech synthesis."""
                 )
     if kwargs.get("hpu_graphs", True):

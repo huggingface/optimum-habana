@@ -21,7 +21,7 @@ from accelerate.utils import is_deepspeed_available, parse_choice_from_env, pars
 
 from optimum.utils import logging
 
-from .. import parallel_state
+from ..distributed import parallel_state
 from .utils import GaudiDistributedType
 
 
@@ -56,7 +56,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
@@ -88,7 +88,17 @@ class GaudiPartialState(PartialState):
                     self.device = torch.device("hpu")
                 if not is_deepspeed_available():
                     context_parallel_size = 1
-                parallel_state.initialize_model_parallel(sequence_parallel_size=context_parallel_size, use_fp8=False)
+                if parallel_state.is_unitialized():
+                    parallel_state.initialize_model_parallel(
+                        sequence_parallel_size=context_parallel_size, use_fp8=False
+                    )
+                else:
+                    if parallel_state.get_sequence_parallel_world_size() != context_parallel_size:
+                        raise ValueError(
+                            "The initialized sequence parallel world size does not match the context parallel size."
+                        )
+                    if parallel_state.amax_reduction_is_initialized():
+                        logger.info("FP8 amax reduction group is already initialized.")
             else:
                 self.distributed_type = (
                     GaudiDistributedType.NO

@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.18.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.19.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -387,7 +387,7 @@ def check_habana_frameworks_version(req_version):
 
 def get_device_name():
     """
-    Returns the name of the current device: Gaudi or Gaudi2.
+    Returns the name of the current device: Gaudi, Gaudi2 or Gaudi3.
 
     Inspired from: https://github.com/HabanaAI/Model-References/blob/a87c21f14f13b70ffc77617b9e80d1ec989a3442/PyTorch/computer_vision/classification/torchvision/utils.py#L274
     """
@@ -399,5 +399,7 @@ def get_device_name():
         return "gaudi"
     elif device_type == htexp.synDeviceType.synDeviceGaudi2:
         return "gaudi2"
+    elif device_type == htexp.synDeviceType.synDeviceGaudi3:
+        return "gaudi3"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")

@@ -39,14 +39,15 @@ $ pip install -U -r requirements.txt
         --lora_dropout=0.05 \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
-        --adam_epsilon 1e-08
+        --adam_epsilon 1e-08 \
+        --use_flash_attention
     ```
 
-2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-v0.1 on 4 cards:
+2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
     ```
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
-        --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+        --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
         --streaming False \
@@ -229,7 +230,7 @@ steps like:
 To merge the adaptors into the base model we can use the `merge_peft_adapter.py` helper script that comes with TRL:
 
 ```
-python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-7b-hf" --adapter_model_name="dpo" --output_name="stack-llama-2"
+python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-70b-hf" --adapter_model_name="dpo" --output_name="stack-llama-2"
 ```
 
 which will also push the model to your HuggingFace hub account.
@@ -239,7 +240,7 @@ which will also push the model to your HuggingFace hub account.
 We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
 ```
-python run_generation.py \
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
 --model_name_or_path ../trl/stack-llama-2/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
 --prompt "Here is my prompt"
@@ -359,8 +360,12 @@ python ddpo.py \
   --use_hpu_graphs \
   --bf16 \
   --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
-  --push_to_hub False
+  --push_to_hub False \
+  --sdp_on_bf16
 ```
+> [!NOTE]
+> Due to a known issue on Gaudi3, sample_batch_sizes should be changed to 3. The issue will be fixed in the future release.
+
 
 2. Inference using the fine-tuned LoRA weights as shown in the example below:
 ```python
