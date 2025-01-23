@@ -158,8 +158,7 @@ def gaudi_BartAttention_forward(
     if layer_head_mask is not None:
         if layer_head_mask.size() != (self.num_heads,):
             raise ValueError(
-                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-                f" {layer_head_mask.size()}"
+                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is {layer_head_mask.size()}"
             )
         attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
@@ -458,9 +457,7 @@ def gaudi_BartDecoder_forward(
 
     # past_key_values_length
     past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-    tensor_past_key_values_length = (
-        token_idx - 1 if (use_cache and token_idx is not None) else torch.tensor(past_key_values_length)
-    )
+    tensor_past_key_values_length = token_idx - 1 if use_cache else torch.tensor(past_key_values_length)
 
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input)

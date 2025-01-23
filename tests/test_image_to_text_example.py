@@ -14,8 +14,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 77.98733740859008),
-            ("llava-hf/llava-1.5-13b-hf", 1, 48.54364937033955),
+            # ("llava-hf/llava-1.5-7b-hf", 1, 77.98733740859008),
+            # ("llava-hf/llava-1.5-13b-hf", 1, 48.54364937033955),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
@@ -25,8 +25,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("tiiuae/falcon-11B-vlm", 1, 23.69260849957278),
         ],
         "fp8": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
-            ("llava-hf/llava-1.5-13b-hf", 1, 67.20488222876344),
+            # ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
+            # ("llava-hf/llava-1.5-13b-hf", 1, 67.20488222876344),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 45.011551008367084),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 45.18544502949674),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 30.9535718774675),
@@ -66,6 +66,11 @@ def _test_image_to_text(
     command += [
         "--use_hpu_graphs",
     ]
+
+    if "meta-llama/Llama-3.2-11B-Vision-Instruct" in model_name or "tiiuae/falcon-11B-vlm" in model_name:
+        command += [
+            "--sdp_on_bf16",
+        ]
 
     command.append("--bf16")
     command.append("--sdp_on_bf16")

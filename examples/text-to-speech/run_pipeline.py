@@ -129,7 +129,7 @@ def main():
                 text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs
             )
         end = time.time()
-        logger.info(f"speech = {speech} time = {(end-start) * 1000 / args.n_iterations }ms")
+        logger.info(f"speech = {speech} time = {(end - start) * 1000 / args.n_iterations}ms")
         sf.write("speech.wav", speech[0]["audio"].squeeze(), samplerate=speech[0]["sampling_rate"])
 
 

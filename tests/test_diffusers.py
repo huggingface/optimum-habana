@@ -1348,6 +1348,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 --image_save_dir {run_dir}
                 --use_habana
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 """.split()
             cmd_line.append("--prompts")
@@ -1390,6 +1391,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 "stabilityai/stable-diffusion-xl-base-1.0",
                 **kwargs,
             )
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
             num_images_per_prompt = num_images_per_prompt
             res = {}
             outputs = pipeline(
@@ -1614,15 +1616,15 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
@@ -2466,6 +2468,7 @@ class TrainTextToImage(TestCase):
                  --dataloader_num_workers 8
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
+                 --sdp_on_bf16
                  --bf16
                  --adjust_throughput
                  --center_crop
@@ -2474,7 +2477,7 @@ class TrainTextToImage(TestCase):
                  --output_dir {tmpdir}
                 """.split()
 
-            # Run train_text_to_image_sdxl.y
+            # Run train_text_to_image_sdxl.py
             p = subprocess.Popen(cmd_line)
             return_code = p.wait()
 
@@ -2533,7 +2536,7 @@ class TrainControlNet(TestCase):
 
             cmd_line = f"""
                     python3
-                    {path_to_script.parent.parent.parent / 'gaudi_spawn.py'}
+                    {path_to_script.parent.parent.parent / "gaudi_spawn.py"}
                     --use_mpi
                     --world_size 8
                     {path_to_script}
@@ -2548,6 +2551,7 @@ class TrainControlNet(TestCase):
                     --checkpointing_steps 1000
                     --throughput_warmup_steps 3
                     --use_hpu_graphs
+                    --sdp_on_bf16
                     --bf16
                     --max_train_steps 10
                     --output_dir {tmpdir}
@@ -2620,7 +2624,7 @@ class DreamBooth(TestCase):
                 python3
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
-                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --instance_data_dir {Path(os.path.dirname(__file__)) / "resource/img"}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -2716,7 +2720,7 @@ class DreamBoothLoRASDXL(TestCase):
                 python3
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
-                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --instance_data_dir {Path(os.path.dirname(__file__)) / "resource/img"}
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -3718,6 +3722,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_habana
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
+                --sdp_on_bf16
                 --bf16
                 --use_cpu_rng
                 """.split()
@@ -5934,9 +5939,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
             latents = pipe_1(**inputs_1).images[0]
 
-            assert (
-                expected_steps_1 == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps_1 == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
             inputs_2 = {
                 **inputs,
@@ -5950,9 +5955,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_3(**inputs_3).images[0]
 
             assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
-            assert (
-                expected_steps == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
         for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):

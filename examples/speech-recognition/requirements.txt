@@ -1,4 +1,4 @@
-datasets >= 1.18.0
+datasets >= 1.18.0, <= 2.19.2
 librosa
 jiwer
 evaluate

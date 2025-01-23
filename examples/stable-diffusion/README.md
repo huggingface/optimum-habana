@@ -44,6 +44,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -65,6 +66,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -83,6 +85,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --distributed
 ```
@@ -107,6 +110,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -134,8 +138,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d \
-    --bf16
+    --ldm3d
 ```
 
 Here is how to generate images and depth maps with two prompts on two HPUs:
@@ -180,6 +183,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -200,6 +204,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -221,6 +226,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -241,6 +247,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --distributed
 ```
@@ -257,6 +264,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --optimize
 ```
@@ -273,6 +281,7 @@ QUANT_CONFIG=./quantization/quant_config.json python text_to_image_generation.py
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --optimize
 ```
@@ -298,6 +307,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --num_inference_steps 1 \
     --guidance_scale 1.000001 \
@@ -339,6 +349,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -359,10 +370,11 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 4 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -385,10 +397,11 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -405,10 +418,11 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --quant_mode measure
 ```
@@ -424,10 +438,11 @@ python text_to_image_generation.py \
     --batch_size 1 \
     --num_inference_steps 30 \
     --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete\
+    --scheduler flow_match_euler_discrete \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --quant_mode quantize
 ```
@@ -451,6 +466,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -468,6 +484,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -486,6 +503,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16 \
     --distributed
 ```
@@ -505,6 +523,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -524,6 +543,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -547,6 +567,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -554,7 +575,7 @@ python text_to_image_generation.py \
 
 ```bash
 python text_to_image_generation.py \
-    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1 \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
@@ -566,6 +587,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -590,6 +612,7 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -615,6 +638,7 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -639,6 +663,7 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -660,6 +685,7 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -678,6 +704,7 @@ python image_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -693,6 +720,7 @@ python depth_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -709,6 +737,7 @@ python unconditional_image_generation.py \
     --use_habana \
     --use_gaudi_ddim_scheduler \
     --use_hpu_graphs \
+    --sdp_on_bf16 \
     --bf16 \
     --save_outputs \
     --output_dir "/tmp/"
@@ -725,7 +754,7 @@ Here is how to run the example of controlling brightness. For more details,
 please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_MAX_COMPOUND_OP_SIZE=1 python text_to_image_generation.py \
     --model_name_or_path ptx0/pseudo-journey-v2 \
     --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
     --num_images_per_prompt 1 \
@@ -753,6 +782,7 @@ python text_to_image_generation.py \
     --use_habana --use_hpu_graphs \
     --image_save_dir /tmp/stable_diffusion_images_compel \
     --seed 33 \
+    --sdp_on_bf16 \
     --bf16 \
     --num_inference_steps 20 \
     --use_compel
@@ -773,6 +803,7 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images_freeu \
     --seed 33 \
     --use_freeu \
+    --sdp_on_bf16 \
     --bf16
 ```
 # Stable Video Diffusion Examples
@@ -799,6 +830,7 @@ python image_to_video_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -823,6 +855,7 @@ python image_to_video_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --bf16
 ```
 
@@ -858,8 +891,14 @@ python image_to_video_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
     --bf16 \
+    --sdp_on_bf16 \
     --num_frames 14 \
     --motion_bucket_id=14 \
     --width=512 \
     --height=512
 ```
+
+> [!NOTE]
+> For Gaudi3 only:
+> 1. Due to a known issue, batch sizes for models needs to be reduced. It will be fixed in the future release.
+> 2. The Image-to-video ControlNet command is not enabled on Gaudi3.

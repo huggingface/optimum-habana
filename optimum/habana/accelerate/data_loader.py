@@ -22,7 +22,7 @@ from accelerate.utils import (
 )
 from torch.utils.data import BatchSampler, DataLoader, IterableDataset
 
-from .. import parallel_state
+from ..distributed import parallel_state
 from .state import GaudiAcceleratorState
 from .utils.operations import (
     broadcast,

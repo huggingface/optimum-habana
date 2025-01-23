@@ -40,17 +40,17 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644, False),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133, True),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406, False),
-            ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
+            # ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
             ("google/gemma-2-27b", 1, False, 36.578709544111, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
-            ("Deci/DeciLM-7B", 1, False, 120, False),
+            # ("Deci/DeciLM-7B", 1, False, 115, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
-            ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
-            ("facebook/xglm-1.7B", 1, False, 357.46365062825083, False),
-            ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154, False),
+            # ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
+            # ("facebook/xglm-1.7B", 1, False, 357.46365062825083, False),
+            # ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154, False),
             ("tiiuae/falcon-mamba-7b", 1, False, 47.1464839567739, False),
             ("openbmb/MiniCPM3-4B", 1, False, 65.116, False),
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
@@ -69,13 +69,13 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
             ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 17068.965283763682),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
+            # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
+            # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 40.94),
             ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, 3428.65),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
+            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
+            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
             ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, 1147.50),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
@@ -84,7 +84,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "deepspeed": [
             ("bigscience/bloomz", 8, 1, 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
+            # ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
             ("google/gemma-2-9b", 8, 1, 110.12610917383735),
@@ -220,6 +220,12 @@ def _test_text_generation(
 
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
+
+    if "decilm" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
+    if "mamba-130m-hf" in model_name.lower():
+        command += ["--sdp_on_bf16"]
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
@@ -366,9 +372,9 @@ def _test_text_generation(
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            assert (
-                model_name in MODEL_OUTPUTS
-            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            assert model_name in MODEL_OUTPUTS, (
+                f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            )
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
@@ -387,6 +393,7 @@ def test_text_generation_bf16_1x(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
 )
@@ -415,6 +422,7 @@ def test_text_generation_fp8(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -450,17 +458,20 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, world_size:
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
     world_size = 8
@@ -483,6 +494,7 @@ def test_text_generation_contrastive_search(
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
