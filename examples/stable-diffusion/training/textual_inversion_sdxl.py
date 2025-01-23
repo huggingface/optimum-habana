@@ -918,9 +918,9 @@ def main():
                 htcore.mark_step()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool)
+                index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool, device=accelerator.device)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
-                index_no_updates_2 = torch.ones((len(tokenizer_2),), dtype=torch.bool)
+                index_no_updates_2 = torch.ones((len(tokenizer_2),), dtype=torch.bool, device=accelerator.device)
                 index_no_updates_2[min(placeholder_token_ids_2) : max(placeholder_token_ids_2) + 1] = False
 
                 with torch.no_grad():
