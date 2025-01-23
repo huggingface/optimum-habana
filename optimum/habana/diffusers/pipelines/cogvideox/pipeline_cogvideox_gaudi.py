@@ -444,7 +444,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                         )
                     latents = latents.to(prompt_embeds.dtype)
 
-                    if not self.use_hpu_graphs:
+                    if self.use_hpu_graphs:
                         htcore.mark_step()
 
                     # call the callback, if provided
@@ -461,7 +461,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
-                if not self.use_hpu_graphs:
+                if self.use_hpu_graphs:
                     htcore.mark_step()
         time_box.show_time('transformer_hpu')
 
