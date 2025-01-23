@@ -147,8 +147,18 @@ class HabanaModelAdapter(HFLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self._model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
-            if self._model.config.model_type != "falcon":
+
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "qwen2",
+            "falcon",
+            "starcoder2",
+            "gemma",
+            "baichuan",
+            "gpt_bigcode",
+        ]:
+            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -161,6 +171,8 @@ class HabanaModelAdapter(HFLM):
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
             )
+            if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
+                self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
         if args.warmup:
             self.warm_up()
 
