@@ -28,6 +28,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+import habana_frameworks.torch.core as htcore
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -444,7 +445,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                     latents = latents.to(prompt_embeds.dtype)
 
                     if not self.use_hpu_graphs:
-                        self.htcore.mark_step()
+                        htcore.mark_step()
 
                     # call the callback, if provided
                     if callback_on_step_end is not None:
@@ -461,7 +462,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                 if not self.use_hpu_graphs:
-                    self.htcore.mark_step()
+                    htcore.mark_step()
         time_box.show_time('transformer_hpu')
 
         #HabanaProfile.stop()
