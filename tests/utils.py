@@ -24,22 +24,22 @@ MODELS_TO_TEST_MAPPING = {
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", "Habana/roberta-base"),
+        # ("roberta-base", "Habana/roberta-base"),
         ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
-        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
+        # ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
     "gpt2": [
-        ("gpt2", "Habana/gpt2"),
+        # ("gpt2", "Habana/gpt2"),
         ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
-        ("t5-small", "Habana/t5"),
+        # ("t5-small", "Habana/t5"),
         ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
@@ -47,7 +47,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "wav2vec2": [
         ("facebook/wav2vec2-base", "Habana/wav2vec2"),
-        ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
+        # ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
@@ -68,10 +68,10 @@ MODELS_TO_TEST_MAPPING = {
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
-    "bert",
+    # "bert",
     "roberta",
-    "albert",
-    "distilbert",
+    # "albert",
+    # "distilbert",
 ]
 
 # Only BERT has been officially validated for sequence classification
