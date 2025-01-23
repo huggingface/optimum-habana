@@ -397,8 +397,6 @@ class CogVideoXTransformer3DModelGaudi(CogVideoXTransformer3DModel):
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
 
-        print(f'baymax run gaudi CogVideoXTransformer3DModel forward!')
-
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
