@@ -45,14 +45,14 @@ def main():
 
     duration = 0
     for iteration in range(args.n_iterations):
-        logger.info(f"Running inference iteration {iteration+1}...")
+        logger.info(f"Running inference iteration {iteration + 1}...")
         t0 = time.perf_counter()
         output = pipe(input_sentences)
         duration += time.perf_counter() - t0
 
         for i, (input_sentence, generated_text) in enumerate(zip(input_sentences, output)):
-            print(f"Prompt[{iteration+1}][{i+1}]: {input_sentence}")
-            print(f"Generated Text[{iteration+1}][{i+1}]: {repr(generated_text)}\n")
+            print(f"Prompt[{iteration + 1}][{i + 1}]: {input_sentence}")
+            print(f"Generated Text[{iteration + 1}][{i + 1}]: {repr(generated_text)}\n")
 
     throughput = args.n_iterations * args.batch_size * args.max_new_tokens / duration
     print(f"Inference Duration (for {args.n_iterations} iterations): {duration} seconds")
