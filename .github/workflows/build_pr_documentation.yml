@@ -20,8 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          repository: 'huggingface/doc-builder'
+          repository: 'regisss/doc-builder'
           path: doc-builder
+          ref: fix_doc_download
 
       - uses: actions/checkout@v2
         with:
