@@ -42,7 +42,7 @@ Here is a command you can run to train a Llama model for question answering:
 ```bash
 python ../gaudi_spawn.py \
   --world_size 8 --use_deepspeed run_qa.py \
-  --model_name_or_path FlagAlpha/Llama2-Chinese-13b-Chat \
+  --model_name_or_path meta-llama/Llama-2-7b-chat-hf \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
   --do_train \
