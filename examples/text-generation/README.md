@@ -21,6 +21,8 @@ Conditional text generation on Intel® Gaudi® AI Accelerators. You can find mor
 
 ## Requirements
 
+Please make sure to follow [Driver Installation](https://docs.habana.ai/en/latest/Installation_Guide/Driver_Installation.html) to install Gaudi driver on the system.
+### Bare metal
 First, you should install the requirements:
 ```bash
 pip install -r requirements.txt
@@ -35,7 +37,23 @@ Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 ```
+### Docker Image
+To use dockerfile provided for the sample, please follow [Docker Installation](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html) to setup habana runtime for Docker images.
 
+#### Docker Build
+To build the image from the Dockerfile, please follow below command to build the optimum-habana-text-gen image.
+```bash
+docker build --no-cache -t optimum-habana-text-gen:latest --build-arg https_proxy=$https_proxy --build-arg http_proxy=$http_proxy -f Dockerfile .
+```
+#### Docker Run
+After docker build, users could follow below command to run and docker instance and users will be in the docker instance under text-generation folder.
+```bash
+docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none   --cap-add=ALL --privileged=true  --net=host --ipc=host optimum-habana-text-gen:latest
+```
+> [!NOTE]
+> The Huggingface model file size might be large, so we recommend to use an external disk as Huggingface hub folder. \
+> Please export HF_HOME environment variable to your external disk and then export the mount point into docker instance. \
+> ex: "-e HF_HOME=/mnt/huggingface -v /mnt:/mnt"
 
 ## Usage
 
@@ -132,7 +150,18 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
+- `--bucket_size` to grow the cache/input in multiples of `bucket_size` instead of padding up the kv-cache up to full size before starting
+- `--bucket_internal` more optimized version of bucketing for certain models like Llama
+- `--flash_attention_causal_mask` to further improve performance by taking advantage of specific lower-diagonal shape of inputs to softmax operation
+- `--use_flash_attention` to enable Habana Flash Attention
+- `--flash_attention_recompute` to reduce memory consumption on prompt stage
+- `--book_source` to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.
 
+There are also some environment variables useful for benchmarking:
+- `export HF_DATASETS_TRUST_REMOTE_CODE=true` : Most datasets in lm-evaluation-harness are defined on HF using dataset scripts, and may require passing HF_DATASETS_TRUST_REMOTE_CODE=true
+- `export TQDM_DISABLE=1`: to disable all tqdm progress bars 
+
+#### bigscience/bloom
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -143,7 +172,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --max_new_tokens 100 \
 --sdp_on_bf16
 ```
-
+#### Llama2-70B
 You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -159,7 +188,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits \
 --sdp_on_bf16
 ```
-
+#### Falcon-7B
 To run Falcon-7B inference, use the following command:
 ```bash
 python run_generation.py \
@@ -172,7 +201,7 @@ python run_generation.py \
  --do_sample \
  --sdp_on_bf16
 ```
-
+#### Falcon-40B
 To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -186,7 +215,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_flash_attention \
 --flash_attention_causal_mask
 ```
-
+#### Llama3-405B
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -357,6 +386,8 @@ Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
+#### Llama2-70b
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on LLama2-70b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
@@ -374,7 +405,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --bf16 \
 --batch_size 1
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
@@ -405,13 +436,19 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
+--flash_attention_causal_mask  \
+--use_flash_attention \
 --bf16 \
 --batch_size 350 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
+--warmup 2 \
+--bucket_size=128 \
+--bucket_internal \
 --limit_hpu_graphs
 ```
-
+#### Mixtral-8x7B
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
@@ -424,7 +461,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --batch_size 1 \
 --bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generation.py \
@@ -437,7 +474,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --batch_size 16 \
 --bf16
 ```
-
+#### Falcon-180B
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
 > Please note that Falcon-180B is a gated model, and users are required to request access to it. Please refer to the instructions provided in the StarCoder example above.
 ```bash
@@ -455,7 +493,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
@@ -474,7 +512,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
+#### Llama3-405B
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
@@ -492,27 +531,33 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+--attn_softmax_bf16 \
+--warmup 2 \
 --use_hpu_graphs \
 --use_kv_cache \
 --limit_hpu_graphs \
+--bucket_size=128 \
+--bucket_internal \
 --max_input_tokens 2048 \
 --max_new_tokens 2048 \
---batch_size 2 \
+--batch_size 180 \
 --bf16 \
 --reuse_cache \
 --trim_logits \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--book_source
 ```
-
+#### phi-2
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
 
 ```bash
@@ -527,7 +572,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --reuse_cache \
 --bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
@@ -541,6 +586,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --reuse_cache
 ```
 
+#### gemma
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on gemma with 1 card:
 
 ```bash
@@ -554,7 +601,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --bf16 \
 --sdp_on_bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
