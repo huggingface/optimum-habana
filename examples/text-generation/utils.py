@@ -611,6 +611,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
+
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
