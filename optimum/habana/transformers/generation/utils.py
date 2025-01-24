@@ -1825,10 +1825,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=profiling_record_shapes,
+            name="generation",
         )
-        hb_profer.start()
+        hb_profiler.start()
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
@@ -2270,7 +2273,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+            hb_profiler.step()
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2283,7 +2286,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+        hb_profiler.stop()
         if streamer is not None:
             streamer.end()
 
@@ -2424,10 +2427,13 @@ class GaudiGenerationMixin(GenerationMixin):
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=profiling_record_shapes,
+            name="generation",
         )
-        hb_profer.start()
+        hb_profiler.start()
 
         sample_first = True
         if not bucket_internal:
@@ -2644,7 +2650,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+            hb_profiler.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -2703,7 +2709,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+        hb_profiler.stop()
 
         if streamer is not None:
             streamer.end()
@@ -2961,10 +2967,13 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids = torch.stack(return_res)
             return input_ids
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=profiling_record_shapes,
+            name="generation",
         )
-        hb_profer.start()
+        hb_profiler.start()
         this_peer_finished = False
 
         bucket_size = model_kwargs.get("bucket_size", -1)
@@ -3200,7 +3209,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
-            hb_profer.step()
+            hb_profiler.step()
             if self.generation_config.static_shapes:
                 is_min_length_reached = (
                     self.generation_config.min_length and cur_len >= self.generation_config.min_length
@@ -3218,7 +3227,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 this_peer_finished = True
 
-            hb_profer.step()
+            hb_profiler.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -3255,7 +3264,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+        hb_profiler.stop()
 
         if self.generation_config.static_shapes:
             beam_trace = (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
@@ -3494,10 +3503,13 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             decoder_prompt_len = input_ids.shape[-1]
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=profiling_record_shapes,
+            name="generation",
         )
-        hb_profer.start()
+        hb_profiler.start()
 
         time_to_first_token_done = False
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
@@ -3624,7 +3636,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            hb_profer.step()
+            hb_profiler.step()
 
             if constrained_beam_scorer.is_done or get_final_stopping_criteria(
                 stopping_criteria(input_ids, scores, token_idx=cur_len)
@@ -3639,7 +3651,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
-        hb_profer.stop()
+        hb_profiler.stop()
         sequence_outputs = constrained_beam_scorer.finalize(
             input_ids,
             beam_scores,
@@ -3782,8 +3794,12 @@ class GaudiGenerationMixin(GenerationMixin):
             if len(past_key_values) == 0:
                 start_from_empty_dynamic_cache = True
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            name="generation",
+        )
+        hb_profiler.start()
         this_peer_finished = False
 
         token_idx = model_kwargs.get("token_idx", None)
@@ -3987,12 +4003,12 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+            hb_profiler.step()
 
             if this_peer_finished and not synced_gpus:
                 break
 
-        hb_profer.stop()
+        hb_profiler.stop()
         if streamer is not None:
             streamer.end()
 

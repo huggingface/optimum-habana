@@ -931,6 +931,7 @@ class GaudiTrainer(Trainer):
             active=self.args.profiling_steps,
             record_shapes=self.args.profiling_record_shapes,
             with_stack=self.args.profiling_with_stack,
+            name="train",
         )
         hb_profiler.start()
 
@@ -1918,6 +1919,15 @@ class GaudiTrainer(Trainer):
         # set a default dtype of logits
         logits_dtype: str = "float32"
 
+        hb_profiler = HabanaProfile(
+            warmup=self.args.profiling_warmup_steps_eval,
+            active=self.args.profiling_steps_eval,
+            record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
+            name=description.lower(),
+        )
+        hb_profiler.start()
+
         # Main evaluation loop
         start_time_eval = time.time()
         for step, inputs in enumerate(dataloader):
@@ -2008,6 +2018,10 @@ class GaudiTrainer(Trainer):
             # Added mark step here to avoid graph recompile
             if args.use_lazy_mode:
                 self.htcore.mark_step()
+
+            hb_profiler.step()
+
+        hb_profiler.stop()
 
         # After all calls to `.gather_function`, reset to `gather_for_metrics`:
         self.gather_function = self.accelerator.gather_for_metrics

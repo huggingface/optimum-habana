@@ -538,8 +538,9 @@ def main():
         ds = get_ds(args)
         input_sentences = get_input(ds, args.batch_size)
 
-        def generate(input_tokens, size=None, reduce_recompile=False):
+        def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
 
             timer = HabanaGenerationTime()
             timer.start()
@@ -558,7 +559,7 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
+                profiling_steps=profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
             outputs = outputs.tolist()
@@ -569,10 +570,6 @@ def main():
             print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
             return outputs
 
-        from optimum.habana.utils import HabanaProfile
-
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
@@ -583,10 +580,10 @@ def main():
             for _ in range(args.warmup):
                 if dyn_prompt_lens is None:
                     print("Warming up", flush=True)
-                    generate(input_sentences[0], None, args.reduce_recompile)
+                    generate(input_sentences[0], None, args.reduce_recompile, disable_profiling=True)
                 else:
                     print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
-                    generate(input_sentences[0], dyn_prompt_lens[0], args.reduce_recompile)
+                    generate(input_sentences[0], dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -601,11 +598,11 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
                         print("Warming up for shape,", sz - 1, flush=True)
-                        generate(input_sentences[0], sz - 1, args.reduce_recompile)
+                        generate(input_sentences[0], sz - 1, args.reduce_recompile, disable_profiling=True)
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-        HabanaProfile.enable()
+
         total_new_tokens_generated = 0
         logger.info("Running generate...")
         timer.step()
@@ -733,8 +730,9 @@ def main():
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
 
-        def generate(size=None, reduce_recompile=False):
+        def generate(size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
             timer = HabanaGenerationTime()
             timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
@@ -797,7 +795,7 @@ def main():
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
+                profiling_steps=profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
@@ -811,10 +809,6 @@ def main():
             print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
             return outputs
 
-        from optimum.habana.utils import HabanaProfile
-
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
@@ -825,10 +819,10 @@ def main():
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
                     print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
-                    generate(None, args.reduce_recompile)
+                    generate(None, args.reduce_recompile, disable_profiling=True)
                 else:
                     print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
-                    generate(dyn_prompt_lens[0], args.reduce_recompile)
+                    generate(dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -843,11 +837,10 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
                         print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
-                        generate(sz - 1, args.reduce_recompile)
+                        generate(sz - 1, args.reduce_recompile, disable_profiling=True)
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-        HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
         timer.step()
@@ -984,7 +977,9 @@ def main():
 
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
 
-        def generate_dataset(batch):
+        def generate_dataset(batch, disable_profiling=False):
+            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
+
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Move inputs to target device(s)
             for t in batch:
@@ -996,7 +991,7 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
+                profiling_steps=profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 profiling_record_shapes=args.profiling_record_shapes,
@@ -1024,11 +1019,6 @@ def main():
                                 max=generation_config.mark_dyn_dim_1_max,
                             )
 
-        # warmup
-        from optimum.habana.utils import HabanaProfile
-
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         timer = HabanaGenerationTime()
@@ -1039,7 +1029,7 @@ def main():
             print("Warming up", flush=True)
             timer.step()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
-            generate_dataset(batch)
+            generate_dataset(batch, disable_profiling=True)
             if generation_config.use_mark_dynamic:
                 generation_config.use_mark_dynamic = False
             timer.step()
@@ -1051,7 +1041,6 @@ def main():
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
