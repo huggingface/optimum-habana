@@ -49,9 +49,9 @@ PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --w
 
 ## Inference with FP8
 
-Inference with FP8 precision is enabled using [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch.
+Inference with FP8 precision is enabled using [Intel Neural Compressor (INC)]([https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Quantization/index.html?highlight=inc]), which provides model measurement and quantization capabilities in PyTorch.
 More information on enabling FP8 in SynapseAI is available here:
-https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Quantization/Inference_Using_FP8.html?highlight=fp8
 
 ### Single card inference with FP8
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b with SDPA:
