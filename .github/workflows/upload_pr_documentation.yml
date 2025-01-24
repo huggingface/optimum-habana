@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    uses: regisss/doc-builder/.github/workflows/upload_pr_documentation.yml@fix_doc_download
+    uses: huggingface/doc-builder/.github/workflows/upload_pr_documentation.yml@main
     with:
       package_name: optimum-habana
     secrets:
