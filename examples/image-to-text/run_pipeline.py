@@ -347,7 +347,6 @@ def main():
     if model_type == "qwen2_vl":
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
-        generate_kwargs["static_shapes"] = True
 
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
