@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          repository: 'regisss/doc-builder'
+          repository: regisss/doc-builder
           path: doc-builder
           ref: fix_doc_download
 
@@ -33,7 +33,6 @@ jobs:
         run: |
           pip uninstall -y doc-builder
           cd doc-builder
-          git pull origin main
           pip install .
           cd ..
 
