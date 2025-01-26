@@ -331,7 +331,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--saved_model_path",
         type=str,
-        default="saved_results",
+        default="inc_quantized_model",
         help="A path to save quantized checkpoint.",
     )
 
