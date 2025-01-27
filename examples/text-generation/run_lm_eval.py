@@ -73,7 +73,6 @@ def setup_lm_eval_parser():
         help="Input length buckets to use with static_shapes",
         default=[16, 32, 64, 128, 189, 284, 384],
     )
-
     parser.add_argument(
         "--output_file", "-o", type=str, help="Output file with end results and runtime parameters", required=True
     )
@@ -84,7 +83,13 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
-    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument(
+        "--limit",
+        "-L",
+        type=float,
+        default=None,
+        help="Limit the number of examples per task. If <1, limit is a percentage of the total number of examples.",
+    )
     parser.add_argument(
         "--show_config",
         action="store_true",
@@ -92,8 +97,14 @@ def setup_lm_eval_parser():
         help="If True, shows the the full config of all tasks at the end of the evaluation.",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
+    parser.add_argument(
+        "--num_fewshot",
+        "-f",
+        type=int,
+        default=None,
+        help="Number of examples in few-shot context",
+    )
     args = setup_parser(parser)
-
     return args
 
 
@@ -105,6 +116,7 @@ class HabanaModelAdapter(HFLM):
         args: argparse.Namespace,
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
+        truncation: Optional[bool] = False,
         logits_cache: bool = True,
         add_bos_token: Optional[bool] = False,
         delta: Optional[str] = None,
@@ -124,6 +136,7 @@ class HabanaModelAdapter(HFLM):
         self.delta = delta
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
+        self.truncation = truncation
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = options.max_length
@@ -147,7 +160,7 @@ class HabanaModelAdapter(HFLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-
+            
         if self.model.config.model_type in [
             "llama",
             "mistral",
@@ -218,6 +231,10 @@ class HabanaModelAdapter(HFLM):
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
+
+    if args.limit:
+        logger.warning(" --limit SHOULD ONLY BE USED FOR TESTING.REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.")
+
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
         # trust_remote_code fix was introduced in lm_eval 0.4.3
@@ -228,9 +245,23 @@ def main() -> None:
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
+    # Regroup some args in gen_kwargs, defined as "String arguments for model generation on greedy_until tasks, e.g. `temperature=0,top_k=0,top_p=0`."
+    gen_kwargs = f"temperature={args.temperature}"
+    if args.top_k is not None:
+        gen_kwargs += f",top_k={args.top_k}"
+    gen_kwargs += f",top_p={args.top_p}"
+
     eval_start = time.perf_counter()
     with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        results = evaluator.simple_evaluate(
+            lm,
+            tasks=args.tasks,
+            num_fewshot=args.num_fewshot,
+            device=args.device,
+            limit=args.limit,
+            gen_kwargs=gen_kwargs,
+        )
+
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
