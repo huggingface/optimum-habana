@@ -729,8 +729,8 @@ python run_generation.py \
 
 ## Language Model Evaluation Harness
 
-The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
- framework and provides the possibility to run one of four tasks: HellaSwag, Lambada_openai, PiQA, WinoGrande.
+The evaluation of LLMs can be done using the `run_lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
+ framework and provides the possibility to run one or more of the multiple tasks supported.
 
 For a more detailed description of parameters, please see the help message:
 ```
@@ -744,9 +744,6 @@ First, you should install the requirements:
 ```bash
 pip install -r requirements_lm_eval.txt
 ```
-
-> [!NOTE]
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
 ### Examples
 
