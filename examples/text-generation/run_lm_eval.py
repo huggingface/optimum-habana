@@ -21,13 +21,14 @@ import argparse
 import json
 import multiprocessing as mp
 import os
+import sys
 import time
 from typing import Literal, Optional
 
 import psutil
 import torch
 import torch.nn.functional as F
-from lm_eval import evaluator, utils
+from lm_eval import evaluator, tasks, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
 from lm_eval.models.utils import stop_sequences_criteria
 
@@ -75,14 +76,14 @@ def setup_lm_eval_parser():
         default=[16, 32, 64, 128, 189, 284, 384],
     )
     parser.add_argument(
-        "--output_file", "-o", type=str, help="Output file with end results and runtime parameters", required=True
+        "--output_path", "-o", type=str, help="Output file with end results and runtime parameters", required=True
     )
     parser.add_argument(
         "--tasks",
+        "-t",
         type=str,
-        nargs="+",
-        help="Tasks to run",
-        default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
+        help="Comma-separated list of task names or task groupings to evaluate on",
+        default="hellaswag,lambada_openai,piqa,winogrande",
     )
     parser.add_argument(
         "--limit",
@@ -105,6 +106,35 @@ def setup_lm_eval_parser():
         default=None,
         help="Number of examples in few-shot context",
     )
+    parser.add_argument(
+        "--write_out",
+        "-w",
+        action="store_true",
+        default=False,
+        help="Prints the prompt for the first few documents.",
+    )
+    parser.add_argument(
+        "--log_samples",
+        "-s",
+        action="store_true",
+        default=False,
+        help="If True, write out all model outputs and documents for per-sample measurement and post-hoc analysis. Use with --output_path.",
+    )
+    parser.add_argument(
+        "--system_instruction",
+        type=str,
+        default=None,
+        help="System instruction to be used in the prompt",
+    )
+
+    parser.add_argument(
+        "--predict_only",
+        "-x",
+        action="store_true",
+        default=False,
+        help="Use with --log_samples. Only model outputs will be saved and metrics will not be evaluated.",
+    )
+
     args = setup_parser(parser)
     return args
 
@@ -261,8 +291,59 @@ def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
 
+    if args.predict_only:
+        args.log_samples = True
+    if (args.log_samples or args.predict_only) and not args.output_path:
+        raise ValueError("Specify --output_path if providing --log_samples or --predict_only")
     if args.limit:
         logger.warning(" --limit SHOULD ONLY BE USED FOR TESTING.REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.")
+
+    task_manager = tasks.TaskManager("INFO")
+
+    if args.tasks is None:
+        logger.error("Need to specify task to evaluate.")
+        sys.exit()
+    elif args.tasks == "list":
+        print(task_manager.list_all_tasks())
+        sys.exit()
+    elif args.tasks == "list_groups":
+        print(task_manager.list_all_tasks(list_subtasks=False, list_tags=False))
+        sys.exit()
+    elif args.tasks == "list_tags":
+        print(task_manager.list_all_tasks(list_groups=False, list_subtasks=False))
+        sys.exit()
+    elif args.tasks == "list_subtasks":
+        print(task_manager.list_all_tasks(list_groups=False, list_tags=False))
+        sys.exit()
+    else:
+        if os.path.isdir(args.tasks):
+            import glob
+
+            task_names = []
+            yaml_path = os.path.join(args.tasks, "*.yaml")
+            for yaml_file in glob.glob(yaml_path):
+                config = utils.load_yaml_config(yaml_file)
+                task_names.append(config)
+        else:
+            task_list = args.tasks.split(",")
+            task_names = task_manager.match_tasks(task_list)
+            for task in [task for task in task_list if task not in task_names]:
+                if os.path.isfile(task):
+                    config = utils.load_yaml_config(task)
+                    task_names.append(config)
+            task_missing = [
+                task for task in task_list if task not in task_names and "*" not in task
+            ]  # we don't want errors if a wildcard ("*") task name was used
+
+            if task_missing:
+                missing = ", ".join(task_missing)
+                logger.error(
+                    f"Tasks were not found: {missing}\n"
+                    f"{utils.SPACING}Try `lm-eval --tasks list` for list of available tasks",
+                )
+                raise ValueError(
+                    f"Tasks not found: {missing}. Try `lm-eval --tasks {{list_groups,list_subtasks,list_tags,list}}` to list out all available names for task groupings; only (sub)tasks; tags; or all of the above, or pass '--verbosity DEBUG' to troubleshoot task registration issues."
+                )
 
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
@@ -289,6 +370,11 @@ def main() -> None:
             device=args.device,
             limit=args.limit,
             gen_kwargs=gen_kwargs,
+            write_out=args.write_out,
+            log_samples=args.log_samples,
+            system_instruction=args.system_instruction,
+            task_manager=task_manager,
+            predict_only=args.predict_only,
         )
 
     if args.device == "hpu":
@@ -307,7 +393,7 @@ def main() -> None:
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
 
         json_str = json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
-        with open(args.output_file, "w", encoding="utf-8") as f:
+        with open(args.output_path, "w", encoding="utf-8") as f:
             f.write(json_str)
         if args.show_config:
             print(json_str)
