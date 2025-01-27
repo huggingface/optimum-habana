@@ -131,6 +131,60 @@ python ../gaudi_spawn.py \
 This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 
 
+### Multi-card Training with Deepspeed (chatglm3-6b)
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name THUDM/chatglm3-6b \
+    --tokenizer_name THUDM/chatglm3-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 6 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
+### Multi-card Training with Deepspeed (Baichuan2-13B-Chat)
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name baichuan-inc/Baichuan2-13B-Chat \
+    --tokenizer_name baichuan-inc/Baichuan2-13B-Chat \
+    --dataset_name wikitext \
+    --num_train_epochs 30 \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
+
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 
 The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
@@ -872,6 +926,53 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --trust_remote_code
 ```
 
+### Training models with Long Sequence lengths
+We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below. 
+
+`--context_parallel_size` sets the number of cards single input sequences will get mapped to, e.g., setting `context_parallel_size=4` with `max_seq_len=32k` will result in each card processing input chunks of length 8k each (thereby reducing memory requirement for activations). This feature can be combined with Zero-3 to enable scaling not only to large sequence lengths but also to large size models.
+
+> [!NOTE]  
+> This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
+
+```bash
+HL_DS_DISTRIBUTED_ATTENTION_SEQ_DIM=1   \
+python3 ../gaudi_spawn.py  \
+        --world_size 8  --use_deepspeed run_lora_clm.py \
+        --model_name_or_path meta-llama/Llama-3.1-8B \
+        --dataset_name tatsu-lab/alpaca \
+        --bf16 True \
+        --output_dir /tmp/lora_out \
+        --max_seq_len 32768 \
+        --per_device_train_batch_size 1 \
+        --per_device_eval_batch_size 1 \
+        --save_strategy no \
+        --learning_rate 0.0004 \
+        --warmup_ratio 0.03 \
+        --lr_scheduler_type "constant" \
+        --logging_steps 1 \
+        --dataset_concatenation \
+        --do_train \
+        --use_habana \
+        --throughput_warmup_steps 3 \
+        --lora_rank 8 \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+        --attn_softmax_bf16 True \
+        --validation_split_percentage 4 \
+        --flash_attention_causal_mask True \
+        --evaluation_strategy epoch \
+        --pipelining_fwd_bwd \
+        --use_lazy_mode \
+        --use_flash_attention True \
+        --deepspeed llama3_ds_zero1_config.json \
+        --num_train_epochs 3 \
+        --eval_delay 3 \
+        --do_eval \
+        --lora_alpha 16 \
+        --lora_dropout 0.05 \
+        --gradient_accumulation_steps 4 \
+        --flash_attention_recompute True \
+        --context_parallel_size 4
+```
 
 ## Streaming
 

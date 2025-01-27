@@ -36,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
@@ -65,7 +71,15 @@ from .deepseek_v2 import (
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
-from .detr import gaudi_DetrConvModel_forward
+from .detr import (
+    gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
+    gaudi_DetrLoss_loss_labels,
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -171,6 +185,7 @@ from .mixtral import (
     GaudiMixtralModel,
     MixtralConfig,
     gaudi_mixtral_block_dynamic_moe_forward,
+    gaudi_mixtral_block_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )

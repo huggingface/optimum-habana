@@ -101,6 +101,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use compiled autograd for training. Currently only for summarization models.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        use_regional_compilation (`bool`, *optional*, defaults to `False`):
+            Whether to use regional compile with deepspeed
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -119,7 +121,7 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profling.
+            Number of steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
     """
@@ -168,6 +170,11 @@ class GaudiTrainingArguments(TrainingArguments):
     compile_dynamic: Optional[bool | None] = field(
         default=None,
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
+    )
+
+    use_regional_compilation: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use regional compile for traing.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -235,7 +242,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
+        metadata={"help": ("Number of steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(

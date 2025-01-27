@@ -25,6 +25,18 @@
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"
                     ]
+                },
+                "deepspeed": {
+                    "learning_rate": 8e-4,
+                    "train_batch_size": 4,
+                    "perplexity": 924.062,
+                    "train_runtime": 75.518,
+                    "train_samples_per_second": 81.097,
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
+                    ]
                 }
             }
         }

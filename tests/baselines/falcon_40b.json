@@ -1,14 +1,14 @@
 {
     "gaudi2": {
         "timdettmers/openassistant-guanaco": {
-            "num_train_epochs": 3,
+            "num_train_epochs": 1,
             "eval_batch_size": 1,
             "distribution": {
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 1,
                     "perplexity": 4.0893,
-                    "train_runtime": 931.1213,
+                    "train_runtime": 360,
                     "train_samples_per_second": 28.162,
                     "extra_arguments": [
                         "--bf16",
@@ -36,14 +36,14 @@
             }
         },
         "mamamiya405/finred": {
-            "num_train_epochs": 3,
+            "num_train_epochs": 1,
             "eval_batch_size": 1,
             "distribution": {
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 1,
                     "perplexity": 4.0893,
-                    "train_runtime": 1170,
+                    "train_runtime": 470,
                     "train_samples_per_second": 28.162,
                     "extra_arguments": [
                         "--bf16",

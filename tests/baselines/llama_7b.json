@@ -621,13 +621,14 @@
                 "deepspeed": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 2.3889,
+                    "perplexity": 2.8889,
                     "train_runtime": 147.3597,
                     "train_samples_per_second": 34.41,
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 4",
                         "--logging_steps 1",
+                        "--validation_split_percentage 10",
                         "--lora_rank 8",
                         "--lora_alpha 16",
                         "--lora_dropout 0.05",

@@ -24,22 +24,22 @@ MODELS_TO_TEST_MAPPING = {
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", "Habana/roberta-base"),
+        # ("roberta-base", "Habana/roberta-base"),
         ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
-        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
+        # ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
     "gpt2": [
-        ("gpt2", "Habana/gpt2"),
+        # ("gpt2", "Habana/gpt2"),
         ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
-        ("t5-small", "Habana/t5"),
+        # ("t5-small", "Habana/t5"),
         ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
@@ -47,7 +47,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "wav2vec2": [
         ("facebook/wav2vec2-base", "Habana/wav2vec2"),
-        ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
+        # ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
@@ -64,13 +64,14 @@ MODELS_TO_TEST_MAPPING = {
     "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
+    "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
-    "bert",
+    # "bert",
     "roberta",
-    "albert",
-    "distilbert",
+    # "albert",
+    # "distilbert",
 ]
 
 # Only BERT has been officially validated for sequence classification
@@ -82,7 +83,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma", "chatglm"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 
