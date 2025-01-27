@@ -5,13 +5,11 @@ from typing import List, Literal, Optional, Union
 
 import numpy as np
 import torch
-from numpy import ndarray
 from sentence_transformers.quantization import quantize_embeddings
 from sentence_transformers.util import (
     batch_to_device,
     truncate_embeddings,
 )
-from torch import Tensor
 from tqdm.autonotebook import trange
 
 
@@ -24,14 +22,15 @@ def st_gaudi_encode(
     prompt_name: Optional[str] = None,
     prompt: Optional[str] = None,
     batch_size: int = 32,
-    show_progress_bar: bool = None,
+    show_progress_bar: Optional[bool] = None,
     output_value: Optional[Literal["sentence_embedding", "token_embeddings"]] = "sentence_embedding",
     precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32",
     convert_to_numpy: bool = True,
     convert_to_tensor: bool = False,
-    device: str = None,
+    device: Optional[str] = None,
     normalize_embeddings: bool = False,
-) -> Union[List[Tensor], ndarray, Tensor]:
+    **kwargs,
+) -> Union[List[torch.Tensor], np.ndarray, torch.Tensor]:
     """
     Computes sentence embeddings.
 
@@ -63,7 +62,7 @@ def st_gaudi_encode(
             the faster dot-product (util.dot_score) instead of cosine similarity can be used. Defaults to False.
 
     Returns:
-        Union[List[Tensor], ndarray, Tensor]: By default, a 2d numpy array with shape [num_inputs, output_dimension] is returned.
+        Union[List[torch.Tensor], np.ndarray, torch.Tensor]: By default, a 2d numpy array with shape [num_inputs, output_dimension] is returned.
         If only one string input is provided, then the output is a 1d array with shape [output_dimension]. If ``convert_to_tensor``,
         a torch Tensor is returned instead. If ``self.truncate_dim <= output_dimension`` then output_dimension is ``self.truncate_dim``.
 
@@ -85,9 +84,10 @@ def st_gaudi_encode(
             print(embeddings.shape)
             # (3, 768)
     """
+
     self.eval()
     if show_progress_bar is None:
-        show_progress_bar = logger.getEffectiveLevel() == logging.INFO or logger.getEffectiveLevel() == logging.DEBUG
+        show_progress_bar = logger.getEffectiveLevel() in (logging.INFO, logging.DEBUG)
 
     if convert_to_tensor:
         convert_to_numpy = False
@@ -119,6 +119,7 @@ def st_gaudi_encode(
                 "Encode with either a `prompt`, a `prompt_name`, or neither, but not both. "
                 "Ignoring the `prompt_name` in favor of `prompt`."
             )
+
     extra_features = {}
     if prompt is not None:
         sentences = [prompt + sentence for sentence in sentences]
@@ -132,6 +133,8 @@ def st_gaudi_encode(
     if device is None:
         device = self.device
 
+    self.to(device)
+
     all_embeddings = []
     length_sorted_idx = np.argsort([-self._text_length(sen) for sen in sentences])
     sentences_sorted = [sentences[idx] for idx in length_sorted_idx]
@@ -139,7 +142,6 @@ def st_gaudi_encode(
     for start_index in trange(0, len(sentences), batch_size, desc="Batches", disable=not show_progress_bar):
         sentences_batch = sentences_sorted[start_index : start_index + batch_size]
         features = self.tokenize(sentences_batch)
-
         if self.device.type == "hpu":
             if "input_ids" in features:
                 curr_tokenize_len = features["input_ids"].shape
@@ -166,11 +168,12 @@ def st_gaudi_encode(
                         ),
                         -1,
                     )
+
         features = batch_to_device(features, device)
         features.update(extra_features)
 
         with torch.no_grad():
-            out_features = self.forward(features)
+            out_features = self.forward(features, **kwargs)
             if self.device.type == "hpu":
                 out_features = copy.deepcopy(out_features)
 
@@ -218,7 +221,7 @@ def st_gaudi_encode(
             all_embeddings = torch.Tensor()
     elif convert_to_numpy:
         if not isinstance(all_embeddings, np.ndarray):
-            if all_embeddings[0].dtype == torch.bfloat16:
+            if all_embeddings and all_embeddings[0].dtype == torch.bfloat16:
                 all_embeddings = np.asarray([emb.float().numpy() for emb in all_embeddings])
             else:
                 all_embeddings = np.asarray([emb.numpy() for emb in all_embeddings])
