@@ -29,6 +29,7 @@ import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
+from lm_eval.models.utils import stop_sequences_criteria
 
 # Local imports
 from run_generation import setup_parser
@@ -160,7 +161,7 @@ class HabanaModelAdapter(HFLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-            
+
         if self.model.config.model_type in [
             "llama",
             "mistral",
@@ -226,6 +227,34 @@ class HabanaModelAdapter(HFLM):
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
         return logits
+
+    def _model_generate(self, context, max_length, stop, **generation_kwargs):
+        # temperature = 0.0 if not set
+        # if do_sample is false and temp==0.0:
+        # remove temperature, as do_sample=False takes care of this
+        # and we don't want a warning from HF
+        generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
+        do_sample = generation_kwargs.get("do_sample", None)
+
+        # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
+        if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
+            generation_kwargs["do_sample"] = do_sample = False
+
+        if do_sample is False and generation_kwargs.get("temperature") == 0.0:
+            generation_kwargs.pop("temperature")
+        # build stopping criteria
+        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
+        # move context & attention_mask to hpu
+        context = context.to("hpu")
+        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
+        return self.model.generate(
+            input_ids=context,
+            max_length=max_length,
+            stopping_criteria=stopping_criteria,
+            pad_token_id=self.tokenizer.pad_token_id,
+            use_cache=True,
+            **generation_kwargs,
+        )
 
 
 def main() -> None:
