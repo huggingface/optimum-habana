@@ -73,7 +73,6 @@ def setup_lm_eval_parser():
         help="Input length buckets to use with static_shapes",
         default=[16, 32, 64, 128, 189, 284, 384],
     )
-
     parser.add_argument(
         "--output_file", "-o", type=str, help="Output file with end results and runtime parameters", required=True
     )
@@ -97,6 +96,7 @@ def setup_lm_eval_parser():
         default=False,
         help="If True, shows the the full config of all tasks at the end of the evaluation.",
     )
+    parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     parser.add_argument(
         "--num_fewshot",
         "-f",
@@ -104,9 +104,7 @@ def setup_lm_eval_parser():
         default=None,
         help="Number of examples in few-shot context",
     )
-
     args = setup_parser(parser)
-
     return args
 
 
@@ -162,8 +160,18 @@ class HabanaModelAdapter(HFLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self._model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
-            if self._model.config.model_type != "falcon":
+            
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "qwen2",
+            "falcon",
+            "starcoder2",
+            "gemma",
+            "baichuan",
+            "gpt_bigcode",
+        ]:
+            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -176,6 +184,8 @@ class HabanaModelAdapter(HFLM):
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
             )
+            if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
+                self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
         if args.warmup:
             self.warm_up()
 
@@ -196,7 +206,7 @@ class HabanaModelAdapter(HFLM):
     def device(self):
         # We need to do padding ourselves, otherwise we'll end up with recompilations
         # Returning 'cpu' to keep tensors on CPU in lm_eval code
-        return "hpu"
+        return "cpu"
 
     def find_bucket(self, length: int) -> list[int]:
         return [b for b in self.buckets if b >= length][0]
@@ -251,6 +261,7 @@ def main() -> None:
             limit=args.limit,
             gen_kwargs=gen_kwargs,
         )
+
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 

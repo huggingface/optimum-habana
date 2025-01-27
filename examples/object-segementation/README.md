@@ -30,8 +30,6 @@ python3 run_example.py \
     --bf16 \
     --print_result
 ```
-Models that have been validated:
-  - [clipseg-rd64-refined ](https://huggingface.co/CIDAS/clipseg-rd64-refined)
 
 ### Segment Anything Model
 
@@ -46,6 +44,3 @@ python3 run_example_sam.py \
     --bf16 \
     --print_result
 ```
-Models that have been validated:
-  - [facebook/sam-vit-base](https://huggingface.co/facebook/sam-vit-base)
-  - [facebook/sam-vit-huge](https://huggingface.co/facebook/sam-vit-huge)
