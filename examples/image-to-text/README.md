@@ -169,7 +169,7 @@ python3 ../gaudi_spawn.py \
 ```
 
 
-Here are single card training command examples for llava-hf/llava-1.5-7b-hf.
+The single card training command for llava-hf/llava-1.5-7b-hf is similar.
 
 ```
 python3 run_image2text_lora_finetune.py \
