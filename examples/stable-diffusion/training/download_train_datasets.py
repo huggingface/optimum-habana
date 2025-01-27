@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-from huggingface_hub import hf_hub_download, snapshot_download
-from pathlib import Path
 import shutil
+from pathlib import Path
+
+from huggingface_hub import hf_hub_download, snapshot_download
+
 
 # Download Cat-Toy example dataset
 local_dir = "./cat"
@@ -23,7 +25,7 @@ snapshot_download(
     repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
-cache_dir = Path(local_dir, '.cache')
+cache_dir = Path(local_dir, ".cache")
 if cache_dir.is_dir():
     shutil.rmtree(cache_dir)
 
