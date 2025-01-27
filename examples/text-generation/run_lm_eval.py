@@ -291,6 +291,16 @@ def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
 
+    if args.system_instruction is None and args.prompt is not None:
+        logger.warning(" --system_instruction will be assigned --prompt value")
+        args.system_instruction = args.prompt
+    elif args.system_instruction is not None and args.prompt is None:
+        logger.warning(" --prompt will be assigned --system_instruction value")
+        args.prompt = args.system_instruction
+    elif args.system_instruction is not None and args.prompt is not None:
+        logger.warning(" --prompt overwritten by --system_instruction")
+        args.prompt = args.system_instruction
+
     if args.predict_only:
         args.log_samples = True
     if (args.log_samples or args.predict_only) and not args.output_path:
