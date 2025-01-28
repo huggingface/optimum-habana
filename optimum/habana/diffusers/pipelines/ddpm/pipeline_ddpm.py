@@ -83,7 +83,6 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         bf16_full_eval: bool = False,
         sdp_on_bf16: bool = False,
     ):
-
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
