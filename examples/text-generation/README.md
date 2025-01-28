@@ -22,7 +22,10 @@ Conditional text generation on Intel® Gaudi® AI Accelerators. You can find mor
 ## Requirements
 
 Please make sure to follow [Driver Installation](https://docs.habana.ai/en/latest/Installation_Guide/Driver_Installation.html) to install Gaudi driver on the system.
-### Bare metal
+There are two options to setup the environment setup for the samples. 
+Users could pick either Bare metal or Docker image to run the samples.
+
+### Option1 : Bare metal
 First, you should install the requirements:
 ```bash
 pip install -r requirements.txt
@@ -37,8 +40,9 @@ Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 ```
-### Docker Image
+### Option 2: Docker Image
 To use dockerfile provided for the sample, please follow [Docker Installation](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html) to setup habana runtime for Docker images.
+The dockerfile helps users to setup all the required software and packages to run the samples, so users could just run the instructions for different text generation models directly inside the docker image.
 
 #### Docker Build
 To build the image from the Dockerfile, please follow below command to build the optimum-habana-text-gen image.
@@ -386,14 +390,25 @@ Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
-#### Llama2-70b
+#### Llama2-70b and Llama2-7b
 ##### 1. tensor quantization statistics
-Here is an example to measure the tensor quantization statistics on LLama2-70b:
+Here is an example to measure the tensor quantization statistics on LLama2:
+
+Users could export different values to below enivironment variables to change parameters for tensor quantization statisics  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-2-70b-hf ,  meta-llama/Llama-2-7b-hf |
+
+Here is an example to run llama2-70b
+```bash
+export model_name=meta-llama/Llama-2-70b-hf
+```
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_70b_bs1_measure.txt \
---model_name_or_path meta-llama/Llama-2-70b-hf \
+-o acc_${model_name}_bs1_measure.txt \
+--model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -406,31 +421,32 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --batch_size 1
 ```
 ##### 2. quantize and run the model
-Here is an example to quantize the model based on previous measurements for LLama2-70b:
-```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_70b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-2-70b-hf \
---attn_softmax_bf16 \
---use_hpu_graphs \
---trim_logits \
---use_kv_cache \
---bucket_size=128 \
---bucket_internal \
---use_flash_attention \
---flash_attention_recompute \
---bf16 \
---batch_size 1
-```
 
-Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
+Here is an example to quantize the model based on previous measurements for LLama2-70b:
+
+Users could export different values to below enivironment variables to change parameters for benchmarking
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-2-70b-hf , meta-llama/Llama-2-7b-hf |
+| input_len | 128, 2048, and etc |
+| output_len | 128, 2048, and etc |
+| batch_size | 350, 1512, 1750, and etc |
+
+Here is an example to run llama2-70b with input tokens lenght=128, output tokens length=128 and batch size = 1750 
+```bash
+export model_name=meta-llama/Llama-2-70b-hf
+export input_len=128
+export output_len=128
+export batch_size=1750
+```
+After setting the environment variables, users could run the fp8 model by below command.  
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-2-70b-hf \
+--model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
+--limit_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
 --reuse_cache \
@@ -438,14 +454,13 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_recompute \
 --flash_attention_causal_mask  \
 --use_flash_attention \
---bf16 \
---batch_size 350 \
---max_new_tokens 2048 \
---max_input_tokens 2048 \
---warmup 2 \
 --bucket_size=128 \
 --bucket_internal \
---limit_hpu_graphs
+--bf16 \
+--batch_size ${batch_size} \
+--max_new_tokens ${output_len} \
+--max_input_tokens ${input_len} \
+--warmup 2
 ```
 #### Mixtral-8x7B
 ##### 1. tensor quantization statistics
@@ -514,13 +529,24 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 ```
 #### Llama3-405B
 ##### 1. tensor quantization statistics
-Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
+Here is an example to measure the tensor quantization statistics on Llama3 with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+
+Users could export different values to below enivironment variables to change parameters for tensor quantization statisics  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-3.1-405B-Instruct , meta-llama/Llama-3.1-70B-Instruct, and meta-llama/Llama-3.1-8B-Instruct |
+
+Here is an example to run llama3-405b
+```bash
+export model_name=meta-llama/Llama-3.1-405B-Instruct
+```
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_llama3_405b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+-o acc_${model_name}_bs1_quant.txt \
+--model_name_or_path ${model_name} \
 --use_hpu_graphs \
 --use_kv_cache \
 --trim_logits \
@@ -532,12 +558,30 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --flash_attention_causal_mask
 ```
 ##### 2. quantize and run the model
-Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
+Here is an example to quantize the model based on previous measurements for Llama3 with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+
+Users could export different values to below enivironment variables to change parameters for benchmarking  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-3.1-405B-Instruct , meta-llama/Llama-3.1-70B-Instruct, and meta-llama/Llama-3.1-8B-Instruct |
+| input_len | 128, 2048, and etc |
+| output_len | 128, 2048, and etc |
+| batch_size | 10, 3306, and etc |
+
+Here is an example to run llama3-405b with input tokens lenght=128, output tokens length=128 and batch size = 3306 
+```bash
+export model_name=meta-llama/Llama-3.1-405B-Instruct
+export input_len=128
+export output_len=128
+export batch_size=3306
+```
+After setting the environment variables, users could run the fp8 model by below command.  
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+--model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --warmup 2 \
 --use_hpu_graphs \
@@ -545,9 +589,9 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --limit_hpu_graphs \
 --bucket_size=128 \
 --bucket_internal \
---max_input_tokens 2048 \
---max_new_tokens 2048 \
---batch_size 180 \
+--max_input_tokens ${input_len} \
+--max_new_tokens ${output_len} \
+--batch_size ${batch_size} \
 --bf16 \
 --reuse_cache \
 --trim_logits \
