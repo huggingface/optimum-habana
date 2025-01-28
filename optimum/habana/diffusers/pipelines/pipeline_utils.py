@@ -128,7 +128,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         DiffusionPipeline.__init__(self)
 
         if sdp_on_bf16:
-            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+            if hasattr(torch._C, "_set_math_sdp_allow_fp16_bf16_reduction"):
+                torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
         self.use_habana = use_habana
         if self.use_habana:
@@ -165,8 +166,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         "`torch_dtype=torch.bfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
-                else:
-                    self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
@@ -369,6 +368,18 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         # Define a new kwarg here to know in the __init__ whether to use full bf16 precision or not
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
+
+        # Need to load custom ops lists before instantiating htcore
+        if kwargs.get("gaudi_config", None) is not None:
+            if isinstance(kwargs["gaudi_config"], str):
+                gaudi_config = GaudiConfig.from_pretrained(kwargs["gaudi_config"])
+            else:
+                gaudi_config = kwargs["gaudi_config"]
+            gaudi_config.declare_autocast_bf16_fp32_ops()
+            kwargs["gaudi_config"] = gaudi_config
+
+        # Import htcore here to support model quantization
+        import habana_frameworks.torch.core as htcore  # noqa: F401
 
         return super().from_pretrained(
             pretrained_model_name_or_path,

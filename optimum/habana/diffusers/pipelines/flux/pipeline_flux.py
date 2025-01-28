@@ -282,6 +282,18 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         tokenizer_2 (`T5TokenizerFast`):
             Second Tokenizer of class
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -369,10 +381,11 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
 
             # Pad guidance if necessary
             if guidance is not None:
+                guidance_batches[-1] = guidance_batches[-1].unsqueeze(1)
                 sequence_to_stack = (guidance_batches[-1],) + tuple(
                     torch.zeros_like(guidance_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
-                guidance_batches[-1] = torch.vstack(sequence_to_stack)
+                guidance_batches[-1] = torch.vstack(sequence_to_stack).squeeze(1)
 
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)

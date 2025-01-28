@@ -98,7 +98,7 @@ slow_tests_deepspeed: test_installs
 
 slow_tests_diffusers: test_installs
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
+	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion"
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"

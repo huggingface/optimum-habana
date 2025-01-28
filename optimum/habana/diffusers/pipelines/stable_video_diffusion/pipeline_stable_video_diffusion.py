@@ -78,6 +78,18 @@ class GaudiStableVideoDiffusionPipeline(GaudiDiffusionPipeline, StableVideoDiffu
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images.
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
