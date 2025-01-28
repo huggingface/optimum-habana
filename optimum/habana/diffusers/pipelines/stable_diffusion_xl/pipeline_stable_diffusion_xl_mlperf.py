@@ -760,7 +760,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
         use_warmup_inference_steps = (
-            num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            num_batches <= throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
         )
 
         self._num_timesteps = len(timesteps)
@@ -772,9 +772,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
             if j == throughput_warmup_steps:
                 ht.hpu.synchronize()
                 t1 = time.time()
-            if use_warmup_inference_steps:
-                ht.hpu.synchronize()
-                t0_inf = time.time()
 
             latents = latents_batches[0]
             latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -844,10 +841,9 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                     hb_profiler.step()
             else:
                 for i in range(num_inference_steps):
-                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                    if use_warmup_inference_steps and i == throughput_warmup_steps and j == num_batches - 1:
                         ht.hpu.synchronize()
-                        t1_inf = time.time()
-                        t1 += t1_inf - t0_inf
+                        t1 = time.time()
 
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
@@ -878,9 +874,10 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                         callback_on_step_end_tensor_inputs,
                     )
                     hb_profiler.step()
-            if use_warmup_inference_steps:
+            if use_warmup_inference_steps and j == num_batches - 1:
                 ht.hpu.synchronize()
-                t1 = warmup_inference_steps_time_adjustment(t1, t1_inf, num_inference_steps, throughput_warmup_steps)
+                t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
+                t_vae_b = time.time()
 
             if not output_type == "latent":
                 # make sure the VAE is in float32 mode, as it overflows in float16
@@ -899,19 +896,21 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                 image = latents
 
             output_images.append(image)
+            if use_warmup_inference_steps and j == num_batches - 1:
+                ht.hpu.synchronize()
+                t_vae_e = time.time()
+                t1 = t1 + t_vae_e - t_vae_b
 
         hb_profiler.stop()
 
         speed_metrics_prefix = "generation"
         ht.hpu.synchronize()
-
         if t1 == t0 or use_warmup_inference_steps:
-            num_samples = num_batches * batch_size
-            num_steps = (num_inference_steps - throughput_warmup_steps) * num_batches * batch_size
+            num_samples = batch_size
+            num_steps = batch_size * num_inference_steps
         else:
             num_samples = (num_batches - throughput_warmup_steps) * batch_size
             num_steps = (num_batches - throughput_warmup_steps) * num_inference_steps * batch_size
-
         speed_measures = speed_metrics(
             split=speed_metrics_prefix,
             start_time=t0,

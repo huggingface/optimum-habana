@@ -824,7 +824,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             speed_metrics_prefix = "generation"
             if t1 == t0 or use_warmup_inference_steps:
                 num_samples = num_batches * batch_size
-                num_steps = (num_inference_steps - throughput_warmup_steps) * num_batches * batch_size
+                num_steps = num_inference_steps * num_batches * batch_size
             else:
                 num_samples = (num_batches - throughput_warmup_steps) * batch_size
                 num_steps = (num_batches - throughput_warmup_steps) * num_inference_steps * batch_size
