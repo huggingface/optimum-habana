@@ -25,6 +25,10 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
+from optimum.habana.utils import (
+    set_seed,
+)
+
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -179,6 +183,23 @@ def main():
         action="store_true",
         help="Allow PyTorch to use reduced precision in the SDPA math backend",
     )
+    parser.add_argument(
+        "--max_input_tokens",
+        type=int,
+        default=None,
+        help="If > 0 then pad the input sequences to this specified length of tokens. will not apply truncate to avoid deleting the image tag",
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="Whether to use sampling for generation.",
+    )
+    parser.add_argument(
+        "--seed",
+        default=27,
+        type=int,
+        help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+    )
 
     args = parser.parse_args()
 
@@ -197,6 +218,8 @@ def main():
 
     adapt_transformers_to_gaudi()
 
+    set_seed(args.seed)
+
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
     if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
@@ -211,7 +234,7 @@ def main():
         ]
 
     if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
-        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
                 conversation = [
@@ -308,6 +331,7 @@ def main():
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
         "limit_hpu_graphs": args.limit_hpu_graphs,
+        "do_sample": args.do_sample,
     }
 
     if args.sdp_on_bf16:
@@ -321,12 +345,17 @@ def main():
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
+    # could use "image-text-to-text" pipeline in transformers 4.47
     if model_type in ["idefics2", "mllama", "paligemma"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
+            kwargs = {}
+            if args.max_input_tokens is not None and args.max_input_tokens > 0:
+                kwargs["max_length"] = args.max_input_tokens
+                kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
@@ -355,7 +384,7 @@ def main():
     throughput = total_new_tokens_generated / duration
     logger.info(f"result = {result}")
     logger.info(
-        f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
 
     # Store results if necessary

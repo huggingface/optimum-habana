@@ -159,7 +159,10 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
+        sdp_on_bf16: bool = False,
     ):
+        if sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
         super().__init__(
             vae,
             text_encoder,
