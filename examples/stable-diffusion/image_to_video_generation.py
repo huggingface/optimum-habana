@@ -286,9 +286,9 @@ def main():
             args.model_name_or_path,
             **kwargs,
         )
-        res = {}
+        kwargs_call = {}
         if args.throughput_warmup_steps is not None:
-            res["throughput_warmup_steps"] = args.throughput_warmup_steps
+            kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
         # Generate images
         outputs = pipeline(
@@ -307,7 +307,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            **res,
+            **kwargs_call,
         )
 
     # Save the pipeline in the specified directory if not None
