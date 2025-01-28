@@ -22,10 +22,22 @@ Conditional text generation on Intel® Gaudi® AI Accelerators. You can find mor
 ## Requirements
 
 Please make sure to follow [Driver Installation](https://docs.habana.ai/en/latest/Installation_Guide/Driver_Installation.html) to install Gaudi driver on the system.
-There are two options to setup the environment setup for the samples. 
-Users could pick either Bare metal or Docker image to run the samples.
+We suggest to use pytorch docker image to run below examples.
 
-### Option1 : Bare metal
+To use dockerfile provided for the sample, please follow [Docker Installation](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html) to setup habana runtime for Docker images.  
+The docker image helps users to setup pytorch software and packages to run the samples. Users still need to install required packages like deepspeed to run the samples.  
+
+### Docker Run
+After docker build, users could follow below command to run and docker instance and users will be in the docker instance under text-generation folder.
+```bash
+docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none   --cap-add=ALL --privileged=true  --net=host --ipc=host  -v "$PWD":/workspace --workdir  /workspace  vault.habana.ai/gaudi-docker/1.19.1/ubuntu24.04/habanalabs/pytorch-installer-2.5.1:latest
+```
+> [!NOTE]
+> The Huggingface model file size might be large, so we recommend to use an external disk as Huggingface hub folder. \
+> Please export HF_HOME environment variable to your external disk and then export the mount point into docker instance. \
+> ex: "-e HF_HOME=/mnt/huggingface -v /mnt:/mnt"
+
+### Install required packages inside docker
 First, you should install the requirements:
 ```bash
 pip install -r requirements.txt
@@ -40,24 +52,6 @@ Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 ```
-### Option 2: Docker Image
-To use dockerfile provided for the sample, please follow [Docker Installation](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html) to setup habana runtime for Docker images.
-The dockerfile helps users to setup all the required software and packages to run the samples, so users could just run the instructions for different text generation models directly inside the docker image.
-
-#### Docker Build
-To build the image from the Dockerfile, please follow below command to build the optimum-habana-text-gen image.
-```bash
-docker build --no-cache -t optimum-habana-text-gen:latest --build-arg https_proxy=$https_proxy --build-arg http_proxy=$http_proxy -f Dockerfile .
-```
-#### Docker Run
-After docker build, users could follow below command to run and docker instance and users will be in the docker instance under text-generation folder.
-```bash
-docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none   --cap-add=ALL --privileged=true  --net=host --ipc=host optimum-habana-text-gen:latest
-```
-> [!NOTE]
-> The Huggingface model file size might be large, so we recommend to use an external disk as Huggingface hub folder. \
-> Please export HF_HOME environment variable to your external disk and then export the mount point into docker instance. \
-> ex: "-e HF_HOME=/mnt/huggingface -v /mnt:/mnt"
 
 ## Usage
 
