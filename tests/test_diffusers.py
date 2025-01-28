@@ -2759,13 +2759,10 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
         sd_pipe_oh = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
-        sd_pipe_hf = StableVideoDiffusionPipeline(**components)
+        components2 = self.get_dummy_components()
+        sd_pipe_hf = StableVideoDiffusionPipeline(**components2)
 
         def _get_image_from_pipeline(pipeline, device=device):
-            for component in pipeline.components.values():
-                if hasattr(component, "set_default_attn_processor"):
-                    component.set_default_attn_processor()
-
             pipeline.to(device)
             pipeline.set_progress_bar_config(disable=None)
 
@@ -2778,7 +2775,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
             self.assertEqual(image.shape, (2, 3, 32, 32))
             return image[0, -3:, -3:, -1]
 
-        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh)
+        image_slice_oh = _get_image_from_pipeline(sd_pipe_oh, device="hpu").cpu()
         image_slice_hf = _get_image_from_pipeline(sd_pipe_hf)
 
         self.assertLess(np.abs(image_slice_oh.flatten() - image_slice_hf.flatten()).max(), 1e-2)
