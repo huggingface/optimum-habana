@@ -521,7 +521,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-#### Llama3-405B
+#### Llama3.1-405B, Llama3.1-70B, and Llama3.1-8B
 ##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Llama3 with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
