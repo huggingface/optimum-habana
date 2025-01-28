@@ -30,6 +30,27 @@ from pathlib import Path
 from typing import Callable, Union
 from unittest import TestCase, skipUnless
 
+def install_requirements(requirements_filename: Union[str, os.PathLike]):
+    """
+    Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
+    Moving it here because torchsde installation needs to happen before importing diffusers and other deps
+    """
+
+    if not Path(requirements_filename).exists():
+        return
+
+    cmd_line = f"pip install -r {requirements_filename}".split()
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
+
+path_to_reqs = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                )
+install_requirements(path_to_reqs / "requirements.txt")
+
 import diffusers
 import numpy as np
 import PIL
@@ -2541,21 +2562,6 @@ class TrainControlNet(TestCase):
             ).images[0]
 
             self.assertEqual(image.shape, (512, 512, 3))
-
-
-def install_requirements(requirements_filename: Union[str, os.PathLike]):
-    """
-    Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
-    """
-
-    if not Path(requirements_filename).exists():
-        return
-
-    cmd_line = f"pip install -r {requirements_filename}".split()
-    p = subprocess.Popen(cmd_line)
-    return_code = p.wait()
-    assert return_code == 0
-
 
 class DreamBooth(TestCase):
     def _test_dreambooth(self, extra_config, train_text_encoder=False):
