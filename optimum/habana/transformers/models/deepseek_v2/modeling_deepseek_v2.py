@@ -62,15 +62,21 @@ from .configuration_deepseek_v2 import DeepseekV2Config
 
 # This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
 # It means that the function will not be traced through and simply appear as a node in the graph.
-if is_torch_fx_available():
-    if not is_torch_greater_or_equal_than_1_13:
-        import torch.fx
+# if is_torch_fx_available():
+#     if not is_torch_greater_or_equal_than_1_13:
+#         import torch.fx
 
-    _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
+#    _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
+
+import torch.fx
+_prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekV2Config"
+
+#default expert number per slice for dynamic MoE
+SLICE_MAX_EXPERT = 80
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -626,7 +632,7 @@ class DeepseekV2MoE(nn.Module):
         if config.n_shared_experts is not None:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = DeepseekV2MLP(config=config, intermediate_size=intermediate_size)
-        SLICE_MAX_EXPERT = 80
+        
         self.expert_slice = math.ceil(config.n_routed_experts / SLICE_MAX_EXPERT)
         self.expert_chunk = self.config.n_routed_experts // self.expert_slice
 
