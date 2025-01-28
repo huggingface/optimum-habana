@@ -27,6 +27,10 @@ from typing import List, Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.distributed as dist
+
+# This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
+# It means that the function will not be traced through and simply appear as a node in the graph.
+import torch.fx
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
@@ -47,29 +51,24 @@ from transformers.modeling_outputs import (
 from transformers.modeling_utils import PreTrainedModel
 from transformers.pytorch_utils import (
     ALL_LAYERNORM_LAYERS,
-    is_torch_greater_or_equal_than_1_13,
 )
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     logging,
 )
-from transformers.utils.import_utils import is_torch_fx_available
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_deepseek_v2 import DeepseekV2Config
 
 
-# This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
-# It means that the function will not be traced through and simply appear as a node in the graph.
-import torch.fx
 _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekV2Config"
 
-#default expert number per slice for dynamic MoE
+# default expert number per slice for dynamic MoE
 SLICE_MAX_EXPERT = 80
 
 try:
@@ -626,7 +625,7 @@ class DeepseekV2MoE(nn.Module):
         if config.n_shared_experts is not None:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = DeepseekV2MLP(config=config, intermediate_size=intermediate_size)
-        
+
         self.expert_slice = math.ceil(config.n_routed_experts / SLICE_MAX_EXPERT)
         self.expert_chunk = self.config.n_routed_experts // self.expert_slice
 
@@ -762,9 +761,9 @@ class KVCache(torch.nn.Module):
             self.inp_seq_len = inp_seq_len
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
         else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            assert self.inp_seq_len == inp_seq_len, (
+                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            )
             self.cache.fill_(0)
 
     def update(self, prev, cur, dim, idx, inp_seq_len):
