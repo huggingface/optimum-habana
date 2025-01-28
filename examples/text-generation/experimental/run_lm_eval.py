@@ -112,7 +112,7 @@ class HabanaModelAdapter(HFLM):
         self.options = options
         self._device = args.device
         self._get_backend(self.model.config, "default", args.trust_remote_code)
-        self.add_bos_token = False
+        self.add_bos_token = True
         self.logits_cache = True
         self.model_inputs = {"use_cache": self.options.use_cache}
         if self._model.config.model_type in [
