@@ -494,9 +494,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         with torch.autocast(
             device_type="hpu",
             enabled=self.gaudi_config.use_torch_autocast,
-            dtype=torch.bfloat16 if not self.gaudi_config.use_torch_autocast else None
+            dtype=torch.bfloat16 if not self.gaudi_config.use_torch_autocast else None,
         ):
-
             quant_mode = kwargs.get("quant_mode", None)
             if quant_mode == "measure" or quant_mode == "quantize":
                 import os
@@ -557,9 +556,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             device = self._execution_device
 
-            lora_scale = (
-                kwargs.get("lora_scale", None) if kwargs is not None else None
-            )
+            lora_scale = kwargs.get("lora_scale", None) if kwargs is not None else None
 
             (
                 prompt_embeds,

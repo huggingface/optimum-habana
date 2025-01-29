@@ -385,7 +385,7 @@ def main():
 
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
-    
+
     if args.lora_scale is not None:
         kwargs_call["lora_scale"] = args.lora_scale
 
