@@ -1,0 +1,18 @@
+{
+  "tests/test_openclip_vqa.py::test_openclip_vqa_bf16[laion/CLIP-ViT-g-14-laion2B-s12B-b42K]": {
+    "gaudi1": {
+      "throughput": 550
+    },
+    "gaudi2": {
+      "throughput": 1472
+    }
+  },
+  "tests/test_openclip_vqa.py::test_openclip_vqa_bf16[microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224]": {
+    "gaudi1": {
+      "throughput": 1200
+    },
+    "gaudi2": {
+      "throughput": 1816
+    }
+  }
+}
