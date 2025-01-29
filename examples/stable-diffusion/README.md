@@ -30,13 +30,7 @@ pip install -r requirements.txt
 
 ## Text-to-Image Generation
 
-<<<<<<< HEAD
-### Stable Diffusion
-
-Here's how to generate images using the Stable Diffusion 1.4 model with a single prompt:
-=======
 Here is how to generate images with one prompt:
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ```bash
 python text_to_image_generation.py \
@@ -56,31 +50,10 @@ python text_to_image_generation.py \
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
-<<<<<<< HEAD
-
-To generate images with multiple prompts, simply include two prompts in your input as shown below:
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
-    --num_images_per_prompt 32 \
-    --batch_size 8 \
-    --image_save_dir /tmp/stable_diffusion_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16
-```
-
-Distributed inference with multiple HPUs is also supported. Below is an example demonstrating how to generate images with two prompts on two HPUs:
-=======
 > You can pass multiple prompts strings separated via space, i.e. `--prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off"`
 > You can run on multiple HPUs replace the `python text_to_image_generation.py ..` with `python ../gaudi_spawn.py --world_size <num_hpus> text_to_image_generation.py`.
 
 Here is how to generate images with two prompts on two HPUs:
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ```bash
 python ../gaudi_spawn.py \
@@ -155,29 +128,7 @@ python text_to_image_generation.py \
     --ldm3d
 ```
 
-<<<<<<< HEAD
-Here is how to generate images and depth maps with two prompts on two HPUs:
-
-```bash
-python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
-    --model_name_or_path "Intel/ldm3d-4c" \
-    --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
-    --num_images_per_prompt 10 \
-    --batch_size 2 \
-    --height 768 \
-    --width 768 \
-    --image_save_dir /tmp/stable_diffusion_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d \
-    --distributed
-```
-
-> [!NOTE]
-=======
 > You can run on multiple HPUs replace the `python text_to_image_generation.py ..` with `python ../gaudi_spawn.py --world_size <num_hpus> text_to_image_generation.py`. Example provided earlier.
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 > There are three different checkpoints for LDM3D:
 > - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
 > - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
@@ -210,10 +161,6 @@ python text_to_image_generation.py \
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
-<<<<<<< HEAD
-
-SDXL integrates a second text encoder (OpenCLIP ViT-bigG/14), alongside the original Stable Diffusion text encoder. This addition significantly increases the number of parameters, enabling more detailed and descriptive prompts. Below is an example of how to generate images using multiple prompts for both `prompt` (primary text encoder) and `prompt_2` (secondary text encoder), along with their respective negative prompts:
-=======
 > You can pass multiple prompts strings separated via space.
 > You can run on multiple HPUs replace the `python text_to_image_generation.py ..` with `python ../gaudi_spawn.py --world_size <num_hpus> text_to_image_generation.py`. Example provided earlier.
 > You can use SDXL optimized pipeline with `--optimize`.
@@ -225,7 +172,6 @@ SDXL integrates a second text encoder (OpenCLIP ViT-bigG/14), alongside the orig
 SDXL combines a second text encoder (OpenCLIP ViT-bigG/14) with the original text encoder to significantly
 increase the number of parameters. Here is how to generate images with several prompts for both `prompt`
 and `prompt_2` (2nd text encoder), as well as their negative prompts:
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ```bash
 python text_to_image_generation.py \
@@ -245,81 +191,6 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-<<<<<<< HEAD
-SDXL also supports distributed inferencing with Intel Gaudi accelerators. Below is an example of generating SDXL images in a distributed manner using two prompts on two HPUs:
-
-```bash
-python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
-    --prompts_2 "Red tone" "Blue tone" \
-    --negative_prompts "Low quality" "Sketch" \
-    --negative_prompts_2 "Clouds" "Clouds" \
-    --num_images_per_prompt 32 \
-    --batch_size 8 \
-    --image_save_dir /tmp/stable_diffusion_xl_images \
-    --scheduler euler_discrete \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --distributed
-```
-
-The performance-optimized SDXL pipeline can be enabled using the `--optimize` option. This option utilizes a more aggressively optimized attention mechanism for enhanced performance. Additionally, it supports running
-inference in mixed FP8 precision.
-
-Here is how to generate SDXL images with optimized pipeline in FP8 precision:
-```bash
-QUANT_CONFIG=quantization/stable-diffusion-xl/quantize_config.json \
-python text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-    --prompts "Sailing ship painting by Van Gogh" \
-    --num_images_per_prompt 28 \
-    --batch_size 7 \
-    --image_save_dir /tmp/stable_diffusion_xl_images \
-    --scheduler euler_discrete \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --optimize
-```
-
-### SDXL-Turbo
-
-The knowledge distillation technique can be used to train a distilled version of SDXL, allowing for high-quality
-image generation with fewer inference steps. SDXL-Turbo is a distilled version of Stable Diffusion XL 1.0,
-optimized for real-time synthesis.
-
-Here is how to generate images with multiple prompts:
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path stabilityai/sdxl-turbo \
-    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
-    --num_images_per_prompt 32 \
-    --batch_size 8 \
-    --image_save_dir /tmp/stable_diffusion_xl_turbo_images \
-    --scheduler euler_ancestral_discrete \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --num_inference_steps 1 \
-    --guidance_scale 1.000001 \
-    --timestep_spacing trailing
-```
-
-> [!WARNING]
-> There is a regression with `--guidance_scale 0.0` in current release which will be addressed in later releases.
-> Setting `--guidance_scale` to a value larger than 1 resolves the regression.
-
-=======
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 ### Stable Diffusion 3 (SD3)
 
 Stable Diffusion 3 was introduced by Stability AI [here](https://stability.ai/news/stable-diffusion-3).
@@ -340,88 +211,12 @@ python text_to_image_generation.py \
     --sdp_on_bf16 \
     --bf16
 ```
-<<<<<<< HEAD
 
-This model can also be quantized with some ops running in FP8 precision.
-
-Before quantization, run stats collection using measure mode:
-
-```bash
-QUANT_CONFIG=quantization/stable-diffusion-3/measure_config.json \
-python text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
-    --prompts "Sailing ship painting by Van Gogh" \
-    --num_images_per_prompt 10 \
-    --batch_size 1 \
-    --num_inference_steps 28 \
-    --image_save_dir /tmp/stable_diffusion_3_images \
-    --scheduler default \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --quant_mode measure
-```
-
-After stats collection, here is how to run SD3 in quantization mode:
-
-```bash
-QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json \
-python text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
-    --prompts "Sailing ship painting by Van Gogh" \
-    --num_images_per_prompt 10 \
-    --batch_size 1 \
-    --num_inference_steps 28 \
-    --image_save_dir /tmp/stable_diffusion_3_images \
-    --scheduler default \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --quant_mode quantize
-```
-
-### FLUX.1
-
-FLUX.1 was introduced by Black Forest Labs [here](https://blackforestlabs.ai/announcing-black-forest-labs/).
-
-Here is how to run FLUX.1-schnell model (distilled fast version of FLUX.1):
-
-```bash
-python text_to_image_generation.py \
-    --model_name_or_path black-forest-labs/FLUX.1-schnell \
-    --prompts "A cat holding a sign that says hello world" \
-    --num_images_per_prompt 10 \
-    --batch_size 1 \
-    --num_inference_steps 4 \
-    --image_save_dir /tmp/flux_1_images \
-    --scheduler flow_match_euler_discrete \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16
-```
-
-Before running FLUX.1-dev model, you need to:
-
-1. Agree to the Terms and Conditions for using FLUX.1-dev model at [HuggingFace model page](https://huggingface.co/black-forest-labs/FLUX.1-dev)
-2. Authenticate with HuggingFace using your HF Token. For authentication, run:
-
-```bash
-huggingface-cli login
-```
-
-=======
 > The access to SD3 requires agreeing to its terms and conditions at [HuggingFace model page](https://huggingface.co/stabilityai/stable-diffusion-3-medium), and then authenticate using your HF token by running `$ huggingface-cli login`.
 > For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment by setting `PT_HPU_MAX_COMPOUND_OP_SIZE=1`.
 
 ### FLUX.1
 
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 Here is how to run FLUX.1-dev model:
 
 ```bash
@@ -508,35 +303,10 @@ python text_to_image_generation.py \
     --sdp_on_bf16 \
     --bf16
 ```
-<<<<<<< HEAD
-
-The ControlNet example can be run with multiple prompts by supplying more than one prompt in the input.
-Additionally, it supports distributed execution. Below is an example of generating images conditioned by the Canny edge model using two prompts on two HPUs:
-
-```bash
-python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
-    --prompts "futuristic-looking woman" "a rusty robot" \
-    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
-    --num_images_per_prompt 16 \
-    --batch_size 4 \
-    --image_save_dir /tmp/controlnet_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16 \
-    --distributed
-```
-
-These ControlNet examples will preprocess the input image to derive Canny edges. Alternatively, you can use `--control_preprocessing_type none` to supply a preprocessed control image directly, enabling many additional use cases.
-=======
 > You can pass multiple prompts strings separated via space.
 > You can run on multiple HPUs replace the `python text_to_image_generation.py ..` with `python ../gaudi_spawn.py --world_size <num_hpus> text_to_image_generation.py`. Example provided earlier.
 > You can genrate images conditioned by open pose model with `-control_preprocessing_type "none"`.
 > You can generate images with conditioned by canny edge model using Stable Diffusion 2 with `--model_name_or_path stabilityai/stable-diffusion-2-1`, `--controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers`, and `--gaudi_config Habana/stable-diffusion-2`.
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ## Inpainting
 
@@ -676,17 +446,10 @@ python image_to_image_generation.py \
     --bf16
 ```
 
-<<<<<<< HEAD
-> [!NOTE]
-> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
-> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
-> You can enable this mode with `--use_hpu_graphs`.
-=======
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 > You can pass multiple prompts strings separated via space.
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ### Stable Diffusion XL Refiner
 
@@ -808,41 +571,8 @@ python image_to_video_generation.py \
     --bf16
 ```
 
-<<<<<<< HEAD
-> [!NOTE]
-> For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
-> by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
-
-### Multiple Image Prompts
-
-Here is how to generate videos with several image prompts:
-
-```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
-python image_to_video_generation.py \
-    --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
-    --image_path \
-        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
-        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png" \
-        "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png" \
-        "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png" \
-    --num_videos_per_prompt 1 \
-    --video_save_dir /tmp/stable_video_diffusion_xt \
-    --save_frames_as_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16
-```
-
-> [!NOTE]
-> For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
-> by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
-=======
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to set enviroment var by setting `PT_HPU_MAX_COMPOUND_OP_SIZE=1`.
 > You can pass multiple image prompts strings separated via space, i.e. `--image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"`.
->>>>>>> 63b31bbd (fea(): Simplified the stable diff readme files)
 
 ### Image-to-Video ControlNet
 
