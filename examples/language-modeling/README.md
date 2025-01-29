@@ -965,7 +965,6 @@ We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepS
 > This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
 
 ```bash
-HL_DS_DISTRIBUTED_ATTENTION_SEQ_DIM=1   \
 python3 ../gaudi_spawn.py  \
         --world_size 8  --use_deepspeed run_lora_clm.py \
         --model_name_or_path meta-llama/Llama-3.1-8B \
