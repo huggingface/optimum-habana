@@ -1,0 +1,8 @@
+{
+  "tests/test_fp8_examples.py::test_fp8_train[mistralai/Mistral-7B-Instruct-v0.2-tatsu-lab/alpaca--language-modeling-8-8-run_lora_clm.py]": {
+    "gaudi2": {
+      "eval_accuracy": 0.7538,
+      "train_samples_per_second": 12.373
+    }
+  }
+}
