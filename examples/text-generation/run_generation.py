@@ -236,6 +236,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
+    parser.add_argument(
+        "--kv_cache_on_host",
+        action="store_true",
+        help="Store key/value cache on CPU instead of HPU device (only supports Llama for now). It should save VRAM in long context scenarios.",
+    )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
     parser.add_argument(
         "--simulate_dyn_prompt",
@@ -366,6 +371,12 @@ def setup_parser(parser):
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
+    if args.quant_config != "" and args.kv_cache_on_host:
+        logger.warning("`--kv_cache_on_host` is not supported with FP8 quantization. Setting this flag to False.")
+        args.kv_cache_on_host = False
+    if args.kv_cache_on_host and args.use_hpu_graphs:
+        logger.warning("`--kv_cache_on_host` is not supported with HPU graphs. Setting this flag to False.")
+        args.kv_cache_on_host = False
     return args
 
 

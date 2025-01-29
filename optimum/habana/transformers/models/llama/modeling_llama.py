@@ -347,7 +347,36 @@ def gaudi_llama_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-# FusedScaledDotProductAttention
+def gaudi_llama_repeat_kv_cpu(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor,
+    n_rep: int,
+):
+    """
+    PyTorch SDPA CPU (flash-atten) kernel does not support GQA/MQA for now.
+    So, expand k and v to num_query_heads.
+    """
+    query_states = query_states.to("cpu")
+    key_states = key_states.to("cpu")
+    value_states = value_states.to("cpu")
+    if attention_mask is not None:
+        attention_mask = attention_mask.to("cpu")
+
+    batch, num_key_value_heads, kv_len, head_dim = key_states.shape
+    if n_rep == 1 or num_key_value_heads == 1:
+        return query_states, key_states, value_states, attention_mask
+
+    key_states = key_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, kv_len, head_dim)
+    value_states = value_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, kv_len, head_dim)
+    key_states = key_states.reshape(batch, num_key_value_heads * n_rep, kv_len, head_dim)
+    value_states = value_states.reshape(batch, num_key_value_heads * n_rep, kv_len, head_dim)
+
+    return query_states, key_states, value_states, attention_mask
+
+
+#  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -495,9 +524,8 @@ class GaudiLlamaAttention(LlamaAttention):
             return self.k_proj.scales.dtype
         return self.k_proj.weight.dtype
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, device="hpu"):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        device = self.get_k_proj_weight().device
         dtype = self.config.torch_dtype
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
@@ -688,44 +716,37 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-        fused_scaled_dot_product_attention = GaudiDistributedAttention(
-            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
-        )
-        if use_flash_attention and FusedSDPA is not None:
-            if q_len == 1:
-                # next token
-                attn_output = fused_scaled_dot_product_attention(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attention_mask,
-                    0.0,
-                    False,
-                    None,
-                    "None",
-                    False,
-                    None,
-                    "None",
-                )
-            else:
-                # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-                if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same length
-                    attn_output = fused_scaled_dot_product_attention(
-                        query_states,
-                        key_states,
-                        value_states,
-                        None,
-                        0.0,
-                        True,
-                        None,
-                        softmax_mode,
-                        flash_attention_recompute,
-                        valid_sequence_lengths,
-                        "left",
-                    )
-                else:
+
+        kv_cache_on_host = key_states.device == torch.device("cpu") and value_states.device == torch.device("cpu")
+        # CPU SDPA fot next token
+        if kv_cache_on_host and q_len == 1 and not self.training:
+            query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv_cpu(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
+            # pytorch https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+            # dispatch to flash attention implementation
+            attn_output = F.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                scale=self.norm_factor,
+            )
+            attn_output = attn_output.to("hpu", non_blocking=True)
+
+        else:
+            if kv_cache_on_host:
+                key_states = key_states.to("hpu", non_blocking=True)
+                value_states = value_states.to("hpu", non_blocking=True)
+
+            fused_scaled_dot_product_attention = GaudiDistributedAttention(
+                self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+            )
+            if use_flash_attention and FusedSDPA is not None:
+                if q_len == 1:
+                    # next token
                     attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
@@ -734,35 +755,68 @@ class GaudiLlamaAttention(LlamaAttention):
                         0.0,
                         False,
                         None,
-                        softmax_mode,
-                        flash_attention_recompute,
+                        "None",
+                        False,
                         None,
                         "None",
                     )
+                else:
+                    # first token
+                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+                    if flash_attention_causal_mask:
+                        attn_output = fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            None,
+                            0.0,
+                            True,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            valid_sequence_lengths,
+                            "left",
+                        )
+                    else:
+                        attn_output = fused_scaled_dot_product_attention(
+                            query_states,
+                            key_states,
+                            value_states,
+                            attention_mask,
+                            0.0,
+                            False,
+                            None,
+                            softmax_mode,
+                            flash_attention_recompute,
+                            None,
+                            "None",
+                        )
 
-        else:
-            query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
-
-            if attn_softmax_bf16:
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
             else:
-                # upcast attention to fp32
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                    query_states.dtype
+                query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
+                    query_states, key_states, value_states, attention_mask, self.num_key_value_groups
                 )
-            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
+
+                attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
+
+                if attention_mask is not None:  # no matter the length, we just slice it
+                    causal_mask = attention_mask
+                    if cache_position is not None:
+                        causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                    attn_weights = attn_weights + causal_mask
+
+                if attn_softmax_bf16:
+                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+                else:
+                    # upcast attention to fp32
+                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                        query_states.dtype
+                    )
+                attn_weights = torch.nn.functional.dropout(
+                    attn_weights, p=self.attention_dropout, training=self.training
+                )
+                attn_output = self.matmul_av(attn_weights, value_states)
+                attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -908,8 +962,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
-        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, device="hpu"):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, device=device)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
@@ -1089,9 +1143,9 @@ class GaudiLlamaModel(LlamaModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, device="hpu"):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, device=device)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
@@ -1327,8 +1381,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         config.parallel_strategy = parallel_strategy
         super().__init__(config)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
-        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, device="hpu"):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, device=device)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
