@@ -196,7 +196,6 @@ from .models import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
     gaudi_check_and_enable_sdpa,
-    gaudi_check_support_param_buffer_assignment,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_cohere_attention_forward,
@@ -712,7 +711,6 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
-    transformers.modeling_utils.check_support_param_buffer_assignment = gaudi_check_support_param_buffer_assignment
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
