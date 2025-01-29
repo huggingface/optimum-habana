@@ -308,6 +308,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.torch_compile:
         model = get_torch_compiled_model(model, logger)
+        assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
+            "please set PT_HPU_LAZY_MODE=0 on command line when using --use_torch_compile"
+        )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
