@@ -36,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
@@ -60,7 +66,20 @@ from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
 )
-from .detr import gaudi_DetrConvModel_forward
+from .deepseek_v2 import (
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+)
+from .detr import (
+    gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
+    gaudi_DetrLoss_loss_labels,
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -165,6 +184,8 @@ from .mixtral import (
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
     MixtralConfig,
+    gaudi_mixtral_block_dynamic_moe_forward,
+    gaudi_mixtral_block_moe_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -182,6 +203,9 @@ from .mllama import (
     GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
+    KVCache,
+    Matmul,
+    apply_customized_rope_module,
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
@@ -231,6 +255,15 @@ from .qwen2_moe import (
     GaudiQwen2MoeModel,
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
+)
+from .qwen2_vl import (
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,

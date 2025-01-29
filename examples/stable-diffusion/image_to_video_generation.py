@@ -34,7 +34,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,31 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
     args = parser.parse_args()
 
     # Setup logging
@@ -218,6 +242,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     set_seed(args.seed)
@@ -261,6 +286,9 @@ def main():
             args.model_name_or_path,
             **kwargs,
         )
+        kwargs_call = {}
+        if args.throughput_warmup_steps is not None:
+            kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
         # Generate images
         outputs = pipeline(
@@ -277,6 +305,9 @@ def main():
             noise_aug_strength=args.noise_aug_strength,
             decode_chunk_size=args.decode_chunk_size,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
         )
 
     # Save the pipeline in the specified directory if not None

@@ -25,7 +25,9 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import (
+    set_seed,
+)
 
 
 logging.basicConfig(
@@ -176,6 +178,28 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        help="Allow PyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
+        "--max_input_tokens",
+        type=int,
+        default=None,
+        help="If > 0 then pad the input sequences to this specified length of tokens. will not apply truncate to avoid deleting the image tag",
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="Whether to use sampling for generation.",
+    )
+    parser.add_argument(
+        "--seed",
+        default=27,
+        type=int,
+        help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+    )
 
     args = parser.parse_args()
 
@@ -187,11 +211,19 @@ def main():
     args.global_rank = int(os.getenv("RANK", "0"))
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
+    if args.world_size > 0:
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
+
+    set_seed(args.seed)
 
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
+
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -202,8 +234,8 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
-        processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
                 conversation = [
@@ -281,6 +313,9 @@ def main():
         generator = pipeline(
             "image-to-text",
             model=args.model_name_or_path,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -300,21 +335,35 @@ def main():
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
         "limit_hpu_graphs": args.limit_hpu_graphs,
+        "do_sample": args.do_sample,
     }
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
+
+    if model_type == "qwen2_vl":
+        generate_kwargs["use_cache"] = True
+        generate_kwargs["cache_implementation"] = "static"
 
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+    # could use "image-text-to-text" pipeline in transformers 4.47
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
+            kwargs = {}
+            if args.max_input_tokens is not None and args.max_input_tokens > 0:
+                kwargs["max_length"] = args.max_input_tokens
+                kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework)
+            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
@@ -343,7 +392,7 @@ def main():
     throughput = total_new_tokens_generated / duration
     logger.info(f"result = {result}")
     logger.info(
-        f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
 
     # Store results if necessary

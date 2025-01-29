@@ -38,7 +38,6 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import (
     check_habana_frameworks_version,
-    check_neural_compressor_min_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
     set_seed,
@@ -254,12 +253,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
     elif args.load_quantized_model_with_inc:
-        # TODO: This will be removed in v1.19 Synapse release
-        # Override neural_compressor _load_remaining_pretrained_weight for the Transformer 4.45 release.
-        import neural_compressor.torch.algorithms.weight_only.save_load as nc_sl
-
-        nc_sl.WOQModelLoader._load_remaining_pretrained_weight = local_load_remaining_pretrained_weight
-
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -278,8 +271,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        if not check_neural_compressor_min_version("3.2"):
-            model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -306,7 +297,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
-            model = wrap_in_hpu_graph(model)
+            max_graphs = getattr(args, "max_graphs", None)
+            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -387,6 +379,44 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
     return model, args.assistant_model
 
 
+def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
+    logger.info("Multi-device ep run.")
+
+    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
+    assert args.assistant_model is None, "Assistant model must be None"
+
+    from torch import distributed as dist
+
+    if args.device == "hpu":
+        dist.init_process_group(backend="hccl")
+    else:
+        assert False, "Supports EP only on HPU"
+
+    torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+    logger.info("Creating Model")
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    config.update({"ep_size": args.world_size})
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        config=config,
+        torch_dtype=model_dtype,
+        **model_kwargs,
+    )
+
+    model = model.eval().to(args.device)
+
+    if args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+        model = wrap_in_hpu_graph(model)
+
+    if args.torch_compile:
+        model = get_torch_compiled_model(model)
+
+    return model, args.assistant_model
+
+
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
@@ -403,6 +433,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+            if (
+                hasattr(config, "rope_scaling")
+                and config.rope_scaling
+                and config.rope_scaling["rope_type"] == "llama3"
+                and config.max_position_embeddings > 8192
+            ):
+                config.max_position_embeddings = 8192
             model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
 
         # Model loaded to meta is managed differently
@@ -567,13 +604,18 @@ def setup_tokenizer(args, model, assistant_model, logger):
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
-    # HACK: MiniCPM3 has multiple eos_tokens and does not specify padding token. Set both to second one.
-    if model.config.model_type == "minicpm3":
-        tokenizer.pad_token = tokenizer.eos_token
-        model.generation_config.pad_token_id = model.generation_config.eos_token_id[-1]
+    # HACK: MiniCPM3 does not support list EOS token ID generation config.
+    if model.config.model_type == "minicpm3" and isinstance(model.generation_config.eos_token_id, list):
+        logger.warning(
+            f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
+        )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
-        if len(model.generation_config.eos_token_id) > 1:
-            logger.warning("Multiple EOS token IDs found. Only last eos token id will be used.")
+
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
@@ -677,8 +719,10 @@ def initialize_model(args, logger):
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
-        if not args.parallel_strategy == "tp"
+        if args.parallel_strategy == "none"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
+        if args.parallel_strategy == "tp"
+        else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
@@ -693,47 +737,3 @@ def initialize_model(args, logger):
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, assistant_model, tokenizer, generation_config
-
-
-# TODO:This will be removed from Synapse v1.19 release.
-# This is to override _load_remaining_pretrained_weight for Transformer 4.45 release.
-def local_load_remaining_pretrained_weight(self, model):
-    from transformers.modeling_utils import _load_state_dict_into_meta_model, load_state_dict
-
-    resolved_archive_file = self.kwargs.pop("resolved_archive_file", None)
-    torch_dtype = self.kwargs.pop("torch_dtype", torch.float32)
-    dtype_orig = self.kwargs.pop("dtype_orig", None)
-    offload_folder = self.kwargs.pop("offload_folder", None)
-    offload_state_dict = self.kwargs.pop("offload_state_dict", False)
-
-    # restore default dtype
-    if dtype_orig is not None:
-        torch.set_default_dtype(dtype_orig)
-
-    if not isinstance(resolved_archive_file, list):
-        resolved_archive_file = [resolved_archive_file]
-    for shard_file in resolved_archive_file:
-        state_dict = load_state_dict(shard_file)
-
-        params_dict = {
-            "model": model,
-            "state_dict": state_dict,
-            "start_prefix": "",
-            "expected_keys": self.loaded_state_dict_keys,
-            "device_map": {"": self.device},
-            "offload_folder": offload_folder,
-            "state_dict_folder": tempfile.mkdtemp() if offload_state_dict else None,
-            "state_dict_index": {} if offload_state_dict else None,
-            "dtype": torch_dtype,
-            "keep_in_fp32_modules": [],
-        }
-
-        _load_state_dict_into_meta_model(**params_dict)
-
-    # make sure token embedding weights are still tied if needed
-    model.tie_weights()
-
-    # Set model in evaluation mode to deactivate DropOut modules by default
-    model.eval()
-
-    return model

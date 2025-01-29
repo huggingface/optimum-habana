@@ -22,6 +22,7 @@
 
 import contextlib
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -46,19 +47,16 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
+from optimum.habana.utils import get_device_name
+
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
+from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
 
-
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    FusedRoPE = None
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
@@ -73,6 +71,12 @@ except ImportError:
     FusedSDPA = None
 
 try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+try:
     from habana_frameworks.torch.hpu import sdp_kernel
 
     SDPContext = True
@@ -82,11 +86,9 @@ except ImportError:
 logger = logging.get_logger(__name__)
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
@@ -148,47 +150,6 @@ def gaudi_mixtral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def update(self, prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-
 class GaudiMixtralAttentionLongSequence:
     @staticmethod
     def forward(q, k, v, mask, causal, q_block_size):
@@ -207,8 +168,7 @@ class GaudiMixtralAttentionLongSequence:
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = q[:, :, s:e, :]
             row_mask = mask[:, :, s:e, :]
-            row_o = attn_output[:, :, s:e, :]
-            row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
+            attn_output[:, :, s:e, :] = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -317,7 +277,9 @@ class GaudiMixtralAttention(MixtralAttention):
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training
+        )
 
         if use_cache:
             if reuse_cache:
@@ -397,6 +359,15 @@ class GaudiMixtralAttention(MixtralAttention):
         return attn_output, attn_weights, past_key_value
 
 
+def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    # We need this workaround until moe op in hpu is supporting fp8
+    if not self.training and not os.environ.get("QUANT_CONFIG") and not get_device_name() == "gaudi":
+        # Gaudi1 is not supporting dynamic moe
+        return self.dynamic_moe_forward(hidden_states)
+
+    return self.sparse_moe_forward(hidden_states)
+
+
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
@@ -447,6 +418,58 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
             htcore.mark_step()
 
     return final_hidden_states, router_logits
+
+
+def gaudi_mixtral_block_dynamic_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    batch_size, sequence_length, hidden_dim = hidden_states.shape
+    original_shape = hidden_states.shape
+    hidden_states = hidden_states.view(-1, hidden_dim)
+    # router_logits: (batch * sequence_length, n_experts)
+    router_logits = self.gate(hidden_states)
+
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
+
+        if dist.is_initialized():
+            output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+            dist.all_gather(output_tensors, router_logits)
+            router_logits = torch.cat(output_tensors, dim=1)
+
+    routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
+    # pre-processing for custom op inputs
+    w1_list = [expert.w1.weight for expert in self.experts]
+    w2_list = [expert.w2.weight for expert in self.experts]
+    w3_list = [expert.w3.weight for expert in self.experts]
+
+    final_hidden_states = torch.ops.hpu.mixture_of_experts(
+        hidden_states=hidden_states,
+        expert_routing_table=selected_experts,
+        router_weights=routing_weights,
+        w1=w1_list,
+        w3=w2_list,
+        w2=w3_list,
+        permuted_weights=True,
+        activation="silu",
+        experts_min=0,
+        experts_max=7,
+    )
+    if is_deepspeed_available() and (not self.training):
+        from deepspeed import comm as dist
+
+        if dist.is_initialized():
+            dist.all_reduce(final_hidden_states)
+    return final_hidden_states.view(original_shape), router_logits
+
+
+def calculate_routing_tensors(
+    score: torch.Tensor, topk: int, hidden_states_dtype: torch.dtype
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Based on https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py#L641"""
+    routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
+    routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
+    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+    routing_weights = routing_weights.to(hidden_states_dtype)
+    return routing_weights, selected_experts
 
 
 class GaudiMixtralDecoderLayer(MixtralDecoderLayer):

@@ -59,6 +59,8 @@ from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
+from ..distributed import parallel_state
+
 
 if is_deepspeed_available():
     from accelerate.utils import (
@@ -121,8 +123,10 @@ class GaudiAccelerator(Accelerator):
         dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        use_regional_compilation: bool | None = None,
     ):
         self.trackers = []
+        self.mpu = parallel_state
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -153,7 +157,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.18.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
                 )
 
             mixed_precision = (
@@ -194,9 +198,9 @@ class GaudiAccelerator(Accelerator):
 
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
-                assert isinstance(
-                    handler, KwargsHandler
-                ), f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
+                assert isinstance(handler, KwargsHandler), (
+                    f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
+                )
                 if isinstance(handler, DistributedDataParallelKwargs):
                     if self.ddp_handler is not None:
                         raise ValueError("You can only pass one `DistributedDataParallelKwargs` in `kwargs_handler`.")
@@ -312,6 +316,7 @@ class GaudiAccelerator(Accelerator):
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
         self.dynamic = dynamic
+        self.use_regional_compilation = use_regional_compilation
 
         # Mixed precision attributes
         self.scaler = None
@@ -574,6 +579,19 @@ class GaudiAccelerator(Accelerator):
                 model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
+    def compile_regions(self, model):
+        if isinstance(model, torch.nn.ModuleList):
+            for name, module in model.named_children():
+                if self.dynamic is not None:
+                    module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+                else:
+                    module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
+                module.__dict__.pop("_parameters", None)
+                setattr(model, name, module)
+        else:
+            for _, module in model.named_children():
+                self.compile_regions(module)
+
     def _prepare_deepspeed(self, *args):
         import deepspeed
 
@@ -775,13 +793,15 @@ class GaudiAccelerator(Accelerator):
                 # This env variable is initialized here to make sure it is set to "true"
                 # It should be done by the launcher but it does not work for multi-node runs
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
-
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                engine.compile(compile_kwargs={"dynamic": self.dynamic})
+                if self.use_regional_compilation:
+                    self.compile_regions(engine.module)
+                else:
+                    engine.compile(compile_kwargs={"dynamic": self.dynamic})
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:

@@ -6,49 +6,45 @@ import sys
 import numpy as np
 
 
-def find_measurement_path(measurement, measurements_dir_path, scales, group_size):
+def find_measurement_path(measurement, measurements_dir_path, group_size):
     measurment_card = measurement + "_" + str(group_size)
     for measurment_file in os.listdir(measurements_dir_path):
         filename = os.fsdecode(measurment_file)
         if not filename.endswith(".json") or "_mod_list" in filename or measurment_card not in filename:
             continue
-        if scales:
-            if "MAXABS" in filename:
-                return os.path.join(measurements_dir_path, measurment_file)
-        else:
-            if "MAXABS" not in filename:
-                return os.path.join(measurements_dir_path, measurment_file)
+
+        if "MAXABS" not in filename:
+            return os.path.join(measurements_dir_path, measurment_file)
 
 
-def unify_measurements(
-    measurement_group, measurements_dir_path, output_path, groups_size, groups_num, group_index, scales=False
-):
+def unify_measurements(measurement_group, measurements_dir_path, output_path, groups_size, groups_num, group_index):
     measurements_paths = []
     group_name = ""
 
     # save all the jsons paths in the given measurement group
     for measurement in measurement_group:
-        measurement_path = find_measurement_path(measurement, measurements_dir_path, scales, groups_size)
-        measurements_paths.append(measurement_path)
+        measurement_path = find_measurement_path(measurement, measurements_dir_path, groups_size)
+        if measurement_path is not None:
+            measurements_paths.append(measurement_path)
         group_name += measurement
-
     # save all the jsons content in the given measurement group
     measurements_jsons = []
     for measurement_path in measurements_paths:
-        with open(measurement_path, "r") as f:
-            js = json.load(f)
-            measurements_jsons.append(js["Nodes"])
+        if measurement_path is not None:
+            with open(measurement_path, "r") as f:
+                js = json.load(f)
+                measurements_jsons.append(js["Nodes"])
     # create a name for the unified json that will be created for this measurement group
 
     if groups_num == 1:
         unified_json_name = (
-            find_measurement_path(measurement_group[0], measurements_dir_path, scales, groups_size)
+            find_measurement_path(measurement_group[0], measurements_dir_path, groups_size)
             .split("/")[-1]
             .replace("_" + measurement_group[0] + "_" + str(groups_size), "")
         )
     else:
         unified_json_name = (
-            find_measurement_path(measurement_group[0], measurements_dir_path, scales, groups_size)
+            find_measurement_path(measurement_group[0], measurements_dir_path, groups_size)
             .split("/")[-1]
             .replace(
                 "_" + measurement_group[0] + "_" + str(groups_size), "_" + str(group_index) + "_" + str(groups_num)
@@ -74,70 +70,27 @@ def unify_measurements(
             max_weight = node_values["params"]["weight"]
 
         # iterate over all the measurment group and take the maximum for each tensor and its channel
-        if scales:
-            for measurement_json in measurements_jsons:
-                for i in range(0, len(max_inputs)):
-                    max_inputs[i] = max(measurement_json[node_name]["inputs"][i], max_inputs[i])
-                if max_outputs is not None:
-                    if isinstance(max_outputs[0], list):
-                        for i in range(0, len(max_outputs)):
-                            for j in range(0, len(max_outputs[i])):
-                                max_outputs[i][j] = max(
-                                    measurement_json[node_name]["outputs"][i][j], max_outputs[i][j]
-                                )
-                    else:
-                        for i in range(0, len(max_outputs)):
-                            max_outputs[i] = max(measurement_json[node_name]["outputs"][i], max_outputs[i])
-                if max_weight is not None:
-                    if isinstance(max_weight, dict):
-                        for key, values in max_weight.items():
-                            for i in range(0, len(values)):
-                                max_weight[key][i] = max(
-                                    measurement_json[node_name]["params"]["weight"][key][i], max_weight[key][i]
-                                )
-                    else:
-                        max_weight = max(measurement_json[node_name]["params"]["weight"], max_weight)
-        else:
-            for measurement_json in measurements_jsons:
-                for i in range(0, len(max_inputs)):
-                    for j in range(0, len(max_inputs[i])):
-                        max_inputs[i][j][0] = max(measurement_json[node_name]["inputs"][i][j][0], max_inputs[i][j][0])
-                if max_outputs is not None:
-                    for i in range(0, len(max_outputs)):
-                        max_outputs[i][0] = max(measurement_json[node_name]["outputs"][i][0], max_outputs[i][0])
-                if max_weight is not None:
-                    for i in range(0, len(max_weight)):
-                        max_weight[i][0] = max(measurement_json[node_name]["params"]["weight"][i][0], max_weight[i][0])
-
-        # update the maximum in the unified json
-        if scales:
-            for i in range(0, len(max_inputs)):
-                unified_json["Nodes"][node_name]["inputs"][i] = max_inputs[i]
-            if max_outputs is not None:
-                if isinstance(max_outputs[0], list):
-                    for i in range(0, len(max_outputs)):
-                        for j in range(0, len(max_outputs[i])):
-                            unified_json["Nodes"][node_name]["outputs"][i][j] = max_outputs[i][j]
-                else:
-                    for i in range(0, len(max_outputs)):
-                        unified_json["Nodes"][node_name]["outputs"][i] = max_outputs[i]
-            if max_weight is not None:
-                if isinstance(max_weight, dict):
-                    for key, values in max_weight.items():
-                        for i in range(0, len(values)):
-                            unified_json["Nodes"][node_name]["params"]["weight"][key][i] = max_weight[key][i]
-                else:
-                    unified_json["Nodes"][node_name]["params"]["weight"] = max_weight
-        else:
+        for measurement_json in measurements_jsons:
             for i in range(0, len(max_inputs)):
                 for j in range(0, len(max_inputs[i])):
-                    unified_json["Nodes"][node_name]["inputs"][i][j][0] = max_inputs[i][j][0]
+                    max_inputs[i][j][0] = max(measurement_json[node_name]["inputs"][i][j][0], max_inputs[i][j][0])
             if max_outputs is not None:
                 for i in range(0, len(max_outputs)):
-                    unified_json["Nodes"][node_name]["outputs"][i][0] = max_outputs[i][0]
+                    max_outputs[i][0] = max(measurement_json[node_name]["outputs"][i][0], max_outputs[i][0])
             if max_weight is not None:
                 for i in range(0, len(max_weight)):
-                    unified_json["Nodes"][node_name]["params"]["weight"][i][0] = max_weight[i][0]
+                    max_weight[i][0] = max(measurement_json[node_name]["params"]["weight"][i][0], max_weight[i][0])
+
+        # update the maximum in the unified json
+        for i in range(0, len(max_inputs)):
+            for j in range(0, len(max_inputs[i])):
+                unified_json["Nodes"][node_name]["inputs"][i][j][0] = max_inputs[i][j][0]
+        if max_outputs is not None:
+            for i in range(0, len(max_outputs)):
+                unified_json["Nodes"][node_name]["outputs"][i][0] = max_outputs[i][0]
+        if max_weight is not None:
+            for i in range(0, len(max_weight)):
+                unified_json["Nodes"][node_name]["params"]["weight"][i][0] = max_weight[i][0]
     global_rank = None
     local_rank = group_index if groups_num != 1 else -1
     mode = ""
@@ -153,10 +106,10 @@ def unify_measurements(
         layers[layer] = {}
         layers[layer]["inputs"] = [np.array(x) for x in dlayer["inputs"]]
         if dlayer.get("outputs") is not None:
-            layers[layer]["outputs"] = np.array(dlayer["outputs"])
+            layers[layer]["outputs"] = [np.array(x) for x in dlayer["outputs"]]
         if dlayer.get("params") is not None and dlayer["params"].get("weight") is not None:
             layers[layer]["params"] = {}
-            layers[layer]["params"]["weight"] = np.array(dlayer["params"]["weight"])
+            layers[layer]["params"]["weight"] = [np.array(x) for x in dlayer["params"]["weight"]]
     df = {"GlobalRank": global_rank, "LocalRank": local_rank, "Mode": mode, "Nodes": layers}
     with open(unified_npz_path, "w"):
         np.savez(unified_npz_path, df)
@@ -196,26 +149,14 @@ def main(args):
     groups = args.groups
 
     num_jsons_drange = 0
-    num_jsons_scales = 0
     for path in os.listdir(measurements_path):
-        if path.endswith(".json"):
-            if "MAXABS" in path:
-                num_jsons_scales += 1
-            elif "mod_list" not in path:
-                num_jsons_drange += 1
-    assert (
-        os.path.isdir(measurements_path)
-        and (num_jsons_drange % len(groups)) == 0
-        and (num_jsons_scales % len(groups)) == 0
-    )
+        if path.endswith(".json") and "MAXABS" not in path and "mod_list" not in path:
+            num_jsons_drange += 1
+
+    assert os.path.isdir(measurements_path) and (num_jsons_drange % len(groups)) == 0
 
     for group_index, group in enumerate(groups):
-        unify_measurements(
-            group, measurements_path, output_path, num_jsons_drange, len(groups), group_index, scales=False
-        )
-        unify_measurements(
-            group, measurements_path, output_path, num_jsons_scales, len(groups), group_index, scales=True
-        )
+        unify_measurements(group, measurements_path, output_path, num_jsons_drange, len(groups), group_index)
 
     print("finished measurement unifier script")
 

@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 
@@ -177,6 +177,31 @@ class ModelArguments:
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
+    use_flash_attention: bool = field(
+        default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning"}
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to enable recompute in Habana flash attention for fine-tuning."
+            " It is applicable only when use_flash_attention is True."
+        },
+    )
+    flash_attention_fast_softmax: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use fast softmax for Habana flash attention."
+            " It is applicable only when use_flash_attention is True."
+        },
+    )
+
+    def __post_init__(self):
+        if self.flash_attention_recompute:
+            assert self.use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
+            os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
+        if self.flash_attention_fast_softmax:
+            assert self.use_flash_attention, "flash_attention_fast_softmax is set, but use_flash_attention is not"
+            os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
 
 
 def main():
@@ -364,6 +389,7 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
+        attn_implementation="sdpa" if model_args.use_flash_attention else "eager",
     )
     model = AutoModelForAudioClassification.from_pretrained(
         model_args.model_name_or_path,

@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -41,7 +42,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,9 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -343,6 +347,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
@@ -436,8 +441,7 @@ def main():
     kwargs_call["quant_mode"] = args.quant_mode
 
     # Instantiate a Stable Diffusion pipeline class
-    import habana_frameworks.torch.core as htcore  # noqa: F401
-
+    quant_config_path = os.getenv("QUANT_CONFIG")
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -452,6 +456,8 @@ def main():
 
         elif args.optimize:
             # Import SDXL pipeline
+            # set PATCH_SDPA to enable fp8 varient of softmax in sdpa
+            os.environ["PATCH_SDPA"] = "1"
             import habana_frameworks.torch.hpu as torch_hpu
 
             from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
@@ -463,10 +469,28 @@ def main():
                 **kwargs,
             )
 
-            pipeline.to(torch.device("hpu"))
             pipeline.unet.set_default_attn_processor(pipeline.unet)
+            pipeline.to(torch.device("hpu"))
+
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+                htcore.hpu_set_env()
+
+                config = FP8Config.from_json_file(quant_config_path)
+
+                if config.measure:
+                    logger.info("Running measurements")
+                    pipeline.unet = prepare(pipeline.unet, config)
+                elif config.quantize:
+                    logger.info("Running quantization")
+                    pipeline.unet = convert(pipeline.unet, config)
+                htcore.hpu_initialize(pipeline.unet, mark_only_scales_as_const=True)
+
             if args.use_hpu_graphs:
                 pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
+
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
@@ -544,6 +568,7 @@ def main():
                     args.model_name_or_path,
                     **kwargs,
                 )
+                pipeline.unet.set_default_attn_processor(pipeline.unet)
 
                 if args.unet_adapter_name_or_path is not None:
                     from peft import PeftModel
@@ -634,6 +659,12 @@ def main():
         else:
             outputs = pipeline(prompt=args.prompts, **kwargs_call)
 
+    if args.optimize and quant_config_path and config.measure:
+        from neural_compressor.torch.quantization import finalize_calibration
+
+        logger.info("Finalizing calibration...")
+        finalize_calibration(pipeline.unet)
+
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
         save_dir = args.pipeline_save_dir
@@ -652,12 +683,12 @@ def main():
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i+1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}.png")
             else:
                 for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i+1}.png")
+                    image.save(image_save_dir / f"image_{i + 1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

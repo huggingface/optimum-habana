@@ -130,6 +130,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         use_habana=True,
         use_hpu_graphs=True,
         gaudi_config=args.gaudi_config_name,
+        sdp_on_bf16=args.sdp_on_bf16,
     )
     pipeline.scheduler = GaudiDDIMScheduler.from_config(pipeline.scheduler.config)
     pipeline.set_progress_bar_config(disable=True)
@@ -414,6 +415,9 @@ def parse_args():
         type=str,
         default=None,
         help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
     parser.add_argument(
         "--throughput_warmup_steps",
@@ -883,7 +887,7 @@ def main():
                 htcore.mark_step()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool, device=accelerator.device)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():

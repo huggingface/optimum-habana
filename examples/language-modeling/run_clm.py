@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.16.0.dev0")
 
 require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -153,6 +153,32 @@ class ModelArguments:
             "help": (
                 "Whether or not the model should return the last key/values attentions (not used by all models)."
                 "Only relevant if `config.is_decoder=True`."
+            )
+        },
+    )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={"help": ("Whether to run attention softmax layer in bf16 precision for fine-tuning.")},
+    )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={"help": ("Whether to use Habana flash attention for fine-tuning.")},
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable recompute in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
             )
         },
     )
@@ -431,6 +457,10 @@ def main():
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
 
+    # Note that chatglm2/3 has float16 dtype from config.json, and on Gaudi we need to use bfloat16.
+    if config.model_type == "chatglm":
+        config.dtype = "torch.bfloat16"
+
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
@@ -468,15 +498,23 @@ def main():
     else:
         model = AutoModelForCausalLM.from_config(config, trust_remote_code=model_args.trust_remote_code)
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
-        logger.info(f"Training new model from scratch - Total size={n_params/2**20:.2f}M params")
+        logger.info(f"Training new model from scratch - Total size={n_params / 2**20:.2f}M params")
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
-    # We need to skip this test for baichuan pretrain
-    if config.model_type not in ("baichuan"):
+    # We need to skip this test for baichuan and chatglm pretrain
+    if config.model_type not in ("baichuan", "chatglm"):
         embedding_size = model.get_input_embeddings().weight.shape[0]
         if len(tokenizer) > embedding_size:
             model.resize_token_embeddings(len(tokenizer))
+
+    # We need to add these fused kernels config
+    if model_args.attn_softmax_bf16:
+        model.generation_config.attn_softmax_bf16 = True
+    if model_args.use_flash_attention:
+        model.generation_config.use_flash_attention = True
+        model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+        model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
