@@ -17,8 +17,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "bert-base-uncased",
                 "Habana/bert-base-uncased",
-                2983.533,
-                85.7077,
                 "question-answering",
                 24,
                 8,
@@ -28,8 +26,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "meta-llama/Llama-2-7b-hf",
                 "",
-                85.016,
-                0.9093,
                 "language-modeling",
                 8,
                 8,
@@ -46,8 +42,7 @@ else:
 def _test_fsdp(
     model_name: str,
     gaudi_config: str,
-    baseline: float,
-    baseline_acc: float,
+    baseline,
     task: str,
     batch_size_train: int,
     batch_size_eval: int,
@@ -150,27 +145,38 @@ def _test_fsdp(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
-        assert results["train_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[device],
+            train_samples_per_second=results["train_samples_per_second"],
+        )
         if model_name == "bert-base-uncased":
-            assert results["eval_f1"] >= ACCURACY_PERF_FACTOR * baseline_acc
+            baseline.assertRef(
+                compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
+                context=[device],
+                eval_f1=results["eval_f1"],
+            )
         else:
-            assert results["train_loss"] <= (2 - ACCURACY_PERF_FACTOR) * baseline_acc
+            baseline.assertRef(
+                compare=lambda actual, ref: actual <= (2 - ACCURACY_PERF_FACTOR) * ref,
+                context=[device],
+                train_loss=results["train_loss"],
+            )
 
 
-@pytest.mark.parametrize(
-    "model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy", MODELS_TO_TEST["bf16"]
-)
+@pytest.mark.parametrize("model_name, gaudi_config, task, bs_train, bs_eval, script, policy", MODELS_TO_TEST["bf16"])
 def test_fsdp_bf16(
     model_name: str,
     gaudi_config: str,
-    baseline: float,
-    baseline_acc: float,
     task: str,
     bs_train: int,
     bs_eval: int,
     script: str,
     policy: str,
-    token: str,
+    baseline,
+    token,
 ):
-    _test_fsdp(model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy, token)
+    _test_fsdp(model_name, gaudi_config, baseline, task, bs_train, bs_eval, script, policy, token)
