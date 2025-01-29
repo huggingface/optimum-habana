@@ -695,7 +695,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
 
         for idx, decoder_layer in enumerate(self.layers):
             if not self.training and (
-                torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
+                not torch.distributed.is_initialized() or torch.distributed.get_world_size() == 1
             ):
                 htcore.mark_step()
             if output_hidden_states:
