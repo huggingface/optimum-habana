@@ -188,18 +188,20 @@ def check_gated_model_access(model):
 
     return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
 
+
 def check_8xhpu(test_case):
     """
     Decorator marking a test as it requires 8xHPU on system
     """
     from optimum.habana.utils import get_device_count
 
-    if (get_device_count() != 8):
+    if get_device_count() != 8:
         skip = True
     else:
         skip = False
 
-    return pytest.mark.skipif(skip, reason=f"test requires 8xHPU multi-card system")(test_case)
+    return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
+
 
 class GaudiPipelineUtilsTester(TestCase):
     """
