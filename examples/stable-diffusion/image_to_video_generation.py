@@ -214,7 +214,7 @@ def main():
     logger.setLevel(logging.INFO)
 
     i2v_models = ["i2vgen-xl"]
-    i2v_model = True if any(model in args.model_name_or_path for model in i2v_models) else False
+    i2v_model = any(model in args.model_name_or_path for model in i2v_models)
 
     # Load input image(s)
     input = []
