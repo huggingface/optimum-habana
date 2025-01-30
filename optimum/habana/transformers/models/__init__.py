@@ -72,7 +72,6 @@ from .deepseek_v2 import (
     DeepseekV2ForCausalLM,
 )
 from .deepseek_v3 import (
-    DeepseekTokenizerFast,
     DeepseekV3Config,
     DeepseekV3ForCausalLM,
 )
