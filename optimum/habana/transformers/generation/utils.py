@@ -116,6 +116,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "baichuan",
     "deepseek_v2",
     "chatglm",
+    "qwen2_vl",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -1092,8 +1093,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "baichuan",
                 "chatglm",
+                "deepseek_v2",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1300,6 +1302,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "qwen2_moe",
                 "baichuan",
+                "deepseek_v2",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
@@ -2467,9 +2470,9 @@ class GaudiGenerationMixin(GenerationMixin):
                             output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
                         else:
                             output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2).float()
                     else:
-                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2).float()
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # .float() is needed to retain precision for later logits manipulations
@@ -2503,7 +2506,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # token selection
             if do_sample:
-                probs = torch.nn.functional.softmax(next_token_scores, dim=-1)
+                # Workaround on HPU for output quality issues with torch.multinomial for lower precision models
+                # Distribution sampled by torch.multinomial may be affected by next_token_logits upcast to float
+                probs = torch.nn.functional.softmax(next_token_scores, dim=-1).to(outputs.logits.dtype)
                 # TODO (joao): this OP throws "skipping cudagraphs due to ['incompatible ops']", find solution
                 next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
             else:
