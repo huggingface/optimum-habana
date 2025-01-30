@@ -54,6 +54,8 @@ from .models import (
     DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
+    DeepseekV3Config,
+    DeepseekV3ForCausalLM, 
     Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -746,6 +748,10 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+
+    transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
+    transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    transformers.AutoTokenizer.register(DeepseekV3Config, fast_tokenizer_class=DeepseekTokenizerFast)
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer

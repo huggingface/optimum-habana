@@ -116,6 +116,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "minicpm3",
     "baichuan",
     "deepseek_v2",
+    "deepseek_v3",
     "chatglm",
     "qwen2_vl",
 ]
