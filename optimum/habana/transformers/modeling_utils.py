@@ -139,6 +139,13 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -265,6 +272,7 @@ from .models import (
     gaudi_xglm_attention_forward,
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
+    gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
 
 
@@ -648,6 +656,19 @@ def adapt_transformers_to_gaudi():
         gaudi_qwen2moe_block_sparse_moe_forward
     )
 
+    # Optimization for qwen2-vl Gaudi
+    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiQwen2VisionSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLVisionBlock = GaudiQwen2VLVisionBlock
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VisionTransformerPretrainedModel = (
+        GaudiQwen2VisionTransformerPretrainedModel
+    )
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLSdpaAttention = GaudiQwen2VLSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLDecoderLayer = GaudiQwen2VLDecoderLayer
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLModel = GaudiQwen2VLModel
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
+        GaudiQwen2VLForConditionalGeneration
+    )
+
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
@@ -719,6 +740,11 @@ def adapt_transformers_to_gaudi():
 
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
+
+    # Optimization for XLMRoberta model on Gaudi
+    transformers.models.xlm_roberta.modeling_xlm_roberta.XLMRobertaSdpaSelfAttention.forward = (
+        gaudi_XLMRoberta_Sdpa_SelfAttention_forward
+    )
 
     # Optimization for Baichuan2 on Gaudi
     transformers.AutoConfig.register("baichuan", BaichuanConfig)

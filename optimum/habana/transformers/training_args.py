@@ -101,6 +101,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use compiled autograd for training. Currently only for summarization models.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        use_regional_compilation (`bool`, *optional*, defaults to `False`):
+            Whether to use regional compile with deepspeed
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -170,6 +172,11 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
     )
 
+    use_regional_compilation: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use regional compile for traing.")},
+    )
+
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use a tensor cache for hpu graphs."},
@@ -193,6 +200,11 @@ class GaudiTrainingArguments(TrainingArguments):
     context_parallel_size: Optional[int] = field(
         default=1,
         metadata={"help": ("Determines how many ranks are divided into context parallel group.")},
+    )
+
+    minimize_memory: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable minimze memory for fp8")},
     )
 
     throughput_warmup_steps: Optional[int] = field(
@@ -927,6 +939,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 accelerator_state_kwargs["backend"] = self.ddp_backend
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
             accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
+            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

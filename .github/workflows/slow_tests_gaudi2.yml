@@ -60,7 +60,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
-            /bin/bash tests/ci/slow_tests_diffusers.sh
+            /bin/bash tests/ci/slow_tests_diffusers.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   deepspeed:
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
