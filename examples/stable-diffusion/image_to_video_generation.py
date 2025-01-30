@@ -224,7 +224,7 @@ def main():
     for image_path in args.image_path:
         image = load_image(image_path)
         if i2v_model:
-            image = load_image(image).convert("RGB")
+            image = image.convert("RGB")
         else:
             image = image.resize((args.height, args.width))
         input.append(image)
