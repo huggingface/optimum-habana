@@ -52,6 +52,7 @@ from transformers.models.mixtral.modeling_mixtral import (
 from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
+from ....utils import get_device_name
 from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
 from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
@@ -349,7 +350,8 @@ class GaudiMixtralAttention(MixtralAttention):
 
 def gaudi_mixtral_block_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     # We need this workaround until moe op in hpu is supporting fp8
-    if not self.training and not os.environ.get("QUANT_CONFIG"):
+    if not self.training and not os.environ.get("QUANT_CONFIG") and not get_device_name() == "gaudi":
+        # Gaudi1 is not supporting dynamic moe
         return self.dynamic_moe_forward(hidden_states)
 
     return self.sparse_moe_forward(hidden_states)

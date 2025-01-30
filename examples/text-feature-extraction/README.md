@@ -31,10 +31,3 @@ python run_feature_extraction.py \
     --sdp_on_bf16 \
     --bf16
 ```
-
-Models that have been validated:
-
-- [Supabase/gte-small](https://huggingface.co/Supabase/gte-small)
-- [thenlper/gte-small](https://huggingface.co/thenlper/gte-small)
-- [thenlper/gte-base](https://huggingface.co/thenlper/gte-base)
-- [thenlper/gte-large](https://huggingface.co/thenlper/gte-large)

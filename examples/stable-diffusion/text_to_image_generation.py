@@ -440,11 +440,8 @@ def main():
 
     kwargs_call["quant_mode"] = args.quant_mode
 
-    if args.quant_mode != "disable":
-        # Import htcore here to support model quantization
-        import habana_frameworks.torch.core as htcore  # noqa: F401
-
     # Instantiate a Stable Diffusion pipeline class
+    quant_config_path = os.getenv("QUANT_CONFIG")
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -475,7 +472,6 @@ def main():
             pipeline.unet.set_default_attn_processor(pipeline.unet)
             pipeline.to(torch.device("hpu"))
 
-            quant_config_path = os.getenv("QUANT_CONFIG")
             if quant_config_path:
                 import habana_frameworks.torch.core as htcore
                 from neural_compressor.torch.quantization import FP8Config, convert, prepare
