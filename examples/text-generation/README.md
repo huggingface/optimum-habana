@@ -732,6 +732,7 @@ python run_generation.py \
 Llama2-7b supports UINT4 weight-only quantization through [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which offers quantization capabilities in PyTorch.
 Currently, this support is limited to UINT4 inference of pre-quantized models only.
 
+Please run the following command to install AutoAWQ:
 ```bash
 pip install autoawq
 ```

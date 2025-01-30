@@ -90,12 +90,11 @@ class WQLinear_HPU(WQLinear_GEMM):
                 torch.zeros((out_features), dtype=torch.bfloat16, device=dev),
             )
         else:
-            self.register_buffer(
-                "bias",
-                None,
-            )
-        qweight = torch.zeros((in_features, out_features // self.pack_num), dtype=torch.int32, device=dev)
-        self.register_buffer("qweight", qweight)
+            self.bias = None
+        self.register_buffer(
+            "qweight",
+            torch.zeros((in_features, out_features // self.pack_num), dtype=torch.int32, device=dev),
+        )
         self._preprocess = False
 
     def _preprocessing(self):
