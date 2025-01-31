@@ -158,9 +158,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
-            if self.gaudi_config.use_torch_autocast:
-                self.gaudi_config.declare_autocast_bf16_fp32_ops()
-
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
                 import diffusers
 
