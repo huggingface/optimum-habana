@@ -546,6 +546,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
 
@@ -566,6 +567,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
+            **kwargs,
         )
         return hidden_states, attn_weights, present_key_value
 
@@ -579,6 +581,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        last_cache_position: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -587,6 +590,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -612,6 +616,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
+            **kwargs,
         )
 
         self.self_attn.attention_all_reduce(hidden_states)
@@ -685,6 +690,7 @@ class GaudiGemma2Model(Gemma2Model):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        last_cache_position: Optional[int] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -809,6 +815,7 @@ class GaudiGemma2Model(Gemma2Model):
                     output_attentions,
                     use_cache,
                     cache_position,
+                    last_cache_position,
                     None,
                     attn_softmax_bf16,
                     False,
@@ -827,6 +834,7 @@ class GaudiGemma2Model(Gemma2Model):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
+                    last_cache_position=last_cache_position,
                     token_idx=token_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
@@ -938,6 +946,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
+            **loss_kwargs,
         )
 
         hidden_states = outputs[0]
