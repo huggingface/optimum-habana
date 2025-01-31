@@ -868,7 +868,7 @@ python image_to_video_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --gif \
     --num_frames 16 \
-    --prompts "Papers were floating in the air on a table in the libra ry" \
+    --prompts "Papers were floating in the air on a table in the library" \
     --negative_prompts "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms" \
     --seed 8888  \
     --sdp_on_bf16 \
