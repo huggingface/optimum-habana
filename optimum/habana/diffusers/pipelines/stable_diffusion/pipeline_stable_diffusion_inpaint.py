@@ -366,7 +366,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=(self.dtype != torch.float)):
             # 0. Default height and width to unet
             height = height or self.unet.config.sample_size * self.vae_scale_factor
             width = width or self.unet.config.sample_size * self.vae_scale_factor

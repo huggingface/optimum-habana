@@ -5128,7 +5128,6 @@ class StableDiffusionInpaintPipelineFastTests(
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion-2",
-            "bf16_full_eval": True,
         }
         return components
 
@@ -5558,7 +5557,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "bf16_full_eval": True,
         }
         return components
 
