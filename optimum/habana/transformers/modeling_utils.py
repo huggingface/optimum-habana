@@ -26,6 +26,7 @@ from .generation import (
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
+from .modeling_utils_transformers import _gaudi_init_added_embeddings_weights_with_mean
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -759,3 +760,8 @@ def adapt_transformers_to_gaudi():
     transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
+
+    # Workaround for textual inversion
+    transformers.modeling_utils.PreTrainedModel._init_added_embeddings_weights_with_mean = (
+        _gaudi_init_added_embeddings_weights_with_mean
+    )
