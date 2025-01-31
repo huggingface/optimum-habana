@@ -223,10 +223,10 @@ def main():
     args = parser.parse_args()
 
     # Set image resolution
-    res = {}
+    kwargs_call = {}
     if args.width > 0 and args.height > 0:
-        res["width"] = args.width
-        res["height"] = args.height
+        kwargs_call["width"] = args.width
+        kwargs_call["height"] = args.height
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sdxl = False
     flux_models = ["FLUX.1"]
@@ -236,6 +236,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     # Import selected pipeline
@@ -251,7 +252,7 @@ def main():
         from optimum.habana.diffusers import GaudiStableDiffusionInstructPix2PixPipeline as Img2ImgPipeline
 
         kwargs["safety_checker"] = None
-        res["image_guidance_scale"] = args.image_guidance_scale
+        kwargs_call["image_guidance_scale"] = args.image_guidance_scale
     elif "image-variations" in args.model_name_or_path:
         from optimum.habana.diffusers import GaudiStableDiffusionImageVariationPipeline as Img2ImgPipeline
 
@@ -290,7 +291,7 @@ def main():
         kwargs["torch_dtype"] = torch.bfloat16
 
     if args.throughput_warmup_steps is not None:
-        kwargs["throughput_warmup_steps"] = args.throughput_warmup_steps
+        kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
     pipeline = Img2ImgPipeline.from_pretrained(
         args.model_name_or_path,
@@ -324,8 +325,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            sdp_on_bf16=args.sdp_on_bf16,
-            **res,
+            **kwargs_call,
         )
     elif flux:
         outputs = pipeline(
@@ -340,7 +340,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            **res,
+            **kwargs_call,
         )
     else:
         outputs = pipeline(
@@ -355,7 +355,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            **res,
+            **kwargs_call,
         )
 
     # Save the pipeline in the specified directory if not None
@@ -370,12 +370,12 @@ def main():
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i+1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}.png")
             else:
                 for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i+1}.png")
+                    image.save(image_save_dir / f"image_{i + 1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

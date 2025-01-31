@@ -26,6 +26,13 @@ from .generation import (
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
+from .integrations.awq import (
+    GaudiAWQLinearVersion,
+    gaudi_awq_config_post_init,
+    gaudi_awq_quantizer_process_model_after_weight_loading,
+    gaudi_awq_quantizer_process_model_before_weight_loading,
+    gaudi_awq_quantizer_validate_environment,
+)
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -139,6 +146,13 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -192,6 +206,12 @@ from .models import (
     gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
+    gaudi_DetrLoss_loss_labels,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_linear_forward,
@@ -259,6 +279,7 @@ from .models import (
     gaudi_xglm_attention_forward,
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
+    gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
 
 
@@ -642,6 +663,19 @@ def adapt_transformers_to_gaudi():
         gaudi_qwen2moe_block_sparse_moe_forward
     )
 
+    # Optimization for qwen2-vl Gaudi
+    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiQwen2VisionSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLVisionBlock = GaudiQwen2VLVisionBlock
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VisionTransformerPretrainedModel = (
+        GaudiQwen2VisionTransformerPretrainedModel
+    )
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLSdpaAttention = GaudiQwen2VLSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLDecoderLayer = GaudiQwen2VLDecoderLayer
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLModel = GaudiQwen2VLModel
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
+        GaudiQwen2VLForConditionalGeneration
+    )
+
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
@@ -654,9 +688,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
         gaudi_owlvitclasspredictionhead_forward
     )
-
-    # Optimization for DETR model on Gaudi
-    transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
@@ -717,6 +748,11 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
 
+    # Optimization for XLMRoberta model on Gaudi
+    transformers.models.xlm_roberta.modeling_xlm_roberta.XLMRobertaSdpaSelfAttention.forward = (
+        gaudi_XLMRoberta_Sdpa_SelfAttention_forward
+    )
+
     # Optimization for Baichuan2 on Gaudi
     transformers.AutoConfig.register("baichuan", BaichuanConfig)
     transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
@@ -729,3 +765,24 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)
+
+    transformers.quantizers.quantizer_awq.AwqQuantizer.validate_environment = gaudi_awq_quantizer_validate_environment
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_before_weight_loading = (
+        gaudi_awq_quantizer_process_model_before_weight_loading
+    )
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_after_weight_loading = (
+        gaudi_awq_quantizer_process_model_after_weight_loading
+    )
+    transformers.utils.quantization_config.AWQLinearVersion = GaudiAWQLinearVersion
+    transformers.utils.quantization_config.AwqConfig.post_init = gaudi_awq_config_post_init
+
+    # Optimization for DETR model on Gaudi
+    transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
+    transformers.models.detr.modeling_detr.DetrHungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
+    transformers.models.detr.modeling_detr.DetrLoss.get_targets_without_no_objects = (
+        gaudi_DetrLoss_get_targets_without_no_objects
+    )
+    transformers.models.detr.modeling_detr.DetrLoss.loss_labels = gaudi_DetrLoss_loss_labels
+    transformers.models.detr.modeling_detr.DetrLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
+    transformers.models.detr.modeling_detr.DetrLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
+    transformers.models.detr.modeling_detr.DetrLoss.forward = gaudi_DetrLoss_forward
