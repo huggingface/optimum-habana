@@ -4356,7 +4356,6 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**init_components)
         init_components.pop("use_habana")
         init_components.pop("use_hpu_graphs")
-        init_components.pop("bf16_full_eval")
         init_components.pop("gaudi_config")
 
         self.assertTrue(hasattr(pipe, "components"))
@@ -5624,7 +5623,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         init_components.pop("requires_aesthetics_score")
         init_components.pop("use_habana")
         init_components.pop("use_hpu_graphs")
-        init_components.pop("bf16_full_eval")
         init_components.pop("gaudi_config")
         pipe = self.pipeline_class(**init_components)
         self.assertTrue(hasattr(pipe, "components"))
