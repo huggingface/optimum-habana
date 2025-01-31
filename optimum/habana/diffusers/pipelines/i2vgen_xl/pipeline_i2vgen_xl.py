@@ -166,6 +166,7 @@ class GaudiI2VGenXLPipeline(
 
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
             self.unet = wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
 
         self.register_modules(
@@ -220,6 +221,7 @@ class GaudiI2VGenXLPipeline(
     """Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L320
         - Commented out the code for do_classifier_free_guidance
     """
+
     def _encode_image(self, image, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -255,6 +257,7 @@ class GaudiI2VGenXLPipeline(
     """Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/i2vgen_xl/pipeline_i2vgen_xl.py#L441
         - Commented out the code for do_classifier_free_guidance
     """
+
     def prepare_image_latents(
         self,
         image,
@@ -292,6 +295,7 @@ class GaudiI2VGenXLPipeline(
         - Add the batching support
         - Add the throughput calculation
     """
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -412,7 +416,6 @@ class GaudiI2VGenXLPipeline(
             if num_batches < 3:
                 logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
-
             device = self._execution_device
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -467,7 +470,6 @@ class GaudiI2VGenXLPipeline(
             if needs_upcasting:
                 self.vae.to(dtype=cast_dtype)
 
-
             # 3.3 Prepare additional conditions for the UNet.
             # if self.do_classifier_free_guidance:
             #     fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
@@ -498,11 +500,18 @@ class GaudiI2VGenXLPipeline(
 
             # 7 Split into batches (HPU-specific step)
             latents_batches, num_dummy_samples = self._split_and_cat_tensors(batch_size, latents)
-            prompt_embeds_batches, _ = self._split_and_cat_tensors(batch_size, prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
-            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents, image_latents, self.do_classifier_free_guidance)
-            image_embeddings_batches, _ = self._split_and_cat_tensors(batch_size, image_embeddings, torch.zeros_like(image_embeddings), self.do_classifier_free_guidance)
-            fps_tensor_batches, _ = self._split_and_cat_tensors(batch_size, fps_tensor, fps_tensor, self.do_classifier_free_guidance)
-
+            prompt_embeds_batches, _ = self._split_and_cat_tensors(
+                batch_size, prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            image_latents_batches, _ = self._split_and_cat_tensors(
+                batch_size, image_latents, image_latents, self.do_classifier_free_guidance
+            )
+            image_embeddings_batches, _ = self._split_and_cat_tensors(
+                batch_size, image_embeddings, torch.zeros_like(image_embeddings), self.do_classifier_free_guidance
+            )
+            fps_tensor_batches, _ = self._split_and_cat_tensors(
+                batch_size, fps_tensor, fps_tensor, self.do_classifier_free_guidance
+            )
 
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
@@ -555,7 +564,9 @@ class GaudiI2VGenXLPipeline(
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     # predict the noise residual
                     noise_pred = self.unet(
@@ -583,7 +594,9 @@ class GaudiI2VGenXLPipeline(
                     latents_batch = self.scheduler.step(noise_pred, t, latents_batch, **extra_step_kwargs).prev_sample
 
                     # reshape latents back
-                    latents_batch = latents_batch[None, :].reshape(bs, frames, channel, width, height).permute(0, 2, 1, 3, 4)
+                    latents_batch = (
+                        latents_batch[None, :].reshape(bs, frames, channel, width, height).permute(0, 2, 1, 3, 4)
+                    )
                     # call the callback, if provided
                     # if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     #     self.progress_bar.update()
@@ -592,7 +605,7 @@ class GaudiI2VGenXLPipeline(
 
                 if use_warmup_inference_steps:
                     t1 = warmup_inference_steps_time_adjustment(
-                            t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
                     )
 
                 # 8. Post processing

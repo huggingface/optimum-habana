@@ -47,6 +47,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
+    I2VGenXLUNet,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
@@ -56,7 +57,6 @@ from diffusers import (
     UNet2DModel,
     UNet3DConditionModel,
     UNetSpatioTemporalConditionModel,
-    I2VGenXLUNet,
     UniPCMultistepScheduler,
 )
 from diffusers.image_processor import VaeImageProcessor
@@ -67,8 +67,8 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch,
     numpy_cosine_similarity_distance,
+    require_torch,
 )
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import HfApi, hf_hub_download, snapshot_download
@@ -100,6 +100,7 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiFluxImg2ImgPipeline,
     GaudiFluxPipeline,
+    GaudiI2VGenXLPipeline,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -116,7 +117,6 @@ from optimum.habana.diffusers import (
     GaudiStableVideoDiffusionControlNetPipeline,
     GaudiStableVideoDiffusionPipeline,
     GaudiTextToVideoSDPipeline,
-    GaudiI2VGenXLPipeline
 )
 from optimum.habana.diffusers.models import (
     ControlNetSDVModel,
@@ -6194,7 +6194,6 @@ class I2VGenXLPipelineTests(TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-
     def test_num_videos_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -6214,7 +6213,8 @@ class I2VGenXLPipelineTests(TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_i2vgen_xl_bf16(self):
-        pipe = GaudiI2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl",
+        pipe = GaudiI2VGenXLPipeline.from_pretrained(
+            "ali-vilab/i2vgen-xl",
             use_habana=True,
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
@@ -6243,6 +6243,8 @@ class I2VGenXLPipelineTests(TestCase):
         assert image.shape == (num_frames, 704, 1280, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.44921875, 0.3642578 , 0.38671875, 0.46484375, 0.41210938, 0.45874023, 0.49536133, 0.4387207 , 0.48242188])
+        expected_slice = np.array(
+            [0.44921875, 0.3642578, 0.38671875, 0.46484375, 0.41210938, 0.45874023, 0.49536133, 0.4387207, 0.48242188]
+        )
         assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
         self.assertGreaterEqual(output.throughput, 0.95 * I2V_THROUGHPUT)
