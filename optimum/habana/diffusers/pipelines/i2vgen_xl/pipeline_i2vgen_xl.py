@@ -635,6 +635,11 @@ class GaudiI2VGenXLPipeline(
 
                 if output_type == "pil":
                     outputs["videos"] += video
+                elif output_type in ["np", "numpy"] and isinstance(video, np.ndarray):
+                    if len(outputs["videos"]) == 0:
+                        outputs["videos"] = video
+                    else:
+                        outputs["videos"] = np.concatenate((outputs["videos"], video), axis=0)
                 else:
                     outputs["videos"] += [*video]
 
@@ -642,7 +647,7 @@ class GaudiI2VGenXLPipeline(
             self.maybe_free_model_hooks()
 
             if not return_dict:
-                return outputs["frames"]
+                return outputs["videos"]
 
             return GaudiI2VGenXLPipelineOutput(
                 frames=outputs["videos"],
