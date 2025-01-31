@@ -139,7 +139,6 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
-    GaudiQwen2VisionSdpaAttention,
     GaudiQwen2VisionTransformerPretrainedModel,
     GaudiQwen2VLDecoderLayer,
     GaudiQwen2VLForConditionalGeneration,
@@ -153,6 +152,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
@@ -200,7 +200,6 @@ from .models import (
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
     gaudi_DetrLoss_forward,
-    gaudi_DetrLoss_get_targets_without_no_objects,
     gaudi_DetrLoss_loss_boxes,
     gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
@@ -651,7 +650,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for qwen2-vl Gaudi
-    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiQwen2VisionSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiVisionSdpaAttention
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLVisionBlock = GaudiQwen2VLVisionBlock
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VisionTransformerPretrainedModel = (
         GaudiQwen2VisionTransformerPretrainedModel
@@ -755,11 +754,8 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for DETR model on Gaudi
     transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
-    transformers.models.detr.modeling_detr.DetrHungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
-    transformers.models.detr.modeling_detr.DetrLoss.get_targets_without_no_objects = (
-        gaudi_DetrLoss_get_targets_without_no_objects
-    )
-    transformers.models.detr.modeling_detr.DetrLoss.loss_labels = gaudi_DetrLoss_loss_labels
-    transformers.models.detr.modeling_detr.DetrLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
-    transformers.models.detr.modeling_detr.DetrLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
-    transformers.models.detr.modeling_detr.DetrLoss.forward = gaudi_DetrLoss_forward
+    transformers.loss.loss_for_object_detection.HungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_labels = gaudi_DetrLoss_loss_labels
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
+    transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward

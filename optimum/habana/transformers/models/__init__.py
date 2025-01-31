@@ -75,7 +75,6 @@ from .detr import (
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
     gaudi_DetrLoss_forward,
-    gaudi_DetrLoss_get_targets_without_no_objects,
     gaudi_DetrLoss_loss_boxes,
     gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
@@ -255,13 +254,13 @@ from .qwen2_moe import (
     gaudi_qwen2moe_rmsnorm_forward,
 )
 from .qwen2_vl import (
-    GaudiQwen2VisionSdpaAttention,
     GaudiQwen2VisionTransformerPretrainedModel,
     GaudiQwen2VLDecoderLayer,
     GaudiQwen2VLForConditionalGeneration,
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiVisionSdpaAttention,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
