@@ -1,0 +1,11 @@
+psutil
+parameterized
+GitPython
+optuna
+sentencepiece
+datasets
+safetensors
+pytest < 8.0.0
+scipy
+torchsde
+peft
