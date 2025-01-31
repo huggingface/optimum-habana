@@ -26,6 +26,13 @@ from .generation import (
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
+from .integrations.awq import (
+    GaudiAWQLinearVersion,
+    gaudi_awq_config_post_init,
+    gaudi_awq_quantizer_process_model_after_weight_loading,
+    gaudi_awq_quantizer_process_model_before_weight_loading,
+    gaudi_awq_quantizer_validate_environment,
+)
 from .modeling_utils_transformers import _gaudi_init_added_embeddings_weights_with_mean
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
@@ -752,6 +759,16 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)
+
+    transformers.quantizers.quantizer_awq.AwqQuantizer.validate_environment = gaudi_awq_quantizer_validate_environment
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_before_weight_loading = (
+        gaudi_awq_quantizer_process_model_before_weight_loading
+    )
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_after_weight_loading = (
+        gaudi_awq_quantizer_process_model_after_weight_loading
+    )
+    transformers.utils.quantization_config.AWQLinearVersion = GaudiAWQLinearVersion
+    transformers.utils.quantization_config.AwqConfig.post_init = gaudi_awq_config_post_init
 
     # Optimization for DETR model on Gaudi
     transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward

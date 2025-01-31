@@ -31,7 +31,6 @@ from typing import Callable, Union
 from unittest import TestCase, skipUnless
 
 import diffusers
-import habana_frameworks.torch.hpu as hthpu
 import numpy as np
 import PIL
 import pytest
@@ -188,6 +187,20 @@ def check_gated_model_access(model):
         gated = True
 
     return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
+
+
+def check_8xhpu(test_case):
+    """
+    Decorator marking a test as it requires 8xHPU on system
+    """
+    from optimum.habana.utils import get_device_count
+
+    if get_device_count() != 8:
+        skip = True
+    else:
+        skip = False
+
+    return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -781,7 +794,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
     @slow
-    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
+    @check_8xhpu
     def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2450,7 +2463,7 @@ class TrainControlNet(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
-    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
+    @check_8xhpu
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (

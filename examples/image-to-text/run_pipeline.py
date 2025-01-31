@@ -354,7 +354,8 @@ def main():
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl"]:
+
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
