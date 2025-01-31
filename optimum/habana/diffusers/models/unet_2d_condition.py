@@ -213,7 +213,6 @@ def gaudi_unet_2d_condition_model_forward(
         encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
     # 2. pre-process
-    import habana_frameworks.torch.hpu as hthpu
 
     sample = self.conv_in(sample)
 
