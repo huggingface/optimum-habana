@@ -87,6 +87,11 @@ python ../gaudi_spawn.py \
     --distributed
 ```
 
+> [!NOTE]
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
 You can run other older Stable Diffusion models in a similar manner. For example, to generate images with Stable Diffusion 1.5, use the option:
 `--model_name_or_path stable-diffusion-v1-5/stable-diffusion-v1-5`. Examples showcasing Stable Diffusion 2 are provided next.
 
@@ -111,9 +116,10 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-There are two different checkpoints for Stable Diffusion 2:
-- use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
-- use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
+> [!NOTE]
+> There are two different checkpoints for Stable Diffusion 2:
+> - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
+> - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
 
 ### Latent Diffusion Model for 3D (LDM3D)
 
@@ -156,10 +162,11 @@ python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
     --distributed
 ```
 
-There are three different checkpoints for LDM3D:
-- use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
-- use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
-- use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
+> [!NOTE]
+> There are three different checkpoints for LDM3D:
+> - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
+> - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
+> - use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
 
 ### Stable Diffusion XL (SDXL)
 
@@ -251,9 +258,11 @@ python text_to_image_generation.py \
     --optimize
 ```
 
-#### SDXL-Turbo
+### SDXL-Turbo
 
-The knowledge distillation technique can be used to train a distilled version of SDXL, allowing for high-quality image generation with fewer inference steps. SDXL-Turbo is a distilled version of Stable Diffusion XL 1.0, optimized for real-time synthesis.
+The knowledge distillation technique can be used to train a distilled version of SDXL, allowing for high-quality
+image generation with fewer inference steps. SDXL-Turbo is a distilled version of Stable Diffusion XL 1.0,
+optimized for real-time synthesis.
 
 Here is how to generate images with multiple prompts:
 
@@ -276,7 +285,7 @@ python text_to_image_generation.py \
 ```
 
 > [!WARNING]
-> There is a regression with "--guidance_scale 0.0" in current release which will be addressed in later releases.
+> There is a regression with `--guidance_scale 0.0` in current release which will be addressed in later releases.
 > Setting `--guidance_scale` to a value larger than 1 resolves the regression.
 
 ### Stable Diffusion 3 (SD3)
@@ -296,7 +305,6 @@ huggingface-cli login
 Here is how to generate SD3 images with a single prompt:
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
@@ -312,9 +320,47 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-> [!NOTE]
-> For improved performance of the SD3 pipeline on Gaudi, it is recommended to configure the environment
-> by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
+This model can also be quantized with some ops running in FP8 precision.
+
+Before quantization, run stats collection using measure mode:
+
+```bash
+QUANT_CONFIG=quantization/stable-diffusion-3/measure_config.json \
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/stable_diffusion_3_images \
+    --scheduler default \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16 \
+    --quant_mode measure
+```
+
+After stats collection, here is how to run SD3 in quantization mode:
+
+```bash
+QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json \
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/stable_diffusion_3_images \
+    --scheduler default \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16 \
+    --quant_mode quantize
+```
 
 ### FLUX.1
 
@@ -615,8 +661,6 @@ python image_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
-This example can also be run with multiple prompts by supplying more than one prompt in the input.
-
 ### Stable Diffusion XL Refiner
 
 Here is how to refine SDXL images using a single image and prompt:
@@ -737,6 +781,7 @@ python image_to_video_generation.py \
     --bf16
 ```
 
+> [!NOTE]
 > For improved performance of the image-to-video pipeline on Gaudi, it is recommended to configure the environment
 > by setting PT_HPU_MAX_COMPOUND_OP_SIZE to 1.
 

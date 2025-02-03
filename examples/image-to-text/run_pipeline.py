@@ -213,6 +213,7 @@ def main():
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+        os.environ.setdefault("DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API", "1")
 
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -222,7 +223,8 @@ def main():
 
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
+
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -233,7 +235,7 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -312,6 +314,9 @@ def main():
         generator = pipeline(
             "image-to-text",
             model=args.model_name_or_path,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -340,13 +345,18 @@ def main():
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
+    if model_type == "qwen2_vl":
+        generate_kwargs["use_cache"] = True
+        generate_kwargs["cache_implementation"] = "static"
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):

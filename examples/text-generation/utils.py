@@ -252,6 +252,13 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
         from neural_compressor.torch.quantization import load
 
@@ -654,6 +661,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.clear_hpu_graphs_cache = args.clear_hpu_graphs_cache
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:

@@ -279,8 +279,10 @@ The following model architectures, tasks and device distributions have been vali
 | Mllama     | <li>LoRA</li> | :heavy_check_mark: | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | MiniCPM3 |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Baichuan2 | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| DeepSeek-V2 |   | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
+</div>
 
 
 ### Diffusers:
