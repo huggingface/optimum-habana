@@ -96,6 +96,39 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L161
     Changes:
         1. Use CPU to generate random tensor
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        text_encoder ([`~transformers.CLIPTextModel`]):
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        tokenizer (`~transformers.CLIPTokenizer`):
+            A `CLIPTokenizer` to tokenize text.
+        unet ([`UNet2DConditionModel`]):
+            A `UNet2DConditionModel` to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            Pre-trained CLIP vision model used to obtain image features.
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -113,6 +146,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -120,6 +154,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
+            sdp_on_bf16,
         )
 
         StableDiffusionImg2ImgPipeline.__init__(

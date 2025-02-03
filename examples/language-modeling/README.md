@@ -184,6 +184,36 @@ python ../gaudi_spawn.py \
     --logging_steps 20
 ```
 
+### Multi-card Training with Deepspeed (DeepSeek-V2-Lite)
+```bash
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clm.py
+    --config_name deepseek-ai/DeepSeek-V2-Lite
+    --tokenizer_name deepseek-ai/DeepSeek-V2-Lite
+    --dataset_name tatsu-lab/alpaca
+    --block_size 4096
+    --do_train
+    --num_train_epochs 1
+    --max_steps 10
+    --per_device_train_batch_size 1
+    --gradient_accumulation_steps 1
+    --use_flash_attention True
+    --attn_softmax_bf16 False
+    --gradient_checkpointing
+    --learning_rate 2.4e-4
+    --gaudi_config_name Habana/gpt2
+    --bf16
+    --save_strategy no
+    --no_save_last_ckpt
+    --output_dir /root/deepseek-v2-lite
+    --overwrite_output_dir
+    --logging_strategy steps
+    --logging_dir /root/deepseek-v2-lite/log
+    --logging_steps 1
+    --evaluation_strategy no
+    --use_habana
+    --use_lazy_mode
+    --deepspeed llama2_ds_zero3_config.json
+```
 
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 

@@ -252,6 +252,13 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
         from neural_compressor.torch.quantization import load
 
@@ -297,7 +304,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
-            model = wrap_in_hpu_graph(model)
+            max_graphs = getattr(args, "max_graphs", None)
+            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -610,6 +618,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
+
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -647,6 +661,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.clear_hpu_graphs_cache = args.clear_hpu_graphs_cache
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:

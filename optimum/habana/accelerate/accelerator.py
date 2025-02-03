@@ -123,6 +123,7 @@ class GaudiAccelerator(Accelerator):
         dynamic: bool | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        use_regional_compilation: bool | None = None,
     ):
         self.trackers = []
         self.mpu = parallel_state
@@ -197,9 +198,9 @@ class GaudiAccelerator(Accelerator):
 
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
-                assert isinstance(
-                    handler, KwargsHandler
-                ), f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
+                assert isinstance(handler, KwargsHandler), (
+                    f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
+                )
                 if isinstance(handler, DistributedDataParallelKwargs):
                     if self.ddp_handler is not None:
                         raise ValueError("You can only pass one `DistributedDataParallelKwargs` in `kwargs_handler`.")
@@ -315,6 +316,7 @@ class GaudiAccelerator(Accelerator):
             )
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
         self.dynamic = dynamic
+        self.use_regional_compilation = use_regional_compilation
 
         # Mixed precision attributes
         self.scaler = None
@@ -407,7 +409,7 @@ class GaudiAccelerator(Accelerator):
                 model.forward = convert_outputs_to_fp32(new_forward)
 
         if self.state.is_fp8_enabled:
-            model = convert_model(model)
+            model = convert_model(model, _minimize_memory=GaudiPartialState().minimize_memory)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -577,6 +579,19 @@ class GaudiAccelerator(Accelerator):
                 model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
+    def compile_regions(self, model):
+        if isinstance(model, torch.nn.ModuleList):
+            for name, module in model.named_children():
+                if self.dynamic is not None:
+                    module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+                else:
+                    module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
+                module.__dict__.pop("_parameters", None)
+                setattr(model, name, module)
+        else:
+            for _, module in model.named_children():
+                self.compile_regions(module)
+
     def _prepare_deepspeed(self, *args):
         import deepspeed
 
@@ -586,7 +601,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else convert_model(obj)
+            else convert_model(obj, _minimize_memory=GaudiPartialState().minimize_memory)
             if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
             else obj
             for obj in args
@@ -783,7 +798,10 @@ class GaudiAccelerator(Accelerator):
             if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
                 kwargs["model"]
             ):
-                engine.compile(compile_kwargs={"dynamic": self.dynamic})
+                if self.use_regional_compilation:
+                    self.compile_regions(engine.module)
+                else:
+                    engine.compile(compile_kwargs={"dynamic": self.dynamic})
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
