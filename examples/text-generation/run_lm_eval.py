@@ -126,7 +126,6 @@ def setup_lm_eval_parser():
         default=None,
         help="System instruction to be used in the prompt",
     )
-
     parser.add_argument(
         "--predict_only",
         "-x",
