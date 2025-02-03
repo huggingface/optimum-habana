@@ -777,7 +777,7 @@ pip install -r requirements_lm_eval.txt
 
 ### Examples
 
-Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type:
+Evaluate Llama 7B on Gaudi2 on task PiQA, using the BF16 data type:
 ```
 python run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
@@ -787,6 +787,19 @@ python run_lm_eval.py \
 --batch_size=1 \
 --tasks piqa \
 -o eval.json
+```
+
+Evaluate Llama-3.2-1B on Gaudi2 on task MMLU, using the BF16 data type:
+```
+python run_lm_eval.py \
+--model_name_or_path meta-llama/Llama-3.2-1B \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=16 \
+--num_fewshot=5 \
+--tasks mmlu \
+-o eval_mmlu.json
 ```
 
 Evaluate Llama 70B on 8 Gaudi2 cards on task WinoGrande, using the BF16 data type:
@@ -800,7 +813,6 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-
 
 ## Text-Generation Pipeline
 
