@@ -56,7 +56,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
             ("baichuan-inc/Baichuan2-13B-Chat", 1, False, 66, False),
             ("deepseek-ai/DeepSeek-V2-Lite", 1, False, 35, False),
+            ("THUDM/chatglm2-6b", 1, True, 150, False),
             ("THUDM/chatglm3-6b", 1, True, 150, False),
+            ("Qwen/Qwen2.5-7B", 4, False, 490, False),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -91,6 +93,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
             ("google/gemma-2-9b", 8, 1, 110.12610917383735),
+            ("Qwen/Qwen2.5-72B", 2, 1, 26),
             ("google/gemma-2-27b", 8, 1, 87.578709544111),
         ],
         "torch_compile": [
