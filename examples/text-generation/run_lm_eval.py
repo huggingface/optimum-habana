@@ -169,6 +169,12 @@ class HabanaModelAdapter(HFLM):
         self.truncation = truncation
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
+        if "gemma" in getattr(self._config, "model_type", ""):
+            self.add_bos_token = True
+            logger.info(
+                f"Model type is '{self._config.model_type}', part of the Gemma family--a BOS token will be used as Gemma underperforms without it."
+            )
+
         self._max_length = options.max_length
         self.batch_size_per_gpu = int(args.batch_size)
         self.revision = args.model_revision
