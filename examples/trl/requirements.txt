@@ -3,5 +3,5 @@ peft == 0.12.0
 datasets == 2.19.2
 wandb == 0.17.1
 tyro == 0.8.4
-evaluate == 0.4.2
+evaluate == 0.4.3
 scikit-learn == 1.5.2
