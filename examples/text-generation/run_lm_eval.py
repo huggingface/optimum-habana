@@ -133,6 +133,12 @@ def setup_lm_eval_parser():
         default=False,
         help="Use with --log_samples. Only model outputs will be saved and metrics will not be evaluated.",
     )
+    parser.add_argument(
+        "--fewshot_as_multiturn",
+        action="store_true",
+        default=False,
+        help="If True, uses the fewshot as a multi-turn conversation",
+    )
 
     args = setup_parser(parser)
     return args
@@ -312,6 +318,8 @@ def main() -> None:
         raise ValueError("Specify --output_path if providing --log_samples or --predict_only")
     if args.limit:
         logger.warning(" --limit SHOULD ONLY BE USED FOR TESTING.REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.")
+    if args.fewshot_as_multiturn and args.use_chat_template is False:
+        raise ValueError("When `fewshot_as_multiturn` is selected, `use_chat_template` must be set.")
 
     task_manager = tasks.TaskManager("INFO")
 
@@ -388,6 +396,8 @@ def main() -> None:
             write_out=args.write_out,
             log_samples=args.log_samples,
             system_instruction=args.system_instruction,
+            apply_chat_template=args.use_chat_template,
+            fewshot_as_multiturn=args.fewshot_as_multiturn,
             task_manager=task_manager,
             predict_only=args.predict_only,
         )
