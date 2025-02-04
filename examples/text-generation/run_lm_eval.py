@@ -107,6 +107,11 @@ def setup_lm_eval_parser():
         help="Number of examples in few-shot context",
     )
     parser.add_argument(
+        "--check_integrity",
+        action="store_true",
+        help="Whether to run the relevant part of the test suite for the tasks.",
+    )
+    parser.add_argument(
         "--write_out",
         "-w",
         action="store_true",
@@ -388,10 +393,12 @@ def main() -> None:
     with torch.no_grad():
         results = evaluator.simple_evaluate(
             lm,
-            tasks=args.tasks,
+            tasks=task_names,
             num_fewshot=args.num_fewshot,
+            batch_size=args.batch_size,
             device=args.device,
             limit=args.limit,
+            check_integrity=args.check_integrity,
             gen_kwargs=gen_kwargs,
             write_out=args.write_out,
             log_samples=args.log_samples,
