@@ -28,7 +28,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from accelerate import Accelerator, AcceleratorState
+from accelerate import Accelerator
+from accelerate.state import AcceleratorState
 from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
