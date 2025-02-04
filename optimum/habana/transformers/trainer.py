@@ -40,7 +40,6 @@ from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
     DistributedType,
-    FP8ContextWrapper,
     GradientAccumulationPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
@@ -108,6 +107,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
+from .._accelerate_.utils import FP8ContextWrapper
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
