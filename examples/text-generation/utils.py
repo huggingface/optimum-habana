@@ -670,6 +670,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
+    generation_config.flash_attention_2 = args.flash_attention_2
     generation_config.valid_sequence_lengths = None
 
     return generation_config
@@ -716,6 +717,10 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
+
+    if args.flash_attention_2:
+        model_kwargs["attn_implementation"] = "flash_attention_2"
+
     if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
 
