@@ -25,8 +25,6 @@ Changes made:
 - Added mark steps
 """
 
-import contextlib
-import inspect
 import math
 import re
 import warnings
@@ -51,15 +49,12 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutputWithPast,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import is_torch_greater_or_equal_than_1_13
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_2_available,
     logging,
     replace_return_docstrings,
 )
-from transformers.utils.import_utils import is_torch_fx_available
 
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -89,38 +84,8 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
-try:
-    from habana_frameworks.torch.hpu import sdp_kernel
 
-    SDPContext = True
-except ImportError:
-    SDPContext = False
-
-if is_deepspeed_available():
-    from deepspeed.moe.layer import MoE
-
-    # Note that below will crash if there is an available deepspeed that does not have ds_linear.
-    try:
-        pass
-    except Exception:
-        pass
-else:
-    MoE = None
-
-if is_flash_attn_2_available():
-    from flash_attn import flash_attn_func
-    from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
-
-    _flash_supports_window_size = "window_size" in list(inspect.signature(flash_attn_func).parameters)
-
-# This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
-# It means that the function will not be traced through and simply appear as a node in the graph.
-if is_torch_fx_available():
-    if not is_torch_greater_or_equal_than_1_13:
-        import torch.fx
-
-    _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
-
+deepspeed_available = is_deepspeed_available()
 
 logger = logging.get_logger(__name__)
 
@@ -130,17 +95,6 @@ MOE_EXPERT_PARALLEL_SIZE_ARG = "moe_expert_parallel_size"
 DEEPSPEED_QUANTIZATION_CONFIG = "deepspeed_quantization"
 DEEPSPEED_LORA_CONFIG = "deepspeed_lora"
 QUANTIZATION_CONFIG = "ds_quantization_config"
-
-# REQUIRED_DEEPSPEED_VERSION = "deepspeed>0.14.5"
-# def is_deepspeed_valid_and_available(raise_error=False, error_msg=""):
-#     available_and_valid = True
-#     if not is_deepspeed_available():
-#         available_and_valid = False
-#         if raise_error:
-#             raise ValueError(f"DeepSpeed is required for this feature, {error_msg}")
-#     else:
-
-#     return available_and_valid
 
 
 def load_balancing_loss_func(
@@ -246,7 +200,7 @@ class ArcticRMSNorm(nn.Module):
         """
         Copied from optimum/habana/transformers/models/llama/modeling_llama.py gaudi_llama_rmsnorm_forward
         """
-        if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        if hidden_states.device.type == "hpu" and FusedRMSNorm is not None:
             # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
             if hidden_states.dtype != self.weight.dtype:
                 orig_dtype = hidden_states.dtype
@@ -576,7 +530,7 @@ class ArcticAttention(nn.Module):
         else:
             past_key_value = None
 
-        if FusedSDPA:
+        if FusedSDPA is not None:
             if query_states.dtype != key_states.dtype:
                 key_states = key_states.type(query_states.dtype)
                 value_states = value_states.type(query_states.dtype)
@@ -593,12 +547,17 @@ class ArcticAttention(nn.Module):
                 )
                 htcore.mark_step()
             else:
-                with (
-                    sdp_kernel(enable_recompute=flash_attention_recompute) if SDPContext else contextlib.nullcontext()
-                ):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
+                attn_output = FusedSDPA.apply(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    0.0,
+                    False,
+                    None,
+                    "None",
+                    flash_attention_recompute,
+                )
         else:
             # repeat k/v heads if n_kv_heads < n_heads
             query_states, key_states, value_states, attention_mask = repeat_kv(
@@ -906,18 +865,7 @@ class ArcticPreTrainedModel(PreTrainedModel):
 
     def _init_weights(self, module):
         std = self.config.initializer_range
-        # if is_deepspeed_available():
-        #     # TODO(rajhans): remove this once ds has init for quantizedlinear.
-        #     try:
-        #         from deepspeed.linear.quantization import QuantizedLinear, QuantizedParameter
-        #     if isinstance(module, QuantizedLinear):
-        #         weights = module.weight.dequantized()
-        #         weights.normal_(mean=0.0, std=std)
-        #         if module.bias is not None:
-        #             module.bias.data.zero_()
-        #         module.weight = QuantizedParameter(weights)
-        #         module.weight.to(dtype=torch.bfloat16, device=weights.device)
-        # el
+
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
@@ -1779,7 +1727,7 @@ class ArcticForSequenceClassification(ArcticPreTrainedModel):
 
 # Copied from optimum.habana.transformers.models.llama.modeling_llama:apply_customized_rope()
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
-    if q.device.type == "hpu" and FusedRoPE:
+    if q.device.type == "hpu" and FusedRoPE is not None:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         # keep the same implementation as Transformers v4.37.2
