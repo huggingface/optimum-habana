@@ -19,6 +19,7 @@ from typing import Any, Callable, Optional, Tuple
 from warnings import warn
 
 import torch
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from tqdm.auto import tqdm
@@ -28,7 +29,6 @@ from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
 from optimum.habana import GaudiConfig
-from accelerate import Accelerator
 from optimum.habana.utils import set_seed
 
 

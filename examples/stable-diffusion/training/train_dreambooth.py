@@ -39,8 +39,10 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs
+from accelerate.utils.dataclasses import DistributedType
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -60,8 +62,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from accelerate import Accelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 from optimum.habana.transformers.trainer import _is_peft_model
 from optimum.habana.utils import set_seed
@@ -1088,7 +1088,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if accelerator.distributed_type == DistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)

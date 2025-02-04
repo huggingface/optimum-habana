@@ -31,6 +31,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from diffusers import (
@@ -48,7 +49,6 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 from optimum.habana import GaudiConfig
-from accelerate import Accelerator
 from optimum.habana.diffusers import (
     GaudiStableDiffusionXLPipeline,
 )

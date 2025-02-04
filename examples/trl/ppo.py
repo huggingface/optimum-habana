@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import torch
+from accelerate import Accelerator
 from datasets import load_dataset
 from peft import LoraConfig
 from tqdm import tqdm
@@ -12,7 +13,6 @@ from transformers import Adafactor, AutoModelForSequenceClassification, AutoToke
 from trl import AutoModelForCausalLMWithValueHead
 from trl.core import LengthSampler
 
-from accelerate import Accelerator
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
 from optimum.habana.utils import set_seed
 

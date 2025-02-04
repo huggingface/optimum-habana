@@ -35,6 +35,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
@@ -54,7 +55,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from accelerate import Accelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
 from optimum.habana.utils import set_seed
 

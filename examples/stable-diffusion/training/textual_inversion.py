@@ -32,6 +32,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from diffusers import (
@@ -51,7 +52,6 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from optimum.habana import GaudiConfig
-from accelerate import Accelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
 

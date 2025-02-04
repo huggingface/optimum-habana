@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
+from accelerate import Accelerator, AcceleratorState
 from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
@@ -77,7 +78,6 @@ from transformers.utils import (
 from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from accelerate import Accelerator, AcceleratorState
 from optimum.utils import logging
 
 
@@ -2624,7 +2624,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 self.assertEqual(trainer.accelerator.split_batches, True)
 
     def test_accelerator_custom_state(self):
-        GaudiAcceleratorState._reset_state(reset_partial_state=True)
+        AcceleratorState._reset_state(reset_partial_state=True)
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self.assertRaises(ValueError) as cm:
                 _ = RegressionGaudiTrainingArguments(
@@ -2635,7 +2635,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             _ = RegressionGaudiTrainingArguments(
                 output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True}
             )
-        GaudiAcceleratorState._reset_state(reset_partial_state=True)
+        AcceleratorState._reset_state(reset_partial_state=True)
 
     @require_accelerate_version_min_0_28
     def test_accelerator_config_from_dict_grad_accum_num_steps(self):
