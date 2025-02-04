@@ -68,7 +68,7 @@ from tqdm.auto import tqdm
 from transformers import T5EncoderModel
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.utils import set_seed
 
@@ -643,7 +643,7 @@ def main(args):
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=False)
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,

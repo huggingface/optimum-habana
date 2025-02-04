@@ -54,7 +54,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
 from optimum.habana.utils import set_seed
 
@@ -765,7 +765,7 @@ def main(args):
     # Set autocast to True for --bf16
     if args.bf16:
         gaudi_config.use_torch_autocast = True
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,

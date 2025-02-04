@@ -98,10 +98,8 @@ class GaudiPPOTrainer(PPOTrainer):
                 f"model must be a PreTrainedModelWrapper, got {type(model)} - supported architectures are: {SUPPORTED_ARCHITECTURES}"
             )
         # Step 1: Initialize Accelerator
-        if config.use_habana:
-            from optimum.habana.accelerate import GaudiAccelerator as Accelerator
-        else:
-            from accelerate import Accelerator
+        from accelerate import Accelerator
+
         self.accelerator = Accelerator(
             log_with=config.log_with,
             gradient_accumulation_steps=config.gradient_accumulation_steps,

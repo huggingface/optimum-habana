@@ -28,7 +28,7 @@ from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.utils import set_seed
 
 
@@ -99,7 +99,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         # number of timesteps within each trajectory to train on
         self.num_train_timesteps = int(self.config.sample_num_steps * self.config.train_timestep_fraction)
         kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-        self.accelerator = GaudiAccelerator(
+        self.accelerator = Accelerator(
             log_with=self.config.log_with,
             mixed_precision="bf16" if config.mixed_precision == "bf16" else "no",
             project_config=accelerator_project_config,

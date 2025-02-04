@@ -51,7 +51,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
 
@@ -588,7 +588,7 @@ def main():
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
 
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
         log_with=args.report_to,

@@ -61,7 +61,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
@@ -714,7 +714,7 @@ def main(args):
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.bf16
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,

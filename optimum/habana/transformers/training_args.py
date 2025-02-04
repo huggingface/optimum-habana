@@ -16,7 +16,7 @@
 import io
 import json
 import os
-import warnings
+import warningsdd
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -45,8 +45,8 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType
+from accelerate.state import AcceleratorState, PartialState
+from accelerate.utils import DistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -899,8 +899,8 @@ class GaudiTrainingArguments(TrainingArguments):
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
-            GaudiPartialState._reset_state()
+            AcceleratorState._reset_state()
+            PartialState._reset_state()
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging

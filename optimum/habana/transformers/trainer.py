@@ -106,7 +106,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
 from ..utils import (
     HabanaProfile,
@@ -2467,7 +2467,7 @@ class GaudiTrainer(Trainer):
         }
 
         # create accelerator object
-        self.accelerator = GaudiAccelerator(**args)
+        self.accelerator = Accelerator(**args)
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 

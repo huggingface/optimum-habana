@@ -12,7 +12,7 @@ from transformers import Adafactor, AutoModelForSequenceClassification, AutoToke
 from trl import AutoModelForCausalLMWithValueHead
 from trl.core import LengthSampler
 
-from optimum.habana.accelerate import GaudiAccelerator
+from accelerate import Accelerator
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
 from optimum.habana.utils import set_seed
 
@@ -191,7 +191,7 @@ def collator(data):
 set_seed(config.seed)
 
 # Now let's build the model, the reference model, and the tokenizer.
-current_device = GaudiAccelerator().local_process_index
+current_device = Accelerator().local_process_index
 lora_config = LoraConfig(
     r=script_args.lora_r,
     lora_alpha=script_args.lora_alpha,

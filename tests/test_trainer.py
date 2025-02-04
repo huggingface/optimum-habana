@@ -77,7 +77,7 @@ from transformers.utils import (
 from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.accelerate import GaudiAccelerator, GaudiAcceleratorState
+from accelerate import Accelerator, AcceleratorState
 from optimum.utils import logging
 
 
@@ -2631,7 +2631,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True}
                 )
                 self.assertIn("Please define this beforehand", str(cm.warnings[0].message))
-            _ = GaudiAccelerator()
+            _ = Accelerator()
             _ = RegressionGaudiTrainingArguments(
                 output_dir=tmp_dir, use_habana=True, accelerator_config={"use_configured_state": True}
             )
