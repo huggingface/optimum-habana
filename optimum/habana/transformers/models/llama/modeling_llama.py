@@ -135,7 +135,8 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        # Use torch.int32 to avoid loss due to low precision with BF16 (refer to SW-215204)
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=torch.int32)
 
         freqs = torch.outer(t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
