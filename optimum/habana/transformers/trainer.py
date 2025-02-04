@@ -107,7 +107,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from .._accelerate_.utils import FP8ContextWrapper
+from ..local_accelerate.utils import FP8ContextWrapper
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
