@@ -703,7 +703,8 @@ class DeepseekV3Attention(nn.Module):
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                 f" {attn_weights.size()}"
             )
-        assert attention_mask is not None
+        # commenting the below line and enable it after attention_mask optimizations are in place for deepseek_v3
+        # assert attention_mask is not None
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
