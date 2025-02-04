@@ -16,8 +16,8 @@
 import accelerate
 import transformers
 import transformers.utils.fx
+from _accelerate_.utils import extract_model_from_parallel
 
-from ..accelerate.utils import extract_model_from_parallel
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
