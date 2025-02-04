@@ -22,7 +22,14 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 import torch.distributed as dist
-from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache, OffloadedCache, QuantizedCacheConfig
+from transformers.cache_utils import (
+    Cache,
+    DynamicCache,
+    EncoderDecoderCache,
+    OffloadedCache,
+    QuantizedCacheConfig,
+    StaticCache,
+)
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.candidate_generator import (
@@ -169,6 +176,160 @@ class GaudiGenerationMixin(GenerationMixin):
     methods will generate sequences whose size is max_length. Having constant
     sizes allows to make the most of lazy mode and HPU graphs.
     """
+
+    def _prepare_inputs_for_generation(
+        self,
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[Cache] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs,
+    ):
+        """
+        Prepare the model inputs for generation. In includes operations like computing the 4D attention mask or
+        slicing inputs given the existing cache.
+
+        See the forward pass in the model documentation for expected arguments (different models might have different
+        requirements for e.g. `past_key_values`). This function should work as is for most LLMs.
+
+        Copied from https://github.com/huggingface/transformers/blob/v4.48.2/src/transformers/generation/utils.py#L349
+        Extended with custom modifications to remove keys not used in the forward method.
+        """
+
+        # 1. Handle BC:
+        model_inputs = {}
+        # - some models don't have `Cache` support (which implies they don't expect `cache_position` in `forward`)
+        if self._supports_cache_class:
+            model_inputs["cache_position"] = cache_position
+        # - `cache_position` was not a mandatory input in `prepare_inputs_for_generation` for those models, and this
+        #   function may be called outside of `generate`. Handle most use cases by creating `cache_position` on the fly
+        #   (this alternative is not as robust as calling `generate` and letting it create `cache_position`)
+        elif cache_position is None:
+            past_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+            cache_position = torch.arange(past_length, input_ids.shape[1], dtype=torch.long, device=input_ids.device)
+
+        # 2. Generic cache-dependent input preparation
+        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
+        # Exception 1: when passing input_embeds, input_ids may be missing entries
+        # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
+        # Exception 3: with synced GPUs cache_position may go out of bounds, but we only want dummy token in that case.
+        #              (we can't check exception 3 while compiling)
+        if past_key_values is not None:
+            model_inputs["past_key_values"] = past_key_values
+            if (
+                inputs_embeds is not None  # Exception 1
+                or (is_torchdynamo_compiling() or cache_position[-1] >= input_ids.shape[1])  # Exception 3
+            ):
+                input_ids = input_ids[:, -cache_position.shape[0] :]
+            elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                input_ids = input_ids[:, cache_position]
+
+        # 3. Prepare base model inputs
+        input_ids_key = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if not self.config.is_encoder_decoder:
+            if inputs_embeds is not None and cache_position[0] == 0:
+                model_inputs[input_ids_key] = None
+                model_inputs["inputs_embeds"] = inputs_embeds
+            else:
+                # `clone` calls in this function ensure a consistent stride. See #32227
+                model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
+                model_inputs["inputs_embeds"] = None
+        else:
+            model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
+
+        # 4. Create missing `position_ids` on the fly
+        if (
+            attention_mask is not None
+            and kwargs.get("position_ids") is None
+            and "position_ids" in set(inspect.signature(self.forward).parameters.keys())
+        ):
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            kwargs["position_ids"] = position_ids  # placed in kwargs for further processing (see below)
+
+        # 5. Slice model inputs if it's an input that should have the same length as `input_ids`
+        for model_input_name in ["position_ids", "token_type_ids"]:
+            model_input = kwargs.get(model_input_name)
+            if model_input is not None:
+                if past_key_values is not None:
+                    current_input_length = (
+                        model_inputs["inputs_embeds"].shape[1]
+                        if model_inputs["inputs_embeds"] is not None
+                        else model_inputs[input_ids_key].shape[1]
+                    )
+                    model_input = model_input[:, -current_input_length:]
+                    model_input = model_input.clone(memory_format=torch.contiguous_format)
+                model_inputs[model_input_name] = model_input
+
+        # 6. Create 4D attention mask is we are using a `StaticCache` (important for performant compiled forward pass)
+        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
+            if model_inputs["inputs_embeds"] is not None:
+                batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
+                device = model_inputs["inputs_embeds"].device
+            else:
+                batch_size, sequence_length = model_inputs[input_ids_key].shape
+                device = model_inputs[input_ids_key].device
+
+            # Create the causal mask with fixed shape in advance, to reduce recompilations. If the function to create
+            # the 4D causal mask exists, it should be present in the base model (XXXModel class).
+            base_model = getattr(self, self.base_model_prefix, None)
+            if base_model is None:
+                causal_mask_creation_function = getattr(
+                    self, "_prepare_4d_causal_attention_mask_with_cache_position", None
+                )
+            else:
+                causal_mask_creation_function = getattr(
+                    base_model, "_prepare_4d_causal_attention_mask_with_cache_position", None
+                )
+            if causal_mask_creation_function is None:
+                logger.warning_once(
+                    f"{self.__class__.__name__} has no `_prepare_4d_causal_attention_mask_with_cache_position` method "
+                    "defined in its base modeling class. Compiled forward passes will be sub-optimal. If you're "
+                    "writing code, see Llama for an example implementation. If you're a user, please report this "
+                    "issue on GitHub."
+                )
+            else:
+                attention_mask = causal_mask_creation_function(
+                    attention_mask,
+                    sequence_length=sequence_length,
+                    target_length=past_key_values.get_max_cache_shape(),
+                    dtype=self.dtype,
+                    device=device,
+                    cache_position=cache_position,
+                    batch_size=batch_size,
+                    config=self.config,
+                    past_key_values=past_key_values,
+                )
+        if attention_mask is not None:
+            model_inputs["attention_mask"] = attention_mask
+
+        # 7. Forward ALL kwargs that are uninitialized (e.g. `use_cache`).
+        for key, value in kwargs.items():
+            if key not in model_inputs:
+                model_inputs[key] = value
+
+        # 8. Remove unexpected `generate` inputs (TODO @joao: fix trainer and examples)
+        model_inputs.pop("labels", None)
+
+        # 9. Custom logic to remove unused keys
+        forward_call = self._slow_forward if torch._C._get_tracing_state() else self.forward
+        forward_call_signature = inspect.signature(forward_call)
+        forward_call_has_kwargs = False
+        for param in forward_call_signature.parameters.values():
+            if param.kind == param.VAR_KEYWORD:
+                forward_call_has_kwargs = True
+                break
+
+        if not forward_call_has_kwargs:
+            forward_call_keys = set(forward_call_signature.parameters.keys())
+            model_inputs_keys = list(model_inputs.keys())
+            for key in model_inputs_keys:
+                if key not in forward_call_keys:
+                    del model_inputs[key]
+
+        return model_inputs
 
     def _get_hpu_graphs_kwargs(self, model_kwargs):
         hpu_graphs_kwargs = {}

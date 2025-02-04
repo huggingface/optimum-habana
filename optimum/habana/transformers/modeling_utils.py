@@ -312,6 +312,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2SdpaAttention = GaudiWav2Vec2SdpaAttention
 
     # Generation is modified to run faster in lazy mode
+    transformers.generation.GenerationMixin.prepare_inputs_for_generation = (
+        GaudiGenerationMixin._prepare_inputs_for_generation
+    )
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
