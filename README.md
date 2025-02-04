@@ -185,7 +185,7 @@ model_name = "CompVis/stable-diffusion-v1-4"
 +   gaudi_config="Habana/stable-diffusion",
 )
 
-outputs = generator(
+outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=16,
 +   batch_size=4,
