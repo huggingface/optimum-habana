@@ -205,7 +205,7 @@ def check_8xhpu(test_case):
 
 def legacy(test_case):
     """
-    Decorator skipping a test if it's old
+    Decorator used to skip tests for legacy models
     """
     skip = os.environ.get("RUN_DIFFUSERS_LEGACY", "0") != "1"
     return pytest.mark.skipif(skip, reason="This test is for old/legacy mmodel. Skipped starting 1.16.0")(test_case)
@@ -6025,7 +6025,6 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
     @slow
     @check_gated_model_access("black-forest-labs/FLUX.1-dev")
     @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
-    @legacy
     def test_flux_img2img_inference(self):
         repo_id = "black-forest-labs/FLUX.1-dev"
         image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
