@@ -18,6 +18,14 @@ import transformers
 import transformers.utils.fx
 
 from ..accelerate.utils import extract_model_from_parallel
+from ..accelerate.utils.modeling import gaudi_check_device_same
+from ..quantizers.bitsandbytes import (
+    gaudi_bitsandbytesconfig_post_init,
+    gaudi_create_quantized_param,
+    gaudi_is_bitsandbytes_available,
+    gaudi_validate_bnb_backend_availability,
+    gaudi_validate_environment,
+)
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
@@ -160,6 +168,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiVideoLlavaForConditionalGeneration,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
@@ -291,6 +300,15 @@ def adapt_transformers_to_gaudi():
     accelerate.utils.extract_model_from_parallel = extract_model_from_parallel
     accelerate.utils.other.extract_model_from_parallel = extract_model_from_parallel
     accelerate.accelerator.extract_model_from_parallel = extract_model_from_parallel
+    accelerate.utils.modeling.check_device_same = gaudi_check_device_same
+
+    transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
+    transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.quantizers.quantizer_bnb_4bit.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.integrations.bitsandbytes.validate_bnb_backend_availability = gaudi_validate_bnb_backend_availability
+    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.validate_environment = gaudi_validate_environment
+    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.create_quantized_param = gaudi_create_quantized_param
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []
@@ -704,6 +722,11 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+
+    # Optimization for VideoLlava on Gaudi
+    transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
+        GaudiVideoLlavaForConditionalGeneration
+    )
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
