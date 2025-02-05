@@ -514,10 +514,12 @@ class ExampleTestMeta(type):
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
-            elif torch_compile and (
+
+            if torch_compile and (
                 model_name == "bert-large-uncased-whole-word-masking"
                 or model_name == "roberta-large"
                 or model_name == "albert-xxlarge-v1"
+                or model_name =="./clip-roberta"
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
@@ -687,7 +689,7 @@ class ExampleTesterBase(TestCase):
                 "--save_strategy no",
             ]
 
-        if "compile" in task:
+        if "compile" in task or "--torch_compile" in extra_command_line_arguments:
             cmd_line += ["--use_lazy_mode False"]
         elif self.EXAMPLE_NAME not in ["dpo", "ppo", "reward_modeling"]:
             cmd_line += ["--use_lazy_mode"]
@@ -877,7 +879,7 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
 
 
 class MultiCardVisionLanguageExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True,  torch_compile=True
 ):
     TASK_NAME = "ydshieh/coco_dataset_script"
 
