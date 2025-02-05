@@ -727,6 +727,36 @@ python run_generation.py \
 --load_quantized_model_with_autogptq
 ```
 
+### Running with UINT4 weight quantization using AutoAWQ
+
+Llama2-7b supports UINT4 weight-only quantization through [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which offers quantization capabilities in PyTorch.
+Currently, this support is limited to UINT4 inference of pre-quantized models only.
+
+Please run the following command to install AutoAWQ:
+```bash
+pip install triton==3.1.0 autoawq
+```
+
+You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.
+
+Here is an example of how to run a quantized model <quantized_awq_model>:
+```bash
+python run_generation.py \
+--attn_softmax_bf16 \
+--model_name_or_path <quantized_awq_model> \
+--use_hpu_graphs \
+--limit_hpu_graphs \
+--use_kv_cache \
+--bucket_size 128 \
+--bucket_internal \
+--trim_logits \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--load_quantized_model_with_autoawq
+```
+
+
 ## Language Model Evaluation Harness
 
 The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)

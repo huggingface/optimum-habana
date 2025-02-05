@@ -56,7 +56,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
             ("baichuan-inc/Baichuan2-13B-Chat", 1, False, 66, False),
             ("deepseek-ai/DeepSeek-V2-Lite", 1, False, 35, False),
+            ("THUDM/chatglm2-6b", 1, True, 150, False),
             ("THUDM/chatglm3-6b", 1, True, 150, False),
+            ("Qwen/Qwen2.5-7B", 4, False, 490, False),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -82,12 +84,16 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "load_quantized_model_with_autogptq": [
             ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
         ],
+        "load_quantized_model_with_autoawq": [
+            ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048, 456.7),
+        ],
         "deepspeed": [
             ("bigscience/bloomz", 8, 1, 36.77314954096159),
             # ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
             ("google/gemma-2-9b", 8, 1, 110.12610917383735),
+            ("Qwen/Qwen2.5-72B", 2, 1, 26),
             ("google/gemma-2-27b", 8, 1, 87.578709544111),
         ],
         "torch_compile": [
@@ -142,6 +148,7 @@ else:
         ],
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
+        "load_quantized_model_with_autoawq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
@@ -167,6 +174,7 @@ def _test_text_generation(
     torch_compile: bool = False,
     fp8: bool = False,
     load_quantized_model_with_autogptq: bool = False,
+    load_quantized_model_with_autoawq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -300,6 +308,8 @@ def _test_text_generation(
         ]
     if load_quantized_model_with_autogptq:
         command += ["--load_quantized_model_with_autogptq"]
+    if load_quantized_model_with_autoawq:
+        command += ["--load_quantized_model_with_autoawq"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -446,6 +456,37 @@ def test_text_generation_gptq(
         world_size=world_size,
         fp8=False,
         load_quantized_model_with_autogptq=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
+    MODELS_TO_TEST["load_quantized_model_with_autoawq"],
+)
+def test_text_generation_awq(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=False,
+        load_quantized_model_with_autoawq=True,
         batch_size=batch_size,
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,

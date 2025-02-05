@@ -116,6 +116,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "baichuan",
     "deepseek_v2",
     "chatglm",
+    "qwen2_vl",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -1092,8 +1093,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "baichuan",
                 "chatglm",
+                "deepseek_v2",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1261,6 +1263,9 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
+        # determine whether to clear hpu graphs cache
+        model_kwargs["clear_hpu_graphs_cache"] = generation_config.clear_hpu_graphs_cache
+
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
 
@@ -1300,6 +1305,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "qwen2_moe",
                 "baichuan",
+                "deepseek_v2",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
@@ -2613,8 +2619,14 @@ class GaudiGenerationMixin(GenerationMixin):
             and not model_kwargs.get("reuse_cache", False)
             and bucket_internal
         ):
+            # Clear HPU graphs cache
+            if model_kwargs.get("clear_hpu_graphs_cache", False):
+                self.clear_cache()
+
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-            self.clear_inputs()
+            else:
+                self.clear_inputs()
+
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
