@@ -670,15 +670,18 @@ class DeepseekV2MoE(nn.Module):
                 experts_range = range(self.expert_chunk)
                 gate_proj_list = [
                     self.experts[idx * self.expert_chunk + i].gate_proj.weight.squeeze()
-                    for i in experts_range if self.experts[idx * self.expert_chunk + i] is not None
+                    for i in experts_range
+                    if self.experts[idx * self.expert_chunk + i] is not None
                 ]
                 down_proj_list = [
                     self.experts[idx * self.expert_chunk + i].down_proj.weight.squeeze()
-                    for i in experts_range if self.experts[idx * self.expert_chunk + i] is not None
+                    for i in experts_range
+                    if self.experts[idx * self.expert_chunk + i] is not None
                 ]
                 up_proj_list = [
                     self.experts[idx * self.expert_chunk + i].up_proj.weight.squeeze()
-                    for i in experts_range if self.experts[idx * self.expert_chunk + i] is not None
+                    for i in experts_range
+                    if self.experts[idx * self.expert_chunk + i] is not None
                 ]
 
                 hidden_states_slice = torch.ops.hpu.mixture_of_experts(
