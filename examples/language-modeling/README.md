@@ -131,13 +131,7 @@ python ../gaudi_spawn.py \
 This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 
 
-
-## GPT-NeoX and causal language modeling
-
-The following examples fine-tune GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
-
-
-### Multi-Node Training with Deepspeed (GPT-NeoX)
+## Multi-Node Training with Deepspeed (GPT-NeoX)
 
 The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
 Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
