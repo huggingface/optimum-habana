@@ -1392,8 +1392,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             model_name_or_path,
             **kwargs,
         )
-        logger = logging.get_logger(sd_pipe.__module__)
-        logger.setLevel(level=diffusers.logging.INFO)
         sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
         sd_pipe.to(torch.device("hpu"))
 
@@ -1412,10 +1410,10 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             config = FP8Config.from_json_file(quant_config_path)
 
             if config.measure:
-                logger.info("Running measurements")
+                print("Running measurements")
                 sd_pipe.unet = prepare(sd_pipe.unet, config)
             elif config.quantize:
-                logger.info("Running quantization")
+                print("Running quantization")
                 sd_pipe.unet = convert(sd_pipe.unet, config)
             htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
 
@@ -1430,7 +1428,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0].shape, (1024, 1024, 3))
         os.chdir(original_dir)
-        logger.setLevel(level=diffusers.logging.WARNING)
 
     @slow
     def test_stable_diffusion_xl_generation_throughput(self):
