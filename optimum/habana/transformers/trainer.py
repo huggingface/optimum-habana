@@ -107,6 +107,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
+from ..distributed import parallel_state
 from ..local_accelerate.utils import FP8ContextWrapper
 from ..utils import (
     HabanaProfile,
@@ -2469,10 +2470,23 @@ class GaudiTrainer(Trainer):
         # create accelerator object
         self.accelerator = Accelerator(**args)
 
-        # we patch accelerator with the mpu for now
-        from ..distributed import parallel_state
-
+        # we patch accelerator with the mpu here
+        # should this be in deepspeed plugin instead?
         self.accelerator.mpu = parallel_state
+
+        context_parallel_size = self.args.context_parallel_size
+        if not is_deepspeed_available():
+            context_parallel_size = 1
+        if self.accelerator.mpu.is_unitialized():
+            self.accelerator.mpu.initialize_model_parallel(sequence_parallel_size=context_parallel_size, use_fp8=False)
+        else:
+            if self.accelerator.mpu.get_sequence_parallel_world_size() != context_parallel_size:
+                raise ValueError(
+                    "The initialized sequence parallel world size does not match the context parallel size."
+                )
+            if self.accelerator.mpu.amax_reduction_is_initialized():
+                logger.info("FP8 amax reduction group is already initialized.")
+
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 
