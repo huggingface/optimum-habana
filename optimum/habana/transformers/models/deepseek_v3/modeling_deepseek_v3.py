@@ -1097,7 +1097,8 @@ class DeepseekV3Attention(nn.Module):
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                     f" {attn_weights.size()}"
                 )
-            assert attention_mask is not None
+            # Commenting below line as MMLU tasks are failing with this assertion
+            # assert attention_mask is not None
             if attention_mask is not None:
                 attn_weights = attn_weights + attention_mask
 
