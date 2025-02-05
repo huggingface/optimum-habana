@@ -29,6 +29,109 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+## GPT2/GPT-J/GPT-NeoX and causal language modeling
+
+The following examples fine-tune GPT-2, GPT-J-6B and GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
+
+
+### Single-card Training (GPT2)
+
+```bash
+python run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3
+```
+
+This takes about 13 minutes to train on a single HPU. It reaches
+a perplexity of about 20.9963 once fine-tuned on the dataset.
+
+To run on your own training and validation files, use the following command:
+
+```bash
+python run_clm.py \
+    --model_name_or_path gpt2 \
+    --train_file path_to_train_file \
+    --validation_file path_to_validation_file \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3
+```
+
+
+### Multi-card Training (GPT2)
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --gradient_checkpointing \
+    --use_cache False \
+    --throughput_warmup_steps 3
+```
+
+This takes about 4 minutes to train on 8 HPUs. It reaches
+a perplexity of 21.7968 once fine-tuned on the dataset.
+
+
+### Multi-card Training with Deepspeed (GPT-J)
+
+The following command triggers the fine-tuning of [GPT-J-6B](https://huggingface.co/EleutherAI/gpt-j-6b) on WikiText-2 with DeepSpeed ZeRO-2.
+Fine tuning on 8 HPU cards takes around 6 minutes with a batch size of 32 (4 per device).
+It reaches a perplexity of 14.011.
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path EleutherAI/gpt-j-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm-xl-1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_for_deepspeed_config
+```
+
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+
+
+
 ## GPT-NeoX and causal language modeling
 
 The following examples fine-tune GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
