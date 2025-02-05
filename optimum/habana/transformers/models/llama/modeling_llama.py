@@ -655,10 +655,18 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(
-                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                        key_states.shape,
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
+                        device=key_states.device,
                     )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                        key_states.shape,
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
+                        device=key_states.device,
                     )
                     past_key.copy_(key_states)
                     past_value.copy_(value_states)
