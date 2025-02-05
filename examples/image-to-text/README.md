@@ -168,63 +168,8 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
-
 The single card training command for llava-hf/llava-1.5-7b-hf is similar.
-
-
-## Multi-HPU inference
-
-### BF16 Inference with FusedSDPA on 8 HPUs
-
-Use the following commands to run Llava-v1.6-mistral-7b BF16 inference with FusedSDPA on 8 HPUs:
-```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
-
-Use the following commands to run Llama-3.2-90B-Vision-Instruct BF16 inference with FusedSDPA on 8 HPUs:
-```bash
-PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path meta-llama/Llama-3.2-90B-Vision-Instruct \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
-
-
-### FP8 Inference with FusedSDPA on 8 HPUs
-
-Use the following commands to run Llava-v1.6-mistral-7b FP8 inference with FusedSDPA on 8 HPUs.
-Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b on 8 HPUs:
-```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
-
-Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b on 8 HPUs:
-```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
 
 >  For different models, please adjust training parameters and `lora_target_modules`. Such as replace `lora_target_modules`
 >  with below for HuggingFaceM4/idefics2-8b.
 >  '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
-
