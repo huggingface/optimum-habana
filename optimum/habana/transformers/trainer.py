@@ -747,7 +747,7 @@ class GaudiTrainer(Trainer):
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.is_fp8_enabled:
+            if self.accelerator.state.mixed_precision == "fp8":
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
@@ -1540,7 +1540,7 @@ class GaudiTrainer(Trainer):
 
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
-        if self.accelerator.state.is_fp8_enabled and self.model.training:
+        if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
             ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
 
         return ctx_manager
@@ -1597,7 +1597,7 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
+            if self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing:
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -2460,14 +2460,19 @@ class GaudiTrainer(Trainer):
         args = {
             "deepspeed_plugin": self.args.deepspeed_plugin,
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
-            "distribution_strategy": self.args.distribution_strategy,
-            "dynamic": self.args.compile_dynamic,
+            # "distribution_strategy": self.args.distribution_strategy,
+            # "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
-            "use_regional_compilation": self.args.use_regional_compilation,
+            # "use_regional_compilation": self.args.use_regional_compilation,
         }
 
         # create accelerator object
         self.accelerator = Accelerator(**args)
+
+        # we patch accelerator with the mpu for now
+        from ..distributed import parallel_state
+
+        self.accelerator.mpu = parallel_state
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 
