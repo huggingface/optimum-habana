@@ -107,9 +107,12 @@ def setup_lm_eval_parser():
         help="Number of examples in few-shot context",
     )
     parser.add_argument(
-        "--check_integrity",
-        action="store_true",
-        help="Whether to run the relevant part of the test suite for the tasks.",
+        "--verbosity",
+        "-v",
+        type=str.upper,
+        default="INFO",
+        metavar="CRITICAL|ERROR|WARNING|INFO|DEBUG",
+        help="Controls the reported logging error level. Set to DEBUG when testing + adding new task configurations for comprehensive log output.",
     )
     parser.add_argument(
         "--write_out",
@@ -326,7 +329,7 @@ def main() -> None:
     if args.fewshot_as_multiturn and args.use_chat_template is False:
         raise ValueError("When `fewshot_as_multiturn` is selected, `use_chat_template` must be set.")
 
-    task_manager = tasks.TaskManager("INFO")
+    task_manager = tasks.TaskManager(args.verbosity)
 
     if args.tasks is None:
         logger.error("Need to specify task to evaluate.")
@@ -398,7 +401,6 @@ def main() -> None:
             batch_size=args.batch_size,
             device=args.device,
             limit=args.limit,
-            check_integrity=args.check_integrity,
             gen_kwargs=gen_kwargs,
             write_out=args.write_out,
             log_samples=args.log_samples,
@@ -406,6 +408,7 @@ def main() -> None:
             apply_chat_template=args.use_chat_template,
             fewshot_as_multiturn=args.fewshot_as_multiturn,
             task_manager=task_manager,
+            verbosity=args.verbosity,
             predict_only=args.predict_only,
         )
 
