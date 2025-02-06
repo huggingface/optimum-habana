@@ -24,7 +24,6 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -233,96 +232,100 @@ def finalize_quantization(model):
     finalize_calibration(model)
 
 
-def get_model_with_observer(args, model, logger):
-    logger.info("[pt2e_quant] Inserting observers for measurement.")
+class PT2EQTestManager:
+    """
+    PT2EQ Test Control Flow Manager Class
+    """
 
-    QUANTIZER_DTYPES = {"int8": torch.int8, "fp8_143": torch.float8_e4m3fn, "fp8_152": torch.float8_e5m2}
-    quant_dtype = QUANTIZER_DTYPES[os.getenv("USE_PT2E_QUANT_DTYPE", "fp8_143")]
+    qdtype_dict = {"int8": torch.int8, "fp8_143": torch.float8_e4m3fn, "fp8_152": torch.float8_e5m2}
+    model_state = ["None", "Prepared", "Calibrated", "Quantized"]
+    state_count = 3
+    state_index = 0
+    pt2eq_model = None
+    test_qdtype = None
+    save_path = ""
+    load_path = ""
+    logger = None
+    initialized = False
 
-    from habana_frameworks.torch.core.quantizer import (
-        habana_quant_config_symmetric,
-        habana_quantizer,
-    )
+    @classmethod
+    def initialize(cls, qdtype_key, save_path, load_path, logger):
+        if not cls.initialized:
+            cls.test_qdtype = cls.qdtype_dict[qdtype_key]
+            cls.save_path = save_path
+            cls.load_path = load_path
+            cls.logger = logger
+            cls.initialized = True
 
-    quantizer = habana_quantizer()
-    quant_config = habana_quant_config_symmetric(quant_dtype)
-    quantizer.set_global(quant_config)
+    @classmethod
+    def update_state(cls, model):
+        cls.pt2eq_model = model.model
+        cls.logger.info(f"[pt2e_quant] old state {cls.model_state[cls.state_index]}")
+        cls.state_index = min(cls.state_index + 1, cls.state_count)
+        cls.logger.info(f"[pt2e_quant] new state {cls.model_state[cls.state_index]}")
+        return cls.state_index < cls.state_count
 
-    actual_model = model.model
+    @classmethod
+    def ready_to_save(cls):
+        return cls.model_state[cls.state_index] == "Quantized"
 
-    from torch._export import capture_pre_autograd_graph
+    @classmethod
+    def save_model(cls):
+        """
+        Save pt2e-quant model information.
+        """
+        if cls.save_path:
+            save_path = cls.save_path + "pt2e_quant_model.pt2" if os.path.isdir(cls.save_path) else cls.save_path
+            cls.logger.info(f"[pt2e_quant] Using PT2 Export Save at {save_path}")
+            with torch.no_grad():
+                torch.export.save(cls.pt2eq_model, save_path)
+                cls.logger.info("[pt2e_quant] Saving Done!")
 
-    exported_model = capture_pre_autograd_graph(actual_model)
-
-    from torch.ao.quantization.quantize_pt2e import prepare_pt2e
-
-    prepared_model = prepare_pt2e(exported_model, quantizer)
-    model.model = prepared_model
-
-    return model
-
-
-def add_quant_dquant_nodes(model, logger):
-    logger.info("[pt2e_quant] Converting model after calibration.")
-
-    from torch.ao.quantization.quantize_pt2e import convert_pt2e
-
-    model.model = convert_pt2e(model.model)
-    return model
-
-
-class PT2EQContextManager:
-    state: str = "None"  # "Prepared", "Calibrated", "Quantized"
-    model: Any = None
-
-
-def update_pt2e_quant_context(model, logger):
-    PT2EQContextManager.model = model
-    logger.info(f"[pt2e_quant] context old state {PT2EQContextManager.state}")
-    run = False
-    if PT2EQContextManager.state == "None":
-        PT2EQContextManager.state = "Prepared"
-        run = True
-    elif PT2EQContextManager.state == "Prepared":
-        PT2EQContextManager.state = "Calibrated"
-        run = True
-    elif PT2EQContextManager.state == "Calibrated":
-        PT2EQContextManager.state = "Quantized"
-        run = False
-    elif PT2EQContextManager.state == "Quantized":
-        PT2EQContextManager.state = "Quantized"
-        run = False
-    logger.info(f"[pt2e_quant] context new state {PT2EQContextManager.state}")
-    return run
-
-
-def pt2e_quant_model_ready_to_save():
-    return True if PT2EQContextManager.state == "Quantized" else False
-
-
-def get_model_for_pt2e_quant(args, model, logger):
-    if model.config.model_type == "llama":
-        if PT2EQContextManager.state == "None":
-            model = get_model_with_observer(args, model, logger)
-            update_pt2e_quant_context(model, logger)  # None --> Prepared
-            if args.pt2e_load:
-                path = args.pt2e_load
-                if os.path.isdir(path):
-                    path = path + "pt2e_quant_model.pt2"
-                logger.info(f"[pt2e_quant] Using PT2 Export Load from {path}")
-                del model.model
-                model.model = torch.export.load(path).module()
-                logger.info("[pt2e_quant] Loading Done !")
-
-                # Update the state, as we are already done with them in past
-                update_pt2e_quant_context(model, logger)  # Prepared --> Calibrated
-                update_pt2e_quant_context(model, logger)  # Calibrated --> Quantized
-            else:
-                logger.info("[pt2e_quant] Using PT2 Export like flow for measurement / quantization.")
+    @classmethod
+    def ready_model(cls, model):
+        """
+        Make the model ready for next run with pt2e-quant.
+        If saved model information is already present, load it.
+        """
+        if model.config.model_type != "llama":
             return model
-        if PT2EQContextManager.state == "Calibrated":
-            logger.info("[pt2e_quant] Converting model after calibration.")
-            model = add_quant_dquant_nodes(PT2EQContextManager.model, logger)
+
+        from habana_frameworks.torch.core.quantizer import (
+            habana_quant_config_symmetric,
+            habana_quantizer,
+        )
+        from torch._export import capture_pre_autograd_graph
+        from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
+
+        if cls.model_state[cls.state_index] == "None":
+            if not cls.load_path:
+                cls.logger.info("[pt2e_quant] Using PT2 Export like flow for measurement / quantization.")
+                quantizer = habana_quantizer()
+                quant_config = habana_quant_config_symmetric(cls.test_qdtype)
+                quantizer.set_global(quant_config)
+                # export
+                exported_model = capture_pre_autograd_graph(model.model)
+                # prepare
+                cls.logger.info("[pt2e_quant] Inserting observers for measurement.")
+                model.model = prepare_pt2e(exported_model, quantizer)
+                cls.update_state(model)  # None --> Prepared
+                return model
+            else:
+                load_path = cls.load_path + "pt2e_quant_model.pt2" if os.path.isdir(cls.load_path) else cls.load_path
+                cls.logger.info(f"[pt2e_quant] Using PT2 Export Load from {load_path}")
+                del model.model
+                model.model = torch.export.load(load_path).module()
+                cls.logger.info("[pt2e_quant] Loading Done!")
+                # Update the state, as we are already done with them in past
+                cls.update_state(model)  # None --> Prepared
+                cls.update_state(model)  # Prepared --> Calibrated
+                cls.update_state(model)  # Calibrated --> Quantized
+                return model
+
+        if cls.model_state[cls.state_index] == "Calibrated":
+            cls.logger.info("[pt2e_quant] Converting model after calibration.")
+            model.model = convert_pt2e(cls.pt2eq_model)
+            cls.update_state(model)  # Calibrated --> Quantized
             return model
 
 
@@ -411,11 +414,15 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.torch_compile:
         model = get_torch_compiled_model(model, logger)
+        assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
+            "please set PT_HPU_LAZY_MODE=0 on command line when using --use_torch_compile"
+        )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
 
     if args.pt2e_quant:
-        model = get_model_for_pt2e_quant(args, model, logger)
+        PT2EQTestManager.initialize(args.quant_dtype, args.pt2e_save, args.pt2e_load, logger)
+        model = PT2EQTestManager.ready_model(model)
 
     return model, assistant_model
 
@@ -529,8 +536,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-    load_to_meta = model_on_meta(config)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+
+    keep_module_on_host = False
+    if "Llama-3.1-405B" in args.model_name_or_path:
+        keep_module_on_host = True
+
+    load_to_meta = False if keep_module_on_host else model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -539,7 +551,10 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-        with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+
+        deepspeed_device = "cpu" if keep_module_on_host else "meta"
+
+        with deepspeed.OnDevice(dtype=config.torch_dtype, device=deepspeed_device):
             if (
                 hasattr(config, "rope_scaling")
                 and config.rope_scaling
@@ -569,12 +584,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         )
     else:
         # TODO: revisit placement on CPU when auto-injection is possible
-        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+        with deepspeed.OnDevice(dtype=config.torch_dtype, device="cpu"):
             if args.peft_model is not None:
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                    args.model_name_or_path, torch_dtype=config.torch_dtype, **model_kwargs
                 )
     model.eval()
 
@@ -584,7 +599,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         ).eval()
 
     # Initialize the model
-    ds_inference_kwargs = {"dtype": model_dtype}
+    ds_inference_kwargs = {"dtype": config.torch_dtype}
+    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -605,7 +621,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
 
     if args.pt2e_quant:
-        model = get_model_for_pt2e_quant(args, model, logger)
+        PT2EQTestManager.initialize(args.quant_dtype, args.pt2e_save, args.pt2e_load, logger)
+        model = PT2EQTestManager.ready_model(model)
 
     return model, assistant_model
 

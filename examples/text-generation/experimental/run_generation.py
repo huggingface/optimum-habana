@@ -434,16 +434,6 @@ def setup_parser(parser):
 
     args = parser.parse_args()
 
-    if args.pt2e_quant:
-        args.torch_compile = False
-        args.use_hpu_graphs = False
-        if args.quant_dtype not in ["int8", "fp8_143", "fp8_152"]:
-            logger.info("Unsupported quantization data type! Using fp8_143 by default.")
-            args.quant_dtype = "fp8_143"
-        os.environ["USE_PT2E_QUANT_DTYPE"] = args.quant_dtype
-        if args.pt2e_load and args.pt2e_save:
-            raise RuntimeError("Either of pt2e_load or pt2e_save path should be given !")
-
     if args.torch_compile:
         args.use_hpu_graphs = False
 
@@ -466,6 +456,15 @@ def setup_parser(parser):
         assert args.max_input_tokens == -1, (
             "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
         )
+
+    if args.pt2e_quant:
+        args.torch_compile = False
+        args.use_hpu_graphs = False
+        if args.quant_dtype not in ["int8", "fp8_143", "fp8_152"]:
+            logger.info("[pt2e_quant] Unsupported quantization data type! Using fp8_143 by default.")
+            args.quant_dtype = "fp8_143"
+        if args.pt2e_load and args.pt2e_save:
+            raise RuntimeError("[pt2e_quant] Either pt2e_load or pt2e_save path should be given!")
 
     return args
 
@@ -1065,22 +1064,14 @@ def main():
         print(separator)
 
     if args.pt2e_quant:
-        from utils import update_pt2e_quant_context
+        from utils import PT2EQTestManager
 
-        repeat = update_pt2e_quant_context(model, logger)
+        repeat = PT2EQTestManager.update_state(model)
         if repeat:
             main()
             return
-        from utils import pt2e_quant_model_ready_to_save
-
-        if pt2e_quant_model_ready_to_save() and args.pt2e_save:
-            path = args.pt2e_save
-            if os.path.isdir(path):
-                path = path + "pt2e_quant_model.pt2"
-            logger.info(f"[pt2e_quant] Using PT2 Export Save at {path}")
-            with torch.no_grad():
-                torch.export.save(model.model, path)
-                logger.info("[pt2e_quant] Saving Done !")
+        if PT2EQTestManager.ready_to_save():
+            PT2EQTestManager.save_model()
 
     if args.quant_config:
         finalize_quantization(model)

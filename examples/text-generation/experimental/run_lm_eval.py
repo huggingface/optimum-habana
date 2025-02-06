@@ -230,22 +230,14 @@ def main():
         print(json.dumps(results, indent=2))
 
     if args.pt2e_quant:
-        from utils import update_pt2e_quant_context
+        from utils import PT2EQTestManager
 
-        repeat = update_pt2e_quant_context(model, logger)
+        repeat = PT2EQTestManager.update_state(model)
         if repeat:
             main()
             return
-        from utils import pt2e_quant_model_ready_to_save
-
-        if pt2e_quant_model_ready_to_save() and args.pt2e_save:
-            path = args.pt2e_save
-            if os.path.isdir(path):
-                path = path + "pt2e_quant_model.pt2"
-            logger.info(f"[pt2e_quant] Using PT2 Export Save at {path}")
-            with torch.no_grad():
-                torch.export.save(model.model, path)
-                logger.info("[pt2e_quant] Saving Done !")
+        if PT2EQTestManager.ready_to_save():
+            PT2EQTestManager.save_model()
 
     if args.quant_config:
         finalize_quantization(model)
