@@ -232,7 +232,7 @@ def main():
     logger.setLevel(logging.INFO)
 
     i2v_models = ["i2vgen-xl"]
-    i2v_model = any(model in args.model_name_or_path for model in i2v_models)
+    is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
 
     # Load input image(s)
     input = []
@@ -241,7 +241,7 @@ def main():
         args.image_path = [args.image_path]
     for image_path in args.image_path:
         image = load_image(image_path)
-        if i2v_model:
+        if is_i2v_model:
             image = image.convert("RGB")
         else:
             image = image.resize((args.height, args.width))
@@ -306,7 +306,7 @@ def main():
             output_type=args.output_type,
             num_frames=args.num_frames,
         )
-    elif i2v_model:
+    elif is_i2v_model:
         del kwargs["scheduler"]
         pipeline = GaudiI2VGenXLPipeline.from_pretrained(
             args.model_name_or_path,
