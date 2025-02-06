@@ -89,6 +89,8 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
+
+
 def _get_unpad_data(attention_mask):
     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
@@ -315,6 +317,7 @@ class DeepseekV3YarnRotaryEmbedding(DeepseekV3RotaryEmbedding):
         self.register_buffer("cos_cached", (emb.cos() * _mscale).to(dtype), persistent=False)
         self.register_buffer("sin_cached", (emb.sin() * _mscale).to(dtype), persistent=False)
 
+
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
         return FusedRoPE.apply(
@@ -322,6 +325,7 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+
 
 # Copied from transformers.models.llama.modeling_llama.rotate_half
 def rotate_half(x):
@@ -502,7 +506,6 @@ class DeepseekV3MoE(nn.Module):
             y = y + self.shared_experts(identity)
         return y
 
-
     @torch.no_grad()
     def moe_infer(self, x, topk_ids, topk_weight):
         """
@@ -530,6 +533,7 @@ class DeepseekV3MoE(nn.Module):
             out = _all_reduce(out)
 
         return out
+
 
 class Matmul(torch.nn.Module):
     def __init__(self):
@@ -1155,6 +1159,7 @@ class DeepseekV3DecoderLayer(nn.Module):
 
     def update_sincos_cache(self, seq_len):
         self.self_attn.update_sincos_cache(seq_len)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1439,7 +1444,6 @@ class DeepseekV3Model(DeepseekV3PreTrainedModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-
         past_key_values_length = 0
         if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
@@ -1484,11 +1488,11 @@ class DeepseekV3Model(DeepseekV3PreTrainedModel):
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
             if (
-                    lazy_mode
-                    and not self.training
-                    and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-                ):
-                    htcore.mark_step()
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
+                htcore.mark_step()
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
@@ -1499,11 +1503,11 @@ class DeepseekV3Model(DeepseekV3PreTrainedModel):
                 token_idx=token_idx,
             )
             if (
-                    lazy_mode
-                    and not self.training
-                    and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-                ):
-                    htcore.mark_step()
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
+                htcore.mark_step()
             hidden_states = layer_outputs[0]
 
             if use_cache:
