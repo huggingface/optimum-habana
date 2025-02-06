@@ -397,9 +397,9 @@ class KVCache(torch.nn.Module):
             self.inp_seq_len = inp_seq_len
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
         else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            assert self.inp_seq_len == inp_seq_len, (
+                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            )
             self.cache.fill_(0)
 
     @staticmethod
@@ -428,7 +428,9 @@ class KVCache(torch.nn.Module):
 
 
 class GaudiDistributedAttention(torch.nn.Module):
-    def __init__(self, hpu_module_fsdpa, scale, attention_dropout, enable_recompute, flash_attention_fp8):
+    def __init__(
+        self, hpu_module_fsdpa: ModuleFusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8
+    ):
         super().__init__()
         self._hpu_module_fsdpa = hpu_module_fsdpa
         if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
@@ -440,11 +442,11 @@ class GaudiDistributedAttention(torch.nn.Module):
 
     def forward(
         self,
-        query,
-        key,
-        value,
-        attn_mask,
-        dropout_p,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: torch.Tensor,
+        dropout_p: float,
         is_casual,
         scale,
         softmax_mode,
@@ -484,7 +486,9 @@ class GaudiDistributedAttention(torch.nn.Module):
             )
 
 
-def GetGaudiDistributedAttention(fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed):
+def get_gaudi_distributed_attention(
+    fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed
+):
     if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
         return fused_scaled_dot_product_attention_distributed
     else:
@@ -745,7 +749,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-        fused_scaled_dot_product_attention = GetGaudiDistributedAttention(
+        fused_scaled_dot_product_attention = get_gaudi_distributed_attention(
             self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
         )
         if use_flash_attention and FusedSDPA is not None:
