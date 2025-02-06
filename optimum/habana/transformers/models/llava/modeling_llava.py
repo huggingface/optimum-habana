@@ -197,7 +197,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 flash_attention_recompute=flash_attention_recompute,
             )
 
-            if input_ids.shape[1] != 1 and pixel_values is not None:
+            if input_ids.shape[1] != 1 and pixel_values is not None and tokens_pos is not None:
                 batch_size, seq_len = tokens_pos.shape
                 batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
                 logits = outputs[0][batch_indices, tokens_pos.reshape(-1), :].reshape(batch_size, seq_len, -1)
@@ -259,7 +259,10 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         token_idx = kwargs.get("token_idx", None)
         image_offset = 0
         tokens_pos = None
-        if token_idx is not None and pixel_values is not None:
+        legacy_processing = (
+            (input_ids == self.config.image_token_index).sum(1).max() < self.config.image_seq_length
+        ) or ((input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1) and pixel_values is not None)
+        if token_idx is not None and pixel_values is not None and legacy_processing:
             input_ids, attention_mask, image_offset, tokens_pos = _pad_inputs(
                 input_ids,
                 attention_mask,

@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
         "--show_graphs_count",
         action="store_true",
         help="Show statistics of HPU graph compilation.",
@@ -331,6 +336,11 @@ def setup_parser(parser):
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
     )
     quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+    )
+    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
@@ -361,6 +371,8 @@ def setup_parser(parser):
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
@@ -719,22 +731,21 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
+        from optimum.habana.utils import HabanaProfile
 
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            logger.info("Graph compilation...")
-            t0 = time.perf_counter()
-            for i, batch in enumerate(dataloader):
-                generate_dataset(batch)
-                # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
-                    break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        logger.info("Graph compilation...")
+        t0 = time.perf_counter()
+        for i, batch in enumerate(dataloader):
+            generate_dataset(batch)
+            # The first three iterations take longer because of graph compilation
+            if (i + 1) == 3:
+                break
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
@@ -770,8 +781,7 @@ def main():
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        if prompt_length > 0:
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
         finalize_quantization(model)
