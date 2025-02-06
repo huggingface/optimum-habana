@@ -388,7 +388,12 @@ def main():
     n_output_tokens = 0
     for sequence in result:
         # We have to subtract the number of input tokens as they are part of the returned sequence
-        n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+        # TODO this is not accurate, args.prompt contains flag like <|im_start|>, <|im_end|>, while generated_text does not contain it
+        # if it's text+image prompt, should use "image-text-to-text" pipeline after transformers 4.47
+        if not args.ignore_eos:
+            n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+        else:
+            n_output_tokens += args.max_new_tokens
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
