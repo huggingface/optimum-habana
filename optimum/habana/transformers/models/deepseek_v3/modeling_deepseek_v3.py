@@ -653,7 +653,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         )
 
 
-# Copied from transformers.models.llama.modeling_llama.LlamaAttention with Llama->DeepseekV2
+# Copied from transformers.models.llama.modeling_llama.LlamaAttention with Llama->DeepseekV3
 class DeepseekV3Attention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -979,7 +979,7 @@ class DeepseekV3Attention(nn.Module):
                         )
 
             else:
-                query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
+                query_states, key_states, value_states, attention_mask = gaudi_deepseekv3_repeat_kv(
                     query_states, key_states, value_states, attention_mask, self.num_key_value_groups
                 )
 
