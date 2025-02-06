@@ -847,6 +847,7 @@ python image_to_video_generation.py \
     --motion_bucket_id=14 \
     --width=512 \
     --height=512
+```
 
 # Important Notes for Gaudi3 Users  
 
