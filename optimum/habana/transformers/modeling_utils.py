@@ -168,6 +168,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiVideoLlavaForConditionalGeneration,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
@@ -721,6 +722,11 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+
+    # Optimization for VideoLlava on Gaudi
+    transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
+        GaudiVideoLlavaForConditionalGeneration
+    )
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
