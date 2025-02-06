@@ -404,15 +404,18 @@ class KVCache(torch.nn.Module):
 
     @staticmethod
     def update(prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
+        if inp_seq_len != -1:
+            # reuse cache logic
+            orig_cur = cur
+            if prev.shape == cur.shape:
+                prev.copy_(cur)
+                return orig_cur
+            if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+                # Initialize
+                prev[:, :, :inp_seq_len, :].copy_(cur)
+                return orig_cur
         if idx is not None:
+            # 2+ tokenizer logic if model is static shape optimized
             prev.index_copy_(dim, idx - 1, cur)
             return prev
         else:
@@ -652,14 +655,24 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(
-                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                        key_states.shape,
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
+                        device=key_states.device,
                     )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                        key_states.shape,
+                        dtype=self.get_k_proj_weight_dtype()
+                        if self.get_k_proj_weight_dtype() != torch.uint8
+                        else key_states.dtype,
+                        device=key_states.device,
                     )
+                    past_key.copy_(key_states)
+                    past_value.copy_(value_states)
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
-                if (
+                elif (
                     token_idx is not None
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
@@ -746,6 +759,8 @@ class GaudiLlamaAttention(LlamaAttention):
                 causal_mask = attention_mask
                 if cache_position is not None:
                     causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                else:
+                    causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
                 attn_weights = attn_weights + causal_mask
 
             if attn_softmax_bf16:
