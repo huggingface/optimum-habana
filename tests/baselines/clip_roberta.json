@@ -34,9 +34,9 @@
             "distribution": {
                 "multi_card": {
                     "learning_rate": 5e-05,
-                    "train_batch_size": 64,
-                    "train_runtime": 34,
-                    "train_samples_per_second": 7235,
+                    "train_batch_size": 512,
+                    "train_runtime": 59.50,
+                    "train_samples_per_second": 14124,
                     "extra_arguments": [
                         "--data_dir $PWD/",
                         "--dataset_config_name 2017",
