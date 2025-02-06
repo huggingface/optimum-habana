@@ -1295,6 +1295,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
     def test_stable_diffusion_xl_num_images_per_prompt_optimized(self):
+        import habana_frameworks.torch.hpu as torch_hpu
 
         kwargs = {"timestep_spacing": "linspace"}
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
@@ -1324,7 +1325,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
         sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
         sd_pipe.to(torch.device("hpu"))
-        sd_pipe.unet = hthpu.wrap_in_hpu_graph(sd_pipe.unet)
+        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
@@ -1364,7 +1365,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
     def test_stable_diffusion_xl_optimized_fp8(self):
-
+        import habana_frameworks.torch.hpu as torch_hpu
         kwargs = {"timestep_spacing": "linspace"}
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
@@ -1380,7 +1381,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
         os.environ["PATCH_SDPA"] = "1"
         # Set QUANT_CONFIG environment variable
-        os.environ["QUANT_CONFIG"] = "./quantization/quant_config.json"
+        os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
 
         from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
             StableDiffusionXLPipeline_HPU,
@@ -1417,7 +1418,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 sd_pipe.unet = convert(sd_pipe.unet, config)
             htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
 
-        sd_pipe.unet = hthpu.wrap_in_hpu_graph(sd_pipe.unet)
+        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
