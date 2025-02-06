@@ -821,12 +821,14 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --bf16 \
+--sdp_on_bf16 \
+--trim_logits \
 --batch_size=32 \
 --tasks gsm8k_cot \
 --num_fewshot=8 \
 --fewshot_as_multiturn \
 --use_chat_template \
---o eval_gsm8k.json
+-o eval_gsm8k.json
 ```
 ## Text-Generation Pipeline
 
