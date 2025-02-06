@@ -1300,14 +1300,14 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         kwargs = {"timestep_spacing": "linspace"}
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
-            )
+        )
         scheduler.hpu_opt = True
         kwargs = {
             "scheduler": scheduler,
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "torch_dtype": torch.bfloat16
+            "torch_dtype": torch.bfloat16,
         }
 
         os.environ["PATCH_SDPA"] = "1"
@@ -1366,17 +1366,18 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
     def test_stable_diffusion_xl_optimized_fp8(self):
         import habana_frameworks.torch.hpu as torch_hpu
+
         kwargs = {"timestep_spacing": "linspace"}
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
-            )
+        )
         scheduler.hpu_opt = True
         kwargs = {
             "scheduler": scheduler,
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "torch_dtype": torch.bfloat16
+            "torch_dtype": torch.bfloat16,
         }
 
         os.environ["PATCH_SDPA"] = "1"
@@ -1399,7 +1400,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         quant_config_path = os.getenv("QUANT_CONFIG")
 
         original_dir = os.getcwd()
-        config_dir = os.path.dirname(os.path.abspath("../examples/stable-diffusion/quantization"))
+        config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
         os.chdir(config_dir)
 
         if quant_config_path:
