@@ -519,7 +519,7 @@ class ExampleTestMeta(type):
                 model_name == "bert-large-uncased-whole-word-masking"
                 or model_name == "roberta-large"
                 or model_name == "albert-xxlarge-v1"
-                or model_name =="./clip-roberta"
+                or model_name == "./clip-roberta"
             ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
@@ -879,7 +879,7 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
 
 
 class MultiCardVisionLanguageExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True,  torch_compile=True
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True, torch_compile=True
 ):
     TASK_NAME = "ydshieh/coco_dataset_script"
 
