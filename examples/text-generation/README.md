@@ -813,7 +813,21 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-
+Evaluate Llama-3.2-1B-Instruct on 8 Gaudi2 on task GSM8K (CoT), using the BF16 data type:
+```
+deepspeed --num_gpus 8 run_lm_eval.py \
+--model_name_or_path meta-llama/Llama-3.2-3B-Instruct \
+--attn_softmax_bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=32 \
+--tasks gsm8k_cot \
+--num_fewshot=8 \
+--fewshot_as_multiturn \
+--use_chat_template \
+--o eval_gsm8k.json
+```
 ## Text-Generation Pipeline
 
 A Transformers-like pipeline is defined and provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation/text-generation-pipeline). It is optimized for Gaudi and can be called to generate text in your scripts.
