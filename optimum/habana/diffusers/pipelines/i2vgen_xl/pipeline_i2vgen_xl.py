@@ -394,7 +394,7 @@ class GaudiI2VGenXLPipeline(
                 If `return_dict` is `True`, [`pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=(self.dtype != torch.float)):
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             height = height or self.unet.config.sample_size * self.vae_scale_factor
             width = width or self.unet.config.sample_size * self.vae_scale_factor
 
