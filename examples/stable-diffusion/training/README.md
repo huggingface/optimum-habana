@@ -18,68 +18,6 @@ limitations under the License.
 
 This directory contains scripts that showcase how to perform training/fine-tuning of Stable Diffusion models on Habana Gaudi.
 
-## Textual Inversion
-
-[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
-
-The `textual_inversion.py` script shows how to implement the training procedure on Habana Gaudi.
-
-In the examples below, we will use a set of cat images from the following dataset:
-[https://huggingface.co/datasets/diffusers/cat_toy_example](https://huggingface.co/datasets/diffusers/cat_toy_example)
-
-To download this and other example training datasets locally, run:
-```bash
-python download_train_datasets.py
-```
-
-Now we can launch the training using:
-
-```bash
-python textual_inversion.py \
-    --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --train_data_dir ./cat \
-    --learnable_property object \
-    --placeholder_token "<cat-toy>" \
-    --initializer_token toy \
-    --resolution 512 \
-    --train_batch_size 4 \
-    --max_train_steps 3000 \
-    --learning_rate 5.0e-04 \
-    --scale_lr \
-    --lr_scheduler constant \
-    --lr_warmup_steps 0 \
-    --output_dir /tmp/textual_inversion_cat \
-    --save_as_full_pipeline \
-    --gaudi_config_name Habana/stable-diffusion \
-    --throughput_warmup_steps 3
-```
-
-> [!NOTE]
-> Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
-> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
-> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
-> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
-> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
-
-Once you have trained a model as described above, inference can be done using `GaudiStableDiffusionPipeline`.
-Please make sure to include the `placeholder_token` in your prompt so that textual inversion guided inference can take effect.
-
-You can use `text_to_image_generation.py` sample to run inference with the fine-tuned model:
-
-```bash
-python ../text_to_image_generation.py \
-    --model_name_or_path /tmp/textual_inversion_cat \
-    --prompts "A <cat-toy> backpack" \
-    --num_images_per_prompt 5 \
-    --batch_size 1 \
-    --image_save_dir /tmp/textual_inversion_cat_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16
-```
-
 ## Textual Inversion XL
 
 The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
@@ -147,8 +85,8 @@ Then proceed to training with command:
 
 ```bash
 python train_controlnet.py \
-   --pretrained_model_name_or_path=CompVis/stable-diffusion-v1-4\
-   --output_dir=/tmp/stable_diffusion1_4 \
+   --pretrained_model_name_or_path=stabilityai/stable-diffusion-2-1 \
+   --output_dir=/tmp/stable_diffusion2_1 \
    --dataset_name=fusing/fill50k \
    --resolution=512 \
    --learning_rate=1e-5 \
@@ -159,6 +97,7 @@ python train_controlnet.py \
    --use_hpu_graphs \
    --sdp_on_bf16 \
    --bf16 \
+   --max_train_steps 2500 \
    --trust_remote_code
 ```
 
@@ -171,8 +110,8 @@ After training completes, you can use `text_to_image_generation.py` sample to ru
 
 ```bash
 python ../text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --controlnet_model_name_or_path /tmp/stable_diffusion1_4 \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path /tmp/stable_diffusion2_1 \
     --prompts "pale golden rod circle with old lace background" \
     --control_image "./cnet/conditioning_image_1.png" \
     --num_images_per_prompt 5 \
@@ -272,7 +211,7 @@ python download_train_datasets.py
 To launch the multi-card Stable Diffusion training, use:
 ```bash
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -309,7 +248,7 @@ UNet or text encoder.
 To run the multi-card training, use:
 ```bash
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -350,7 +289,7 @@ After training completes, you can use `text_to_image_generation.py` sample for i
 
 ```bash
 python ../text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4  \
+    --model_name_or_path stabilityai/stable-diffusion-2-1  \
     --unet_adapter_name_or_path dog_sd/unet \
     --prompts "a sks dog" \
     --num_images_per_prompt 5 \
