@@ -122,6 +122,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "mistralai/Mistral-7B-v0.1": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
         "mistralai/Mixtral-8x7B-v0.1": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
         "Qwen/Qwen2-7B": "DeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of PyTorch and TensorFlow, and it supports a wide range of models, including transformers, convolutional neural networks, and recurrent neural networks.\nDeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of Py",
+        "state-spaces/mamba-130m-hf": "DeepSpeed is a machine learning framework.\n\nThe authors declare no conflict of interest.\n\n![The structure of the *S. aureus* strain used in this study. The *S. aureus* strain was obtained from the National Center for Biotechnology Information (NCBI) database. The strain was isolated from a patient with a history of bacteremia and was identified as *S. aureus* by the presence of a *cpsA* gene. The strain was also isolated from a patient with a history of b",
     }
 else:
     # Gaudi1 CI baselines
@@ -144,7 +145,6 @@ else:
             ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616, False),
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106, False),
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117, False),
-            ("state-spaces/mamba-130m-hf", 224, False, 794.542, False),
         ],
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
@@ -232,8 +232,31 @@ def _test_text_generation(
     if "decilm" in model_name.lower():
         command += ["--sdp_on_bf16"]
 
-    if "mamba-130m-hf" in model_name.lower():
-        command += ["--sdp_on_bf16"]
+    if "mamba" in model_name.lower():
+        from huggingface_hub import hf_hub_download
+
+        from optimum.habana.utils import get_habana_frameworks_version
+
+        version_no = get_habana_frameworks_version()
+
+        name_kernel = "libcustom_tpc_perf_lib.so"
+        if version_no.minor == 19:
+            name_kernel = "libcustom_tpc_perf_lib_119.so"
+
+        file_kernel = hf_hub_download(repo_id="Habana/mamba", filename=name_kernel)
+
+        new_file_kernel = file_kernel
+
+        if version_no.minor == 19:
+            new_file_kernel = file_kernel[:-7] + ".so"
+            os.rename(file_kernel, new_file_kernel)
+
+        realpath_kfn = os.path.realpath(new_file_kernel)
+        new_kfn = os.path.join(os.path.dirname(realpath_kfn), "libcustom_tpc_perf_lib.so")
+        os.rename(realpath_kfn, new_kfn)
+
+        default_path = env_variables["GC_KERNEL_PATH"]
+        env_variables["GC_KERNEL_PATH"] = new_kfn + os.pathsep + default_path
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]

@@ -184,6 +184,7 @@ class TestEncoderDecoderModels:
             "--do_predict",
             "--source_lang en",
             "--target_lang ro",
+            '--source_prefix "translate English to Romanian: "--dataset_name wmt16',
             '--source_prefix "translate English to Romanian: "',
             "--dataset_name wmt16",
             "--dataset_config_name ro-en",
