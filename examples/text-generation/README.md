@@ -623,7 +623,7 @@ python run_generation.py \
 After quantizing the model, we can save it to a local path.
 
 > [!NOTE]  
-> Before executing the command below, please refer to the "Running FP8 Models on a Single Device" section to measure the model quantization statistics.
+> Before executing the command below, please refer to the ["Running FP8 Models on a Single Device" section](#running-fp8-models-on-a-single-device) to measure the model quantization statistics.
 
 Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
 ```bash
