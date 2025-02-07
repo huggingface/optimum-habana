@@ -668,18 +668,21 @@ class GaudiLlamaAttention(LlamaAttention):
                         else key_states.dtype,
                         device=key_states.device,
                     )
-                    past_key.copy_(key_states)
-                    past_value.copy_(value_states)
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, key_states.shape[-2])
+                    value_states = self.v_cache.update(
+                        past_key_value[1], value_states, 2, token_idx, value_states.shape[-2]
+                    )
+
                 elif (
                     token_idx is not None
                     and num_virtual_tokens is not None
                     and num_virtual_tokens == past_key_value[0].shape[-2]
                 ):
                     # prefix tuning case. attach past_key_value to generate first token.
-                    key_states = torch.cat((past_key_value[0], key_states), -2)
-                    value_states = torch.cat((past_key_value[1], value_states), -2)
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, None, -1)
+                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, None, -1)
                     past_key_value = (key_states, value_states)
                 else:
                     key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
