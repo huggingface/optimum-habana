@@ -7,8 +7,8 @@
                 "multi_card": {
                     "learning_rate": 1e-5,
                     "train_batch_size": 48,
-                    "train_runtime": 314.5877,
-                    "train_samples_per_second": 918.387,
+                    "train_runtime": 224.42,
+                    "train_samples_per_second": 904.93,
                     "extra_arguments": [
                         "--dataset_config_name matching",
                         "--dataset_revision 3c6c4f6c0ff7e902833d3afa5f8f3875c2b036e6",
@@ -19,7 +19,6 @@
                         "--dataloader_num_workers 2",
                         "--logging_steps 10",
                         "--use_hpu_graphs_for_inference",
-                        "--distribution_strategy fast_ddp",
                         "--trust_remote_code True"
                     ]
                 }
