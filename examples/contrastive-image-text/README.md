@@ -191,7 +191,6 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --logging_steps 10 \
   --dataloader_num_workers 1 \
   --mediapipe_dataloader \
-  --distribution_strategy fast_ddp \
   --trust_remote_code \
   --sdp_on_bf16
 ```
