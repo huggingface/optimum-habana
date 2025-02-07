@@ -849,6 +849,31 @@ python image_to_video_generation.py \
     --height=512
 ```
 
+# I2vgen-xl
+I2vgen-xl is high quality Image-to-Video synthesis via cascaded diffusion models. Please refer to  [Huggingface i2vgen-xl doc](https://huggingface.co/ali-vilab/i2vgen-xl).
+
+Here is how to generate video with one image and text prompt:
+
+```bash
+PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+python image_to_video_generation.py \
+    --model_name_or_path "ali-vilab/i2vgen-xl" \
+    --image_path "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png" \
+    --num_videos_per_prompt 1 \
+    --video_save_dir ./i2vgen_xl \
+    --num_inference_steps 50 \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --gif \
+    --num_frames 16 \
+    --prompts "Papers were floating in the air on a table in the library" \
+    --negative_prompts "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms" \
+    --seed 8888  \
+    --sdp_on_bf16 \
+    --bf16
+```
+
 # Important Notes for Gaudi3 Users  
 
 - **Batch Size Limitation**: Due to a known issue, batch sizes for some Stable Diffusion models need to be reduced.
