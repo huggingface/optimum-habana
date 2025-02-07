@@ -497,6 +497,7 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
             is_causal,
             config,
         )
+        self.use_flash_attention = True if os.getenv("USE_FLASH_ATTENTION") == "1" else False
         self.flash_attention_fast_softmax = True if os.getenv("FLASH_ATTENTION_FAST_SOFTMAX") == "1" else False
         self.flash_attention_recompute = True if os.getenv("FLASH_ATTENTION_RECOMPUTE") == "1" else False
 
@@ -581,7 +582,7 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
         # The tgt_len > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case tgt_len == 1.
         is_causal = True if self.is_causal and attention_mask is None and tgt_len > 1 else False
 
-        if FusedSDPA:
+        if self.use_flash_attention and FusedSDPA:
             if tgt_len == 1:
                 # next token
                 softmax_mode = True if os.getenv("QUANT_CONFIG", "") else False
