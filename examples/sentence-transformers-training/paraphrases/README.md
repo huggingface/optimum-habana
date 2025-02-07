@@ -4,6 +4,12 @@
 
 To fine-tune on the paraphrase task:
 
+0. Install required packages
+
+    ```sh
+    pip install -r requirements.txt
+    ```
+
 1. Choose a pre-trained model `<model_name>` (For example: `bert-base-uncased`).
 
 2. Choose the training, evaluation, and test dataset(s). Here, we use a dataset dictionary to include multiple datasets.
