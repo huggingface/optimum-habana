@@ -27,7 +27,6 @@ except ImportError:
 
 import habana_frameworks.torch.core as htcore
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
@@ -1040,6 +1039,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        **kwargs,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -1094,14 +1094,11 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            batch_size, seq_length, vocab_size = shift_logits.shape
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
+            loss = self.loss_function(
+                lm_logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
             )
 
         if not return_dict:

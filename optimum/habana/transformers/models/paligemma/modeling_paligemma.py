@@ -48,7 +48,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         return_dict: Optional[bool] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
-        **kwargs,
+        **lm_kwargs,
     ) -> Union[Tuple, PaliGemmaCausalLMOutputWithPast]:
         """
         Inherits from PaliGemmaForConditionalGeneration::forward https://github.com/huggingface/transformers/blob/v4.45.1/src/transformers/models/paligemma/modeling_paligemma.py#L402
@@ -109,7 +109,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             labels = torch.where(input_ids == self.pad_token_id, self.config.ignore_index, labels)
 
         causal_mask = self._update_causal_mask(
-            attention_mask, token_type_ids, past_key_values, cache_position, input_ids, inputs_embeds, is_training
+            attention_mask, token_type_ids, past_key_values, cache_position, inputs_embeds, is_training
         )
         outputs = self.language_model(
             attention_mask=causal_mask,
@@ -124,6 +124,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
             # num_logits_to_keep=num_logits_to_keep,
             token_idx=token_idx,
+            **lm_kwargs,
         )
 
         logits = outputs.logits

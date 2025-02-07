@@ -2,7 +2,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.codegen.modeling_codegen import (
@@ -164,6 +163,7 @@ def gaudi_codegen_model_forward(
     return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,  # NOOP kwargs, for now
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
@@ -397,6 +397,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -432,12 +433,13 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         if labels is not None:
             # move labels to correct device to enable model parallelism
             labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = self.loss_function(
+                lm_logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
 
             loss = loss.to(hidden_states.dtype)
 

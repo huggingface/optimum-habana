@@ -3,7 +3,6 @@ from typing import Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gptj.configuration_gptj import GPTJConfig
@@ -662,6 +661,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -699,12 +699,13 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         if labels is not None:
             # move labels to correct device to enable model parallelism
             labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = self.loss_function(
+                lm_logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
 
             loss = loss.to(hidden_states.dtype)
 

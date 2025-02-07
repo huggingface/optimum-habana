@@ -2,7 +2,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.xglm.modeling_xglm import XGLMForCausalLM
 from transformers.utils import logging
@@ -405,6 +404,7 @@ class GaudiXGLMForCausalLM(XGLMForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         """
         Inherits from XGLMForCausalLM: https://github.com/huggingface/transformers/blob/v4.44.1/src/transformers/models/xglm/modeling_xglm.py
@@ -440,13 +440,13 @@ class GaudiXGLMForCausalLM(XGLMForCausalLM):
 
         loss = None
         if labels is not None:
-            # shift labels and add a pad token to the end
-            shift_labels = labels.new_zeros(labels.shape)
-            shift_labels[:, :-1] = labels[:, 1:].clone()
-            shift_labels[:, -1] = self.config.pad_token_id
-
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
+            loss = self.loss_function(
+                logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                pad_token_id=self.config.pad_token_id,
+                **kwargs,
+            )
 
         if not return_dict:
             output = (logits,) + outputs[1:]

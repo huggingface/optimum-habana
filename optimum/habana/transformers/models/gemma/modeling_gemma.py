@@ -603,6 +603,7 @@ class GaudiGemmaModel(GemmaModel):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
+        **kwargs,  # NOOP kwarg for now
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py

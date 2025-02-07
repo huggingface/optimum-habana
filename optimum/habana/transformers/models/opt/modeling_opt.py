@@ -1,7 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch.nn import CrossEntropyLoss
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.configuration_opt import OPTConfig
@@ -496,6 +495,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         return_dict: Optional[bool] = None,
         position_ids: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -524,12 +524,12 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         if labels is not None:
             # move labels to correct device to enable model parallelism
             labels = labels.to(logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
+            loss = self.loss_function(
+                logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
 
         if not return_dict:
             output = (logits,) + outputs[1:]

@@ -408,6 +408,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,  # Unused for now, mostly for the loss correction
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
