@@ -185,7 +185,7 @@ model_name = "CompVis/stable-diffusion-v1-4"
 +   gaudi_config="Habana/stable-diffusion",
 )
 
-outputs = generator(
+outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=16,
 +   batch_size=4,
@@ -282,6 +282,8 @@ The following model architectures, tasks and device distributions have been vali
 | DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
+| VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/main/examples/video-comprehension)</li> |
+
 </div>
 
 
