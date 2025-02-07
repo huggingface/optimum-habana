@@ -6212,6 +6212,7 @@ class I2VGenXLPipelineTests(TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @slow
     def test_i2vgen_xl_bf16(self):
         pipe = GaudiI2VGenXLPipeline.from_pretrained(
             "ali-vilab/i2vgen-xl",
