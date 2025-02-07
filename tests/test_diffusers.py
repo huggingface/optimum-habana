@@ -1364,6 +1364,8 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
+        os.environ.pop("PATCH_SDPA")
+
     def test_stable_diffusion_xl_optimized_fp8(self):
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -1430,6 +1432,8 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0].shape, (1024, 1024, 3))
         os.chdir(original_dir)
+
+        os.environ.pop("PATCH_SDPA")
 
     @slow
     def test_stable_diffusion_xl_generation_throughput(self):
