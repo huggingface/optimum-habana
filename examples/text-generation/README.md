@@ -813,7 +813,7 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-Evaluate Llama-3.2-1B-Instruct on 8 Gaudi2 on task GSM8K (CoT), using the BF16 data type:
+Evaluate Llama-3.2-3B-Instruct on 8 Gaudi2 on task GSM8K (CoT), using the BF16 data type:
 ```
 deepspeed --num_gpus 8 run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-3.2-3B-Instruct \
@@ -824,7 +824,7 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --sdp_on_bf16 \
 --trim_logits \
 --batch_size=32 \
---tasks gsm8k_cot \
+--tasks gsm8k_cot_llama \
 --num_fewshot=8 \
 --fewshot_as_multiturn \
 --use_chat_template \
