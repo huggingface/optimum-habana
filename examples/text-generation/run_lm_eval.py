@@ -189,7 +189,7 @@ class HabanaModelAdapter(HFLM):
                 f"Model type is '{self._config.model_type}', part of the Gemma family--a BOS token will be used as Gemma underperforms without it."
             )
 
-        self._max_length = options.max_length
+        # self._max_length = options.max_length
         self.batch_size_per_gpu = int(args.batch_size)
         self.revision = args.model_revision
         self.model_inputs = {"use_cache": self.options.use_cache}
