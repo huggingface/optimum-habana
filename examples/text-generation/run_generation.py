@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
         "--show_graphs_count",
         action="store_true",
         help="Show statistics of HPU graph compilation.",
@@ -320,12 +325,20 @@ def setup_parser(parser):
         action="store_true",
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
         "--load_quantized_model_with_autogptq",
         action="store_true",
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
     )
     quant_parser_group.add_argument(
         "--disk_offload",
@@ -364,6 +377,8 @@ def setup_parser(parser):
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
@@ -394,6 +409,9 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -526,7 +544,7 @@ def main():
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
-            logger.info(f"Time to first token = {first_token_time*1000}ms")
+            logger.info(f"Time to first token = {first_token_time * 1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -541,10 +559,10 @@ def main():
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -559,7 +577,7 @@ def main():
                 for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -586,12 +604,12 @@ def main():
         all_inputs = []
         all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
-            print(f"input {i+1}: {input_sentence}")
+            print(f"input {i + 1}: {input_sentence}")
             all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {i+1}.{j+1}: {output}")
+                print(f"output {i + 1}.{j + 1}: {output}")
                 all_outputs.append(output)
             print()
 
@@ -719,22 +737,21 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
+        from optimum.habana.utils import HabanaProfile
 
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            logger.info("Graph compilation...")
-            t0 = time.perf_counter()
-            for i, batch in enumerate(dataloader):
-                generate_dataset(batch)
-                # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
-                    break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        logger.info("Graph compilation...")
+        t0 = time.perf_counter()
+        for i, batch in enumerate(dataloader):
+            generate_dataset(batch)
+            # The first three iterations take longer because of graph compilation
+            if (i + 1) == 3:
+                break
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
@@ -747,10 +764,10 @@ def main():
             duration += time.perf_counter() - t0
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
-            print(f"Batch n°{i+1}")
-            print(f"Input: {prompt[:args.batch_size]}")
+            print(f"Batch n°{i + 1}")
+            print(f"Input: {prompt[: args.batch_size]}")
             print(
-                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[: args.batch_size * args.num_return_sequences]}"
             )
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
@@ -770,8 +787,7 @@ def main():
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        if prompt_length > 0:
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
         finalize_quantization(model)

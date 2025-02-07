@@ -112,10 +112,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "paligemma",
     "idefics2",
     "mllama",
+    "video_llava",
     "minicpm3",
     "baichuan",
     "deepseek_v2",
     "chatglm",
+    "qwen2_vl",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -211,20 +213,19 @@ class GaudiGenerationMixin(GenerationMixin):
         # 2. `decoder_start_token_id` must have shape (batch_size, 1)
         if device is None:
             device = self.device
-        if decoder_start_token_id.ndim == 1:
-            if decoder_start_token_id.shape[0] != batch_size:
-                raise ValueError(
-                    f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
+        if token_idx is None:
+            if decoder_start_token_id.ndim == 1:
+                if decoder_start_token_id.shape[0] != batch_size:
+                    raise ValueError(
+                        f"`decoder_start_token_id` expected to have length {batch_size} but got {decoder_start_token_id.shape[0]}"
+                    )
+                decoder_start_token_id = decoder_start_token_id.view(-1, 1)
+            else:
+                decoder_start_token_id = (
+                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
                 )
-            decoder_start_token_id = decoder_start_token_id.view(-1, 1)
         else:
-            decoder_start_token_id = (
-                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
-            )
-
-        if token_idx is not None:
-            # creating padded decoder_input_ids to achieve static shapes.
-            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_start_token_id = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
@@ -1079,28 +1080,28 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
             assert generation_config.use_cache, "please set use_cache flag to use bucket_internal"
         if generation_config.reuse_cache:
-            assert (
-                self.config.model_type
-                in [
-                    "llama",
-                    "mistral",
-                    "falcon",
-                    "mixtral",
-                    "phi",
-                    "qwen2",
-                    "gptj",
-                    "starcoder2",
-                    "qwen2_moe",
-                    "gemma",
-                    "gemma2",
-                    "baichuan",
-                    "chatglm",
-                ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
+            assert self.config.model_type in [
+                "llama",
+                "mistral",
+                "falcon",
+                "mixtral",
+                "phi",
+                "qwen2",
+                "gptj",
+                "starcoder2",
+                "qwen2_moe",
+                "gemma",
+                "gemma2",
+                "baichuan",
+                "chatglm",
+                "deepseek_v2",
+            ], (
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+            )
             if not generation_config.bucket_internal:
-                assert (
-                    generation_config.bucket_size <= 0
-                ), "please set bucket_internal along with reuse_cache and bucket_size"
+                assert generation_config.bucket_size <= 0, (
+                    "please set bucket_internal along with reuse_cache and bucket_size"
+                )
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 
@@ -1263,6 +1264,9 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
+        # determine whether to clear hpu graphs cache
+        model_kwargs["clear_hpu_graphs_cache"] = generation_config.clear_hpu_graphs_cache
+
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
 
@@ -1305,6 +1309,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "qwen2_moe",
                 "baichuan",
+                "deepseek_v2",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
@@ -2472,9 +2477,9 @@ class GaudiGenerationMixin(GenerationMixin):
                             output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
                         else:
                             output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2).float()
                     else:
-                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2).float()
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # .float() is needed to retain precision for later logits manipulations
@@ -2508,7 +2513,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # token selection
             if do_sample:
-                probs = torch.nn.functional.softmax(next_token_scores, dim=-1)
+                # Workaround on HPU for output quality issues with torch.multinomial for lower precision models
+                # Distribution sampled by torch.multinomial may be affected by next_token_logits upcast to float
+                probs = torch.nn.functional.softmax(next_token_scores, dim=-1).to(outputs.logits.dtype)
                 # TODO (joao): this OP throws "skipping cudagraphs due to ['incompatible ops']", find solution
                 next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
             else:
@@ -2616,8 +2623,14 @@ class GaudiGenerationMixin(GenerationMixin):
             and not model_kwargs.get("reuse_cache", False)
             and bucket_internal
         ):
+            # Clear HPU graphs cache
+            if model_kwargs.get("clear_hpu_graphs_cache", False):
+                self.clear_cache()
+
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-            self.clear_inputs()
+            else:
+                self.clear_inputs()
+
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
@@ -3043,8 +3056,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                if self.config.eos_token_id is not None:
-                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
@@ -3215,9 +3227,6 @@ class GaudiGenerationMixin(GenerationMixin):
         if return_dict_in_generate:
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
-
-            if self.generation_config.static_shapes:
-                raise NotImplementedError("sequence_scores is not implemented for static_shapes")
 
             if self.config.is_encoder_decoder:
                 return GenerateBeamEncoderDecoderOutput(

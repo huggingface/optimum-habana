@@ -252,13 +252,14 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
-        # TODO: This will be removed in v1.19 Synapse release
-        # Override neural_compressor _load_remaining_pretrained_weight for the Transformer 4.45 release.
-        import neural_compressor.torch.algorithms.weight_only.save_load as nc_sl
-
-        nc_sl.WOQModelLoader._load_remaining_pretrained_weight = local_load_remaining_pretrained_weight
-
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -277,9 +278,6 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             original_model=org_model,
             **model_kwargs,
         )
-        # TODO: This will be removed in v1.19 Synapse release
-        # the loaded model should have the same dtype as original_model
-        model = model.to(model_kwargs["torch_dtype"])
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(
@@ -306,7 +304,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
-            model = wrap_in_hpu_graph(model)
+            max_graphs = getattr(args, "max_graphs", None)
+            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -442,7 +441,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                config.rope_scaling
+                hasattr(config, "rope_scaling")
+                and config.rope_scaling
                 and config.rope_scaling["rope_type"] == "llama3"
                 and config.max_position_embeddings > 8192
             ):
@@ -618,6 +618,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
+
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -655,6 +661,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.clear_hpu_graphs_cache = args.clear_hpu_graphs_cache
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
@@ -742,47 +749,3 @@ def initialize_model(args, logger):
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, assistant_model, tokenizer, generation_config
-
-
-# TODO:This will be removed from Synapse v1.19 release.
-# This is to override _load_remaining_pretrained_weight for Transformer 4.45 release.
-def local_load_remaining_pretrained_weight(self, model):
-    from transformers.modeling_utils import _load_state_dict_into_meta_model, load_state_dict
-
-    resolved_archive_file = self.kwargs.pop("resolved_archive_file", None)
-    torch_dtype = self.kwargs.pop("torch_dtype", torch.float32)
-    dtype_orig = self.kwargs.pop("dtype_orig", None)
-    offload_folder = self.kwargs.pop("offload_folder", None)
-    offload_state_dict = self.kwargs.pop("offload_state_dict", False)
-
-    # restore default dtype
-    if dtype_orig is not None:
-        torch.set_default_dtype(dtype_orig)
-
-    if not isinstance(resolved_archive_file, list):
-        resolved_archive_file = [resolved_archive_file]
-    for shard_file in resolved_archive_file:
-        state_dict = load_state_dict(shard_file)
-
-        params_dict = {
-            "model": model,
-            "state_dict": state_dict,
-            "start_prefix": "",
-            "expected_keys": self.loaded_state_dict_keys,
-            "device_map": {"": self.device},
-            "offload_folder": offload_folder,
-            "state_dict_folder": tempfile.mkdtemp() if offload_state_dict else None,
-            "state_dict_index": {} if offload_state_dict else None,
-            "dtype": torch_dtype,
-            "keep_in_fp32_modules": [],
-        }
-
-        _load_state_dict_into_meta_model(**params_dict)
-
-    # make sure token embedding weights are still tied if needed
-    model.tie_weights()
-
-    # Set model in evaluation mode to deactivate DropOut modules by default
-    model.eval()
-
-    return model

@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import os
+import random
 from typing import Optional, Tuple, Union
 
 import torch
@@ -68,7 +69,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
         )
 
     # epsilon is used for probabilistic rounding
-    epsilon = torch.rand([], device="hpu")
+    epsilon = torch.rand(1).item()
 
     def compute_num_masked_span(input_length):
         """Given input length, compute how many spans should be masked"""
@@ -106,19 +107,9 @@ def _gaudi_wav2vec2_compute_mask_indices(
         num_masked_span = compute_num_masked_span(input_length)
 
         # get random indices to mask
-        """
-        Original code:
-        spec_aug_mask_idx = np.random.choice(
-            np.arange(input_length - (mask_length - 1)), num_masked_span, replace=False
+        spec_aug_mask_idx = torch.tensor(
+            random.sample(range(input_length - (mask_length - 1)), num_masked_span), dtype=torch.int32
         )
-        When (input_length - (mask_length - 1) < 0), then num_masked_span=0
-        and we get: spec_aug_mask_idx=array([], dtype=int64)
-        However torch rewrite fails, because torch.randperm expects positive number
-        This causes a unit test to fail:
-        RUN_SLOW=true  GAUDI2_CI=1 python -m pytest tests/transformers/tests/models/wav2vec2/test_modeling_wav2vec2.py -v -s -k test_compute_mask_indices_short_audio
-        """
-        spec_aug_mask_idx = torch.randperm(input_length - (mask_length - 1), device="hpu")[:num_masked_span]
-
         # pick first sampled index that will serve as a dummy index to pad vector
         # to ensure same dimension for all batches due to probabilistic rounding
         # Picking first sample just pads those vectors twice.
@@ -133,13 +124,12 @@ def _gaudi_wav2vec2_compute_mask_indices(
         spec_aug_mask_idx = torch.cat(
             [
                 spec_aug_mask_idx,
-                torch.ones(max_num_masked_span - num_masked_span, dtype=torch.int32, device="hpu") * dummy_mask_idx,
+                torch.ones(max_num_masked_span - num_masked_span, dtype=torch.int32) * dummy_mask_idx,
             ]
         )
         spec_aug_mask_idxs.append(spec_aug_mask_idx.to(dtype=torch.long))
 
-    spec_aug_mask_idxs = torch.vstack(spec_aug_mask_idxs)
-
+    spec_aug_mask_idxs = torch.vstack(spec_aug_mask_idxs).to("hpu")
     # expand masked indices to masked spans
     spec_aug_mask_idxs = torch.broadcast_to(
         spec_aug_mask_idxs[:, :, None], (batch_size, max_num_masked_span, mask_length)
@@ -248,7 +238,7 @@ def gaudi_wav2vec2_encoder_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-        dropout_probability = torch.rand([], device="hpu")
+        dropout_probability = torch.rand([])
 
         skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
         if not skip_the_layer or deepspeed_zero3_is_enabled:
@@ -507,7 +497,6 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
             is_causal,
             config,
         )
-        self.use_flash_attention = True if os.getenv("USE_FLASH_ATTENTION") == "1" else False
         self.flash_attention_fast_softmax = True if os.getenv("FLASH_ATTENTION_FAST_SOFTMAX") == "1" else False
         self.flash_attention_recompute = True if os.getenv("FLASH_ATTENTION_RECOMPUTE") == "1" else False
 
@@ -592,7 +581,7 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
         # The tgt_len > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case tgt_len == 1.
         is_causal = True if self.is_causal and attention_mask is None and tgt_len > 1 else False
 
-        if self.use_flash_attention and FusedSDPA:
+        if FusedSDPA:
             if tgt_len == 1:
                 # next token
                 softmax_mode = True if os.getenv("QUANT_CONFIG", "") else False

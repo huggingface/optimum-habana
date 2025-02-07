@@ -133,6 +133,8 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     _callback_tensor_inputs = [
@@ -162,6 +164,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -169,6 +172,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
+            sdp_on_bf16,
         )
 
         StableDiffusionXLInpaintPipeline.__init__(
@@ -639,7 +643,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                         f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                         f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                         f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                        f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                        f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                         " `pipeline.unet` or your `mask_image` or `image` input."
                     )
             elif num_channels_unet != 4:
@@ -744,8 +748,6 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                 ).to(device=device, dtype=latents.dtype)
 
             self._num_timesteps = len(timesteps)
-            if hasattr(self.scheduler, "set_begin_index"):
-                self.scheduler.set_begin_index()
 
             outputs = {
                 "images": [],

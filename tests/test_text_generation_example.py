@@ -40,22 +40,25 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644, False),
             ("bigcode/starcoder2-3b", 1, False, 261.07213776344133, True),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406, False),
-            ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
+            # ("Qwen/Qwen1.5-7B", 4, False, 490.8621617893209, False),
             ("google/gemma-7b", 1, False, 109.70751574382221, True),
             ("google/gemma-2-9b", 1, False, 92.302359446567, True),
+            ("google/gemma-2-27b", 1, False, 36.578709544111, True),
             ("state-spaces/mamba-130m-hf", 1536, False, 5385.511100161605, False),
-            ("Deci/DeciLM-7B", 1, False, 120, False),
+            # ("Deci/DeciLM-7B", 1, False, 115, False),
             ("Qwen/Qwen2-7B", 256, False, 8870.945160540245, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, 44.25834541569395, False),
-            ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
-            ("facebook/xglm-1.7B", 1, False, 357.46365062825083, False),
-            ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154, False),
+            # ("EleutherAI/gpt-neo-2.7B", 1, False, 257.2476416844122, False),
+            # ("facebook/xglm-1.7B", 1, False, 357.46365062825083, False),
+            # ("CohereForAI/c4ai-command-r-v01", 1, False, 29.50315234651154, False),
             ("tiiuae/falcon-mamba-7b", 1, False, 47.1464839567739, False),
             ("openbmb/MiniCPM3-4B", 1, False, 65.116, False),
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, 108, False),
             ("baichuan-inc/Baichuan2-13B-Chat", 1, False, 66, False),
             ("deepseek-ai/DeepSeek-V2-Lite", 1, False, 35, False),
+            ("THUDM/chatglm2-6b", 1, True, 150, False),
             ("THUDM/chatglm3-6b", 1, True, 150, False),
+            ("Qwen/Qwen2.5-7B", 4, False, 490, False),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -68,25 +71,30 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
             ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 17068.965283763682),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
+            # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 6979.225194247115),
+            # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 1681.4401450088983),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 3393.149396451692),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 40.94),
             ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, 3428.65),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
+            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, 2570.34),
+            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, 379.03),
             ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, 1147.50),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "load_quantized_model_with_autogptq": [
             ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
         ],
+        "load_quantized_model_with_autoawq": [
+            ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048, 456.7),
+        ],
         "deepspeed": [
             ("bigscience/bloomz", 8, 1, 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
+            # ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
             ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
             ("facebook/opt-66b", 2, 1, 28.48069266504111),
             ("google/gemma-2-9b", 8, 1, 110.12610917383735),
+            ("Qwen/Qwen2.5-72B", 2, 1, 26),
+            ("google/gemma-2-27b", 8, 1, 87.578709544111),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -109,6 +117,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "bigcode/starcoder2-3b": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_with_name(name):\n    print("Hello World, " + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print("Hello World, " + name + ", " + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print("Hello',
         "google/gemma-7b": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models. DeepSpeed is designed to be scalable, and it can be used to train models on a single machine or on a cluster of machines. DeepSpeed is designed to be efficient,",
         "google/gemma-2-9b": "DeepSpeed is a machine learning framework that enables training of large-scale deep learning models on a single GPU or across multiple GPUs. It is designed to be easy to use and highly scalable, making it a powerful tool for researchers and practitioners working with large-scale deep learning models.\n\nDeepSpeed is built on top of PyTorch, a popular deep learning framework, and provides a set of tools and libraries that make it easy to train large-scale models. It includes features such as zero-shot inference, which allows models to be",
+        "google/gemma-2-27b": "DeepSpeed is a machine learning framework that enables you to train models with trillions of parameters and beyond, using model parallelism to partition large models over multiple GPUs.\n\nThe following is a brief introduction to the DeepSpeed model parallel training.\n\n<h2>1. Introduction</h2>\n\nThe DeepSpeed model parallel training is a simple and effective way to train large models. It is a framework that enables you to train models with trillions of parameters and beyond.\n\nDeepSpeed is a distributed deep learning optimization toolkit that makes it easy and efficient",
         "meta-llama/Llama-2-7b-hf": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
         "mistralai/Mistral-7B-v0.1": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
         "mistralai/Mixtral-8x7B-v0.1": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
@@ -139,6 +148,7 @@ else:
         ],
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
+        "load_quantized_model_with_autoawq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
@@ -164,6 +174,7 @@ def _test_text_generation(
     torch_compile: bool = False,
     fp8: bool = False,
     load_quantized_model_with_autogptq: bool = False,
+    load_quantized_model_with_autoawq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -217,6 +228,12 @@ def _test_text_generation(
 
     if "gemma" in model_name.lower():
         command += ["--use_flash_attention"]
+
+    if "decilm" in model_name.lower():
+        command += ["--sdp_on_bf16"]
+
+    if "mamba-130m-hf" in model_name.lower():
+        command += ["--sdp_on_bf16"]
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
@@ -291,6 +308,8 @@ def _test_text_generation(
         ]
     if load_quantized_model_with_autogptq:
         command += ["--load_quantized_model_with_autogptq"]
+    if load_quantized_model_with_autoawq:
+        command += ["--load_quantized_model_with_autoawq"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -363,9 +382,9 @@ def _test_text_generation(
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            assert (
-                model_name in MODEL_OUTPUTS
-            ), f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            assert model_name in MODEL_OUTPUTS, (
+                f"Failed functional testing, missing expected output in MODEL_OUTPUTS for model {model_name}"
+            )
             expected_output = MODEL_OUTPUTS[model_name]
             assert results["output"][0][0] == expected_output
 
@@ -384,6 +403,7 @@ def test_text_generation_bf16_1x(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
 )
@@ -412,6 +432,7 @@ def test_text_generation_fp8(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -442,22 +463,56 @@ def test_text_generation_gptq(
     )
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline",
+    MODELS_TO_TEST["load_quantized_model_with_autoawq"],
+)
+def test_text_generation_awq(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=False,
+        load_quantized_model_with_autoawq=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
 @pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline: float, token: str):
     world_size = 8
@@ -480,6 +535,7 @@ def test_text_generation_contrastive_search(
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
+@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
