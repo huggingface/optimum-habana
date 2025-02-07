@@ -385,13 +385,16 @@ def main() -> None:
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
-    
-    # Regroup part of generation_config as gen_kwargs, defined as "String arguments for model generation on greedy_until tasks, e.g. `temperature=0,top_k=0,top_p=0`."
-    gen_kwargs = f"temperature={generation_config.temperature}"
-    if args.top_k is not None:
-        gen_kwargs += f",top_k={generation_config.top_k}"
-    gen_kwargs += f",top_p={generation_config.top_p}"
 
+    # Regroup part of generation_config as gen_kwargs, defined as "String arguments for model generation on greedy_until tasks, e.g. `temperature=0,top_k=0,top_p=0`."
+    if generation_config.do_sample is True:
+        gen_kwargs = f"temperature={generation_config.temperature}"
+        if generation_config.top_k is not None:
+            gen_kwargs += f",top_k={generation_config.top_k}"
+        gen_kwargs += f",do_sample={generation_config.do_sample}"
+        gen_kwargs += f",top_p={generation_config.top_p}"
+    else:
+        gen_kwargs = None
     eval_start = time.perf_counter()
     with torch.no_grad():
         results = evaluator.simple_evaluate(
