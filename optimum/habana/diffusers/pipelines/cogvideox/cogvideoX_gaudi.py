@@ -107,104 +107,12 @@ class CogVideoXAttnProcessorGaudi:
         )
         return hidden_states, encoder_hidden_states
 
-import torch.nn.functional as F
 from diffusers.models import attention_processor
-
 
 attention_processor.CogVideoXAttnProcessor2_0 = CogVideoXAttnProcessorGaudi
 
-from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXSafeConv3d
-from diffusers.models.autoencoders.vae import DecoderOutput
-
-
-class CogVideoXCausalConv3dGaudi(nn.Module):
-    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
-        stride (`int`, defaults to `1`): Stride of the convolution.
-        dilation (`int`, defaults to `1`): Dilation rate of the convolution.
-        pad_mode (`str`, defaults to `"constant"`): Padding mode.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        stride: int = 1,
-        dilation: int = 1,
-        pad_mode: str = "constant",
-    ):
-        super().__init__()
-
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size,) * 3
-
-        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
-
-        self.pad_mode = pad_mode
-        time_pad = dilation * (time_kernel_size - 1) + (1 - stride)
-        height_pad = height_kernel_size // 2
-        width_pad = width_kernel_size // 2
-
-        self.height_pad = height_pad
-        self.width_pad = width_pad
-        self.time_pad = time_pad
-        self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
-
-        self.temporal_dim = 2
-        self.time_kernel_size = time_kernel_size
-
-        stride = (stride, 1, 1)
-        dilation = (dilation, 1, 1)
-        self.conv = CogVideoXSafeConv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            dilation=dilation,
-        )
-
-
-    def fake_context_parallel_forward(
-        self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        kernel_size = self.time_kernel_size
-        if kernel_size > 1:
-            cached_inputs = [conv_cache] if conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
-            inputs = torch.cat(cached_inputs + [inputs], dim=2)
-        return inputs
-
-    def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
-        inputs = self.fake_context_parallel_forward(inputs, conv_cache)
-        #conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
-
-        padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-        inputs_pad = F.pad(inputs, padding_2d, mode="constant", value=0)
-
-        output = self.conv(inputs_pad)
-        if self.time_kernel_size>1:
-            if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1:].shape:
-                conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1:])
-            else:
-                conv_cache = inputs[:, :, -self.time_kernel_size + 1:].clone()
-        return output, conv_cache
-
-from diffusers.models.autoencoders import autoencoder_kl_cogvideox
-
-
-autoencoder_kl_cogvideox.CogVideoXCausalConv3d = CogVideoXCausalConv3dGaudi
-
-from diffusers.models.autoencoders.autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
-
 def adapt_cogvideo_to_gaudi():
     import diffusers
-    diffusers.models.autoencoders.autoencoder_kl_cogvideox.CogVideoXCausalConv3d  = CogVideoXCausalConv3dGaudi
-    #diffusers.models.autoencoders.autoencoder_kl_cogvideox.AutoencoderKLCogVideoX = AutoencoderKLCogVideoXGaudi
     diffusers.models.attention_processor.CogVideoXAttnProcessor2_0 = CogVideoXAttnProcessorGaudi
-    #diffusers.models.transformers.cogvideox_transformer_3d.CogVideoXTransformer3DModel = CogVideoXTransformer3DModelGaudi
 
 
