@@ -10,22 +10,12 @@ import pytest
 from .test_examples import TIME_PERF_FACTOR
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            ("laion/CLIP-ViT-g-14-laion2B-s12B-b42K", 1472),
-            ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1816),
-        ],
-    }
-else:
-    # Gaudi1 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            ("laion/CLIP-ViT-g-14-laion2B-s12B-b42K", 550),
-            ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1200),
-        ],
-    }
+MODELS_TO_TEST = {
+    "bf16": [
+        "laion/CLIP-ViT-g-14-laion2B-s12B-b42K",
+        "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+    ],
+}
 
 
 def _install_requirements():
@@ -38,7 +28,7 @@ def _install_requirements():
     assert return_code == 0
 
 
-def _test_openclip_vqa(model_name: str, baseline: float):
+def _test_openclip_vqa(model_name: str, baseline):
     _install_requirements()
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -72,10 +62,16 @@ def _test_openclip_vqa(model_name: str, baseline: float):
         with open(Path(tmp_dir) / "results.json") as fp:
             results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
-        assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[device],
+            throughput=results["throughput"],
+        )
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["bf16"])
-def test_openclip_vqa_bf16(model_name: str, baseline: float):
+@pytest.mark.parametrize("model_name", MODELS_TO_TEST["bf16"])
+def test_openclip_vqa_bf16(model_name: str, baseline):
     _test_openclip_vqa(model_name, baseline)
