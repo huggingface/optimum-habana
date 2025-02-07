@@ -657,8 +657,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             t1 = t0
 
             self._num_timesteps = len(timesteps)
-            if hasattr(self.scheduler, "set_begin_index"):
-                self.scheduler.set_begin_index()
 
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,

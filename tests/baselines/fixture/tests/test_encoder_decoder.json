@@ -1,0 +1,32 @@
+{
+  "tests/test_encoder_decoder.py::TestEncoderDecoderModels::test_text_summarization_bf16[facebook/bart-large-cnn-Habana/bart-2-2]": {
+    "gaudi1": {
+      "predict_rougeLsum": 29.174,
+      "predict_samples_per_second": 2.304
+    },
+    "gaudi2": {
+      "predict_rougeLsum": 28.9801,
+      "predict_samples_per_second": 4.339
+    }
+  },
+  "tests/test_encoder_decoder.py::TestEncoderDecoderModels::test_text_summarization_bf16[t5-3b-Habana/t5-2-1]": {
+    "gaudi1": {
+      "predict_rougeLsum": 21.7286,
+      "predict_samples_per_second": 1.005
+    },
+    "gaudi2": {
+      "predict_rougeLsum": 21.8877,
+      "predict_samples_per_second": 3.848
+    }
+  },
+  "tests/test_encoder_decoder.py::TestEncoderDecoderModels::test_text_translation_bf16[t5-small-Habana/t5-2-1]": {
+    "gaudi1": {
+      "predict_bleu": 11.6126,
+      "predict_samples_per_second": 9.188
+    },
+    "gaudi2": {
+      "predict_bleu": 11.7277,
+      "predict_samples_per_second": 11.648
+    }
+  }
+}

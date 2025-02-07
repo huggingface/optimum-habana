@@ -122,6 +122,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "paligemma",
     "idefics2",
     "mllama",
+    "video_llava",
     "minicpm3",
     "baichuan",
     "deepseek_v2",
@@ -1459,6 +1460,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
+
+        # prepare for attention batch splitting
+        model_kwargs["attn_batch_split"] = generation_config.attn_batch_split
 
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention

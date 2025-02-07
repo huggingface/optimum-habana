@@ -412,7 +412,7 @@ def gaudi_T5Stack_forward(
 
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
-                layer_module.forward,
+                layer_module.__call__,
                 hidden_states,
                 extended_attention_mask,
                 position_bias,
