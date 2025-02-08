@@ -141,6 +141,37 @@ FLUX in quantization mode by setting runtime variable `QUANT_CONFIG=quantization
 
 To run with FLUX.1-schnell model, a distilled version of FLUX.1 (which is not gated), use `--model_name_or_path black-forest-labs/FLUX.1-schnell`.
 
+## ControlNet
+
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543)
+by Lvmin Zhang and Maneesh Agrawala, enables conditioning the Stable Diffusion model with an additional input image.
+This allows for precise control over the composition of generated images using various features such as edges,
+pose, depth, and more.
+
+Here is how to generate images conditioned by Canny edge model:
+
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path stable-diffusion-v1-5/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+You can run inference on multiple HPUs by replacing `python text_to_image_generation.py` with
+`python ../gaudi_spawn.py --world_size <number-of-HPUs> text_to_image_generation.py` and adding option `--distributed`.
+
+This ControlNet example will preprocess the input image to derive Canny edges. Alternatively, you can use `--control_preprocessing_type none`
+to supply a preprocessed control image directly, enabling many additional use cases.
+
 ## Inpainting
 
 Inpainting replaces or edits specific areas of an image. For more details,

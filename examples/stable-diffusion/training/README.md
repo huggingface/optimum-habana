@@ -101,8 +101,8 @@ python train_controlnet.py \
    --trust_remote_code
 ```
 
-> [!NOTE]
-> You can run on multiple HPUs replace the `python train_controlnet.py ..` with `python ../../gaudi_spawn.py --world_size <num_hpus> train_controlnet.py`.
+You can run inference on multiple HPUs by replacing `python train_controlnet.py`
+with `python ../gaudi_spawn.py --world_size <num-HPUs> train_controlnet.py`.
 
 ### Inference
 
@@ -168,10 +168,11 @@ python train_text_to_image_sdxl.py \
     --adjust_throughput
 ```
 
-> [!NOTE]
+> [!WARNING]
 > There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
-> You can run on multiple HPUs replace the `python train_text_to_image_sdxl.py ..` with `PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024 python ../../gaudi_spawn.py --world_size <num_hpus> train_text_to_image_sdxl.py`.
-> `--mediapipe` only works on Gaudi2.
+
+You can run inference on multiple HPUs by replacing `python train_text_to_image_sdxl.py`
+with `PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024 python ../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sdxl.py`.
 
 ### Inference
 
@@ -281,7 +282,7 @@ You could check each adapter's specific arguments with `--help`, for example:
 ```bash
 python train_dreambooth.py oft --help
 ```
-> [!NOTE]
+> [!WARNING]
 > Currently, the `oft` adapter is not supported in HPU graph mode, as it triggers `torch.inverse`,
 > causing a CPU fallback that is incompatible with HPU graph capturing.
 
@@ -331,8 +332,10 @@ python train_dreambooth_lora_sdxl.py \
 ```
 
 > [!NOTE]
-> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--deepspeed` in the previous example
-> You can run on multiple HPUs replace the `python train_dreambooth_lora_sdxl.py ..` with `python ../../gaudi_spawn.py --world_size <num_hpus> train_dreambooth_lora_sdxl.py`.
+> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--deepspeed` in the previous example.
+
+You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_sdxl.py`
+with `python ../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`.
 
 After training is completed, you can directly use `text_to_image_generation.py` sample for inference, as shown below:
 ```bash
@@ -383,7 +386,9 @@ python train_dreambooth_lora_flux.py \
 
 > [!NOTE]
 > To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed` in the previous example
-> You can run on multiple HPUs replace the `python train_dreambooth_lora_flux.py ..` with `python ../../gaudi_spawn.py --world_size <num_hpus> train_dreambooth_lora_flux.py`.
+
+You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_flux.py`
+with `python ../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
