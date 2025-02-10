@@ -891,7 +891,7 @@ def main():
             # Tokenize the texts
             return tokenizer(
                 examples[column_name],
-                padding="max_length",
+                padding="max_length" if prompt_length > 0 else False,
                 max_length=prompt_length if prompt_length > 0 else None,
                 truncation=prompt_length > 0,
             )
