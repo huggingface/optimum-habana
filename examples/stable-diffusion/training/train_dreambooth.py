@@ -839,7 +839,6 @@ def main(args):
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_dir=logging_dir,
-        force_autocast=gaudi_config.use_torch_autocast,
     )
     if args.report_to == "wandb":
         import wandb

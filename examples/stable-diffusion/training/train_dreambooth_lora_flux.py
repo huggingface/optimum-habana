@@ -648,7 +648,6 @@ def main(args):
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
         kwargs_handlers=[kwargs],
     )
 

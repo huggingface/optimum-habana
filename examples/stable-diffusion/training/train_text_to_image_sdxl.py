@@ -719,7 +719,6 @@ def main(args):
         mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
     )
 
     if args.report_to == "wandb":
