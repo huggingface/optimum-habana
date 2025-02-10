@@ -1,0 +1,17 @@
+{
+  "tests/test_pipeline.py::TestGaudiPipeline::test_image_to_text[Salesforce/blip-image-captioning-base-44]": {
+    "generated_text": "a soccer player is playing a game on the app"
+  },
+  "tests/test_pipeline.py::TestGaudiPipeline::test_image_to_text[nlpconnect/vit-gpt2-image-captioning-44]": {
+    "generated_text": "a soccer game with a player jumping to catch"
+  },
+  "tests/test_pipeline.py::TestGaudiPipeline::test_text_to_speech[facebook/hf-seamless-m4t-medium]": {
+    "sampling_rate": 16000
+  },
+  "tests/test_pipeline.py::TestGaudiPipeline::test_text_to_speech[facebook/mms-tts-eng]": {
+    "sampling_rate": 16000
+  },
+  "tests/test_pipeline.py::TestGaudiPipeline::test_text_to_speech[microsoft/speecht5_tts]": {
+    "sampling_rate": 16000
+  }
+}
