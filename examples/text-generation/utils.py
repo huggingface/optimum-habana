@@ -252,6 +252,13 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
         from neural_compressor.torch.quantization import load
 
@@ -654,6 +661,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.clear_hpu_graphs_cache = args.clear_hpu_graphs_cache
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
@@ -664,6 +672,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
+    generation_config.attn_batch_split = args.attn_batch_split
 
     return generation_config
 
@@ -688,6 +697,9 @@ def exclude_hpu_graph_configs(args):
 def initialize_model(args, logger):
     init_start = time.perf_counter()
     setup_distributed(args)
+    if not args.world_size > 0 and args.attn_batch_split > 1:
+        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
+        args.attn_batch_split = 1
     if exclude_hpu_graph_configs(args):
         args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)

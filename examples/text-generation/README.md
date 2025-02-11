@@ -138,12 +138,16 @@ Here are a few settings you may be interested in:
 - `--use_flash_attention` to enable Habana Flash Attention
 - `--flash_attention_recompute` to reduce memory consumption on prompt stage
 - `--book_source` to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.
-
+- `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing.
+    This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits.  
+    
 There are also some environment variables useful for benchmarking:
 - `export HF_DATASETS_TRUST_REMOTE_CODE=true` : Most datasets in lm-evaluation-harness are defined on HF using dataset scripts, and may require passing HF_DATASETS_TRUST_REMOTE_CODE=true
 - `export TQDM_DISABLE=1`: to disable all tqdm progress bars 
 
 #### bigscience/bloom
+=======
+
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -795,6 +799,36 @@ python run_generation.py \
 --bf16 \
 --load_quantized_model_with_autogptq
 ```
+
+### Running with UINT4 weight quantization using AutoAWQ
+
+Llama2-7b supports UINT4 weight-only quantization through [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which offers quantization capabilities in PyTorch.
+Currently, this support is limited to UINT4 inference of pre-quantized models only.
+
+Please run the following command to install AutoAWQ:
+```bash
+pip install triton==3.1.0 autoawq
+```
+
+You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.
+
+Here is an example of how to run a quantized model <quantized_awq_model>:
+```bash
+python run_generation.py \
+--attn_softmax_bf16 \
+--model_name_or_path <quantized_awq_model> \
+--use_hpu_graphs \
+--limit_hpu_graphs \
+--use_kv_cache \
+--bucket_size 128 \
+--bucket_internal \
+--trim_logits \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--load_quantized_model_with_autoawq
+```
+
 
 ## Language Model Evaluation Harness
 

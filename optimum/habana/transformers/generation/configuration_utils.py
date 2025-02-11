@@ -21,6 +21,8 @@ class GaudiGenerationConfig(GenerationConfig):
         is also running in lower precision.
     limit_hpu_graphs (`bool`, *optional*):
         Skip HPU Graph usage for first token to save memory
+    clear_hpu_graphs_cache (`bool`, *optional*):
+        Clear HPU Graph cache
     reuse_cache (`bool`, *optional*):
         Whether to reuse key/value cache for decoding. It should save memory.
     bucket_size (`int`, *optional*):
@@ -37,6 +39,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Whether to enable causal_mask if use Habana flash attention.
     flash_attention_fast_softmax_mode (`bool`, *optional*):
         Whether to use fast softmax with reduced precision if use Habana flash attention.
+    attn_batch_split (`int`, *optional*):
+        Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.
     """
 
     def __init__(self, **kwargs):
@@ -46,6 +50,7 @@ class GaudiGenerationConfig(GenerationConfig):
         self.ignore_eos = kwargs.get("ignore_eos", None)
         self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
         self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
+        self.clear_hpu_graphs_cache = kwargs.get("clear_hpu_graphs_cache", None)
         self.reuse_cache = kwargs.get("reuse_cache", None)
         self.bucket_size = kwargs.get("bucket_size", -1)
         self.bucket_internal = kwargs.get("bucket_internal", None)
@@ -56,3 +61,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.flash_attention_fast_softmax = kwargs.get("flash_attention_fast_softmax", None)
         self.use_fused_rope = kwargs.get("use_fused_rope", None)
         self.valid_sequence_lengths = kwargs.get("valid_sequence_lengths", None)
+        self.attn_batch_split = kwargs.get("attn_batch_split", 1)

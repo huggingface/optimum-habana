@@ -213,6 +213,7 @@ def main():
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+        os.environ.setdefault("DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API", "1")
 
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -354,7 +355,8 @@ def main():
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl"]:
+
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):

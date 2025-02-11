@@ -540,8 +540,6 @@ class GaudiStableDiffusionXLImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffus
                 ).to(device=device, dtype=latents.dtype)
 
             self._num_timesteps = len(timesteps)
-            if hasattr(self.scheduler, "set_begin_index"):
-                self.scheduler.set_begin_index()
 
             # 8.3 Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)

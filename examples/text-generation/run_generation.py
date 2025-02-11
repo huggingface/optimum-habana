@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
         "--show_graphs_count",
         action="store_true",
         help="Show statistics of HPU graph compilation.",
@@ -331,6 +336,11 @@ def setup_parser(parser):
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
     )
     quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+    )
+    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
@@ -345,6 +355,12 @@ def setup_parser(parser):
         type=str,
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
+    )
+    parser.add_argument(
+        "--attn_batch_split",
+        default=1,
+        type=int,
+        help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
 
     args = parser.parse_args()
@@ -361,6 +377,8 @@ def setup_parser(parser):
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(

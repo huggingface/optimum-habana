@@ -305,6 +305,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
@@ -334,3 +335,4 @@ from .xglm import (
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
 )
+from .xlm_roberta import gaudi_XLMRoberta_Sdpa_SelfAttention_forward

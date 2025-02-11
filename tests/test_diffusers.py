@@ -31,8 +31,8 @@ from typing import Callable, Union
 from unittest import TestCase, skipUnless
 
 import diffusers
-import habana_frameworks.torch.hpu as hthpu
 import numpy as np
+import PIL
 import pytest
 import requests
 import safetensors
@@ -47,6 +47,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
+    I2VGenXLUNet,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
@@ -66,10 +67,12 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
+    numpy_cosine_similarity_distance,
     require_torch,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from huggingface_hub import snapshot_download
+from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
 from transformers import (
@@ -97,6 +100,7 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiFluxImg2ImgPipeline,
     GaudiFluxPipeline,
+    GaudiI2VGenXLPipeline,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -140,7 +144,10 @@ if IS_GAUDI2:
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.145
     SDXL_THROUGHPUT = 0.301
     SVD_THROUGHPUT = 0.012
+    SD3_THROUGHPUT = 0.006
     FLUX_THROUGHPUT = 0.03
+    FLUX_DEV_I2I_THROUGHPUT = 0.12
+    I2V_THROUGHPUT = 0.017
 else:
     THROUGHPUT_BASELINE_BF16 = 0.275
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -155,6 +162,7 @@ else:
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.045
     SDXL_THROUGHPUT = 0.074
     SVD_THROUGHPUT = 0.012
+    I2V_THROUGHPUT = 0.008
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -169,6 +177,35 @@ def custom_bf16_ops(test_case):
 
     """
     return skipUnless(_run_custom_bf16_ops_test_, "test requires custom bf16 ops")(test_case)
+
+
+def check_gated_model_access(model):
+    """
+    Skip test for a gated model if access is not granted; this occurs when an account
+    with the required permissions is not logged into the HF Hub.
+    """
+    try:
+        hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
+        gated = False
+
+    except HfHubHTTPError:
+        gated = True
+
+    return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
+
+
+def check_8xhpu(test_case):
+    """
+    Decorator marking a test as it requires 8xHPU on system
+    """
+    from optimum.habana.utils import get_device_count
+
+    if get_device_count() != 8:
+        skip = True
+    else:
+        skip = False
+
+    return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -762,7 +799,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
     @slow
-    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
+    @check_8xhpu
     def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -1262,6 +1299,147 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    def test_stable_diffusion_xl_num_images_per_prompt_optimized(self):
+        import habana_frameworks.torch.hpu as torch_hpu
+
+        kwargs = {"timestep_spacing": "linspace"}
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+        )
+        scheduler.hpu_opt = True
+        kwargs = {
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+            "torch_dtype": torch.bfloat16,
+        }
+
+        os.environ["PATCH_SDPA"] = "1"
+
+        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+            StableDiffusionXLPipeline_HPU,
+        )
+
+        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+
+        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+            model_name_or_path,
+            **kwargs,
+        )
+
+        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+        sd_pipe.to(torch.device("hpu"))
+        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test num_images_per_prompt=1 (default)
+        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (1024, 1024, 3))
+
+        # Test num_images_per_prompt=1 (default) for several prompts
+        num_prompts = 3
+        images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
+
+        self.assertEqual(len(images), num_prompts)
+        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+
+        # Test num_images_per_prompt for single prompt
+        num_images_per_prompt = 2
+        images = sd_pipe(
+            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
+        ).images
+
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+
+        # Test num_images_per_prompt for several prompts
+        num_prompts = 2
+        images = sd_pipe(
+            [prompt] * num_prompts,
+            num_inference_steps=2,
+            output_type="np",
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_prompts * num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+
+        os.environ.pop("PATCH_SDPA")
+
+    def test_stable_diffusion_xl_optimized_fp8(self):
+        import habana_frameworks.torch.hpu as torch_hpu
+
+        kwargs = {"timestep_spacing": "linspace"}
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler", **kwargs
+        )
+        scheduler.hpu_opt = True
+        kwargs = {
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+            "torch_dtype": torch.bfloat16,
+        }
+
+        os.environ["PATCH_SDPA"] = "1"
+        # Set QUANT_CONFIG environment variable
+        os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
+
+        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+            StableDiffusionXLPipeline_HPU,
+        )
+
+        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+
+        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+            model_name_or_path,
+            **kwargs,
+        )
+        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+        sd_pipe.to(torch.device("hpu"))
+
+        quant_config_path = os.getenv("QUANT_CONFIG")
+
+        original_dir = os.getcwd()
+        config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
+        os.chdir(config_dir)
+
+        if quant_config_path:
+            import habana_frameworks.torch.core as htcore
+            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+            htcore.hpu_set_env()
+
+            config = FP8Config.from_json_file(quant_config_path)
+
+            if config.measure:
+                print("Running measurements")
+                sd_pipe.unet = prepare(sd_pipe.unet, config)
+            elif config.quantize:
+                print("Running quantization")
+                sd_pipe.unet = convert(sd_pipe.unet, config)
+            htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
+
+        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test using quantization configuration
+        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (1024, 1024, 3))
+        os.chdir(original_dir)
+
+        os.environ.pop("PATCH_SDPA")
+
     @slow
     def test_stable_diffusion_xl_generation_throughput(self):
         prompts = [
@@ -1514,6 +1692,32 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
             "Original outputs should match when fused QKV projections are disabled."
         )
+
+    @slow
+    @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
+    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    def test_sd3_inference(self):
+        repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
+
+        pipe = self.pipeline_class.from_pretrained(
+            repo_id,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            torch_dtype=torch.bfloat16,
+            sdp_on_bf16=True,
+        )
+
+        outputs = pipe(
+            prompt="Sailing ship painting by Van Gogh",
+            num_inference_steps=28,
+            batch_size=1,
+            num_images_per_prompt=10,
+            output_type="np",
+        )
+
+        # Check expected performance of FLUX.1 dev img-to-img model
+        self.assertGreaterEqual(outputs.throughput, 0.95 * SD3_THROUGHPUT)
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
@@ -2405,7 +2609,7 @@ class TrainControlNet(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
-    @pytest.mark.skipif(hthpu.is_available() and hthpu.device_count() != 8, reason="system does not have 8 cards")
+    @check_8xhpu
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -3587,7 +3791,7 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
 
         self.assertEqual(image.shape, (1, 32, 32, 3))
 
-        expected_slice = np.array([0.4925, 0.5007, 0.6594, 0.5544, 0.4423, 0.5585, 0.4643, 0.5444, 0.5376])
+        expected_slice = np.array([0.4664, 0.4886, 0.4403, 0.6902, 0.5592, 0.4534, 0.5931, 0.5951, 0.5224])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
@@ -5947,3 +6151,242 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
 
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
         assert max_diff < 1e-4
+
+    @slow
+    @check_gated_model_access("black-forest-labs/FLUX.1-dev")
+    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    def test_flux_img2img_inference(self):
+        repo_id = "black-forest-labs/FLUX.1-dev"
+        image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
+        image = PIL.Image.open(requests.get(image_path, stream=True).raw)
+        image = PIL.ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+
+        pipe = self.pipeline_class.from_pretrained(
+            repo_id,
+            torch_dtype=torch.bfloat16,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            sdp_on_bf16=True,
+        )
+
+        outputs = pipe(
+            image=image,
+            prompt="cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k",
+            num_inference_steps=30,
+            guidance_scale=3.5,
+            strength=0.9,
+            batch_size=1,
+            num_images_per_prompt=10,
+            output_type="np",
+        )
+
+        # Check expected performance of FLUX.1 dev img-to-img model
+        self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_DEV_I2I_THROUGHPUT)
+
+
+class I2VGenXLPipelineTests(TestCase):
+    pipeline_class = GaudiI2VGenXLPipeline
+    params = frozenset(["prompt", "negative_prompt", "image"])
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
+    # No `output_type`.
+    required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
+
+    supports_dduf = False
+    test_layerwise_casting = True
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        torch.manual_seed(0)
+        unet = I2VGenXLUNet(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
+            cross_attention_dim=4,
+            attention_head_dim=4,
+            num_attention_heads=None,
+            norm_num_groups=2,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=(8,),
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=32,
+            norm_num_groups=2,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=4,
+            intermediate_size=16,
+            layer_norm_eps=1e-05,
+            num_attention_heads=2,
+            num_hidden_layers=2,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        torch.manual_seed(0)
+        vision_encoder_config = CLIPVisionConfig(
+            hidden_size=4,
+            projection_dim=4,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            image_size=32,
+            intermediate_size=16,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(vision_encoder_config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "image_encoder": image_encoder,
+            "tokenizer": tokenizer,
+            "feature_extractor": feature_extractor,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+
+        input_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": input_image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "pt",
+            "num_frames": 4,
+            "width": 32,
+            "height": 32,
+        }
+        return inputs
+
+    def test_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg[0].shape == out_no_cfg[0].shape
+
+    def test_text_to_video_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        frames = pipe(**inputs).frames
+
+        image_slice = frames[0][0][-3:, -3:, -1]
+
+        assert frames[0][0].shape == (32, 32, 3)
+        expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_num_videos_per_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        frames = pipe(**inputs, num_videos_per_prompt=2).frames
+
+        assert frames.shape == (2, 4, 32, 32, 3)
+        assert frames[0][0].shape == (32, 32, 3)
+
+        image_slice = frames[0][0][-3:, -3:, -1]
+        expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    def test_i2vgen_xl_bf16(self):
+        pipe = GaudiI2VGenXLPipeline.from_pretrained(
+            "ali-vilab/i2vgen-xl",
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            sdp_on_bf16=True,
+            torch_dtype=torch.bfloat16,
+        )
+        pipe.enable_model_cpu_offload(device=torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+        )
+
+        generator = torch.Generator("cpu").manual_seed(0)
+        num_frames = 3
+
+        output = pipe(
+            image=image,
+            prompt="my cat",
+            num_frames=num_frames,
+            generator=generator,
+            num_inference_steps=50,
+            output_type="np",
+        )
+
+        image = output.frames[0]
+        assert image.shape == (num_frames, 704, 1280, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.44921875, 0.3642578, 0.38671875, 0.46484375, 0.41210938, 0.45874023, 0.49536133, 0.4387207, 0.48242188]
+        )
+        assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
+        self.assertGreaterEqual(output.throughput, 0.95 * I2V_THROUGHPUT)
