@@ -23,9 +23,8 @@ from pathlib import Path
 import torch
 from diffusers.utils.export_utils import export_to_video
 
-from optimum.habana.diffusers.pipelines.cogvideox.pipeline_cogvideox_gaudi import GaudiCogVideoXPipeline
 from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
-#from optimum.habana.diffusers import GaudiCogVideoXPipeline
+from optimum.habana.diffusers import GaudiCogVideoXPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
