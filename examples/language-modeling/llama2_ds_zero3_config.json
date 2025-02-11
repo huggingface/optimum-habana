@@ -13,4 +13,10 @@
         "contiguous_gradients": false,
         "stage3_gather_16bit_weights_on_model_save": true
     }
+    "timers": {
+        "throughput": {
+           "enabled": true,
+           "synchronized": false
+        }
+    }
 }
