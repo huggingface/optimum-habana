@@ -748,8 +748,6 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                 ).to(device=device, dtype=latents.dtype)
 
             self._num_timesteps = len(timesteps)
-            if hasattr(self.scheduler, "set_begin_index"):
-                self.scheduler.set_begin_index()
 
             outputs = {
                 "images": [],

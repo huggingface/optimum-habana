@@ -103,6 +103,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Set value of 'dynamic' parameter for torch.compile.
         use_regional_compilation (`bool`, *optional*, defaults to `False`):
             Whether to use regional compile with deepspeed
+        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
+            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config. Currently, disabling this parameter improves the performance of the ALBERT model.
+        cache_size_limit(`int`, *optional*, defaults to 'None'):
+            Set value of 'cache_size_limit' parameter for torch._dynamo.config
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -172,9 +176,19 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
     )
 
+    cache_size_limit: Optional[int] = field(
+        default=None,
+        metadata={"help": "Set value of 'cache_size_limit' parameter for torch._dynamo.config."},
+    )
+
     use_regional_compilation: Optional[bool] = field(
         default=False,
         metadata={"help": ("Whether to use regional compile for traing.")},
+    )
+
+    inline_inbuilt_nn_modules: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -871,6 +885,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if self.sdp_on_bf16:
             torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
+        if self.inline_inbuilt_nn_modules is not None:
+            torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
+
+        if self.torch_compile and self.cache_size_limit is not None:
+            torch._dynamo.config.cache_size_limit = self.cache_size_limit
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
