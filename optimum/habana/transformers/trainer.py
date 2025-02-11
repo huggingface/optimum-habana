@@ -783,7 +783,7 @@ class GaudiTrainer(Trainer):
             # In this case we are in DDP + LOMO, which should be supported
             self.optimizer = self.accelerator.prepare(self.optimizer)
 
-        if self.args.accelerator.state.mixed_precision == "fp8":
+        if self.accelerator.state.mixed_precision == "fp8":
             self.model = convert_model(model, _minimize_memory=self.args.minimize_memory)
 
         if self.is_fsdp_enabled:
