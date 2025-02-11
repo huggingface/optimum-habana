@@ -42,9 +42,10 @@ Models that have been validated:
 
 CogvideoX test:
 ```bash
-python3 cogvideox_generate.py \
+python3 text_to_video_generation.py \
     --model_name_or_path THUDM/CogVideoX-2b \
-    --output_name gaudi_output.mp4
+    --pipeline_type 'cogvideox' \
+    --video_save_dir 'cogvideo_out' \
 ```
 
 
