@@ -176,6 +176,11 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
     )
 
+    use_zero3_leaf_promotion: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable leaf promotion in compile")},
+    )
+
     cache_size_limit: Optional[int] = field(
         default=None,
         metadata={"help": "Set value of 'cache_size_limit' parameter for torch._dynamo.config."},
