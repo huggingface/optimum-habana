@@ -923,7 +923,6 @@ class GaudiTrainingArguments(TrainingArguments):
         self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             accelerator_state_kwargs["cpu"] = True
-            # accelerator_state_kwargs["backend"] = None
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -944,11 +943,8 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.deepspeed:
                 accelerator_state_kwargs["use_deepspeed"] = True
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            else:
-                # accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            # accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            # accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."

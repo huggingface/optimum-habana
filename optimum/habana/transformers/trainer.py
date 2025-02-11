@@ -89,7 +89,7 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
+from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.utils import (
     ADAPTER_CONFIG_NAME,
     ADAPTER_SAFE_WEIGHTS_NAME,
@@ -108,7 +108,7 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..distributed import parallel_state
-from ..local_accelerate.utils import FP8ContextWrapper
+from ..local_accelerate.utils import FP8ContextWrapper, convert_model
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -218,7 +218,7 @@ class GaudiTrainer(Trainer):
         self,
         model: Union[PreTrainedModel, torch.nn.Module] = None,
         gaudi_config: GaudiConfig = None,
-        args: TrainingArguments = None,
+        args: GaudiTrainingArguments = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Union[Dataset, IterableDataset, "datasets.Dataset"]] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset], "datasets.Dataset"]] = None,
@@ -301,6 +301,7 @@ class GaudiTrainer(Trainer):
                 except ImportError as error:
                     error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
                     raise error
+
                 if self.gaudi_config.use_dynamic_shapes:
                     hthpu.enable_dynamic_shape()
                 else:
@@ -781,6 +782,9 @@ class GaudiTrainer(Trainer):
         elif self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             # In this case we are in DDP + LOMO, which should be supported
             self.optimizer = self.accelerator.prepare(self.optimizer)
+
+        if self.args.accelerator.state.mixed_precision == "fp8":
+            self.model = convert_model(model, _minimize_memory=self.args.minimize_memory)
 
         if self.is_fsdp_enabled:
             self.model = self.model_wrapped = model
@@ -1587,7 +1591,7 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
