@@ -430,7 +430,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --limit_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
 --flash_attention_causal_mask  \
@@ -574,7 +573,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --max_new_tokens ${output_len} \
 --batch_size ${batch_size} \
 --bf16 \
---reuse_cache \
 --trim_logits \
 --use_flash_attention \
 --flash_attention_recompute \
