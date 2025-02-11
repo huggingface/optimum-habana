@@ -23,11 +23,8 @@ PyTorch DeepSeekV3 model. Adapted from https://huggingface.co/deepseek-ai/DeepSe
 The main differences are:
 - Use Gaudi Flash Attention
 - Optimized KV cache with support for static shapes
-- Use static experts instead of dynamic
+- Use fused Gaudi MoE, RoPE, and RMSNorm operators
 - Enable expert parallelism
-
-TODO:
-- Add support for optimized Gaudi ops like fused rope and rms
 """
 
 import math
@@ -43,6 +40,7 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache
+from transformers.generation import GenerationMixin
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -496,8 +494,9 @@ class DeepseekV3MoE(nn.Module):
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = DeepseekV3MLP(config=config, intermediate_size=intermediate_size)
 
-        self.expert_slice = math.ceil(config.n_routed_experts / SLICE_MAX_EXPERT)
-        self.expert_chunk = self.config.n_routed_experts // self.expert_slice
+        self.expert_slice = math.ceil(self.experts_per_rank / SLICE_MAX_EXPERT)
+        self.expert_chunk = self.experts_per_rank // self.expert_slice
+
     def forward(self, hidden_states):
         identity = hidden_states
         orig_shape = hidden_states.shape
@@ -530,21 +529,25 @@ class DeepseekV3MoE(nn.Module):
                 )
             final_hidden_states = final_hidden_states.type(hidden_states.dtype)
             final_hidden_states = final_hidden_states.view(*orig_shape)
-            #final_hidden_states = AddAuxiliaryLoss.apply(final_hidden_states, aux_loss)
+            # final_hidden_states = AddAuxiliaryLoss.apply(final_hidden_states, aux_loss)
         else:
             final_hidden_states = torch.zeros(
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
             for idx in range(self.expert_slice):
+                expert_offset = self.ep_rank * self.experts_per_rank
                 experts_range = range(self.expert_chunk)
                 gate_proj_list = [
-                    self.experts[idx * self.expert_chunk + i].gate_proj.weight.squeeze() for i in experts_range
+                    self.experts[idx * self.expert_chunk + i + expert_offset].gate_proj.weight.squeeze()
+                    for i in experts_range
                 ]
                 down_proj_list = [
-                    self.experts[idx * self.expert_chunk + i].down_proj.weight.squeeze() for i in experts_range
+                    self.experts[idx * self.expert_chunk + i + expert_offset].down_proj.weight.squeeze()
+                    for i in experts_range
                 ]
                 up_proj_list = [
-                    self.experts[idx * self.expert_chunk + i].up_proj.weight.squeeze() for i in experts_range
+                    self.experts[idx * self.expert_chunk + i + expert_offset].up_proj.weight.squeeze()
+                    for i in experts_range
                 ]
 
                 hidden_states_slice = torch.ops.hpu.mixture_of_experts(
@@ -556,13 +559,15 @@ class DeepseekV3MoE(nn.Module):
                     w3=down_proj_list,
                     permuted_weights=True,
                     activation="silu",
-                    experts_min=(self.expert_chunk * idx),
-                    experts_max=(self.expert_chunk * (idx + 1) - 1),
+                    experts_min=(self.expert_chunk * idx + expert_offset),
+                    experts_max=(self.expert_chunk * (idx + 1) - 1 + expert_offset),
                 )
                 final_hidden_states = final_hidden_states + hidden_states_slice
                 htcore.mark_step()
 
-            if is_deepspeed_available():
+            if self.ep_size > 1:
+                final_hidden_states = _all_reduce(final_hidden_states)
+            elif is_deepspeed_available():
                 from deepspeed import comm as dist
 
                 if dist.is_initialized():
@@ -1575,7 +1580,7 @@ class DeepseekV3Model(DeepseekV3PreTrainedModel):
         )
 
 
-class DeepseekV3ForCausalLM(DeepseekV3PreTrainedModel):
+class DeepseekV3ForCausalLM(DeepseekV3PreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
