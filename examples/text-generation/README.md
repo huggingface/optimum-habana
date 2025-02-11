@@ -385,7 +385,7 @@ export model_name=meta-llama/Llama-2-70b-hf
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_${model_name}_bs1_measure.txt \
+-o acc_llama2_bs1_measure.txt \
 --model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
@@ -523,7 +523,7 @@ export model_name=meta-llama/Llama-3.1-405B-Instruct
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_${model_name}_bs1_quant.txt \
+-o acc_llama3_bs1_quant.txt \
 --model_name_or_path ${model_name} \
 --use_hpu_graphs \
 --use_kv_cache \
