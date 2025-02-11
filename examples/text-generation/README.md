@@ -146,7 +146,6 @@ There are also some environment variables useful for benchmarking:
 - `export TQDM_DISABLE=1`: to disable all tqdm progress bars 
 
 #### bigscience/bloom
-=======
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
