@@ -757,7 +757,13 @@ def save_model(model, tokenizer, save_path):
 # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
 def local_split_rank_state_dict(model, gathered_state_dict):
     """split state_dict for current local_rank."""
-    from neural_compressor.torch.algorithms.fp8_quant.save_load import split_weights, world_size, local_rank, cur_accelerator
+    from neural_compressor.torch.algorithms.fp8_quant.save_load import (
+        cur_accelerator,
+        local_rank,
+        split_weights,
+        world_size,
+    )
+
     rank_state_dict = {}
     for name, param in model.named_parameters():
         if name in gathered_state_dict:
