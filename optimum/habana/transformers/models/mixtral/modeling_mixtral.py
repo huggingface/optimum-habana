@@ -22,7 +22,6 @@
 
 import contextlib
 import math
-import os
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -47,8 +46,6 @@ from transformers.models.mixtral.modeling_mixtral import (
     load_balancing_loss_func,
 )
 from transformers.utils import is_torchdynamo_compiling, logging
-
-from optimum.habana.utils import get_device_name
 
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
@@ -465,7 +462,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
 
         hidden_states = self.input_layernorm(hidden_states)
 
-        # Self Attention 
+        # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
