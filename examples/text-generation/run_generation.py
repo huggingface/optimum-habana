@@ -29,7 +29,7 @@ from pathlib import Path
 
 import torch
 from transformers import BatchEncoding
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -328,6 +328,17 @@ def setup_parser(parser):
     parser.add_argument(
         "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
+    parser.add_argument(
+        "--save_quantized_model_with_inc",
+        action="store_true",
+        help="Save quantized Huggingface checkpoint using INC.",
+    )
+    parser.add_argument(
+        "--saved_model_path",
+        type=str,
+        default="inc_quantized_model",
+        help="A path to save quantized checkpoint.",
+    )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
@@ -348,7 +359,7 @@ def setup_parser(parser):
     quant_parser_group.add_argument(
         "--load_quantized_model_with_inc",
         action="store_true",
-        help="Load a Huggingface quantized checkpoint using INC.",
+        help="Load a quantized Huggingface checkpoint using INC.",
     )
     quant_parser_group.add_argument(
         "--local_quantized_inc_model_path",
@@ -791,6 +802,8 @@ def main():
         print(separator)
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 
