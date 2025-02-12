@@ -153,8 +153,8 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         super().__init__(config)
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size, sequence_length, hidden_dim = hidden_states.shape
         original_shape = hidden_states.shape
+        hidden_dim = original_shape[2]
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
