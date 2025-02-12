@@ -135,10 +135,6 @@ def setup_env(args):
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
-    if args.pt2e_quant:
-        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "1")
-        os.environ.setdefault("PT_HPU_USE_FX_GRAPH_FREEZING", "0")
-
     if args.global_rank == 0 and not args.torch_compile and args.show_graphs_count:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
         shutil.rmtree(".graph_dumps", ignore_errors=True)
@@ -156,6 +152,10 @@ def setup_env(args):
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
     adapt_transformers_to_gaudi()
+
+    if args.pt2e_quant:
+        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "1")
+        os.environ.setdefault("PT_HPU_USE_FX_GRAPH_FREEZING", "1")
 
 
 def setup_device(args):
@@ -289,6 +289,10 @@ class PT2EQTestManager:
         """
         if model.config.model_type != "llama":
             return model
+
+        import habana_frameworks.torch.core as htcore
+
+        htcore.hpu_inference_initialize(model, mark_non_scales=False)
 
         from habana_frameworks.torch.core.quantizer import (
             habana_quant_config_symmetric,
