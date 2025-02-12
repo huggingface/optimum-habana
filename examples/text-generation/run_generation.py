@@ -373,6 +373,9 @@ def setup_parser(parser):
 
     if args.use_flash_attention and not args.flash_attention_fast_softmax:
         args.flash_attention_fast_softmax = True
+    
+    if args.token is not None and args.token.lower() == 'none':
+        args.token = None
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
