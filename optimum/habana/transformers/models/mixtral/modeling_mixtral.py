@@ -202,7 +202,7 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             permuted_weights=True,
             activation="silu",
             experts_min=0,
-            experts_max=7,
+            experts_max=len(self.experts) - 1,
         )
 
 
