@@ -553,7 +553,7 @@ def main():
             if col not in (data_args.input_column_names + data_args.output_column_names)
         ]
     )
-    if "Llava" in model_arc:
+    if config.model_type == "llava":
         data_collator = LLavaDataCollator(processor, max_seq_length=data_args.max_seq_length)
     else:
         if hasattr(config, "image_token_id"):
