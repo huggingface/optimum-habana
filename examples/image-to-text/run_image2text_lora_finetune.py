@@ -477,11 +477,7 @@ def main():
     else:
         raise ValueError("Please provide value for model_name_or_path or config_name.")
 
-    model_arc = ""
-    if config.architectures is not None:
-        model_arc = config.architectures[0]
-
-    if "Llava" in model_arc:
+    if config.model_type == "llava":
         setattr(processor, "patch_size", config.vision_config.patch_size)
         setattr(processor, "vision_feature_select_strategy", config.vision_feature_select_strategy)
     else:
