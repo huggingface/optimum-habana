@@ -348,7 +348,7 @@ class LLavaDataCollator:
         return batch
 
 
-def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, max_seq_length, model_arc=""):
+def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, max_seq_length, model_type):
     from tqdm import tqdm
 
     answers_unique = []
