@@ -659,7 +659,7 @@ def main():
                 use_lazy_mode=training_args.use_lazy_mode,
                 use_hpu_graphs=training_args.use_hpu_graphs_for_inference,
                 max_seq_length=data_args.max_seq_length,
-                model_arc=model_arc
+                model_type=config.model_type,
             )
             eval_metrics = {"eval_accuracy": anls}
             trainer.log_metrics("eval", eval_metrics)
