@@ -451,7 +451,7 @@ def gaudi_mixtral_block_dynamic_moe_forward(self, hidden_states: torch.Tensor) -
         permuted_weights=True,
         activation="silu",
         experts_min=0,
-        experts_max=7,
+        experts_max=len(self.experts) - 1,
     )
     if is_deepspeed_available() and (not self.training):
         from deepspeed import comm as dist
