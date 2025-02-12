@@ -173,7 +173,7 @@ class GaudiAccelerator(Accelerator):
 
             torch_version = importlib.metadata.version("torch")
             torch_version = torch_version[5:]
-            if is_torch_version("<", FSDP_PYTORCH_VERSION + torch_version):
+            if is_torch_version("<", FSDP_PYTORCH_VERSION):
                 raise ValueError(f"FSDP requires PyTorch >= {FSDP_PYTORCH_VERSION}")
 
         if fsdp_plugin is None:  # init from env variables
