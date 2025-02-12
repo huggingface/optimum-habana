@@ -735,7 +735,7 @@ Currently, this support is limited to UINT4 inference of pre-quantized models on
 
 Please run the following command to install AutoAWQ:
 ```bash
-pip install triton==3.1.0 autoawq
+pip install -r requirements_awq.txt
 ```
 
 You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.
