@@ -1,5 +1,4 @@
 import copy
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -486,11 +485,10 @@ class GaudiLlamaAttention(LlamaAttention):
             self.k_proj = None
             self.v_proj = None
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.fused_scaled_dot_product_attention = (
             ModuleFusedSDPA(
                 FusedSDPA,
-                scale=self.norm_factor,
+                scale=self.scaling,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
                 flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
@@ -504,7 +502,7 @@ class GaudiLlamaAttention(LlamaAttention):
             self.fused_scaled_dot_product_attention_distributed = (
                 GaudiDistributedAttention(
                     self.fused_scaled_dot_product_attention,
-                    scale=self.norm_factor,
+                    scale=self.scaling,
                     attention_dropout=self.attention_dropout,
                     enable_recompute=False,
                     flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
