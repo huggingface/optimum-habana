@@ -47,6 +47,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
+    I2VGenXLUNet,
     LCMScheduler,
     PNDMScheduler,
     SD3Transformer2DModel,
@@ -66,6 +67,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
+    numpy_cosine_similarity_distance,
     require_torch,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -98,6 +100,7 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiFluxImg2ImgPipeline,
     GaudiFluxPipeline,
+    GaudiI2VGenXLPipeline,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -144,6 +147,7 @@ if IS_GAUDI2:
     SD3_THROUGHPUT = 0.006
     FLUX_THROUGHPUT = 0.03
     FLUX_DEV_I2I_THROUGHPUT = 0.12
+    I2V_THROUGHPUT = 0.017
 else:
     THROUGHPUT_BASELINE_BF16 = 0.275
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -158,6 +162,7 @@ else:
     THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.045
     SDXL_THROUGHPUT = 0.074
     SVD_THROUGHPUT = 0.012
+    I2V_THROUGHPUT = 0.008
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -6179,3 +6184,209 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
 
         # Check expected performance of FLUX.1 dev img-to-img model
         self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_DEV_I2I_THROUGHPUT)
+
+
+class I2VGenXLPipelineTests(TestCase):
+    pipeline_class = GaudiI2VGenXLPipeline
+    params = frozenset(["prompt", "negative_prompt", "image"])
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
+    # No `output_type`.
+    required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
+
+    supports_dduf = False
+    test_layerwise_casting = True
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        torch.manual_seed(0)
+        unet = I2VGenXLUNet(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
+            cross_attention_dim=4,
+            attention_head_dim=4,
+            num_attention_heads=None,
+            norm_num_groups=2,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=(8,),
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=32,
+            norm_num_groups=2,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=4,
+            intermediate_size=16,
+            layer_norm_eps=1e-05,
+            num_attention_heads=2,
+            num_hidden_layers=2,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        torch.manual_seed(0)
+        vision_encoder_config = CLIPVisionConfig(
+            hidden_size=4,
+            projection_dim=4,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            image_size=32,
+            intermediate_size=16,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(vision_encoder_config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "image_encoder": image_encoder,
+            "tokenizer": tokenizer,
+            "feature_extractor": feature_extractor,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+
+        input_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": input_image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "pt",
+            "num_frames": 4,
+            "width": 32,
+            "height": 32,
+        }
+        return inputs
+
+    def test_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg[0].shape == out_no_cfg[0].shape
+
+    def test_text_to_video_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        frames = pipe(**inputs).frames
+
+        image_slice = frames[0][0][-3:, -3:, -1]
+
+        assert frames[0][0].shape == (32, 32, 3)
+        expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_num_videos_per_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        frames = pipe(**inputs, num_videos_per_prompt=2).frames
+
+        assert frames.shape == (2, 4, 32, 32, 3)
+        assert frames[0][0].shape == (32, 32, 3)
+
+        image_slice = frames[0][0][-3:, -3:, -1]
+        expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    def test_i2vgen_xl_bf16(self):
+        pipe = GaudiI2VGenXLPipeline.from_pretrained(
+            "ali-vilab/i2vgen-xl",
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            sdp_on_bf16=True,
+            torch_dtype=torch.bfloat16,
+        )
+        pipe.enable_model_cpu_offload(device=torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+        )
+
+        generator = torch.Generator("cpu").manual_seed(0)
+        num_frames = 3
+
+        output = pipe(
+            image=image,
+            prompt="my cat",
+            num_frames=num_frames,
+            generator=generator,
+            num_inference_steps=50,
+            output_type="np",
+        )
+
+        image = output.frames[0]
+        assert image.shape == (num_frames, 704, 1280, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.44921875, 0.3642578, 0.38671875, 0.46484375, 0.41210938, 0.45874023, 0.49536133, 0.4387207, 0.48242188]
+        )
+        assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
+        self.assertGreaterEqual(output.throughput, 0.95 * I2V_THROUGHPUT)
