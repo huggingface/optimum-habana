@@ -611,7 +611,7 @@ def main():
         ]
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
 
-        if "Llava" in model_arc:
+        if config.model_type == "llava":
             # don't expand image_token_id
             setattr(processor, "patch_size", None)
             setattr(processor, "vision_feature_select_strategy", None)
