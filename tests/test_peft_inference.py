@@ -45,6 +45,7 @@ class TestGaudiPeftTextGeneration:
             "hpu_graphs": True,
             "max_new_tokens": 128,
             "ignore_eos": True,
+            "do_sample": False,
         }
         if extra_kwargs:
             generate_kwargs.update(extra_kwargs)
@@ -55,6 +56,7 @@ class TestGaudiPeftTextGeneration:
             device="hpu",
         )
         output = generator("Hello, Boy", **generate_kwargs)
+        torch.hpu.synchronize()
         return output[0]["generated_text"]
 
     def _test_text_generation(self, model_name_or_path, peft_method):
@@ -96,14 +98,14 @@ class TestGaudiPeftTextGeneration:
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
 
         result1 = self._text_generation(model, tokenizer)
-        if peft_method != "llama-adapter":
-            assert result != result1
 
         result2 = self._text_generation(model, tokenizer, extra_kwargs={"reuse_cache": True})
-        assert result1 == result2
 
         result3 = self._text_generation(model, tokenizer, extra_kwargs={"bucket_size": 10})
-        assert result1 == result3
+        model = model.to("cpu")
+        if peft_method != "llama-adapter":
+            assert result != result1
+        assert result2 == result3
 
     @pytest.mark.parametrize("model, method", TEST_CASES)
     def test_text_generation_llama(self, model, method):

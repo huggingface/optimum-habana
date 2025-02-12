@@ -107,52 +107,6 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > If you get an error reporting unused parameters in the model, you can specify `--ddp_find_unused_parameters True`. Using this parameter might affect the training speed.
 
-
-## DeepSpeed
-
-> You need to install DeepSpeed with:
-> ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
-> ```
-
-DeepSpeed can be used with almost the same command as for a multi-card run:
-- `use_mpi` should be replaced by `use_deepspeed`,
-- an additional `--deepspeed path_to_my_deepspeed config` argument should be provided, for instance `--deepspeed ../../tests/configs/deepspeed_zero_2.json`.
-
-For example:
-```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_audio_classification.py \
-    --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name common_language \
-    --audio_column_name audio \
-    --label_column_name language \
-    --output_dir /tmp/wav2vec2-base-lang-id \
-    --overwrite_output_dir \
-    --remove_unused_columns False \
-    --do_train \
-    --do_eval \
-    --learning_rate 3e-4 \
-    --max_length_seconds 8 \
-    --attention_mask False \
-    --warmup_ratio 0.1 \
-    --num_train_epochs 10 \
-    --per_device_train_batch_size 16 \
-    --per_device_eval_batch_size 32 \
-    --seed 0 \
-    --use_habana \
-    --use_lazy_mode False\
-    --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3 \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
-    --trust_remote_code True
-```
-
-[The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
-
-> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
-
-
 ## Inference
 
 To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...

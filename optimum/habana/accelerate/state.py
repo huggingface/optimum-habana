@@ -52,6 +52,7 @@ class GaudiPartialState(PartialState):
                 world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
                 context_parallel_size = kwargs.pop("context_parallel_size", 1)
+                self.minimize_memory = kwargs.pop("minimize_memory", False)
                 if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true":
                     if not is_deepspeed_available():
                         raise ImportError(
@@ -88,7 +89,17 @@ class GaudiPartialState(PartialState):
                     self.device = torch.device("hpu")
                 if not is_deepspeed_available():
                     context_parallel_size = 1
-                parallel_state.initialize_model_parallel(sequence_parallel_size=context_parallel_size, use_fp8=False)
+                if parallel_state.is_unitialized():
+                    parallel_state.initialize_model_parallel(
+                        sequence_parallel_size=context_parallel_size, use_fp8=False
+                    )
+                else:
+                    if parallel_state.get_sequence_parallel_world_size() != context_parallel_size:
+                        raise ValueError(
+                            "The initialized sequence parallel world size does not match the context parallel size."
+                        )
+                    if parallel_state.amax_reduction_is_initialized():
+                        logger.info("FP8 amax reduction group is already initialized.")
             else:
                 self.distributed_type = (
                     GaudiDistributedType.NO

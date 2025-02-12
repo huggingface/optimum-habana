@@ -19,9 +19,13 @@ import sys
 from pathlib import Path
 
 import torch
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import export_to_gif, export_to_video, load_image
 
-from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableVideoDiffusionPipeline
+from optimum.habana.diffusers import (
+    GaudiEulerDiscreteScheduler,
+    GaudiI2VGenXLPipeline,
+    GaudiStableVideoDiffusionPipeline,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -57,6 +61,20 @@ def main():
     )
 
     # Pipeline arguments
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        nargs="*",
+        default="Papers were floating in the air on a table in the library",
+        help="The prompt or prompts to guide the image generation.",
+    )
+    parser.add_argument(
+        "--negative_prompts",
+        type=str,
+        nargs="*",
+        default="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+        help="The prompt or prompts not to guide the image generation.",
+    )
     parser.add_argument(
         "--image_path",
         type=str,
@@ -177,6 +195,7 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument("--gif", action="store_true", help="Whether to generate the video in gif format.")
     parser.add_argument(
         "--sdp_on_bf16",
         action="store_true",
@@ -184,6 +203,24 @@ def main():
         help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
     args = parser.parse_args()
 
     # Setup logging
@@ -194,6 +231,9 @@ def main():
     )
     logger.setLevel(logging.INFO)
 
+    i2v_models = ["i2vgen-xl"]
+    is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
+
     # Load input image(s)
     input = []
     logger.info("Input image(s):")
@@ -201,7 +241,10 @@ def main():
         args.image_path = [args.image_path]
     for image_path in args.image_path:
         image = load_image(image_path)
-        image = image.resize((args.height, args.width))
+        if is_i2v_model:
+            image = image.convert("RGB")
+        else:
+            image = image.resize((args.height, args.width))
         input.append(image)
         logger.info(image_path)
 
@@ -263,11 +306,32 @@ def main():
             output_type=args.output_type,
             num_frames=args.num_frames,
         )
+    elif is_i2v_model:
+        del kwargs["scheduler"]
+        pipeline = GaudiI2VGenXLPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        generator = torch.manual_seed(args.seed)
+        outputs = pipeline(
+            prompt=args.prompts,
+            image=input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            num_frames=args.num_frames,
+            num_inference_steps=args.num_inference_steps,
+            negative_prompt=args.negative_prompts,
+            guidance_scale=9.0,
+            generator=generator,
+        )
     else:
         pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
         )
+        kwargs_call = {}
+        if args.throughput_warmup_steps is not None:
+            kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
         # Generate images
         outputs = pipeline(
@@ -284,6 +348,9 @@ def main():
             noise_aug_strength=args.noise_aug_strength,
             decode_chunk_size=args.decode_chunk_size,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
         )
 
     # Save the pipeline in the specified directory if not None
@@ -297,7 +364,11 @@ def main():
             video_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
             for i, frames in enumerate(outputs.frames):
-                export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+                if args.gif:
+                    export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
+                else:
+                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+
                 if args.save_frames_as_images:
                     for j, frame in enumerate(frames):
                         frame.save(

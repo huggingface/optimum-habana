@@ -48,6 +48,8 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import is_torchdynamo_compiling, logging
 
+from optimum.habana.utils import get_device_name
+
 from ..llama.modeling_llama import (
     GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaLinearScalingRotaryEmbedding,

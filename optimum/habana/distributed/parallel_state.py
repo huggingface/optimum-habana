@@ -61,16 +61,13 @@ _SEQUENCE_DATA_PARALLEL_RANK = None
 # rank when broadcasting weights from src to all other data parallel ranks
 _DATA_PARALLEL_GLOBAL_RANKS = None
 
-# Memory buffers to avoid dynamic memory allocation
-_GLOBAL_MEMORY_BUFFER = None
-
 
 def initialize_model_parallel(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
-    sequence_parallel_size: int = 1,
     virtual_pipeline_model_parallel_size: Optional[int] = None,
     pipeline_model_parallel_split_rank: Optional[int] = None,
+    sequence_parallel_size: int = 1,
     use_fp8: bool = False,
     use_distributed_optimizer: bool = False,
 ) -> None:
@@ -112,10 +109,37 @@ def initialize_model_parallel(
             pipeline_model_parallel_split_rank is 3, then ranks 0-2
             will be the encoder and ranks 3-7 will be the decoder.
 
+        sequence_parallel_size (int, default = 1):
+            The number of tensor parallel GPU groups to split the
+            network input sequence length across. Compute of attention
+            module requires tokens of full sequence length, so GPUs
+            in a sequence parallel group need to communicate with each
+            other to exchange information of other sequence chunks.
+            Each GPU and its counterparts in other tensor parallel
+            groups compose a sequence parallel group.
+
+            For example, assume we have 8 GPUs, if tensor model parallel
+            size is 4 and sequence parallel size is 2, the network input
+            will be split into two sequence chunks, which are processed
+            by 2 different groups of 4 GPUs. One chunk is processed by
+            GPU0-3, the other chunk is processed by GPU4-7. Four groups
+            are build to do sequence parallel communications: [GPU0, GPU4],
+            [GPU1, GPU5], [GPU2, GPU6], and [GPU3, GPU7].
+
+            Sequence parallelism partitions sequence length, so it has no
+            impact on weights, which means weights are duplicated among
+            GPUs in a sequence parallel group. Hence, weight gradients
+            all-reduce is required in backward. For simplicity, we piggyback
+            GPUs of sequence parallelism on data parallel group for
+            weight gradient all-reduce.
+
         use_fp8 (bool, default = False):
             Construct GPU groups needed for FP8 training, namely for
             amax reduction across the product of the data-parallel and
             tensor-parallel groups.
+
+        use_distributed_optimizer (bool, default = False):
+            Create a new process group using Gloo backend
 
     Let's say we have a total of 16 GPUs denoted by g0 ... g15 and we
     use 2 GPUs to parallelize the model tensor, and 4 GPUs to parallelize
@@ -138,17 +162,18 @@ def initialize_model_parallel(
     assert torch.distributed.is_initialized()
     world_size: int = torch.distributed.get_world_size()
 
-    if world_size % (tensor_model_parallel_size * pipeline_model_parallel_size) != 0:
+    if world_size % (tensor_model_parallel_size * pipeline_model_parallel_size * sequence_parallel_size) != 0:
         raise RuntimeError(
             f"world_size ({world_size}) is not divisible by tensor_model_parallel_size "
-            f"({tensor_model_parallel_size}) x pipeline_model_parallel_size ({pipeline_model_parallel_size})"
+            f"({tensor_model_parallel_size}) x pipeline_model_parallel_size ({pipeline_model_parallel_size}) "
+            f"x sequence_parallel_size ({sequence_parallel_size})"
         )
 
     enable_ds_sequence_parallel = sequence_parallel_size > 1
     if enable_ds_sequence_parallel:
-        assert (
-            tensor_model_parallel_size == 1 and pipeline_model_parallel_size == 1
-        ), "DeepSpeed's sequence parallel does not work with tensor parallel or pipeline parallel"
+        assert tensor_model_parallel_size == 1 and pipeline_model_parallel_size == 1, (
+            "DeepSpeed's sequence parallel does not work with tensor parallel or pipeline parallel"
+        )
 
         if world_size % sequence_parallel_size != 0:
             raise RuntimeError(
@@ -168,7 +193,7 @@ def initialize_model_parallel(
 
     if virtual_pipeline_model_parallel_size is not None:
         if not pipeline_model_parallel_size > 2:
-            raise RuntimeError("pipeline-model-parallel size should be greater than 2 with " "interleaved schedule")
+            raise RuntimeError("pipeline-model-parallel size should be greater than 2 with interleaved schedule")
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
@@ -185,12 +210,14 @@ def initialize_model_parallel(
     global _DATA_PARALLEL_GROUP_GLOO
     global _DATA_PARALLEL_GLOBAL_RANKS
     assert _DATA_PARALLEL_GROUP is None, "data parallel group is already initialized"
+
+    # Build the data-parallel groups.
     all_data_parallel_group_ranks = []
     for i in range(pipeline_model_parallel_size):
         start_rank = i * num_pipeline_model_parallel_groups
         end_rank = (i + 1) * num_pipeline_model_parallel_groups
 
-        if sequence_parallel_size > 1:
+        if enable_ds_sequence_parallel:
             tp_or_sp_size = sequence_parallel_size
         else:
             tp_or_sp_size = tensor_model_parallel_size
@@ -211,11 +238,14 @@ def initialize_model_parallel(
     # Build the sequence parallel groups.
     global _SEQUENCE_PARALLEL_GROUP
     assert _SEQUENCE_PARALLEL_GROUP is None, "sequence parallel group is already initialized"
+
     for i in range(num_sequence_parallel_groups):
         ranks = range(i * sequence_parallel_size, (i + 1) * sequence_parallel_size)
         group = torch.distributed.new_group(ranks)
         if rank in ranks:
             _SEQUENCE_PARALLEL_GROUP = group
+
+    global _SEQUENCE_PARALLEL_WORLD_SIZE
     _SEQUENCE_PARALLEL_WORLD_SIZE = sequence_parallel_size
 
     global _TRAINING_MODE
@@ -224,6 +254,7 @@ def initialize_model_parallel(
     # Build the sequence data parallel groups.
     global _SEQUENCE_DATA_PARALLEL_GROUP
     assert _SEQUENCE_DATA_PARALLEL_GROUP is None, "sequence data parallel group is already initialized"
+
     all_data_sequence_parallel_group_ranks = []
     if enable_ds_sequence_parallel:
         for i in range(num_sequence_data_parallel_groups):
@@ -238,6 +269,7 @@ def initialize_model_parallel(
     # Build the model-parallel groups.
     global _MODEL_PARALLEL_GROUP
     assert _MODEL_PARALLEL_GROUP is None, "model parallel group is already initialized"
+
     num_model_parallel_groups = sequence_data_parallel_size if enable_ds_sequence_parallel else data_parallel_size
     model_parallel_group_ranks = (
         all_data_sequence_parallel_group_ranks if enable_ds_sequence_parallel else all_data_parallel_group_ranks
@@ -251,6 +283,7 @@ def initialize_model_parallel(
     # Build the tensor model-parallel groups.
     global _TENSOR_MODEL_PARALLEL_GROUP
     assert _TENSOR_MODEL_PARALLEL_GROUP is None, "tensor model parallel group is already initialized"
+
     for i in range(num_tensor_model_parallel_groups):
         ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
         group = torch.distributed.new_group(ranks)
@@ -268,6 +301,7 @@ def initialize_model_parallel(
     global _POSITION_EMBEDDING_GROUP
     global _POSITION_EMBEDDING_GLOBAL_RANKS
     assert _POSITION_EMBEDDING_GROUP is None, "position embedding group is already initialized"
+
     for i in range(num_pipeline_model_parallel_groups):
         ranks = range(i, world_size, num_pipeline_model_parallel_groups)
         group = torch.distributed.new_group(ranks)
@@ -303,6 +337,7 @@ def initialize_model_parallel(
     # Build the FP8 groups.
     global _AMAX_REDUCTION_GROUP
     assert _AMAX_REDUCTION_GROUP is None, "FP8 amax reduction group is already initialized"
+
     if use_fp8:
         amax_group_size: int = tensor_model_parallel_size * data_parallel_size
         num_amax_groups: int = world_size // amax_group_size
@@ -322,9 +357,8 @@ def is_unitialized():
 
 def is_training_mode():
     """Useful for code segments that may be accessed with or without mpu initialization"""
-    global _TRAINING_MODE
-    if _TRAINING_MODE is True:
-        return True
+    if _TRAINING_MODE is not None:
+        return _TRAINING_MODE
     else:
         return False
 
@@ -465,3 +499,10 @@ def get_sequence_parallel_src_rank():
     global_rank = torch.distributed.get_rank()
     local_world_size = get_sequence_parallel_world_size()
     return (global_rank // local_world_size) * local_world_size
+
+
+def amax_reduction_is_initialized():
+    """Check if FP8 amax reduction groups are initialized."""
+    if _AMAX_REDUCTION_GROUP is None:
+        return False
+    return True
