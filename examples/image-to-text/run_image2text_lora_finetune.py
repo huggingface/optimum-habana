@@ -372,7 +372,7 @@ def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, m
             text = processor.apply_chat_template(messages, add_generation_prompt=True)
             texts.append(text.strip())
 
-        if "Llava" in model_arc:
+        if model_type is not None and model_type == "llava":
             images = []
             for im in examples["image"]:
                 images.append(im)
