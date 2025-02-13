@@ -444,10 +444,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-
-        deepspeed_device = "cpu" if keep_module_on_host else "meta"
-
-        with deepspeed.OnDevice(dtype=config.torch_dtype, device=deepspeed_device):
+        with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
                 hasattr(config, "rope_scaling")
                 and config.rope_scaling
@@ -477,7 +474,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         )
     else:
         # TODO: revisit placement on CPU when auto-injection is possible
-        with deepspeed.OnDevice(dtype=config.torch_dtype, device="cpu"):
+        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
             if args.peft_model is not None:
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
@@ -492,7 +489,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         ).eval()
 
     # Initialize the model
-    ds_inference_kwargs = {"dtype": config.torch_dtype}
+    ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
