@@ -27,9 +27,9 @@ from trl.models import DDPOStableDiffusionPipeline
 from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
-from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.utils import set_seed
+from ... import GaudiConfig
+from ...accelerate import GaudiAccelerator
+from ...utils import set_seed
 
 
 logger = get_logger(__name__)

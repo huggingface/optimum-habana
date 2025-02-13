@@ -11,40 +11,32 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "summarization": {
-            "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 4.339, 28.9801, 2, 2),
-                ("t5-3b", "Habana/t5", 3.848, 21.8877, 2, 1),
-            ],
-        },
-        "translation": {
-            "bf16": [
-                ("t5-small", "Habana/t5", 11.648, 11.7277, 2, 1),
-            ],
-        },
-    }
-else:
-    # Gaudi1 CI baselines
-    MODELS_TO_TEST = {
-        "summarization": {
-            "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 2.304, 29.174, 2, 2),
-                ("t5-3b", "Habana/t5", 1.005, 21.7286, 2, 1),
-            ],
-        },
-        "translation": {
-            "bf16": [
-                ("t5-small", "Habana/t5", 9.188, 11.6126, 2, 1),
-            ],
-        },
-    }
+MODELS_TO_TEST = {
+    "summarization": {
+        "bf16": [
+            ("facebook/bart-large-cnn", "Habana/bart", 2, 2),
+            ("t5-3b", "Habana/t5", 2, 1),
+        ],
+    },
+    "translation": {
+        "bf16": [
+            ("t5-small", "Habana/t5", 2, 1),
+        ],
+    },
+}
 
 
 class TestEncoderDecoderModels:
     PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
+
+    @pytest.fixture(autouse=True)
+    def _pretest(self, baseline):
+        """
+        This is automatically called before each test function is executed.
+
+        Collect custom fixtures (from conftest.py).
+        """
+        self.baseline = baseline
 
     def _install_requirements(self, task: str):
         cmd_line = f"pip install -r {self.PATH_TO_EXAMPLE_DIR / task / 'requirements.txt'}".split()
@@ -80,8 +72,6 @@ class TestEncoderDecoderModels:
         self,
         command: List[str],
         task: str,
-        baseline: float,
-        baseline_acc: float,
     ):
         with TemporaryDirectory() as tmp_dir:
             command.append(f"--output_dir {tmp_dir}")
@@ -93,35 +83,36 @@ class TestEncoderDecoderModels:
             proc = subprocess.run(command)
 
             # Ensure the run finished without any issue
-            # Use try-except to avoid logging the token if used
-            try:
-                assert proc.returncode == 0
-            except AssertionError as e:
-                if "'--token', 'hf_" in e.args[0]:
-                    e.args = (f"The following command failed:\n{' '.join(command[:-2])}",)
-                raise
+            assert proc.returncode == 0
 
             with open(Path(tmp_dir) / "predict_results.json") as fp:
                 results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
-        assert results["predict_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[device],
+            predict_samples_per_second=results["predict_samples_per_second"],
+        )
 
         if task == "summarization":
             accuracy_metric = "predict_rougeLsum"
         elif task == "translation":
             accuracy_metric = "predict_bleu"
-        assert results[accuracy_metric] >= ACCURACY_PERF_FACTOR * baseline_acc
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
+            context=[device],
+            **{accuracy_metric: results[accuracy_metric]},
+        )
 
     def _test_text_summarization(
         self,
         model_name: str,
         gaudi_config: str,
-        baseline: float,
-        baseline_acc: float,
         batch_size: int,
         num_beams: int,
-        token: str,
         deepspeed: bool = False,
         world_size: int = 8,
     ):
@@ -159,17 +150,14 @@ class TestEncoderDecoderModels:
         if not deepspeed and model_name == "t5-3b":
             command.append("--bf16_full_eval")
 
-        self._run_test(command, task, baseline, baseline_acc)
+        self._run_test(command, task)
 
     def _test_text_translation(
         self,
         model_name: str,
         gaudi_config: str,
-        baseline: float,
-        baseline_acc: float,
         batch_size: int,
         num_beams: int,
-        token: str,
         deepspeed: bool = False,
         world_size: int = 8,
     ):
@@ -213,36 +201,30 @@ class TestEncoderDecoderModels:
             command_args=command_args,
         )
 
-        self._run_test(command, task, baseline, baseline_acc)
+        self._run_test(command, task)
 
     @pytest.mark.parametrize(
-        "model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams",
+        "model_name, gaudi_config, batch_size, num_beams",
         MODELS_TO_TEST["summarization"]["bf16"],
     )
     def test_text_summarization_bf16(
         self,
         model_name: str,
         gaudi_config: str,
-        baseline: float,
-        baseline_acc: float,
         batch_size: int,
         num_beams: int,
-        token: str,
     ):
-        self._test_text_summarization(model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams, token)
+        self._test_text_summarization(model_name, gaudi_config, batch_size, num_beams)
 
     @pytest.mark.parametrize(
-        "model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams",
+        "model_name, gaudi_config, batch_size, num_beams",
         MODELS_TO_TEST["translation"]["bf16"],
     )
     def test_text_translation_bf16(
         self,
         model_name: str,
         gaudi_config: str,
-        baseline: float,
-        baseline_acc: float,
         batch_size: int,
         num_beams: int,
-        token: str,
     ):
-        self._test_text_translation(model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams, token)
+        self._test_text_translation(model_name, gaudi_config, batch_size, num_beams)

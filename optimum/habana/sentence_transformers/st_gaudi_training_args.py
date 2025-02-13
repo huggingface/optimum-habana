@@ -14,7 +14,7 @@
 # limitations under the License.
 import logging
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Dict, Optional, Union
 
 from sentence_transformers.training_args import BatchSamplers, MultiDatasetBatchSamplers
 from transformers.training_args import ParallelMode
@@ -28,9 +28,38 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SentenceTransformerGaudiTrainingArguments(GaudiTrainingArguments):
     """
-    Inherits from GaudiTrainingArguments and adapted from: https://github.com/UKPLab/sentence-transformers/blob/v3.0.1/sentence_transformers/training_args.py
+    SentenceTransformerGaudiTrainingArguments extends :class:`~transformers.TrainingArguments` with additional arguments
+    specific to Sentence Transformers. See :class:`~transformers.TrainingArguments` for the complete list of
+    available arguments.
+
+    It inherits from GaudiTrainingArguments and adapted from:
+        https://github.com/UKPLab/sentence-transformers/blob/v3.3.1/sentence_transformers/training_args.py
+
+    Args:
+        output_dir (`str`):
+            The output directory where the model checkpoints will be written.
+        prompts (`Union[Dict[str, Dict[str, str]], Dict[str, str], str]`, *optional*):
+            The prompts to use for each column in the training, evaluation and test datasets. Four formats are accepted:
+
+            1. `str`: A single prompt to use for all columns in the datasets, regardless of whether the training/evaluation/test
+               datasets are :class:`datasets.Dataset` or a :class:`datasets.DatasetDict`.
+            2. `Dict[str, str]`: A dictionary mapping column names to prompts, regardless of whether the training/evaluation/test
+               datasets are :class:`datasets.Dataset` or a :class:`datasets.DatasetDict`.
+            3. `Dict[str, str]`: A dictionary mapping dataset names to prompts. This should only be used if your training/evaluation/test
+               datasets are a :class:`datasets.DatasetDict` or a dictionary of :class:`datasets.Dataset`.
+            4. `Dict[str, Dict[str, str]]`: A dictionary mapping dataset names to dictionaries mapping column names to
+               prompts. This should only be used if your training/evaluation/test datasets are a
+               :class:`datasets.DatasetDict` or a dictionary of :class:`datasets.Dataset`.
+
+        batch_sampler (Union[:class:`~sentence_transformers.training_args.BatchSamplers`, `str`], *optional*):
+            The batch sampler to use. See :class:`~sentence_transformers.training_args.BatchSamplers` for valid options.
+            Defaults to ``BatchSamplers.BATCH_SAMPLER``.
+        multi_dataset_batch_sampler (Union[:class:`~sentence_transformers.training_args.MultiDatasetBatchSamplers`, `str`], *optional*):
+            The multi-dataset batch sampler to use. See :class:`~sentence_transformers.training_args.MultiDatasetBatchSamplers`
+            for valid options. Defaults to ``MultiDatasetBatchSamplers.PROPORTIONAL``.
     """
 
+    prompts: Optional[Union[Dict[str, Dict[str, str]], Dict[str, str], str]] = None
     batch_sampler: Union[BatchSamplers, str] = field(
         default=BatchSamplers.BATCH_SAMPLER, metadata={"help": "The batch sampler to use."}
     )

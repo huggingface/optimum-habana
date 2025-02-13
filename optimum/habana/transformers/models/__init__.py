@@ -183,10 +183,8 @@ from .mixtral import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMixtralSparseMoeBlock,
     MixtralConfig,
-    gaudi_mixtral_block_dynamic_moe_forward,
-    gaudi_mixtral_block_moe_forward,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .mllama import (
@@ -256,6 +254,15 @@ from .qwen2_moe import (
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
 )
+from .qwen2_vl import (
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
+)
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
     gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
@@ -296,6 +303,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
@@ -325,3 +333,4 @@ from .xglm import (
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
 )
+from .xlm_roberta import gaudi_XLMRoberta_Sdpa_SelfAttention_forward
