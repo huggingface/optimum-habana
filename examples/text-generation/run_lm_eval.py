@@ -36,7 +36,7 @@ from lm_eval.models.utils import stop_sequences_criteria
 from run_generation import setup_parser
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
-from utils import finalize_quantization, initialize_model
+from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -439,6 +439,8 @@ def main() -> None:
 
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
