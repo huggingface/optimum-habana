@@ -16,7 +16,7 @@ import os
 import torch
 from trl import PreTrainedModelWrapper
 
-from optimum.habana.utils import to_device_dtype
+from ...utils import to_device_dtype
 
 
 def adapt_PreTrainedModelWrapper_to_gaudi():
