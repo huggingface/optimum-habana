@@ -429,7 +429,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
 
     keep_module_on_host = False
     if "Llama-3.1-405B" in args.model_name_or_path:
