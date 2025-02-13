@@ -60,6 +60,7 @@ from transformers.utils import (
 
 from ....distributed.tensorparallel import _all_reduce
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+from ..modeling_all_models import apply_customized_rope_module
 from .configuration_deepseek_v3 import DeepseekV3Config
 
 
@@ -67,8 +68,10 @@ logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekV3Config"
 
-# default expert number per slice for dynamic MoE
+# Maximum number of experts supported by dynamic MoE op (mixture_of_experts)
 SLICE_MAX_EXPERT = 80
+
+# import hpu fused ops
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 
@@ -114,7 +117,8 @@ class DeepseekV3RMSNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
-        if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        if hidden_states.device.type == "hpu" and FusedRMSNorm:  # use hpu fused rmsnorm
+            # use hpu fused rmsnorm
             # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
             if hidden_states.dtype != self.weight.dtype:
                 orig_dtype = hidden_states.dtype
@@ -147,6 +151,9 @@ class DeepseekV3RotaryEmbedding(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
         # Build here to make `torch.jit.trace` work.
+
+        # make it static (max_position_embeddings) instead of updating depending on
+        # longest eq_len seen till now: seq_len > self.max_seq_len_cached
         self.max_seq_len_cached = max_position_embeddings
         self._set_cos_sin_cache(
             seq_len=self.max_seq_len_cached,
@@ -319,11 +326,9 @@ class DeepseekV3YarnRotaryEmbedding(DeepseekV3RotaryEmbedding):
         self.register_buffer("sin_cached", (emb.sin() * _mscale).to(dtype), persistent=False)
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
+    if q.device.type == "hpu" and FusedRoPE:  # use fused hpu op
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
@@ -494,6 +499,7 @@ class DeepseekV3MoE(nn.Module):
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = DeepseekV3MLP(config=config, intermediate_size=intermediate_size)
 
+        # Slice experts for max experts supported by fused dynamic mixture_of_experts op
         self.expert_slice = math.ceil(self.experts_per_rank / SLICE_MAX_EXPERT)
         self.expert_chunk = self.experts_per_rank // self.expert_slice
 
@@ -507,6 +513,7 @@ class DeepseekV3MoE(nn.Module):
         batch = orig_shape[0]
         sequence_length = orig_shape[1]
         hidden_dim = orig_shape[2]
+        # changes for expert parallelism -- replacement for moe_infer()
         if self.training:
             padded_weights = torch.zeros(
                 (batch * sequence_length, self.config.n_routed_experts),
@@ -534,6 +541,8 @@ class DeepseekV3MoE(nn.Module):
             final_hidden_states = torch.zeros(
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
+            # changes to support hpu fused dynamic MoE op -- replacement for moe_infer()
+            # loop through expert slices due to limits on max. experts supported by mixture_of_experts op
             for idx in range(self.expert_slice):
                 expert_offset = self.ep_rank * self.experts_per_rank
                 experts_range = range(self.expert_chunk)
@@ -582,6 +591,7 @@ class DeepseekV3MoE(nn.Module):
         return final_hidden_states
 
 
+# functional apis need to be wrapped in classes for quantization
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -590,6 +600,7 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
+# hpu specific. kv cache handling. similar to other models on OH
 def gaudi_deepseekv3_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -624,6 +635,7 @@ def gaudi_deepseekv3_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
+# hpu specific. kv cache handling. similar to optimum-habana deepseek_v2
 class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
@@ -666,6 +678,7 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
+# hpu specific fused op. wrapped in a class as functional apis not supported for quantization
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -761,6 +774,7 @@ class DeepseekV3Attention(nn.Module):
         self._init_rope()
 
         self.num_key_value_groups = self.num_heads // config.num_key_value_heads
+        # hpu specific warpping functional api into nn.module classes for quantization
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -776,6 +790,7 @@ class DeepseekV3Attention(nn.Module):
                 self.softmax_scale = self.softmax_scale * mscale * mscale
 
         self.norm_factor = self.softmax_scale
+        # hpu specific warpping functional api into nn.module classes for quantization
         self.fused_scaled_dot_product_attention = (
             ModuleFusedSDPA(
                 FusedSDPA,
@@ -834,6 +849,7 @@ class DeepseekV3Attention(nn.Module):
             else:
                 raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
 
+    # hpu-specific, similar to other model files in OH
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         compressed_kv_cache_shape = (batch_size, max_seq_len, self.kv_lora_rank)
         k_pe_cache_shape = (batch_size, max_seq_len, self.qk_rope_head_dim)
@@ -921,6 +937,7 @@ class DeepseekV3Attention(nn.Module):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
+
         if self.training:
             if "padding_mask" in kwargs:
                 warnings.warn(
@@ -965,7 +982,7 @@ class DeepseekV3Attention(nn.Module):
                         kv_seq_len = past_key_value[0].shape[-2]
 
             cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-            q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
+            q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids, self.training)
 
             query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
             query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
@@ -980,7 +997,7 @@ class DeepseekV3Attention(nn.Module):
                 key_states, value_states = past_key_value.update(
                     key_states, value_states, self.layer_idx, cache_kwargs
                 )
-            # optimization
+            # hpu specific optimization, similar to other modeling files in optimum-habana
             if use_flash_attention and FusedSDPA is not None:
                 if q_len == 1:
                     # next token
@@ -1055,6 +1072,7 @@ class DeepseekV3Attention(nn.Module):
                 )
                 attn_output = self.matmul_av(attn_weights, value_states)
         else:
+            # inference
             hidden_states_q = hidden_states
             hidden_states_kv = hidden_states
             self.split_kv_b_proj()
