@@ -3,5 +3,10 @@
     "mode": "QUANTIZE",
     "observer": "maxabs",
     "scale_method": "unit_scale",
-    "dump_stats_path": "./hqt_output/measure"
+    "whitelist": {"types": [], "names":  []},
+    "blacklist": {"types": [], "names":  []},
+    "quantize_weight": false,
+    "dump_stats_path": "./results/hk",
+    "ignore_modules_wo_measures": "True",
+    "dump_stats_xlsx_path": "./run_outputs/fp8stats.xlsx"
 }
