@@ -289,6 +289,7 @@ from .models import (
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
     gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
+    JanusMultiModalConfig, JanusMultiModalForCausalLM
 )
 
 
@@ -809,3 +810,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.detr.modeling_detr.DetrLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.models.detr.modeling_detr.DetrLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.models.detr.modeling_detr.DetrLoss.forward = gaudi_DetrLoss_forward
+
+    # FIXME: Change this to model type janus once complete
+    transformers.AutoConfig.register("multi_modality", JanusMultiModalConfig)
+    transformers.AutoModelForCausalLM.register(JanusMultiModalConfig, JanusMultiModalForCausalLM)
