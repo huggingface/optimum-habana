@@ -34,7 +34,6 @@ from transformers.models.gemma2.modeling_gemma2 import (
 )
 from transformers.utils import logging
 
-from ....distributed.strategy import DistributedStrategy, NoOpStrategy
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
@@ -878,10 +877,6 @@ class GaudiGemma2Model(Gemma2Model):
 
 
 class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
-    def __init__(self, config, parallel_strategy: DistributedStrategy = NoOpStrategy):
-        config.parallel_strategy = parallel_strategy
-        super().__init__(config)
-
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 

@@ -1523,7 +1523,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 parallel_state.sequence_parallel_is_initialized()
                 and parallel_state.get_sequence_parallel_world_size() > 1
             ):
-                from optimum.habana.distributed.contextparallel import _get_loss_from_context_parallel
+                from ....distributed.contextparallel import _get_loss_from_context_parallel
 
                 loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
                 loss_all = _get_loss_from_context_parallel(loss_fct(shift_logits, shift_labels))
