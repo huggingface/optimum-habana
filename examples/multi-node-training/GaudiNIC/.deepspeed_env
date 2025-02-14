@@ -1,0 +1,5 @@
+GC_KERNEL_PATH=/usr/lib/habanalabs/libtpc_kernels.so
+HABANA_LOGS=/var/log/habana_logs/
+HABANA_SCAL_BIN_PATH=/opt/habanalabs/engines_fw
+HABANA_PLUGINS_LIB_PATH=/opt/habanalabs/habana_plugins
+DATA_LOADER_AEON_LIB_PATH=/usr/lib/habanalabs/libaeon.so
