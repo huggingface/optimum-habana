@@ -1645,7 +1645,9 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         # Finally we need to normalize the loss for reporting
-        if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
+        if (not self.model_accepts_loss_kwargs and self.compute_loss_func is None) or (num_items_in_batch is None):
+            # TODO refer to todo in function get_batch_samples_transformers -
+            # temporary fix to calculate loss correctly
             loss = loss / self.args.gradient_accumulation_steps
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
