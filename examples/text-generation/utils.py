@@ -479,7 +479,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path, torch_dtype=config.torch_dtype, **model_kwargs
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
                 )
     model.eval()
 
