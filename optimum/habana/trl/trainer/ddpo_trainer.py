@@ -28,8 +28,8 @@ from trl.models import DDPOStableDiffusionPipeline
 from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
-from optimum.habana import GaudiConfig
-from optimum.habana.utils import set_seed
+from ... import GaudiConfig
+from ...utils import set_seed
 
 
 logger = get_logger(__name__)
@@ -52,7 +52,6 @@ class GaudiDDPOTrainer(DDPOTrainer):
         The changes are:
         - add new args gaudi_config
         - support HPU graphs for trainable layers
-        - use GaudiAccelerator instead of Accelerator
         - support FusedClipNorm
         """
         if image_samples_hook is None:

@@ -111,6 +111,10 @@ env_variable_2_name=value
 ...
 ```
 
+You can find an example for GaudiNIC instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/.deepspeed_env).
+
+> Note above environment variables refers to /etc/profile.d/habanalabs.sh inside docker, and should set only on GaudiNIC master node.
+
 You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/.deepspeed_env).
 
 > Note that one should set `HCCL_OVER_OFI=1` and `LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` only on AWS DL1 instances. *These should not be used otherwise*.

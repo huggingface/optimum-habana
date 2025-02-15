@@ -158,7 +158,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config:
+        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -260,6 +260,12 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
     elif args.load_quantized_model_with_inc:
+        # TODO: This will be removed in v1.20 Synapse release
+        # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+        import neural_compressor.torch.algorithms.fp8_quant.save_load as nc_sl
+
+        nc_sl.split_rank_state_dict = local_split_rank_state_dict
+
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -315,6 +321,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.torch_compile:
         model = get_torch_compiled_model(model, logger)
+        assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
+            "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
+        )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
@@ -430,7 +439,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-    load_to_meta = model_on_meta(config)
+
+    keep_module_on_host = False
+    if "Llama-3.1-405B" in args.model_name_or_path:
+        keep_module_on_host = True
+
+    load_to_meta = False if keep_module_on_host else model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -485,6 +499,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
+    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -672,6 +687,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
+    generation_config.attn_batch_split = args.attn_batch_split
 
     return generation_config
 
@@ -682,7 +698,7 @@ def exclude_hpu_graph_configs(args):
         if "falcon-180B" in args.model_name_or_path or "falcon-180b" in args.model_name_or_path:
             return False
         if args.world_size == 2 or args.world_size == 4 or args.world_size == 8:
-            if args.quant_config:
+            if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
                 if args.max_input_tokens >= 8192 and args.max_new_tokens >= 128:
                     return False
             else:
@@ -696,6 +712,9 @@ def exclude_hpu_graph_configs(args):
 def initialize_model(args, logger):
     init_start = time.perf_counter()
     setup_distributed(args)
+    if not args.world_size > 0 and args.attn_batch_split > 1:
+        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
+        args.attn_batch_split = 1
     if exclude_hpu_graph_configs(args):
         args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
@@ -725,7 +744,7 @@ def initialize_model(args, logger):
 
     model, assistant_model = (
         setup_model(args, model_dtype, model_kwargs, logger)
-        if not use_deepspeed
+        if not use_deepspeed or args.load_quantized_model_with_inc
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
         if args.parallel_strategy == "none"
         else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
@@ -738,10 +757,48 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.quant_config:
+    if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, assistant_model, tokenizer, generation_config
+
+
+def save_model(model, tokenizer, save_path):
+    """Saves the model and tokenizer in the huggingface format with neural_compressor."""
+    from neural_compressor.torch.quantization import save
+
+    save(model, save_path, format="huggingface")
+    tokenizer.save_pretrained(save_path)
+
+
+# TODO: This will be removed in v1.20 Synapse release
+# Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+def local_split_rank_state_dict(model, gathered_state_dict):
+    """split state_dict for current local_rank."""
+    from neural_compressor.torch.algorithms.fp8_quant.save_load import (
+        cur_accelerator,
+        local_rank,
+        split_weights,
+        world_size,
+    )
+
+    rank_state_dict = {}
+    for name, param in model.named_parameters():
+        if name in gathered_state_dict:
+            full_weight = gathered_state_dict[name]
+            if len(param.shape) != 0 and full_weight.shape != param.shape:
+                if full_weight.shape[0] != param.shape[0]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+                elif full_weight.shape[1] != param.shape[1]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=1).clone()
+                else:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+            else:
+                split_weight = full_weight
+            rank_state_dict[name] = split_weight
+        cur_accelerator.synchronize()
+
+    return rank_state_dict

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import operator
 import os
 
 import numpy as np
@@ -27,20 +28,20 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 MODELS_TO_TEST = {
     "text-to-speech": [
-        ("microsoft/speecht5_tts", 16000),
-        ("facebook/hf-seamless-m4t-medium", 16000),
-        ("facebook/mms-tts-eng", 16000),
+        "microsoft/speecht5_tts",
+        "facebook/hf-seamless-m4t-medium",
+        "facebook/mms-tts-eng",
     ],
     "image-to-text": [
-        ("Salesforce/blip-image-captioning-base", "a soccer player is playing a game on the app"),
-        ("nlpconnect/vit-gpt2-image-captioning", "a soccer game with a player jumping to catch"),
+        ("Salesforce/blip-image-captioning-base", 44),
+        ("nlpconnect/vit-gpt2-image-captioning", 44),
     ],
 }
 
 
 class TestGaudiPipeline:
-    @pytest.mark.parametrize("model, expected_result", MODELS_TO_TEST["image-to-text"])
-    def test_image_to_text(self, model, expected_result):
+    @pytest.mark.parametrize("model, validate_length", MODELS_TO_TEST["image-to-text"])
+    def test_image_to_text(self, model, validate_length, baseline):
         adapt_transformers_to_gaudi()
         MODEL_DTYPE_LIST = [torch.bfloat16, torch.float32]
         generate_kwargs = {
@@ -60,10 +61,12 @@ class TestGaudiPipeline:
             generator.model = wrap_in_hpu_graph(generator.model)
             for i in range(3):
                 output = generator(image, generate_kwargs=generate_kwargs)
-            assert output[0]["generated_text"].startswith(expected_result)
 
-    @pytest.mark.parametrize("model, expected_sample_rate", MODELS_TO_TEST["text-to-speech"])
-    def test_text_to_speech(self, model, expected_sample_rate):
+            result = output[0]["generated_text"][:validate_length]
+            baseline.assertRef(compare=operator.eq, generated_text=result)
+
+    @pytest.mark.parametrize("model", MODELS_TO_TEST["text-to-speech"])
+    def test_text_to_speech(self, model, baseline):
         adapt_transformers_to_gaudi()
         MODEL_DTYPE_LIST = [torch.bfloat16, torch.float32]
         text = "hello, the dog is cooler"
@@ -95,4 +98,5 @@ class TestGaudiPipeline:
                 for i in range(3):
                     output = generator(text, forward_params=forward_params, generate_kwargs=generate_kwargs)
             assert isinstance(output["audio"], np.ndarray)
-            assert output["sampling_rate"] == expected_sample_rate
+
+            baseline.assertRef(compare=operator.eq, sampling_rate=output["sampling_rate"])

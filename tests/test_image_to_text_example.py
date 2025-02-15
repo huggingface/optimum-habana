@@ -14,34 +14,34 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            # ("llava-hf/llava-1.5-7b-hf", 1, 77.98733740859008),
-            # ("llava-hf/llava-1.5-13b-hf", 1, 48.54364937033955),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
-            ("google/paligemma-3b-mix-224", 1, 132.8949150246155),
-            ("HuggingFaceM4/idefics2-8b", 1, 21.89944593215077),
-            ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1, 18.974541922240313),
-            ("tiiuae/falcon-11B-vlm", 1, 23.69260849957278),
-            ("Qwen/Qwen2-VL-2B-Instruct", 1, 28.755882208438422),
-            ("Qwen/Qwen2-VL-7B-Instruct", 1, 19.32562189532818),
+            # ("llava-hf/llava-1.5-7b-hf", 1),
+            # ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
+            ("google/paligemma-3b-mix-224", 1),
+            ("HuggingFaceM4/idefics2-8b", 1),
+            ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1),
+            ("tiiuae/falcon-11B-vlm", 1),
+            ("Qwen/Qwen2-VL-2B-Instruct", 1),
+            ("Qwen/Qwen2-VL-7B-Instruct", 1),
         ],
         "fp8": [
-            # ("llava-hf/llava-1.5-7b-hf", 1, 98.72578382705062),
-            # ("llava-hf/llava-1.5-13b-hf", 1, 67.20488222876344),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 45.011551008367084),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 45.18544502949674),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 30.9535718774675),
+            # ("llava-hf/llava-1.5-7b-hf", 1),
+            # ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
         ],
     }
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 28.04096918512148),
-            ("llava-hf/llava-1.5-13b-hf", 1, 16.704731010481538),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 10.759228696741),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 6.96732060769783),
+            ("llava-hf/llava-1.5-7b-hf", 1),
+            ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
         ],
         "fp8": [],
     }
@@ -49,7 +49,7 @@ else:
 
 def _test_image_to_text(
     model_name: str,
-    baseline: float,
+    baseline,
     token: str,
     batch_size: int = 1,
     fp8: bool = False,
@@ -63,6 +63,7 @@ def _test_image_to_text(
         f"--model_name_or_path {model_name}",
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
+        "--ignore_eos",
     ]
 
     command += [
@@ -118,15 +119,21 @@ def _test_image_to_text(
         with open(Path(tmp_dir) / "results.json") as fp:
             results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
-        assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[device],
+            throughput=results["throughput"],
+        )
 
 
-@pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
-def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, token: str):
+@pytest.mark.parametrize("model_name, batch_size", MODELS_TO_TEST["bf16"])
+def test_image_to_text_bf16(model_name: str, batch_size: int, baseline, token):
     _test_image_to_text(model_name, baseline, token, batch_size)
 
 
-@pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["fp8"])
-def test_image_to_text_fp8(model_name: str, baseline: float, batch_size: int, token: str):
+@pytest.mark.parametrize("model_name, batch_size", MODELS_TO_TEST["fp8"])
+def test_image_to_text_fp8(model_name: str, batch_size: int, baseline, token):
     _test_image_to_text(model_name, baseline, token, batch_size, fp8=True)

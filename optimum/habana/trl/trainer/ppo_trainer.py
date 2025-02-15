@@ -53,8 +53,7 @@ from trl.trainer import (
     RunningMoments,
 )
 
-from optimum.habana.utils import set_seed
-
+from ...utils import set_seed
 from . import GaudiPPOConfig
 
 
@@ -79,7 +78,6 @@ class GaudiPPOTrainer(PPOTrainer):
         Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L148
         The only differences are:
         - add new args for Gaudi in config
-        - use GaudiAccelerator instead of Accelerator
         """
         BaseTrainer.__init__(self, config)
 
