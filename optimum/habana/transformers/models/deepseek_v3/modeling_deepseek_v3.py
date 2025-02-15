@@ -117,7 +117,7 @@ class DeepseekV3RMSNorm(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
-        if hidden_states.device.type == "hpu" and FusedRMSNorm:  # use hpu fused rmsnorm
+        if hidden_states.device.type == "hpu" and FusedRMSNorm:
             # use hpu fused rmsnorm
             # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
             if hidden_states.dtype != self.weight.dtype:
@@ -153,7 +153,7 @@ class DeepseekV3RotaryEmbedding(nn.Module):
         # Build here to make `torch.jit.trace` work.
 
         # make it static (max_position_embeddings) instead of updating depending on
-        # longest eq_len seen till now: seq_len > self.max_seq_len_cached
+        # longest seq_len seen till now: seq_len > self.max_seq_len_cached
         self.max_seq_len_cached = max_position_embeddings
         self._set_cos_sin_cache(
             seq_len=self.max_seq_len_cached,
@@ -501,7 +501,7 @@ class DeepseekV3MoE(nn.Module):
 
         # Slice experts for max experts supported by fused dynamic mixture_of_experts op
         self.expert_slice = math.ceil(self.experts_per_rank / SLICE_MAX_EXPERT)
-        self.expert_chunk = self.experts_per_rank // self.expert_slice
+        self.expert_chunk = math.ceil(self.experts_per_rank / self.expert_slice)
 
     def forward(self, hidden_states):
         identity = hidden_states
@@ -544,20 +544,12 @@ class DeepseekV3MoE(nn.Module):
             # changes to support hpu fused dynamic MoE op -- replacement for moe_infer()
             # loop through expert slices due to limits on max. experts supported by mixture_of_experts op
             for idx in range(self.expert_slice):
-                expert_offset = self.ep_rank * self.experts_per_rank
-                experts_range = range(self.expert_chunk)
-                gate_proj_list = [
-                    self.experts[idx * self.expert_chunk + i + expert_offset].gate_proj.weight.squeeze()
-                    for i in experts_range
-                ]
-                down_proj_list = [
-                    self.experts[idx * self.expert_chunk + i + expert_offset].down_proj.weight.squeeze()
-                    for i in experts_range
-                ]
-                up_proj_list = [
-                    self.experts[idx * self.expert_chunk + i + expert_offset].up_proj.weight.squeeze()
-                    for i in experts_range
-                ]
+                experts_min = (self.ep_rank * self.experts_per_rank) + (self.expert_chunk * idx)
+                experts_max = min((experts_min + self.expert_chunk), (self.ep_rank + 1) * self.experts_per_rank)
+                experts_range = range(experts_min, experts_max)
+                gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
+                down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
+                up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in experts_range]
 
                 hidden_states_slice = torch.ops.hpu.mixture_of_experts(
                     hidden_states=hidden_states,
@@ -568,8 +560,8 @@ class DeepseekV3MoE(nn.Module):
                     w3=down_proj_list,
                     permuted_weights=True,
                     activation="silu",
-                    experts_min=(self.expert_chunk * idx + expert_offset),
-                    experts_max=(self.expert_chunk * (idx + 1) - 1 + expert_offset),
+                    experts_min=experts_min,
+                    experts_max=experts_max - 1,
                 )
                 final_hidden_states = final_hidden_states + hidden_states_slice
                 htcore.mark_step()
@@ -591,7 +583,7 @@ class DeepseekV3MoE(nn.Module):
         return final_hidden_states
 
 
-# functional apis need to be wrapped in classes for quantization
+# Functional apis need to be wrapped in classes for quantization on hpu
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -600,7 +592,6 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
-# hpu specific. kv cache handling. similar to other models on OH
 def gaudi_deepseekv3_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -774,7 +765,7 @@ class DeepseekV3Attention(nn.Module):
         self._init_rope()
 
         self.num_key_value_groups = self.num_heads // config.num_key_value_heads
-        # hpu specific warpping functional api into nn.module classes for quantization
+        # hpu specific wrapping functional api into nn.module classes for quantization
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
