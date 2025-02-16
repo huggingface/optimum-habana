@@ -556,7 +556,7 @@ class GaudiLlamaAttention(LlamaAttention):
         elif hasattr(self.k_proj, "use_qdq") and self.k_proj.use_qdq:
             return self.k_proj.dequant_weights.hp_dtype
         elif isinstance(self.k_cache, KVCache) and "float8" in str(self.k_proj.weight.dtype):
-            return self.k_proj.scale_weight.dtype
+            return self.k_proj.hp_dtype
         return self.k_proj.weight.dtype
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
