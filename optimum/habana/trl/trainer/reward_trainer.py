@@ -20,7 +20,7 @@ from transformers import (
 )
 from transformers.utils import PaddingStrategy
 
-from optimum.habana import GaudiTrainer
+from ... import GaudiTrainer
 
 
 class GaudiRewardTrainer(GaudiTrainer):

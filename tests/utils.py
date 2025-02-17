@@ -47,7 +47,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "wav2vec2": [
         ("facebook/wav2vec2-base", "Habana/wav2vec2"),
-        # ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
+        ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],

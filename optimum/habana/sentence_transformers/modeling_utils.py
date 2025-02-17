@@ -23,7 +23,7 @@ def adapt_sentence_transformers_to_gaudi():
     from sentence_transformers.data_collator import SentenceTransformerDataCollator
     from sentence_transformers.models import Transformer
 
-    from optimum.habana.sentence_transformers import (
+    from . import (
         st_gaudi_data_collator_call,
         st_gaudi_encode,
         st_gaudi_transformer_save,

@@ -598,7 +598,7 @@ Some models can fit on HPU DRAM but can't fit on the CPU RAM.
 When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in INC. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
 Here is an example of using disk_offload in quantize command.
-Please follow the "Running FP8 models on single device" section first before running the cmd below.
+Please follow the [Running FP8 models on single device](#running-fp8-models-on-single-device) section first before running the cmd below.
 
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json TQDM_DISABLE=1 \
@@ -620,6 +620,57 @@ python run_generation.py \
 --flash_attention_recompute
 ```
 
+### Saving FP8 Checkpoints in Hugging Face format
+After quantizing the model, we can save it to a local path.
+
+> [!NOTE]  
+> Before executing the command below, please refer to the [Running with FP8](#running-with-fp8) section to measure the model quantization statistics.
+
+Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 2 run_generation.py \
+--model_name_or_path meta-llama/Llama-3.1-70B \
+--attn_softmax_bf16 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
+--bf16 \
+--batch_size 1 \
+--max_new_tokens 128 \
+--max_input_tokens 128 \
+--limit_hpu_graphs \
+--save_quantized_model_with_inc \
+--saved_model_path <model_path_on_local_disk>
+```
+
+> [!NOTE]
+> For multi-card usage, the number of cards loaded and used needs to be kept consistent with that when saving.
+
+### Loading FP8 Checkpoints from Hugging Face
+You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127) or a path to FP8 Checkpoints saved in Hugging Face format.
+
+Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
+```bash
+python ../gaudi_spawn.py \
+--use_deepspeed --world_size 2 run_lm_eval.py \
+-o acc_load_fp8_model.txt \
+--model_name_or_path neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8 \
+--use_hpu_graphs \
+--use_kv_cache \
+--trim_logits \
+--batch_size 1 \
+--bf16 \
+--use_flash_attention \
+--flash_attention_recompute \
+--attn_softmax_bf16 \
+--bucket_size=128 \
+--bucket_internal \
+--load_quantized_model_with_inc
+```
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
@@ -735,7 +786,7 @@ Currently, this support is limited to UINT4 inference of pre-quantized models on
 
 Please run the following command to install AutoAWQ:
 ```bash
-pip install triton==3.1.0 autoawq
+pip install -r requirements_awq.txt
 ```
 
 You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.

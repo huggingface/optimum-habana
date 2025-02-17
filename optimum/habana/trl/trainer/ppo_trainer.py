@@ -53,8 +53,7 @@ from trl.trainer import (
     RunningMoments,
 )
 
-from optimum.habana.utils import set_seed
-
+from ...utils import set_seed
 from . import GaudiPPOConfig
 
 
@@ -99,7 +98,7 @@ class GaudiPPOTrainer(PPOTrainer):
             )
         # Step 1: Initialize Accelerator
         if config.use_habana:
-            from optimum.habana.accelerate import GaudiAccelerator as Accelerator
+            from ...accelerate import GaudiAccelerator as Accelerator
         else:
             from accelerate import Accelerator
         self.accelerator = Accelerator(
