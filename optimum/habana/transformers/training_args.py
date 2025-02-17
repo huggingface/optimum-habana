@@ -176,7 +176,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
     use_compiled_autograd: Optional[bool] = field(
         default=False,
-        metadata={"help": ("Whether to use compiled autograd for training. Currently only for summarization models.")},
+        metadata={
+            "help": (
+                "Whether to use compiled autograd for training. Currently only for summarization models or when using deepspeed."
+            )
+        },
     )
 
     compile_dynamic: Optional[bool | None] = field(
