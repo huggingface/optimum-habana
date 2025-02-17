@@ -16,6 +16,7 @@ CURRENT_DIR = $(shell pwd)
 DEFAULT_CLONE_URL := https://github.com/huggingface/optimum-habana.git
 # If CLONE_URL is empty, revert to DEFAULT_CLONE_URL
 REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
+DEEPSPEED_INSTALL := git+ssh://git@github.com/habana-internal/deepspeed-fork.git@v1.20.0
 
 
 .PHONY:	style test
@@ -93,7 +94,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install $(DEEPSPEED_INSTALL)
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -109,7 +110,7 @@ slow_tests_diffusers: test_installs
 slow_tests_text_generation_example: test_installs
 	python -m pip install -r examples/text-generation/requirements_awq.txt
 	BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install $(DEEPSPEED_INSTALL)
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 1 Gaudi card
@@ -120,17 +121,17 @@ slow_tests_text_generation_example_1x: test_installs
 
 # Run subset of text-generation non-regression tests that require 2 Gaudi cards
 slow_tests_text_generation_example_2x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install $(DEEPSPEED_INSTALL)
 	python -m pytest tests/test_text_generation_example.py -m x2 -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 4 Gaudi cards
 slow_tests_text_generation_example_4x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install $(DEEPSPEED_INSTALL)
 	python -m pytest tests/test_text_generation_example.py -m x4 -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 8 Gaudi cards
 slow_tests_text_generation_example_8x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install $(DEEPSPEED_INSTALL)
 	python -m pytest tests/test_text_generation_example.py -m x8 -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests
