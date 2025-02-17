@@ -2465,6 +2465,7 @@ class GaudiTrainer(Trainer):
             "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
             "use_regional_compilation": self.args.use_regional_compilation,
+            "compiled_autograd_enable": self.args.use_compiled_autograd,
         }
 
         # create accelerator object

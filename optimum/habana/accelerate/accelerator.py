@@ -124,6 +124,7 @@ class GaudiAccelerator(Accelerator):
         distribution_strategy: str = None,
         force_autocast: bool = False,
         use_regional_compilation: bool | None = None,
+        compiled_autograd_enable: bool = False,
     ):
         self.trackers = []
         self.mpu = parallel_state
@@ -317,6 +318,7 @@ class GaudiAccelerator(Accelerator):
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
         self.dynamic = dynamic
         self.use_regional_compilation = use_regional_compilation
+        self.compiled_autograd_enable = compiled_autograd_enable
 
         # Mixed precision attributes
         self.scaler = None
@@ -799,7 +801,10 @@ class GaudiAccelerator(Accelerator):
                 if self.use_regional_compilation:
                     self.compile_regions(engine.module)
                 else:
-                    engine.compile(compile_kwargs={"dynamic": self.dynamic})
+                    engine.compile(
+                        compile_kwargs={"dynamic": self.dynamic},
+                        compiled_autograd_enabled=self.compiled_autograd_enable,
+                    )
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
