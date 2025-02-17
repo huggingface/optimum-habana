@@ -297,6 +297,7 @@ class MyDataCollator:
 
         return batch
 
+
 class LLavaDataCollator:
     def __init__(self, processor, max_seq_length):
         self.processor = processor
@@ -561,7 +562,9 @@ def main():
         else:
             raise ValueError("Please provide value for image_token_id")
 
-        data_collator = MyDataCollator(processor, max_seq_length=data_args.max_seq_length, image_token_id=image_token_id)
+        data_collator = MyDataCollator(
+            processor, max_seq_length=data_args.max_seq_length, image_token_id=image_token_id
+        )
 
     gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True

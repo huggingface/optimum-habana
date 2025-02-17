@@ -161,17 +161,8 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
             )
 
-        legacy_processing = False
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
-
-            # if the number of image tokens is more than image embeddings seq length, then prob we expanded it in processing
-            # not very reliable, but we don't expect one to actually pass 500+ images for one prompt
-            # In case we're in decoding stage, legacy behavior is checked by presence of pixel values even if use_cache=True
-            legacy_processing = (
-                (input_ids == self.config.image_token_index).sum(1).max() < self.config.image_seq_length
-            ) or (input_ids.shape[-1] == 1 and pixel_values is not None)
-
 
         image_features = None
         # 2. Merge text and images
