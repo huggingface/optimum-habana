@@ -408,6 +408,25 @@ def setup_parser(parser):
         help="Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.",
     )
 
+    parser.add_argument(
+        "--regional_compile",
+        action="store_true",
+        help="Whether to enable regional compilation.",
+    )
+
+    parser.add_argument(
+        "--force_static_compile",
+        action="store_true",
+        help="Whether to force static compile.",
+    )
+
+    parser.add_argument(
+        "--cache_size_limit",
+        default=None,
+        type=int,
+        help="Overwrite torch._dynamo.config default cache size with user provided value",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
