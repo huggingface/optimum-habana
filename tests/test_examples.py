@@ -205,7 +205,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_image2text_lora_finetune": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_VISION_2_SEQ_MAPPING,
-        ["idefics2", "mllama"],
+        ["idefics2", "mllama", "llava"],
     ),
 }
 
