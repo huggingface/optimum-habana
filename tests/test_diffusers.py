@@ -1047,6 +1047,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
         self.assertEqual(len(outputs.images), 2 * 3)
 
+    @slow
     def test_stable_diffusion_xl_num_images_per_prompt(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -1094,6 +1095,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
     def test_stable_diffusion_xl_batch_sizes(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -1250,6 +1252,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 ).images[0]
                 self.assertEqual(image.shape, (1024, 1024, 3))
 
+    @slow
     def test_stable_diffusion_xl_default(self):
         components = self.get_dummy_components()
 
@@ -1274,6 +1277,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
     def test_stable_diffusion_xl_hpu_graphs(self):
         components = self.get_dummy_components()
 
@@ -1299,6 +1303,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
     def test_stable_diffusion_xl_num_images_per_prompt_optimized(self):
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -1371,6 +1376,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
         os.environ.pop("PATCH_SDPA")
 
+    @slow
     def test_stable_diffusion_xl_optimized_fp8(self):
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -1821,6 +1827,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
         }
         return inputs
 
+    @slow
     def test_stable_diffusion_controlnet_num_images_per_prompt(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -1864,6 +1871,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
     def test_stable_diffusion_controlnet_batch_sizes(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -2103,6 +2111,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         }
         return inputs
 
+    @slow
     def test_stable_diffusion_multicontrolnet_num_images_per_prompt(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -2146,6 +2155,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @slow
     def test_stable_diffusion_multicontrolnet_batch_sizes(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
@@ -2958,6 +2968,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         }
         return inputs
 
+    @slow
     def test_stable_video_diffusion_single_video(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -5734,7 +5745,8 @@ class GaudiDDPMPipelineTester(TestCase):
         }
         return inputs
 
-    def test_ddpmpipline_default(self):
+    @slow
+    def test_ddpm_pipeline_default(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -5757,7 +5769,8 @@ class GaudiDDPMPipelineTester(TestCase):
         expected_slice = np.array([255, 0, 138, 139, 255, 36, 164, 0, 255])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1)
 
-    def test_ddpmpipline_batch_sizes(self):
+    @slow
+    def test_ddpm_pipeline_batch_sizes(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
 
@@ -5777,7 +5790,7 @@ class GaudiDDPMPipelineTester(TestCase):
         self.assertEqual(len(images), batch_size)
         self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
 
-    def test_ddpmpipline_bf16(self):
+    def test_ddpm_pipeline_bf16(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=True)
 
@@ -5792,7 +5805,8 @@ class GaudiDDPMPipelineTester(TestCase):
 
         self.assertEqual(np.array(image).shape, (256, 256, 3))
 
-    def test_ddpmpipline_hpu_graphs(self):
+    @slow
+    def test_ddpm_pipeline_hpu_graphs(self):
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig()
 
@@ -6298,6 +6312,7 @@ class I2VGenXLPipelineTests(TestCase):
         }
         return inputs
 
+    @slow
     def test_cfg(self):
         sig = inspect.signature(self.pipeline_class.__call__)
 
