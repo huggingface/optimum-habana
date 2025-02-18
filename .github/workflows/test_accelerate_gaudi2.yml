@@ -1,0 +1,74 @@
+name: (Gaudi2) Accelerate integration tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 23 * * *" # every Wednesday and Saturday at 1am CET (midnight winter time)
+
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  accelerate:
+    name: Test Accelerate integration
+
+    runs-on: [self-hosted, linux, x64, gaudi2]
+
+    container:
+      image: vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest
+      options: --runtime=habana
+        --ipc=host
+        --net=host
+        --cap-add=sys_nice
+        --env HABANA_VISIBLE_DEVICES=all
+        --env OMPI_MCA_btl_vader_single_copy_mechanism=none
+        --env HF_HOME=/data
+        --env GAUDI2_CI=1
+
+    steps:
+      - name: Checkout Accelerate
+        uses: actions/checkout@v4
+        with:
+          repository: huggingface/accelerate
+          branch: hpu-upstream
+
+      - name: Install Accelerate
+        run: |
+          pip install -e ./accelerate[testing]
+          pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+
+      - name: Run Accelerate Core tests
+        run: |
+          make test_core
+        env:
+          PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          RUN_SLOW: 1
+
+      - name: Run Accelerate CLI tests
+        run: |
+          make test_cli
+        env:
+          PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          RUN_SLOW: 1
+
+      - name: Run Accelerate FSDP tests
+        run: |
+          make test_fsdp
+        env:
+          PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          PT_HPU_LAZY_MODE: 0 # for fsdp
+          RUN_SLOW: 1
+
+      - name: Run Accelerate DeepSpeed tests
+        run: |
+          make test_deepspeed
+        env:
+          PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          PT_HPU_LAZY_MODE: 0 # for cpu offload
+          RUN_SLOW: 1

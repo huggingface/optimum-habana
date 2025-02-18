@@ -6,11 +6,6 @@ on:
     - cron: "0 21 * * 0-5" # every Sunday to Friday at 11pm CET (10pm winter time)
     - cron: "0 21 * * 6" # every Saturday at 1am CET (midnight winter time)
 
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true

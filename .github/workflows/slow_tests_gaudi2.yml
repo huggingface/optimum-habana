@@ -17,7 +17,7 @@ concurrency:
 jobs:
   example-diff:
     name: Test examples differences
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -43,7 +43,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - example-diff # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -72,7 +72,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - stable-diffusion # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -101,7 +101,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - deepspeed # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -130,7 +130,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - fsdp # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -159,7 +159,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - multi-card # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -189,7 +189,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - single-card # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -218,7 +218,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - text-generation # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -247,7 +247,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - trl # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout Optimum Habana
         uses: actions/checkout@v2
@@ -279,42 +279,3 @@ jobs:
           --ipc=host \
           vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
           /bin/bash optimum-habana/tests/ci/sentence_transformers.sh
-  accelerate:
-    name: Test Accelerate integration
-    if: ${{ !cancelled() && (success() || failure()) }}
-    needs:
-      - sentence-transformers # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2]
-    steps:
-      - name: Checkout Optimum Habana
-        uses: actions/checkout@v2
-        with:
-          repository: "huggingface/optimum-habana"
-          branch: "upstream-accelerate"
-          path: optimum-habana
-      - name: Checkout Accelerate
-        uses: actions/checkout@v2
-        with:
-          repository: "huggingface/accelerate"
-          branch: "hpu-support"
-          path: accelerate
-      - name: Pull image
-        run: |
-          docker pull vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest
-      - name: Run tests
-        run: |
-          docker run \
-          --rm \
-          -v $PWD:/root/workspace \
-          -v /scratch-1:/data \
-          --workdir=/root/workspace \
-          --runtime=habana \
-          -e HABANA_VISIBLE_DEVICES=all \
-          -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-          -e GAUDI2_CI=1 \
-          -e HF_HOME=/data \
-          --cap-add=sys_nice \
-          --net=host \
-          --ipc=host \
-          vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
-          /bin/bash optimum-habana/tests/ci/acclerate.sh
