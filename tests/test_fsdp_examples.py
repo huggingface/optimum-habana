@@ -8,9 +8,10 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
@@ -145,24 +146,22 @@ def _test_fsdp(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             train_samples_per_second=results["train_samples_per_second"],
         )
         if model_name == "bert-base-uncased":
             baseline.assertRef(
                 compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 eval_f1=results["eval_f1"],
             )
         else:
             baseline.assertRef(
                 compare=lambda actual, ref: actual <= (2 - ACCURACY_PERF_FACTOR) * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 train_loss=results["train_loss"],
             )
 
