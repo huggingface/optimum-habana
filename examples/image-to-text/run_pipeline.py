@@ -150,6 +150,19 @@ def main():
         help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
         "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
     )
+    parser.add_argument(
+        "--bucket_size",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
+            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+    )
+    parser.add_argument(
+        "--bucket_internal",
+        action="store_true",
+        help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
@@ -334,6 +347,8 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "bucket_internal": args.bucket_internal,
+        "bucket_size": args.bucket_size,
         "do_sample": args.do_sample,
         "limit_hpu_graphs": args.limit_hpu_graphs,
     }
