@@ -1,8 +1,11 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 import pytest
+
+import tests.utils as oh_testutils
 
 
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("tests") / Path("baselines") / Path("fixture")
@@ -89,6 +92,7 @@ class Secret:
 def pytest_addoption(parser):
     parser.addoption("--token", action="store", default=None)
     parser.addoption("--rebase", action="store_true", help="rebase baseline references from current run")
+    parser.addoption("--device", action="store", default=None)
 
 
 @pytest.fixture
@@ -98,6 +102,30 @@ def token(request):
 
 def pytest_sessionstart(session):
     session.stash["baseline"] = Baseline(session)
+
+    # User command-line option takes highest priority
+    if session.config.option.device is not None:
+        device = str(session.config.option.device).lower()
+    # User GAUDI2_CI environment variable takes second priority for backwards compatibility
+    elif "GAUDI2_CI" in os.environ:
+        device = "gaudi2" if os.environ["GAUDI2_CI"] == "1" else "gaudi1"
+    # Try to automatically detect it
+    else:
+        import habana_frameworks.torch.hpu as torch_hpu
+
+        name = torch_hpu.get_device_name().strip()
+        device = "unknown" if not name else name.split()[-1].lower()
+
+    # torch_hpu.get_device_name() returns GAUDI for G1
+    if "gaudi" == device:
+        # use "gaudi1" since this is used in tests, baselines, etc.
+        device = "gaudi1"
+
+    oh_testutils.OH_DEVICE_CONTEXT = device
+
+
+def pytest_report_header():
+    return [f"device context: {oh_testutils.OH_DEVICE_CONTEXT}"]
 
 
 def pytest_sessionfinish(session):

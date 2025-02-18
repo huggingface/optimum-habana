@@ -103,3 +103,6 @@ MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2", "audio-spectrogram-transf
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2", "whisper"]
 
 MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]
+
+# This will be configured by conftest.py at the start of the pytest session
+OH_DEVICE_CONTEXT = "unknown"
