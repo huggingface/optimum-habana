@@ -5,6 +5,7 @@ echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
 echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
 git clone https://github.com/huggingface/accelerate.git --branch hpu-support --depth 1 && cd accelerate && pip install -e .[testing] git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+export ACCELERATE_BYPASS_DEVICE_MAP=true
 export PT_ENABLE_INT64_SUPPORT=1
 export PT_HPU_LAZY_MODE=0
 export RUN_SLOW=1
