@@ -65,6 +65,7 @@ MODELS_TO_TEST_MAPPING = {
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
     "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
+    "llava": [("llava-hf/llava-1.5-7b-hf", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
