@@ -14,7 +14,7 @@ concurrency:
 jobs:
   accelerate:
     name: Test Accelerate integration
-    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
+    runs-on: [self-hosted, linux, x64, gaudi2, fast]
 
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
           --cap-add=sys_nice \
           -v $PWD:/root/workspace \
           --workdir=/root/workspace \
-          -e HABANA_VISIBLE_DEVICES=all \
           -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+          -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
           vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
           /bin/bash tests/ci/accelerate.sh
