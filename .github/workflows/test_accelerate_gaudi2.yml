@@ -36,6 +36,7 @@ jobs:
         with:
           repository: huggingface/accelerate
           branch: hpu-upstream
+          path: accelerate
           fetch-depth: 0
 
       - name: Install Accelerate
