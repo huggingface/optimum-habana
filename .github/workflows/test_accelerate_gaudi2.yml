@@ -26,8 +26,7 @@ jobs:
         run: |
           docker run \
           --rm \
-          --net=host \
-          --ipc=host \
+          --shm-size=64g \
           --runtime=habana \
           --cap-add=sys_nice \
           -v $PWD:/root/workspace \
