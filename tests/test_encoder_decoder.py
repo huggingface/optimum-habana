@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import List
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
 MODELS_TO_TEST = {
@@ -88,12 +88,10 @@ class TestEncoderDecoderModels:
             with open(Path(tmp_dir) / "predict_results.json") as fp:
                 results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         self.baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             predict_samples_per_second=results["predict_samples_per_second"],
         )
 
@@ -103,7 +101,7 @@ class TestEncoderDecoderModels:
             accuracy_metric = "predict_bleu"
         self.baseline.assertRef(
             compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             **{accuracy_metric: results[accuracy_metric]},
         )
 

@@ -50,6 +50,7 @@ from .utils import (
     MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION,
     MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
     MODELS_TO_TEST_MAPPING,
+    OH_DEVICE_CONTEXT,
 )
 
 
@@ -60,7 +61,7 @@ ACCURACY_PERF_FACTOR = 0.99
 TIME_PERF_FACTOR = 1.05
 
 
-IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+IS_GAUDI2 = bool("gaudi2" == OH_DEVICE_CONTEXT)
 
 
 def _get_supported_models_for_script(
@@ -439,7 +440,7 @@ class ExampleTestMeta(type):
                     # Assess accuracy
                     with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
                         results = json.load(fp)
-                        baseline = 0.43 if os.environ.get("GAUDI2_CI", "0") == "1" else 0.42
+                        baseline = 0.43 if IS_GAUDI2 else 0.42
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
