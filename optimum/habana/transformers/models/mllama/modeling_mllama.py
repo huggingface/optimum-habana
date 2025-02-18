@@ -910,9 +910,9 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         hidden_states = outputs[0]
 
         if token_idx is None and num_logits_to_keep != 0:
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
         else:
-            logits = self.lm_head(hidden_states).float()
+            logits = self.lm_head(hidden_states)
 
         loss = None
         if labels is not None:
