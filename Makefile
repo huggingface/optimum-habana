@@ -34,7 +34,7 @@ style: clean
 # Run unit and integration tests
 fast_tests:
 	python -m pip install .[tests]
-	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py tests/test_habana_profiler.py
+	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py tests/test_habana_profiler_unit.py
 # TODO enable when CI has more servers
 #	python -m pytest test_functional_text_generation_example.py
 
@@ -87,11 +87,15 @@ slow_tests_1x: test_installs
 	python -m pip install peft==0.10.0 \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
-	exit $$((status1 + status2 + status3))
+	python -m pytest tests/test_habana_profiler_integration.py -v -s -m "not x8" || status4=$$?; \
+	exit $$((status1 + status2 + status3 + status4))
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
-	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card"
+	@status1=0; status2=0; \
+	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
+	python -m pytest tests/test_habana_profiler_integration.py -v -s -m x8 || status2=$$?; \
+	exit $$((status1 + status2))
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
