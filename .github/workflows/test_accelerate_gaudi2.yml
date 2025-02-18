@@ -51,6 +51,7 @@ jobs:
           make test_core
         env:
           PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          PT_HPU_LAZY_MODE: 0 # for fsdp
           RUN_SLOW: 1
 
       - name: Run Accelerate CLI tests
