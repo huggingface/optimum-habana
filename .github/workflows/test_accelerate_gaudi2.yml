@@ -26,6 +26,7 @@ jobs:
         run: |
           docker run \
           --rm \
+          --net=host \
           --ipc=host \
           --runtime=habana \
           --cap-add=sys_nice \
