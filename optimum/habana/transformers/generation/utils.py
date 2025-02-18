@@ -1096,6 +1096,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "baichuan",
                 "chatglm",
                 "deepseek_v2",
+                "deepseek_v3",
             ], (
                 "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
