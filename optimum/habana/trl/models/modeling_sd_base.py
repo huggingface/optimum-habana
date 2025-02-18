@@ -24,8 +24,8 @@ from trl.models.modeling_sd_base import (
     _left_broadcast,
 )
 
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import (
+from ... import GaudiConfig
+from ...diffusers import (
     GaudiDDIMScheduler,
     GaudiStableDiffusionPipeline,
 )

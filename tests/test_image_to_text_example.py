@@ -63,6 +63,7 @@ def _test_image_to_text(
         f"--model_name_or_path {model_name}",
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
+        "--ignore_eos",
     ]
 
     command += [
