@@ -36,13 +36,16 @@ jobs:
         with:
           repository: huggingface/accelerate
           branch: hpu-upstream
+          fetch-depth: 0
 
       - name: Install Accelerate
+        working-directory: ./accelerate
         run: |
-          pip install -e ./accelerate[testing]
+          pip install -e .[testing]
           pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
       - name: Run Accelerate Core tests
+        working-directory: ./accelerate
         run: |
           make test_core
         env:
@@ -50,6 +53,7 @@ jobs:
           RUN_SLOW: 1
 
       - name: Run Accelerate CLI tests
+        working-directory: ./accelerate
         run: |
           make test_cli
         env:
@@ -57,6 +61,7 @@ jobs:
           RUN_SLOW: 1
 
       - name: Run Accelerate FSDP tests
+        working-directory: ./accelerate
         run: |
           make test_fsdp
         env:
@@ -65,8 +70,18 @@ jobs:
           RUN_SLOW: 1
 
       - name: Run Accelerate DeepSpeed tests
+        working-directory: ./accelerate
         run: |
           make test_deepspeed
+        env:
+          PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
+          PT_HPU_LAZY_MODE: 0 # for cpu offload
+          RUN_SLOW: 1
+
+      - name: Run Accelerate Big Modeling tests
+        working-directory: ./accelerate
+        run: |
+          make test_big_modeling
         env:
           PT_ENABLE_INT64_SUPPORT: 1 # for tokenizers
           PT_HPU_LAZY_MODE: 0 # for cpu offload
