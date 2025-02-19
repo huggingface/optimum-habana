@@ -659,7 +659,10 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name)
+        raw_dataset = load_dataset(
+            args.dataset_name,
+            trust_remote_code=args.trust_remote_code
+        )
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
