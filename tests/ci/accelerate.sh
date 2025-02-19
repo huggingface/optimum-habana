@@ -28,8 +28,6 @@ export PT_ENABLE_INT64_SUPPORT=1
 export PT_HPU_LAZY_MODE=0
 export RUN_SLOW=1
 
-fuser -k 29500/tcp
-
 echo "Running CLI tests"
 make test_cli
 if [ $? -ne 0 ]; then
