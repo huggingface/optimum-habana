@@ -34,25 +34,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Running Big Modeling tests"
-make test_big_modeling
-if [ $? -ne 0 ]; then
-    exit 1
-fi
-
 echo "Running Core tests"
 make test_core
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Running FSDP tests"
+echo "Running Big Modeling tests"
+make test_big_modeling
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
+# INTEGRATION TESTS
+echo "Running FSDP integration tests"
 make test_fsdp
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Running DeepSpeed tests"
+echo "Running DeepSpeed integration tests"
 make test_deepspeed
 if [ $? -ne 0 ]; then
     exit 1
