@@ -169,10 +169,6 @@ class GaudiAccelerator(Accelerator):
         if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" or isinstance(
             fsdp_plugin, GaudiFullyShardedDataParallelPlugin
         ):
-            import importlib.metadata
-
-            torch_version = importlib.metadata.version("torch")
-            torch_version = torch_version[5:]
             if is_torch_version("<", FSDP_PYTORCH_VERSION):
                 raise ValueError(f"FSDP requires PyTorch >= {FSDP_PYTORCH_VERSION}")
 
