@@ -21,7 +21,8 @@ Conditional text generation on Intel® Gaudi® AI Accelerators. You can find mor
 
 ## Requirements
 
-First, you should install the requirements:
+### Install required packages 
+First, install the required packages:
 ```bash
 pip install -r requirements.txt
 ```
@@ -31,11 +32,10 @@ For `run_lm_eval.py`:
 pip install -r requirements_lm_eval.txt
 ```
 
-Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
+Then, to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), install DeepSpeed as follows:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 ```
-
 
 ## Usage
 
@@ -132,7 +132,20 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
-- `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing. This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits.
+- `--bucket_size` to grow the cache/input in multiples of `bucket_size` instead of padding up the kv-cache up to full size before starting
+- `--bucket_internal` more optimized version of bucketing for certain models like Llama
+- `--flash_attention_causal_mask` to further improve performance by taking advantage of specific lower-diagonal shape of inputs to softmax operation
+- `--use_flash_attention` to enable Habana Flash Attention
+- `--flash_attention_recompute` to reduce memory consumption on prompt stage
+- `--book_source` to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.
+- `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing.
+    This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits.  
+    
+There are also some environment variables useful for benchmarking:
+- `export HF_DATASETS_TRUST_REMOTE_CODE=true` : Most datasets in lm-evaluation-harness are defined on HF using dataset scripts, and may require passing HF_DATASETS_TRUST_REMOTE_CODE=true
+- `export TQDM_DISABLE=1`: to disable all tqdm progress bars 
+
+#### bigscience/bloom
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -144,7 +157,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --max_new_tokens 100 \
 --sdp_on_bf16
 ```
-
+#### Llama2-70B
 You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -160,7 +173,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits \
 --sdp_on_bf16
 ```
-
+#### Falcon-7B
 To run Falcon-7B inference, use the following command:
 ```bash
 python run_generation.py \
@@ -173,7 +186,7 @@ python run_generation.py \
  --do_sample \
  --sdp_on_bf16
 ```
-
+#### Falcon-40B
 To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -187,7 +200,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_flash_attention \
 --flash_attention_causal_mask
 ```
-
+#### Llama3-405B
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
@@ -358,12 +371,25 @@ Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
-Here is an example to measure the tensor quantization statistics on LLama2-70b:
+#### Llama2-70b and Llama2-7b
+##### 1. tensor quantization statistics
+Here is an example to measure the tensor quantization statistics on LLama2:
+
+Users could export different values to below enivironment variables to change parameters for tensor quantization statisics  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-2-70b-hf ,  meta-llama/Llama-2-7b-hf |
+
+Here is an example to run llama2-70b
+```bash
+export model_name=meta-llama/Llama-2-70b-hf
+```
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_70b_bs1_measure.txt \
---model_name_or_path meta-llama/Llama-2-70b-hf \
+-o acc_llama2_bs1_measure.txt \
+--model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -375,44 +401,49 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --bf16 \
 --batch_size 1
 ```
+##### 2. quantize and run the model
 
 Here is an example to quantize the model based on previous measurements for LLama2-70b:
-```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_70b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-2-70b-hf \
---attn_softmax_bf16 \
---use_hpu_graphs \
---trim_logits \
---use_kv_cache \
---bucket_size=128 \
---bucket_internal \
---use_flash_attention \
---flash_attention_recompute \
---bf16 \
---batch_size 1
-```
 
-Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
+Users could export different values to below enivironment variables to change parameters for benchmarking
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-2-70b-hf , meta-llama/Llama-2-7b-hf |
+| input_len | 128, 2048, and etc |
+| output_len | 128, 2048, and etc |
+| batch_size | 350, 1512, 1750, and etc |
+
+Here is an example to run llama2-70b with input tokens lenght=128, output tokens length=128 and batch size = 1750 
+```bash
+export model_name=meta-llama/Llama-2-70b-hf
+export input_len=128
+export output_len=128
+export batch_size=1750
+```
+After setting the environment variables, users could run the fp8 model by below command.  
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-2-70b-hf \
+--model_name_or_path ${model_name} \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
+--limit_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
+--flash_attention_causal_mask  \
+--use_flash_attention \
+--bucket_size=128 \
+--bucket_internal \
 --bf16 \
---batch_size 350 \
---max_new_tokens 2048 \
---max_input_tokens 2048 \
---limit_hpu_graphs
+--batch_size ${batch_size} \
+--max_new_tokens ${output_len} \
+--max_input_tokens ${input_len} \
+--warmup 2
 ```
-
+#### Mixtral-8x7B
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
@@ -425,7 +456,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --batch_size 1 \
 --bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generation.py \
@@ -438,7 +469,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --batch_size 16 \
 --bf16
 ```
-
+#### Falcon-180B
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
 > Please note that Falcon-180B is a gated model, and users are required to request access to it. Please refer to the instructions provided in the StarCoder example above.
 ```bash
@@ -456,7 +488,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
@@ -475,14 +507,26 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
-Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
+#### Llama3.1-405B, Llama3.1-70B, and Llama3.1-8B
+##### 1. tensor quantization statistics
+Here is an example to measure the tensor quantization statistics on Llama3 with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+
+Users could export different values to below enivironment variables to change parameters for tensor quantization statisics  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-3.1-405B-Instruct , meta-llama/Llama-3.1-70B-Instruct, and meta-llama/Llama-3.1-8B-Instruct |
+
+Here is an example to run llama3-405b
+```bash
+export model_name=meta-llama/Llama-3.1-405B-Instruct
+```
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_llama3_405b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+-o acc_llama3_bs1_quant.txt \
+--model_name_or_path ${model_name} \
 --use_hpu_graphs \
 --use_kv_cache \
 --trim_logits \
@@ -493,27 +537,50 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --flash_attention_recompute \
 --flash_attention_causal_mask
 ```
-
-Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
+##### 2. quantize and run the model
+Here is an example to quantize the model based on previous measurements for Llama3 with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
+
+Users could export different values to below enivironment variables to change parameters for benchmarking  
+| Environment Variable | Values |
+|------------------|------------|
+| model_name | meta-llama/Llama-3.1-405B-Instruct , meta-llama/Llama-3.1-70B-Instruct, and meta-llama/Llama-3.1-8B-Instruct |
+| input_len | 128, 2048, and etc |
+| output_len | 128, 2048, and etc |
+| batch_size | 10, 3306, and etc |
+
+Here is an example to run llama3-405b with input tokens lenght=128, output tokens length=128 and batch size = 3306 
+```bash
+export model_name=meta-llama/Llama-3.1-405B-Instruct
+export input_len=128
+export output_len=128
+export batch_size=3306
+```
+After setting the environment variables, users could run the fp8 model by below command.  
+
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
+--model_name_or_path ${model_name} \
+--attn_softmax_bf16 \
+--warmup 2 \
 --use_hpu_graphs \
 --use_kv_cache \
 --limit_hpu_graphs \
---max_input_tokens 2048 \
---max_new_tokens 2048 \
---batch_size 2 \
+--bucket_size=128 \
+--bucket_internal \
+--max_input_tokens ${input_len} \
+--max_new_tokens ${output_len} \
+--batch_size ${batch_size} \
 --bf16 \
---reuse_cache \
 --trim_logits \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--book_source
 ```
-
+#### phi-2
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
 
 ```bash
@@ -528,7 +595,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --reuse_cache \
 --bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
@@ -542,6 +609,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --reuse_cache
 ```
 
+#### gemma
+##### 1. tensor quantization statistics
 Here is an example to measure the tensor quantization statistics on gemma with 1 card:
 
 ```bash
@@ -555,7 +624,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py 
 --bf16 \
 --sdp_on_bf16
 ```
-
+##### 2. quantize and run the model
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
