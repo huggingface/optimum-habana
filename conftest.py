@@ -1,5 +1,6 @@
 import json
 import logging
+import operator
 import os
 from pathlib import Path
 
@@ -72,6 +73,9 @@ class BaselineRequest:
             logging.getLogger().info(f"{'.'.join(context + [key])}:actual = {actual}")
             logging.getLogger().info(f"{'.'.join(context + [key])}:ref    = {ref}")
             assert compare(actual, ref)
+
+    def assertEqual(self, context=[], **kwargs):
+        self.assertRef(operator.eq, context, **kwargs)
 
 
 class Secret:
