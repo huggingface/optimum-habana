@@ -1,0 +1,10 @@
+{
+  "tests/test_zero_shot_object_detection.py::GaudiOWlVITTester::test_no_latency_regression_bf16": {
+    "gaudi1": {
+      "latency": 8.460688591003418
+    },
+    "gaudi2": {
+      "latency": 4.213955687819833
+    }
+  }
+}

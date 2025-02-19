@@ -1,0 +1,119 @@
+{
+  "tests/test_diffusers.py::GaudiDDPMPipelineTester::test_no_throughput_regression_bf16": {
+    "gaudi1": {
+      "throughput": 0.045
+    },
+    "gaudi2": {
+      "throughput": 0.145
+    }
+  },
+  "tests/test_diffusers.py::GaudiFluxImg2ImgPipelineTester::test_flux_img2img_inference": {
+    "gaudi2": {
+      "throughput": 0.12
+    }
+  },
+  "tests/test_diffusers.py::GaudiFluxPipelineTester::test_flux_inference": {
+    "gaudi2": {
+      "throughput": 0.03
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusion3PipelineTester::test_sd3_inference": {
+    "gaudi2": {
+      "throughput": 0.006
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionPipelineTester::test_no_generation_regression_ldm3d": {
+    "gaudi1": {
+      "throughput": 0.114
+    },
+    "gaudi2": {
+      "throughput": 0.394
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionPipelineTester::test_no_throughput_regression_autocast": {
+    "gaudi1": {
+      "throughput": 0.114
+    },
+    "gaudi2": {
+      "throughput": 0.394
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionPipelineTester::test_no_throughput_regression_bf16": {
+    "gaudi1": {
+      "throughput": 0.275
+    },
+    "gaudi2": {
+      "throughput": 1.086
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionPipelineTester::test_sd_textual_inversion": {
+    "gaudi1": {
+      "train_runtime": 1.8249286960053723,
+      "train_samples_per_second": 122.7445217395719
+    },
+    "gaudi2": {
+      "train_runtime": 1.542460777796805,
+      "train_samples_per_second": 131.7606336456344
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionXLPipelineTester::test_sdxl_textual_inversion": {
+    "gaudi1": {
+      "train_runtime": 74.19,
+      "train_samples_per_second": 2.695
+    },
+    "gaudi2": {
+      "train_runtime": 74.92,
+      "train_samples_per_second": 2.6694
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableDiffusionXLPipelineTester::test_stable_diffusion_xl_generation_throughput": {
+    "gaudi1": {
+      "throughput": 0.074
+    },
+    "gaudi2": {
+      "throughput": 0.301
+    }
+  },
+  "tests/test_diffusers.py::GaudiStableVideoDiffusionPipelineTester::test_stable_video_diffusion_no_throughput_regression_bf16": {
+    "gaudi1": {
+      "throughput": 0.012
+    },
+    "gaudi2": {
+      "throughput": 0.012
+    }
+  },
+  "tests/test_diffusers.py::I2VGenXLPipelineTests::test_i2vgen_xl_bf16": {
+    "gaudi1": {
+      "throughput": 0.008
+    },
+    "gaudi2": {
+      "throughput": 0.017
+    }
+  },
+  "tests/test_diffusers.py::StableDiffusionInpaintPipelineTests::test_stable_diffusion_inpaint_no_throughput_regression": {
+    "gaudi1": {
+      "throughput": 0.272
+    },
+    "gaudi2": {
+      "throughput": 1.025
+    }
+  },
+  "tests/test_diffusers.py::StableDiffusionXLInpaintPipelineTests::test_stable_diffusion_xl_inpaint_no_throughput_regression": {
+    "gaudi1": {
+      "throughput": 0.042
+    },
+    "gaudi2": {
+      "throughput": 0.175
+    }
+  },
+  "tests/test_diffusers.py::TrainControlNet::test_train_controlnet": {
+    "gaudi1": {
+      "train_runtime": 2.852933710993966,
+      "train_samples_per_second": 78.51566937458146
+    },
+    "gaudi2": {
+      "train_runtime": 1.8647471838630736,
+      "train_samples_per_second": 120.123522340414
+    }
+  }
+}

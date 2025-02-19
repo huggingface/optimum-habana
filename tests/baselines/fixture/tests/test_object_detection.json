@@ -1,0 +1,18 @@
+{
+  "tests/test_object_detection.py::GaudiDETRTester::test_no_latency_regression_autocast": {
+    "gaudi1": {
+      "latency": 14.5
+    },
+    "gaudi2": {
+      "latency": 7.0
+    }
+  },
+  "tests/test_object_detection.py::GaudiDetrResnet50_Tester::test_no_latency_regression_autocast": {
+    "gaudi1": {
+      "latency": 14.5
+    },
+    "gaudi2": {
+      "latency": 7.0
+    }
+  }
+}

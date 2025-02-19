@@ -1,0 +1,10 @@
+{
+  "tests/test_feature_extraction.py::GaudiFeatureExtractionTester::test_latency_graph_bf16": {
+    "gaudi1": {
+      "time_per_iter": 0.7987
+    },
+    "gaudi2": {
+      "time_per_iter": 0.6812
+    }
+  }
+}
