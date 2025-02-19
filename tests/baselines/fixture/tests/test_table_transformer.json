@@ -1,0 +1,10 @@
+{
+  "tests/test_table_transformer.py::GaudiTableTransformerTester::test_latency_graph_bf16": {
+    "gaudi1": {
+      "latency": 6.6
+    },
+    "gaudi2": {
+      "latency": 2.2
+    }
+  }
+}

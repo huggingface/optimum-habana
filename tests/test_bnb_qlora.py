@@ -80,7 +80,7 @@ def get_model(token: str):
 
 
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_inference(token: str):
+def test_nf4_quantization_inference(token: str, baseline):
     try:
         import sys
 
@@ -147,8 +147,9 @@ def test_nf4_quantization_inference(token: str):
     model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
 
     trainer.train()
-    eval_loss = trainer.evaluate()["eval_loss"]
 
-    expected_eval_loss = 1.638
-
-    assert abs(eval_loss - expected_eval_loss) < 5e-2
+    baseline.assertRef(
+        compare=lambda actual, ref: abs(actual - ref) < 5e2,
+        context=[OH_DEVICE_CONTEXT],
+        eval_loss=trainer.evaluate()["eval_loss"],
+    )

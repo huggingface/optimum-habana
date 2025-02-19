@@ -1,0 +1,10 @@
+{
+  "tests/test_video_mae.py::GaudiVideoMAETester::test_latency_graph_bf16": {
+    "gaudi1": {
+      "latency": 61.953186988830566
+    },
+    "gaudi2": {
+      "latency": 17.544198036193848
+    }
+  }
+}

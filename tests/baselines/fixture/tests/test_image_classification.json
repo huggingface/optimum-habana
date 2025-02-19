@@ -1,0 +1,7 @@
+{
+  "tests/test_image_classification.py::GaudiFastViTTester::test_no_latency_regression_autocast": {
+    "gaudi2": {
+      "latency": 2.527062664031982
+    }
+  }
+}

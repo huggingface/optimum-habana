@@ -1,0 +1,10 @@
+{
+  "tests/test_video_llava.py::test_video_llava_bf16[LanguageBind/Video-LLaVA-7B-hf]": {
+    "gaudi1": {
+      "throughput": 9.22975629675865
+    },
+    "gaudi2": {
+      "throughput": 27.72902536827787
+    }
+  }
+}
