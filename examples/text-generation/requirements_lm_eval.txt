@@ -1,6 +1,6 @@
 https://github.com/EleutherAI/lm-evaluation-harness/archive/0bf683b4e6a9df359b3156ba9ba8d62bdd47e0c0.zip
 datasets==2.21.0
-evaluate == 0.4.2
+evaluate == 0.4.3
 rouge_score == 0.1.2
 accelerate < 0.34.0
 pandas <= 2.2.2
