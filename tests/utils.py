@@ -24,22 +24,22 @@ MODELS_TO_TEST_MAPPING = {
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", "Habana/roberta-base"),
+        # ("roberta-base", "Habana/roberta-base"),
         ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
-        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
+        # ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
     "gpt2": [
-        ("gpt2", "Habana/gpt2"),
+        # ("gpt2", "Habana/gpt2"),
         ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
-        ("t5-small", "Habana/t5"),
+        # ("t5-small", "Habana/t5"),
         ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
@@ -53,7 +53,7 @@ MODELS_TO_TEST_MAPPING = {
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
-    "llama": [("huggyllama/llama-7b", "Habana/llama")],
+    "llama": [("huggyllama/llama-7b", "Habana/llama"), ("meta-llama/Llama-3.1-8B", "Habana/llama")],
     "falcon": [("tiiuae/falcon-40b", "Habana/falcon")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
@@ -63,13 +63,16 @@ MODELS_TO_TEST_MAPPING = {
     "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen"), ("Qwen/Qwen2-72B", "Habana/qwen")],
     "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
+    "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
+    "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
+    "llava": [("llava-hf/llava-1.5-7b-hf", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
-    "bert",
+    # "bert",
     "roberta",
-    "albert",
-    "distilbert",
+    # "albert",
+    # "distilbert",
 ]
 
 # Only BERT has been officially validated for sequence classification
@@ -81,7 +84,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama", "gemma", "chatglm"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 

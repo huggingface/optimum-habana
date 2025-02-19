@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.18.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.19.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -285,6 +285,7 @@ class HabanaProfile(object):
         warmup: int = 0,
         active: int = 0,
         record_shapes: bool = True,
+        with_stack: bool = False,
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
@@ -306,7 +307,7 @@ class HabanaProfile(object):
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
-                with_stack=False,
+                with_stack=with_stack,
             )
             self.start = profiler.start
             self.stop = profiler.stop
@@ -386,7 +387,7 @@ def check_habana_frameworks_version(req_version):
 
 def get_device_name():
     """
-    Returns the name of the current device: Gaudi or Gaudi2.
+    Returns the name of the current device: Gaudi, Gaudi2 or Gaudi3.
 
     Inspired from: https://github.com/HabanaAI/Model-References/blob/a87c21f14f13b70ffc77617b9e80d1ec989a3442/PyTorch/computer_vision/classification/torchvision/utils.py#L274
     """
@@ -398,5 +399,19 @@ def get_device_name():
         return "gaudi"
     elif device_type == htexp.synDeviceType.synDeviceGaudi2:
         return "gaudi2"
+    elif device_type == htexp.synDeviceType.synDeviceGaudi3:
+        return "gaudi3"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
+
+
+def get_device_count():
+    """
+    Returns the number of the current gaudi devices
+    """
+    import habana_frameworks.torch.utils.experimental as htexp
+
+    if htexp.hpu.is_available():
+        return htexp.hpu.device_count()
+    else:
+        raise ValueError("No hpu is found avail on this system")

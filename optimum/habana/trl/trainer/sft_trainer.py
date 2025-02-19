@@ -17,6 +17,7 @@ import warnings
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import datasets
 import numpy as np
 import torch
 import torch.nn as nn
@@ -37,6 +38,7 @@ from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
 from trl.import_utils import is_peft_available
 from trl.trainer.utils import (
+    ConstantLengthDataset,
     DataCollatorForCompletionOnlyLM,
     RichProgressCallback,
 )
@@ -109,6 +111,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         packing: Optional[bool] = False,
         formatting_func: Optional[Callable] = None,
         max_seq_length: Optional[int] = None,
+        pad_max: Optional[bool] = None,
         infinite: Optional[bool] = None,
         num_of_sequences: Optional[int] = 1024,
         chars_per_token: Optional[float] = 3.6,
@@ -126,12 +129,13 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         - add new args gaudi_config
         - use GaudiTrainer instead of Trainer
         - cast peft model to bf16.
+        - add pad_max for static shape
         - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
         """
         if num_buckets > 0:
-            assert (
-                data_collator is None
-            ), "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
+            assert data_collator is None, (
+                "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
+            )
         if args is None:
             output_dir = "tmp_trainer"
             warnings.warn(f"No `SFTConfig` passed, using `output_dir={output_dir}`.")
@@ -273,6 +277,12 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             )
             args.max_seq_length = max_seq_length
 
+        if pad_max is not None:
+            warnings.warn(
+                "You passed a `pad_max` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            )
+            args.pad_max = pad_max
+
         if args.max_seq_length is None:
             # to overcome some issues with broken tokenizers
             max_seq_length = min(tokenizer.model_max_length, 1024)
@@ -371,6 +381,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     args.num_of_sequences,
                     args.chars_per_token,
                     remove_unused_columns=args.remove_unused_columns if args is not None else True,
+                    pad_max=args.pad_max if args is not None else False,
                     **args.dataset_kwargs,
                 )
             if eval_dataset is not None:
@@ -441,6 +452,142 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 # Remove the PrinterCallback to avoid duplicated prints in case we passed a `RichProgressCallback`
                 if callback.__class__.__name__ == "PrinterCallback":
                     self.callback_handler.pop_callback(callback)
+
+    def _prepare_dataset(
+        self,
+        dataset,
+        tokenizer,
+        packing,
+        dataset_text_field,
+        max_seq_length,
+        formatting_func,
+        num_of_sequences,
+        chars_per_token,
+        remove_unused_columns=True,
+        pad_max=False,
+        append_concat_token=True,
+        add_special_tokens=True,
+        skip_prepare_dataset=False,
+    ):
+        """
+        Copied from SFTTrainer._prepare_dataset https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/sft_trainer.py#L477
+        The only differences are:
+        - add pad_max for static shape
+        """
+
+        if dataset is None:
+            raise ValueError("The dataset should not be None")
+
+        if skip_prepare_dataset:
+            return dataset
+
+        # If the dataset is already preprocessed (tokenized), return as-is. Only works if dataset is
+        # a datasets.Dataset or datasets.IterableDataset -- not for torch Dataset
+        column_names = (
+            dataset.column_names if isinstance(dataset, (datasets.Dataset, datasets.IterableDataset)) else None
+        )
+        if column_names and "input_ids" in column_names:
+            if formatting_func is not None:
+                warnings.warn(
+                    "You passed a dataset that is already processed (contains an `input_ids` field) together with a valid formatting function. Therefore `formatting_func` will be ignored."
+                )
+
+            return dataset
+
+        # check if torch dataset / dataloader and do nothing
+        # see https://github.com/huggingface/trl/pull/1468 for why datasets.IterableDataset needs a separate check
+        if isinstance(
+            dataset, (torch.utils.data.IterableDataset, torch.utils.data.Dataset, ConstantLengthDataset)
+        ) and not isinstance(dataset, datasets.IterableDataset):
+            return dataset
+
+        if not packing:
+            return self._prepare_non_packed_dataloader(
+                tokenizer,
+                dataset,
+                dataset_text_field,
+                max_seq_length,
+                formatting_func,
+                add_special_tokens,
+                remove_unused_columns,
+                pad_max,
+            )
+
+        else:
+            return self._prepare_packed_dataloader(
+                tokenizer,
+                dataset,
+                dataset_text_field,
+                max_seq_length,
+                num_of_sequences,
+                chars_per_token,
+                formatting_func,
+                append_concat_token,
+                add_special_tokens,
+            )
+
+    def _prepare_non_packed_dataloader(
+        self,
+        tokenizer,
+        dataset,
+        dataset_text_field,
+        max_seq_length,
+        formatting_func=None,
+        add_special_tokens=True,
+        remove_unused_columns=True,
+        pad_max=False,
+    ):
+        """
+        Copied from SFTTrainer._prepare_non_packed_dataloader
+        https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/sft_trainer.py#L542
+        The only differences are:
+        - add pad_max for static shape
+        """
+
+        use_formatting_func = formatting_func is not None and dataset_text_field is None
+        self._dataset_sanity_checked = False
+
+        # Inspired from: https://huggingface.co/learn/nlp-course/chapter7/6?fw=pt
+        def tokenize(element):
+            outputs = tokenizer(
+                element[dataset_text_field] if not use_formatting_func else formatting_func(element),
+                add_special_tokens=add_special_tokens,
+                truncation=True,
+                padding="max_length" if pad_max else False,
+                max_length=max_seq_length,
+                return_overflowing_tokens=False,
+                return_length=False,
+            )
+
+            if use_formatting_func and not self._dataset_sanity_checked:
+                if not isinstance(formatting_func(element), list):
+                    raise ValueError(
+                        "The `formatting_func` should return a list of processed strings since it can lead to silent bugs."
+                    )
+                else:
+                    self._dataset_sanity_checked = True
+
+            return {"input_ids": outputs["input_ids"], "attention_mask": outputs["attention_mask"]}
+
+        signature_columns = ["input_ids", "labels", "attention_mask"]
+
+        extra_columns = list(set(dataset.column_names) - set(signature_columns))
+
+        if not remove_unused_columns and len(extra_columns) > 0:
+            warnings.warn(
+                "You passed `remove_unused_columns=False` on a non-packed dataset. This might create some issues with the default collator and yield to errors. If you want to "
+                f"inspect dataset other columns (in this case {extra_columns}), you can subclass `DataCollatorForLanguageModeling` in case you used the default collator and create your own data collator in order to inspect the unused dataset columns."
+            )
+
+        tokenized_dataset = dataset.map(
+            tokenize,
+            batched=True,
+            remove_columns=dataset.column_names if remove_unused_columns else None,
+            num_proc=self.dataset_num_proc,
+            batch_size=self.dataset_batch_size,
+        )
+
+        return tokenized_dataset
 
     def _get_buckets(self, sentence_lengths, num_buckets):
         return np.unique(

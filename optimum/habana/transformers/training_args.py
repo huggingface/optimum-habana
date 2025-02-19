@@ -101,6 +101,12 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use compiled autograd for training. Currently only for summarization models.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        use_regional_compilation (`bool`, *optional*, defaults to `False`):
+            Whether to use regional compile with deepspeed
+        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
+            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config. Currently, disabling this parameter improves the performance of the ALBERT model.
+        cache_size_limit(`int`, *optional*, defaults to 'None'):
+            Set value of 'cache_size_limit' parameter for torch._dynamo.config
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -119,7 +125,7 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profling.
+            Number of steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
     """
@@ -170,6 +176,21 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
     )
 
+    cache_size_limit: Optional[int] = field(
+        default=None,
+        metadata={"help": "Set value of 'cache_size_limit' parameter for torch._dynamo.config."},
+    )
+
+    use_regional_compilation: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use regional compile for traing.")},
+    )
+
+    inline_inbuilt_nn_modules: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
+    )
+
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use a tensor cache for hpu graphs."},
@@ -188,6 +209,16 @@ class GaudiTrainingArguments(TrainingArguments):
             "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
             "choices": ["ddp", "fast_ddp"],
         },
+    )
+
+    context_parallel_size: Optional[int] = field(
+        default=1,
+        metadata={"help": ("Determines how many ranks are divided into context parallel group.")},
+    )
+
+    minimize_memory: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable minimze memory for fp8")},
     )
 
     throughput_warmup_steps: Optional[int] = field(
@@ -230,7 +261,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
+        metadata={"help": ("Number of steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
@@ -241,6 +272,11 @@ class GaudiTrainingArguments(TrainingArguments):
     profiling_record_shapes: Optional[bool] = field(
         default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
+    )
+
+    profiling_with_stack: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("record source information (file and line number) for the ops when enabling profiling.")},
     )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
@@ -298,6 +334,11 @@ class GaudiTrainingArguments(TrainingArguments):
             "help": "The backend to be used for distributed training.",
             "choices": ["hccl"],
         },
+    )
+
+    sdp_on_bf16: bool = field(
+        default=False,
+        metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend"},
     )
 
     fp8: Optional[bool] = field(
@@ -842,6 +883,15 @@ class GaudiTrainingArguments(TrainingArguments):
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
+        if self.sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
+        if self.inline_inbuilt_nn_modules is not None:
+            torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
+
+        if self.torch_compile and self.cache_size_limit is not None:
+            torch._dynamo.config.cache_size_limit = self.cache_size_limit
+
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
@@ -908,6 +958,8 @@ class GaudiTrainingArguments(TrainingArguments):
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
+            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

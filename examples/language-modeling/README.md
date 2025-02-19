@@ -172,52 +172,6 @@ Following the RoBERTa paper, we use dynamic masking rather than static masking. 
 converge slightly slower (over-fitting takes more epochs).
 
 
-### Single-card Training
-
-```bash
-python run_mlm.py \
-    --model_name_or_path roberta-base \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --do_train \
-    --do_eval \
-    --output_dir /tmp/test-mlm \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3 \
-    --bf16
-```
-
-To run on your own training and validation files, use the following command:
-
-```bash
-python run_mlm.py \
-    --model_name_or_path roberta-base \
-    --train_file path_to_train_file \
-    --validation_file path_to_validation_file \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --do_train \
-    --do_eval \
-    --output_dir /tmp/test-mlm \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3 \
-    --bf16
-```
-
-If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
-concatenates all texts and then splits them into blocks of the same length).
-
-**Note:** On HPU, you should use the flag `--pad_to_max_length` in conjunction with the `--line_by_line` flag to make sure all your batches have the same length.
-
-
 ### Multi-card Training
 
 ```bash
@@ -238,6 +192,11 @@ python ../gaudi_spawn.py \
     --throughput_warmup_steps 3 \
     --bf16
 ```
+
+If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
+concatenates all texts and then splits them into blocks of the same length).
+
+**Note:** On HPU, you should use the flag `--pad_to_max_length` in conjunction with the `--line_by_line` flag to make sure all your batches have the same length.
 
 
 ### Training in torch.compile mode
@@ -269,78 +228,6 @@ python run_clm.py \
     --throughput_warmup_steps 3 \
     --bf16
 ```
-
-
-## Using DeepSpeed
-
-Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT2-XL:
-
-```bash
-python ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_clm.py \
-    --model_name_or_path gpt2-xl \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 16 \
-    --per_device_eval_batch_size 4 \
-    --do_train \
-    --do_eval \
-    --learning_rate 4e-4 \
-    --output_dir /tmp/test-clm \
-    --gaudi_config_name Habana/gpt2 \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gradient_checkpointing \
-    --use_cache False \
-    --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
-```
-
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
-Here is a DeepSpeed configuration you can use to train your models on Gaudi:
-```json
-{
-    "steps_per_print": 64,
-    "train_batch_size": "auto",
-    "train_micro_batch_size_per_gpu": "auto",
-    "gradient_accumulation_steps": "auto",
-    "bf16": {
-        "enabled": true
-    },
-    "gradient_clipping": 1.0,
-    "zero_optimization": {
-        "stage": 2,
-        "overlap_comm": false,
-        "reduce_scatter": false,
-        "contiguous_gradients": false
-    }
-}
-```
-
-Here is another example with Bloom-7B1:
-
-```bash
-DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_clm.py \
-    --model_name_or_path bigscience/bloom-7b1 \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 8 \
-    --do_train \
-    --output_dir /tmp/test-clm \
-    --gaudi_config_name Habana/roberta-base \
-    --use_habana \
-    --use_lazy_mode \
-    --gradient_checkpointing \
-    --use_cache False \
-    --throughput_warmup_steps 3 \
-    --save_strategy "no" \
-    --learning_rate 1e-04 \
-    --deepspeed path_to_my_deepspeed_config
-```
-[This](https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_3_gaudi1.json) is a DeepSpeed configuration you can use to train this model on Gaudi1.
-
 
 ## Inference
 
@@ -401,141 +288,6 @@ python3 run_lora_clm.py \
     --low_cpu_mem_usage True \
     --validation_split_percentage 4 \
     --adam_epsilon 1e-08
-```
-- Single-card finetuning of Falcon-40B:
-```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
-    --model_name_or_path tiiuae/falcon-40b \
-    --dataset_name timdettmers/openassistant-guanaco \
-    --bf16 True \
-    --output_dir ./model_lora_falcon \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --gradient_accumulation_steps 16 \
-    --eval_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 3e-4 \
-    --max_grad_norm  0.3 \
-    --warmup_ratio  0.03 \
-    --lr_scheduler_type "constant" \
-    --logging_steps 1 \
-    --do_train \
-    --use_habana \
-    --use_lazy_mode \
-    --pipelining_fwd_bwd \
-    --throughput_warmup_steps 3 \
-    --lora_rank=64 \
-    --lora_alpha=16 \
-    --lora_dropout=0.1 \
-    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
-    --dataset_concatenation \
-    --max_seq_length 256 \
-    --low_cpu_mem_usage True \
-    --adam_epsilon 1e-08 \
-    --do_eval \
-    --validation_split_percentage 5
-```
-
-- Multi-card finetuning of Llama1-7B:
-```bash
-python ../gaudi_spawn.py \
-    --world_size 8 --use_mpi run_lora_clm.py \
-    --model_name_or_path huggyllama/llama-7b \
-    --dataset_name tatsu-lab/alpaca \
-    --bf16 True \
-    --output_dir ./model_lora_llama_ddp \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 8 \
-    --gradient_accumulation_steps 2 \
-    --eval_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 3e-4 \
-    --warmup_ratio  0.03 \
-    --lr_scheduler_type "constant" \
-    --max_grad_norm  0.3 \
-    --logging_steps 1 \
-    --do_train \
-    --do_eval \
-    --use_habana \
-    --use_lazy_mode \
-    --throughput_warmup_steps 3 \
-    --lora_rank=8 \
-    --lora_alpha=16 \
-    --lora_dropout=0.05 \
-    --lora_target_modules "q_proj" "v_proj" \
-    --dataset_concatenation \
-    --max_seq_length 512 \
-    --ddp_bucket_cap_mb 50 \
-    --adam_epsilon 1e-08 \
-    --validation_split_percentage 4 \
-    --low_cpu_mem_usage True
-```
-
-- Multi-card finetuning of Llama2-7B with FP8:
-```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
-    --world_size 8 --use_mpi run_lora_clm.py \
-    --model_name_or_path meta-llama/Llama-2-7b-hf \
-    --dataset_name tatsu-lab/alpaca \
-    --bf16 True \
-    --output_dir ./model_lora_llama \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 16 \
-    --gradient_accumulation_steps 1 \
-    --eval_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 3e-4 \
-    --warmup_ratio 0.03 \
-    --lr_scheduler_type "constant" \
-    --max_grad_norm 0.3 \
-    --logging_steps 20 \
-    --do_train \
-    --do_eval \
-    --use_habana \
-    --use_lazy_mode \
-    --throughput_warmup_steps 18 \
-    --lora_rank=8 \
-    --lora_alpha=16 \
-    --lora_dropout=0.05 \
-    --lora_target_modules "q_proj" "v_proj" \
-    --dataset_concatenation \
-    --max_seq_length 512 \
-    --ddp_bucket_cap_mb 50 \
-    --adam_epsilon 1e-08 \
-    --validation_split_percentage 10 \
-    --low_cpu_mem_usage True \
-    --pipelining_fwd_bwd \
-    --fp8 True
-```
-
-- Multi-card finetuning of codegen-16B-mono:
-```bash
-python ../gaudi_spawn.py \
-    --world_size 8 --use_mpi run_lora_clm.py \
-    --model_name_or_path Salesforce/codegen-16B-mono \
-    --dataset_name b-mc2/sql-create-context \
-    --sql_prompt \
-    --bf16 True \
-    --output_dir ./finetuned-models/codegen-finetune-on-sql-create-context-hpu8-lora8-bs4 \
-    --num_train_epochs 5 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --eval_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 1e-4 \
-    --logging_steps 1 \
-    --dataset_concatenation \
-    --do_train \
-    --use_habana \
-    --use_lazy_mode \
-    --throughput_warmup_steps 3 \
-    --use_hpu_graphs_for_inference \
-    --lora_target_modules "qkv_proj" \
-    --lora_rank 8 \
-    --do_eval \
-    --validation_split_percentage 10 \
-    --use_cache False
 ```
 
 - Multi-card finetuning of gemma2 using chat template:
@@ -686,43 +438,6 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --flash_attention_causal_mask True
 ```
 
-- Multi-card finetuning of Falcon-180B:
-  - Falcon-180B example command saves only the LoRA parameters at end
-  - For inference we need to merge the pretrained model and LoRA weights
-```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_lora_clm.py \
-    --model_name_or_path tiiuae/falcon-180B \
-    --dataset_name timdettmers/openassistant-guanaco \
-    --bf16 True \
-    --output_dir ./model_lora_falcon_ddp \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --gradient_accumulation_steps 16 \
-    --eval_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 4e-4 \
-    --max_grad_norm  0.3 \
-    --warmup_ratio  0.03 \
-    --lr_scheduler_type "constant" \
-    --logging_steps 1 \
-    --do_train \
-    --use_habana \
-    --use_lazy_mode \
-    --pipelining_fwd_bwd \
-    --throughput_warmup_steps 3 \
-    --lora_rank=64 \
-    --lora_alpha=16 \
-    --lora_dropout=0.1 \
-    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
-    --dataset_concatenation \
-    --max_seq_length 256 \
-    --adam_epsilon 1e-08 \
-    --do_eval \
-    --validation_split_percentage 5 \
-    --deepspeed ds_falcon_180b_z3.json
-```
 Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`, or enable llama-adapter for llama model using `--peft_type llama-adapter`, or enable ln-tuning using `--peft_type ln_tuning`, or enable vera using `--peft_type vera`.
 
 #### Custom Files
@@ -770,7 +485,7 @@ The format of the text files (with extensions .text or .txt) is expected to be
 ### Prompt/Prefix/P-tuning
 
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
-Here are single-/multi-device command examples for Llama2-7B:
+Here are single-card command examples for Llama2-7B:
 - single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
 python3 run_prompt_tuning_clm.py \
@@ -790,25 +505,6 @@ python3 run_prompt_tuning_clm.py \
     --use_lazy_mode
 ```
 
-- multi-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
-```bash
-python3 ../gaudi_spawn.py \
-    --world_size 8 --use_mpi run_prompt_tuning_clm.py \
-    --model_name_or_path meta-llama/Llama-2-7b-hf \
-    --output_dir prompt_tuning_out \
-    --bf16 True \
-    --report_to=none \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
-    --gradient_accumulation_steps 1 \
-    --low_cpu_mem_usage True \
-    --logging_steps 1 \
-    --do_train \
-    --num_train_epochs 50 \
-    --do_eval  \
-    --use_habana  \
-    --use_lazy_mode
-```
 Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuning using `--peft_type prefix_tuning` or `--peft_type p_tuning`.
 
 Use the prompt finetuned model for text-generation:
@@ -872,6 +568,53 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --trust_remote_code
 ```
 
+### Training models with Long Sequence lengths
+We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below. 
+
+`--context_parallel_size` sets the number of cards single input sequences will get mapped to, e.g., setting `context_parallel_size=4` with `max_seq_len=32k` will result in each card processing input chunks of length 8k each (thereby reducing memory requirement for activations). This feature can be combined with Zero-3 to enable scaling not only to large sequence lengths but also to large size models.
+
+> [!NOTE]  
+> This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
+
+```bash
+HL_DS_DISTRIBUTED_ATTENTION_SEQ_DIM=1   \
+python3 ../gaudi_spawn.py  \
+        --world_size 8  --use_deepspeed run_lora_clm.py \
+        --model_name_or_path meta-llama/Llama-3.1-8B \
+        --dataset_name tatsu-lab/alpaca \
+        --bf16 True \
+        --output_dir /tmp/lora_out \
+        --max_seq_len 32768 \
+        --per_device_train_batch_size 1 \
+        --per_device_eval_batch_size 1 \
+        --save_strategy no \
+        --learning_rate 0.0004 \
+        --warmup_ratio 0.03 \
+        --lr_scheduler_type "constant" \
+        --logging_steps 1 \
+        --dataset_concatenation \
+        --do_train \
+        --use_habana \
+        --throughput_warmup_steps 3 \
+        --lora_rank 8 \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+        --attn_softmax_bf16 True \
+        --validation_split_percentage 4 \
+        --flash_attention_causal_mask True \
+        --evaluation_strategy epoch \
+        --pipelining_fwd_bwd \
+        --use_lazy_mode \
+        --use_flash_attention True \
+        --deepspeed llama3_ds_zero1_config.json \
+        --num_train_epochs 3 \
+        --eval_delay 3 \
+        --do_eval \
+        --lora_alpha 16 \
+        --lora_dropout 0.05 \
+        --gradient_accumulation_steps 4 \
+        --flash_attention_recompute True \
+        --context_parallel_size 4
+```
 
 ## Streaming
 

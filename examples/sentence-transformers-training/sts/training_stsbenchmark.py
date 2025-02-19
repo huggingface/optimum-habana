@@ -100,6 +100,7 @@ def main():
         warmup_ratio=0.1,
         # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
         bf16=args.bf16,  # Set to True if you have a GPU that supports BF16
+        # sdp_on_bf16=True, #Set to True for better performance (but this setting can affect accuracy)
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,

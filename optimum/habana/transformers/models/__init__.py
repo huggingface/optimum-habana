@@ -1,4 +1,9 @@
 from .albert import gaudi_albert_forward
+from .baichuan import (
+    BaichuanConfig,
+    BaichuanForCausalLM,
+    BaichuanTokenizer,
+)
 from .bart import (
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -31,6 +36,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .chatglm import (
+    ChatGLMConfig,
+    ChatGLMForConditionalGeneration,
+    ChatGLMForSequenceClassification,
+    ChatGLMTokenizer,
+)
 from .clip import (
     GaudiCLIPAttention,
     GaudiCLIPEncoder,
@@ -55,7 +66,20 @@ from .decilm import (
     DeciLMConfig,
     DeciLMForCausalLM,
 )
-from .detr import gaudi_DetrConvModel_forward
+from .deepseek_v2 import (
+    DeepseekTokenizerFast,
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+)
+from .detr import (
+    gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
+    gaudi_DetrLoss_loss_labels,
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -70,12 +94,24 @@ from .falcon import (
     GaudiFalconModel,
     gaudi_falcon_linear_forward,
 )
+from .falcon_mamba import (
+    gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_FalconMambaModel_forward,
+)
 from .gemma import (
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
     GaudiGemmaMLP,
     GaudiGemmaModel,
+)
+from .gemma2 import (
+    GaudiGemma2Attention,
+    GaudiGemma2DecoderLayer,
+    GaudiGemma2ForCausalLM,
+    GaudiGemma2MLP,
+    GaudiGemma2Model,
+    GaudiGemma2RotaryEmbedding,
 )
 from .gpt2 import (
     GaudiGPT2Attention,
@@ -133,6 +169,7 @@ from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
 )
+from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -146,8 +183,8 @@ from .mixtral import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMixtralSparseMoeBlock,
     MixtralConfig,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .mllama import (
@@ -158,9 +195,15 @@ from .mllama import (
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
+    GaudiMllamaVisionEncoder,
+    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
+    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
+    KVCache,
+    Matmul,
+    apply_customized_rope_module,
     gaudi_check_and_enable_sdpa,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
@@ -181,6 +224,7 @@ from .opt import (
     gaudi_opt_model_forward,
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
+from .paligemma import GaudiPaliGemmaForConditionalGeneration
 from .persimmon import (
     GaudiPersimmonAttention,
     GaudiPersimmonDecoderLayer,
@@ -209,6 +253,15 @@ from .qwen2_moe import (
     GaudiQwen2MoeModel,
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
+)
+from .qwen2_vl import (
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
@@ -250,12 +303,14 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
 from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
+    GaudiWav2Vec2SdpaAttention,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,
@@ -278,3 +333,4 @@ from .xglm import (
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
 )
+from .xlm_roberta import gaudi_XLMRoberta_Sdpa_SelfAttention_forward

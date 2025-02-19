@@ -1,14 +1,14 @@
 {
     "gaudi2": {
         "image2text_lora_finetune": {
-            "num_train_epochs": 2,
+            "num_train_epochs": 1,
             "eval_batch_size": 4,
             "distribution": {
                 "multi_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 2,
-                    "train_runtime": 470,
-                    "train_samples_per_second": 22,
+                    "train_runtime": 350,
+                    "train_samples_per_second": 20.48,
                     "eval_accuracy": 0.6,
                     "extra_arguments": [
                         "--bf16",
