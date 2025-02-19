@@ -5,20 +5,13 @@ echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
 echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
 # Install Accelerate and DeepSpeed
-git clone https://github.com/huggingface/accelerate.git --branch hpu-support --depth 1
+git clone https://github.com/huggingface/accelerate.git
 cd accelerate
-pip install -e .[testing] git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+git checkout hpu-support
+git pull
+pip install -e .[testing]
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
-# Install Rust and build safetensors
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
-rustup update
-git clone https://github.com/huggingface/safetensors 
-cd safetensors
-git checkout fa833511664338bfc927fc02653ddb7d38d40be9
-pip install setuptools_rust
-pip install -e bindings/python
-cd ..
 
 # Set environment variables
 export PT_ENABLE_INT64_SUPPORT=1
@@ -38,7 +31,6 @@ make test_big_modeling
 if [ $? -ne 0 ]; then
     exit 1
 fi
-
 
 echo "Running Core tests"
 make test_core
