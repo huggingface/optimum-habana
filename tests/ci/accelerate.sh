@@ -12,6 +12,16 @@ git pull
 pip install -e .[testing]
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
+# Install Rust and build Safetensors
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+. "$HOME/.cargo/env"
+rustup update
+git clone https://github.com/huggingface/safetensors
+cd safetensors
+git checkout fa833511664338bfc927fc02653ddb7d38d40be9
+pip install setuptools_rust
+pip install -e bindings/python
+cd ..
 
 # Set environment variables
 export PT_ENABLE_INT64_SUPPORT=1
