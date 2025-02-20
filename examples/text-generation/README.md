@@ -202,7 +202,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
-To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards use the following command and replace the hostfile parameter to the correct file:
+To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
 python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
 --world_size 16 ./run_generation.py \ 
