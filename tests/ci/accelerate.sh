@@ -23,8 +23,8 @@ pip install -e .[testing]
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
 # Set environment variables
-export LOG_LEVEL_PT_BRIDGE=0 
-export LOG_LEVEL_GC=0 
+export LOG_LEVEL_PT_BRIDGE=0
+export LOG_LEVEL_GC=0
 export ENABLE_CONSOLE=true
 export PT_HPU_EAGER_PIPELINE_ENABLE=0
 export PT_ENABLE_INT64_SUPPORT=1
@@ -33,10 +33,9 @@ export RUN_SLOW=1
 
 # CUSTOM TESTS
 
-pytest tests/ -s -vvvv -k "test_cpu_offload_gpt2"
-# pytest tests/ -s -vvvv -k "test_accelerated_optimizer_step_was_skipped"
-# pytest tests/ -s -vvvv -k "test_pad_across_processes"
-# pytest tests/ -s -vvvv -k "test_multi_device_merge_fsdp_weights"
+pytest tests/ -s -vvvv -k "test_pad_across_processes"
+pytest tests/ -s -vvvv -k "test_multi_device_merge_fsdp_weights"
+pytest tests/ -s -vvvv -k "test_accelerated_optimizer_step_was_skipped"
 
 # # CORE FEATURES TESTS
 
