@@ -89,7 +89,13 @@ class Secret:
 def pytest_addoption(parser):
     parser.addoption("--token", action="store", default=None)
     parser.addoption("--rebase", action="store_true", help="rebase baseline references from current run")
-
+    
+def pytest_configure(config):
+    junitxml_path = config.getoption("--junitxml")
+    if not junitxml_path:
+        import time
+        timestamp = time.strftime("%Y%m%d%H%M%S")
+        config.option.xmlpath = f"/root/result_{timestamp}.xml"
 
 @pytest.fixture
 def token(request):
