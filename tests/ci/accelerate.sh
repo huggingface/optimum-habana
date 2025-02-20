@@ -23,47 +23,43 @@ pip install -e .[testing]
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
 # Set environment variables
+export PT_HPU_EAGER_COLLECTIVE_PIPELINE_ENABLE=0
 export PT_HPU_EAGER_PIPELINE_ENABLE=0
 export PT_ENABLE_INT64_SUPPORT=1
 export PT_HPU_LAZY_MODE=0
 export RUN_SLOW=1
 
-# CUSTOM TESTS
-
-pytest tests/ -s -vvvv -k "test_pad_across_processes"
 pytest tests/ -s -vvvv -k "test_multi_device_merge_fsdp_weights"
-pytest tests/ -s -vvvv -k "test_accelerated_optimizer_step_was_skipped"
+# CORE FEATURES TESTS
 
-# # CORE FEATURES TESTS
+echo "Running CLI tests"
+make test_cli
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
-# echo "Running CLI tests"
-# make test_cli
-# if [ $? -ne 0 ]; then
-#     exit 1
-# fi
+echo "Running Core tests"
+make test_core
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
-# echo "Running Core tests"
-# make test_core
-# if [ $? -ne 0 ]; then
-#     exit 1
-# fi
+echo "Running Big Modeling tests"
+make test_big_modeling
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
-# echo "Running Big Modeling tests"
-# make test_big_modeling
-# if [ $? -ne 0 ]; then
-#     exit 1
-# fi
+# INTEGRATION TESTS
 
-# # INTEGRATION TESTS
+echo "Running FSDP integration tests"
+make test_fsdp
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
-# echo "Running FSDP integration tests"
-# make test_fsdp
-# if [ $? -ne 0 ]; then
-#     exit 1
-# fi
-
-# echo "Running DeepSpeed integration tests"
-# make test_deepspeed
-# if [ $? -ne 0 ]; then
-#     exit 1
-# fi
+echo "Running DeepSpeed integration tests"
+make test_deepspeed
+if [ $? -ne 0 ]; then
+    exit 1
+fi
