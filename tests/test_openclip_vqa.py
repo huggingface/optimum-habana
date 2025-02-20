@@ -20,8 +20,16 @@ MODELS_TO_TEST = {
 
 def _install_requirements():
     PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
+
     cmd_line = (
-        f"pip install -r {PATH_TO_EXAMPLE_DIR / 'visual-question-answering' / 'openclip_requirements.txt'}".split()
+        f"pip install -r {PATH_TO_EXAMPLE_DIR / 'visual-question-answering' / 'requirements.txt'}".split()
+    )
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
+
+    cmd_line = (
+        f"pip install --no-deps -r {PATH_TO_EXAMPLE_DIR / 'visual-question-answering' / 'openclip_requirements.txt'}".split()
     )
     p = subprocess.Popen(cmd_line)
     return_code = p.wait()

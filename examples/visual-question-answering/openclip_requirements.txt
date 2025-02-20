@@ -1,3 +1,2 @@
 open_clip_torch==2.23.0
-matplotlib
-
+timm

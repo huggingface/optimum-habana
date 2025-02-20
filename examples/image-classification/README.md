@@ -309,6 +309,10 @@ python run_image_classification.py \
 
 This directory contains an example script that demonstrates using FastViT with graph mode.
 
+```bash
+pip install --no-deps -r requirements_no_deps.txt
+```
+
 ### Single-HPU inference
 
 ```bash
