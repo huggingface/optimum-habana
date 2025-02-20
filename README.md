@@ -325,6 +325,8 @@ After training your model, feel free to submit it to the Intel [leaderboard](htt
 to evaluate, score, and rank open-source LLMs that have been pre-trained or fine-tuned on Intel Hardwares. Models submitted to the leaderboard will be evaluated on
 the Intel Developer Cloud. The evaluation platform consists of Gaudi Accelerators and Xeon CPUs running benchmarks from the Eleuther AI Language Model Evaluation Harness.
 
+The list of validated models through continuous integration tests is posted [here](https://github.com/huggingface/optimum-habana/tree/main/tests/Habana_Validated_Models.md)
+
 ## Development
 
 Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
