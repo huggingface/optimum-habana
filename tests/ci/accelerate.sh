@@ -27,12 +27,6 @@ export PT_ENABLE_INT64_SUPPORT=1
 export PT_HPU_LAZY_MODE=0
 export RUN_SLOW=1
 
-pytest tests/ -s -vvvv -k "test_ddp_comm_hook"
-
-if [ $? -ne 0 ]; then
-    exit 1
-fi
-
 # CORE FEATURES TESTS
 
 echo "Running CLI tests"
