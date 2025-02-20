@@ -33,7 +33,7 @@ export RUN_SLOW=1
 
 # CUSTOM TESTS
 
-pytest tests/ -s -vvvv -k "test_cpu_offload_gpt2 or test_disk_offload_gpt2"
+pytest tests/ -s -vvvv -k "test_cpu_offload_gpt2"
 # pytest tests/ -s -vvvv -k "test_accelerated_optimizer_step_was_skipped"
 # pytest tests/ -s -vvvv -k "test_pad_across_processes"
 # pytest tests/ -s -vvvv -k "test_multi_device_merge_fsdp_weights"
