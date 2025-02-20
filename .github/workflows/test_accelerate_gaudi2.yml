@@ -16,22 +16,66 @@ jobs:
     name: Test Accelerate integration
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
 
+    container:
+      image: docker://vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest
+      options: |
+        --shm-size=64G
+        --runtime=habana      
+        --cap-add=sys_nice
+        --env HABANA_VISIBLE_DEVICES
+        --env OMPI_MCA_btl_vader_single_copy_mechanism=none
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Pull image
+
+      - name: HL-SMI
         run: |
-          docker pull vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest
-      - name: Run tests
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+          hl-smi
+
+      - name: Install Rust and build Safetensors
         run: |
-          docker run \
-          --rm \
-          --ipc=host \
-          --runtime=habana \
-          --cap-add=sys_nice \
-          -v $PWD:/root/workspace \
-          --workdir=/root/workspace \
-          -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-          -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
-          vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
-          /bin/bash tests/ci/accelerate.sh
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          . "$HOME/.cargo/env"
+          rustup update
+          git clone https://github.com/huggingface/safetensors
+          cd safetensors
+          pip install setuptools_rust
+          git checkout fa833511664338bfc927fc02653ddb7d38d40be9
+          pip install -e bindings/python
+          cd ..
+
+      - name: Install Accelerate and DeepSpeed
+        run: |
+          git clone https://github.com/huggingface/accelerate.git
+          cd accelerate
+          git checkout hpu-support
+          pip install -e .[testing] git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+
+      - name: Set environment variables
+        run: |
+          export PT_ENABLE_INT64_SUPPORT=1
+          export PT_HPU_LAZY_MODE=0
+          export RUN_SLOW=1
+
+      - name: Run CLI tests
+        run: |
+          make test_cli
+
+      - name: Run Core tests
+        run: |
+          make test_core
+
+      - name: Run Big Modeling tests
+        run: |
+          make test_big_modeling
+
+      - name: Run FSDP integration tests
+        run: |
+          make test_fsdp
+
+      - name: Run DeepSpeed integration tests
+        run: |
+          make test_deepspeed
