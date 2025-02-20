@@ -352,7 +352,7 @@ python image_to_video_generation.py \
 ```
 
 > [!NOTE]
-> For improved performance of the image-to-video pipeline on Gaudi, it is recommended to set enviroment var by setting `PT_HPU_MAX_COMPOUND_OP_SIZE=1`.
+> For improved performance of the image-to-video pipeline on Gaudi, it is recommended to set the following env variable: `PT_HPU_MAX_COMPOUND_OP_SIZE=1`.
 
 You can pass multiple image prompts strings separated via space, i.e.
 `--image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"`.
