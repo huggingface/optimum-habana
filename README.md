@@ -289,7 +289,7 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture        | Training | Inference | Tasks |
 |:--------------------|:--------:|:---------:|:------|
-| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#image-to-image-generation)</li> |
 | Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-refiner)</li> |
 | Stable Diffusion Depth2img |         | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Stable Diffusion 3  |            | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
