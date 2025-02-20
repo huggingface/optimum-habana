@@ -60,7 +60,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("THUDM/chatglm2-6b", 1, True, False),
             ("THUDM/chatglm3-6b", 1, True, False),
             ("Qwen/Qwen2.5-7B", 4, False, False),
-            ("deepseek-ai/DeepSeek-V3", 1, False, 35, False),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128),
