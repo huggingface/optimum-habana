@@ -23,9 +23,6 @@ pip install -e .[testing]
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
 # Set environment variables
-export LOG_LEVEL_PT_BRIDGE=0
-export LOG_LEVEL_GC=0
-export ENABLE_CONSOLE=true
 export PT_HPU_EAGER_PIPELINE_ENABLE=0
 export PT_ENABLE_INT64_SUPPORT=1
 export PT_HPU_LAZY_MODE=0
