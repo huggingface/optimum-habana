@@ -100,7 +100,7 @@ python text_to_image_generation.py \
 ```
 
 > [!NOTE]
-> The access to SD3 requires agreeing to its terms and conditions at [HuggingFace model page](https://huggingface.co/black-forest-labs/FLUX.1-dev),
+> The access to SD3 requires agreeing to its terms and conditions at [HuggingFace model page](https://huggingface.co/stabilityai/stable-diffusion-3-medium),
 > and then authenticating using your HF token via `huggingface-cli login`.
 
 This model can also be quantized with some ops running in FP8 precision. Before quantization, run stats collection using measure mode by setting
