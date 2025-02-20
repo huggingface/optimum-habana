@@ -208,7 +208,7 @@ def legacy(test_case):
     Decorator used to skip tests for legacy models
     """
     skip = os.environ.get("RUN_DIFFUSERS_LEGACY", "0") != "1"
-    return pytest.mark.skipif(skip, reason="This test is for old/legacy mmodel. Skipped starting 1.16.0")(test_case)
+    return pytest.mark.skipif(skip, reason="This test is for old/legacy model. Skipped starting 1.16.0.")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
