@@ -14,12 +14,21 @@
 # limitations under the License.
 """Testing suite for the PyTorch Mixtral model."""
 
+import copy
+import inspect
 import tempfile
 import unittest
+import warnings
 
 import pytest
-from transformers import MixtralConfig, is_torch_available
+from transformers import AutoModel, AutoModelForSequenceClassification, MixtralConfig, is_torch_available, logging
+from transformers.models.auto import get_values
+from transformers.models.auto.modeling_auto import (
+    MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING_NAMES,
+    MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES,
+)
 from transformers.testing_utils import (
+    CaptureLogger,
     is_flaky,
     require_flash_attn,
     require_torch,
@@ -298,6 +307,227 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     test_headmasking = False
     test_pruning = False
 
+    # copied from https://github.com/huggingface/optimum-habana/blob/synapse_1_20/tests/transformers/tests/test_modeling_common.py#L1438 with torch.inference_mode
+    def test_resize_embeddings_untied(self):
+        (
+            original_config,
+            inputs_dict,
+        ) = self.model_tester.prepare_config_and_inputs_for_common()
+        if not self.test_resize_embeddings:
+            return
+
+        original_config.tie_word_embeddings = False
+
+        # if model cannot untied embeddings -> leave test
+        if original_config.tie_word_embeddings:
+            return
+
+        with torch.inference_mode():
+            for model_class in self.all_model_classes:
+                config = copy.deepcopy(original_config)
+                model = model_class(config).to(torch_device)
+
+                # if no output embeddings -> leave test
+                if model.get_output_embeddings() is None:
+                    continue
+
+                # Check that resizing the token embeddings with a larger vocab size increases the model's vocab size
+                model_vocab_size = config.vocab_size
+                model.resize_token_embeddings(model_vocab_size + 10)
+                self.assertEqual(model.config.vocab_size, model_vocab_size + 10)
+                output_embeds = model.get_output_embeddings()
+                self.assertEqual(output_embeds.weight.shape[0], model_vocab_size + 10)
+                # Check bias if present
+                if output_embeds.bias is not None:
+                    self.assertEqual(output_embeds.bias.shape[0], model_vocab_size + 10)
+                # Check that the model can still do a forward pass successfully (every parameter should be resized)
+                model(**self._prepare_for_class(inputs_dict, model_class))
+
+                # Check that resizing the token embeddings with a smaller vocab size decreases the model's vocab size
+                model.resize_token_embeddings(model_vocab_size - 15)
+                self.assertEqual(model.config.vocab_size, model_vocab_size - 15)
+                # Check that it actually resizes the embeddings matrix
+                output_embeds = model.get_output_embeddings()
+                self.assertEqual(output_embeds.weight.shape[0], model_vocab_size - 15)
+                # Check bias if present
+                if output_embeds.bias is not None:
+                    self.assertEqual(output_embeds.bias.shape[0], model_vocab_size - 15)
+                # Check that the model can still do a forward pass successfully (every parameter should be resized)
+                # Input ids should be clamped to the maximum size of the vocabulary
+                inputs_dict["input_ids"].clamp_(max=model_vocab_size - 15 - 1)
+                if "decoder_input_ids" in inputs_dict:
+                    inputs_dict["decoder_input_ids"].clamp_(max=model_vocab_size - 15 - 1)
+                # Check that the model can still do a forward pass successfully (every parameter should be resized)
+                model(**self._prepare_for_class(inputs_dict, model_class))
+
+    # copied from https://github.com/huggingface/optimum-habana/blob/synapse_1_20/tests/transformers/tests/test_modeling_common.py#L2167 with torch.inference_mode
+    def test_problem_types(self):
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+
+        problem_types = [
+            {"title": "multi_label_classification", "num_labels": 2, "dtype": torch.float},
+            {"title": "single_label_classification", "num_labels": 1, "dtype": torch.long},
+            {"title": "regression", "num_labels": 1, "dtype": torch.float},
+        ]
+
+        with torch.inference_mode():
+            for model_class in self.all_model_classes:
+                if model_class.__name__ not in [
+                    *get_values(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES),
+                    *get_values(MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING_NAMES),
+                ]:
+                    continue
+
+                for problem_type in problem_types:
+                    with self.subTest(msg=f"Testing {model_class} with {problem_type['title']}"):
+                        config.problem_type = problem_type["title"]
+                        config.num_labels = problem_type["num_labels"]
+
+                        model = model_class(config)
+                        model.to(torch_device)
+                        model.train()
+
+                        inputs = self._prepare_for_class(inputs_dict, model_class, return_labels=True)
+
+                        if problem_type["num_labels"] > 1:
+                            inputs["labels"] = inputs["labels"].unsqueeze(1).repeat(1, problem_type["num_labels"])
+
+                        inputs["labels"] = inputs["labels"].to(problem_type["dtype"])
+
+                        # This tests that we do not trigger the warning form PyTorch "Using a target size that is different
+                        # to the input size. This will likely lead to incorrect results due to broadcasting. Please ensure
+                        # they have the same size." which is a symptom something in wrong for the regression problem.
+                        # See https://github.com/huggingface/transformers/issues/11780
+                        with warnings.catch_warnings(record=True) as warning_list:
+                            loss = model(**inputs).loss
+                        for w in warning_list:
+                            if "Using a target size that is different to the input size" in str(w.message):
+                                raise ValueError(
+                                    f"Something is going wrong in the regression problem: intercepted {w.message}"
+                                )
+
+                        loss.backward()
+
+    # copied from https://github.com/huggingface/optimum-habana/blob/synapse_1_20/tests/transformers/tests/test_modeling_common.py#L2213 with torch.inference_mode
+    def test_load_with_mismatched_shapes(self):
+        if not self.test_mismatched_shapes:
+            return
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+
+        with torch.inference_mode():
+            for model_class in self.all_model_classes:
+                if model_class.__name__ not in get_values(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES):
+                    continue
+
+                with self.subTest(msg=f"Testing {model_class}"):
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        model = model_class(config)
+                        model.save_pretrained(tmp_dir)
+
+                        # Fails when we don't set ignore_mismatched_sizes=True
+                        with self.assertRaises(RuntimeError):
+                            new_model = AutoModelForSequenceClassification.from_pretrained(tmp_dir, num_labels=42)
+                        with self.assertRaises(RuntimeError):
+                            new_model_without_prefix = AutoModel.from_pretrained(tmp_dir, vocab_size=10)
+
+                        logger = logging.get_logger("transformers.modeling_utils")
+
+                        with CaptureLogger(logger) as cl:
+                            new_model = AutoModelForSequenceClassification.from_pretrained(
+                                tmp_dir, num_labels=42, ignore_mismatched_sizes=True
+                            )
+                        self.assertIn("the shapes did not match", cl.out)
+                        new_model.to(torch_device)
+                        inputs = self._prepare_for_class(inputs_dict, model_class)
+                        logits = new_model(**inputs).logits
+                        self.assertEqual(logits.shape[1], 42)
+
+                        with CaptureLogger(logger) as cl:
+                            new_model_without_prefix = AutoModel.from_pretrained(
+                                tmp_dir, vocab_size=10, ignore_mismatched_sizes=True
+                            )
+                        self.assertIn("the shapes did not match", cl.out)
+                        input_ids = ids_tensor((2, 8), 10)
+                        new_model_without_prefix.to(torch_device)
+                        if self.is_encoder_decoder:
+                            new_model_without_prefix(input_ids, decoder_input_ids=input_ids)
+                        else:
+                            new_model_without_prefix(input_ids)
+
+    # copied from https://github.com/huggingface/optimum-habana/blob/synapse_1_20/tests/transformers/tests/generation/test_utils.py#L2025C1-L2068C41 with torch.inference_mode
+    def test_left_padding_compatibility(self):
+        # The check done in this test is fairly difficult -- depending on the model architecture, passing the right
+        # position index for the position embeddings can still result in a different output, due to numerical masking.
+        # On the other hand, for some types of position embeddings, an incorrect position index can have a minimal
+        # impact on the output.
+        # There are two tricks employed to check whether left-padding compatibility is in place:
+        # 1 - To reduce the negative impact of the numerical attention mask on a correct position index, we set the
+        # padding size to 1.
+        # 2 - To reduce the chance of false positives (i.e. passing when it should be failing), we run the check
+        # multiple times with random inputs, and it has to pass with all of them.
+        # NOTE: because of 2), there is some chance of false positives in this test.
+
+        with torch.inference_mode():
+            for model_class in self.all_generative_model_classes:
+                config, _, _, _ = self._get_input_ids_and_config()
+                if config.is_encoder_decoder:
+                    continue  # skip for encoder-decoder models -- they don't need left-padding compatibility
+                model = model_class(config).to(torch_device).eval()
+                signature = inspect.signature(model.forward).parameters.keys()
+
+                no_failures = True
+                for _ in range(
+                    10
+                ):  # there may be false positives with 10 runs, we rely on the CI to catch the flakiness
+                    _, input_ids, attention_mask, _ = self._get_input_ids_and_config()
+                    model_kwargs = {"input_ids": input_ids, "attention_mask": attention_mask}
+                    if "position_ids" in signature:
+                        position_ids = torch.cumsum(attention_mask, dim=-1) - 1
+                        position_ids.masked_fill_(attention_mask == 0, 1)
+                        model_kwargs["position_ids"] = position_ids
+                    next_logits_wo_padding = model(**model_kwargs).logits[:, -1, :]
+
+                    pad_size = (input_ids.shape[0], 1)
+                    padding = torch.ones(pad_size, dtype=input_ids.dtype, device=torch_device) * config.pad_token_id
+                    padded_input_ids = torch.cat((padding, input_ids), dim=1)
+                    padded_attention_mask = torch.cat((torch.zeros_like(padding), attention_mask), dim=1)
+                    model_kwargs = {"input_ids": padded_input_ids, "attention_mask": padded_attention_mask}
+                    if "position_ids" in signature:
+                        position_ids = torch.cumsum(padded_attention_mask, dim=-1) - 1
+                        position_ids.masked_fill_(padded_attention_mask == 0, 1)
+                        model_kwargs["position_ids"] = position_ids
+                    next_logits_with_padding = model(**model_kwargs).logits[:, -1, :]
+                    if not torch.allclose(next_logits_wo_padding, next_logits_with_padding, atol=1e-7):
+                        no_failures = False
+                        break
+
+                self.assertTrue(no_failures)
+
+    # copied from https://github.com/huggingface/optimum-habana/blob/synapse_1_20/tests/transformers/tests/test_modeling_common.py#L1263 with torch.inference_mode
+    def test_feed_forward_chunking(self):
+        (
+            original_config,
+            inputs_dict,
+        ) = self.model_tester.prepare_config_and_inputs_for_common()
+        with torch.inference_mode():
+            for model_class in self.all_model_classes:
+                torch.manual_seed(0)
+                config = copy.deepcopy(original_config)
+                model = model_class(config)
+                model.to(torch_device)
+                model.eval()
+
+                hidden_states_no_chunk = model(**self._prepare_for_class(inputs_dict, model_class))[0]
+
+                torch.manual_seed(0)
+                config.chunk_size_feed_forward = 1
+                model = model_class(config)
+                model.to(torch_device)
+                model.eval()
+
+                hidden_states_with_chunk = model(**self._prepare_for_class(inputs_dict, model_class))[0]
+                self.assertTrue(torch.allclose(hidden_states_no_chunk, hidden_states_with_chunk, atol=1e-3))
+
     @unittest.skip(reason="This test is not supported for Mixtral")
     def test_beam_search_generate(self):
         pass
@@ -382,32 +612,36 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
     def test_Mixtral_sequence_classification_model_for_single_label(self):
-        config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        config.num_labels = 3
-        config.problem_type = "single_label_classification"
-        input_ids = input_dict["input_ids"]
-        attention_mask = input_ids.ne(1).to(torch_device)
-        sequence_labels = ids_tensor([self.model_tester.batch_size], self.model_tester.type_sequence_label_size)
-        model = MixtralForSequenceClassification(config)
-        model.to(torch_device)
-        model.eval()
-        result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
-        self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
+        # Starting 1.20, we added torch.inference_mode context manager here.
+        with torch.inference_mode():
+            config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            config.num_labels = 3
+            config.problem_type = "single_label_classification"
+            input_ids = input_dict["input_ids"]
+            attention_mask = input_ids.ne(1).to(torch_device)
+            sequence_labels = ids_tensor([self.model_tester.batch_size], self.model_tester.type_sequence_label_size)
+            model = MixtralForSequenceClassification(config)
+            model.to(torch_device)
+            model.eval()
+            result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
+            self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
     def test_Mixtral_sequence_classification_model_for_multi_label(self):
-        config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        config.num_labels = 3
-        config.problem_type = "multi_label_classification"
-        input_ids = input_dict["input_ids"]
-        attention_mask = input_ids.ne(1).to(torch_device)
-        sequence_labels = ids_tensor(
-            [self.model_tester.batch_size, config.num_labels], self.model_tester.type_sequence_label_size
-        ).to(torch.float)
-        model = MixtralForSequenceClassification(config)
-        model.to(torch_device)
-        model.eval()
-        result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
-        self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
+        # Starting 1.20, we added torch.inference_mode context manager here.
+        with torch.inference_mode():
+            config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            config.num_labels = 3
+            config.problem_type = "multi_label_classification"
+            input_ids = input_dict["input_ids"]
+            attention_mask = input_ids.ne(1).to(torch_device)
+            sequence_labels = ids_tensor(
+                [self.model_tester.batch_size, config.num_labels], self.model_tester.type_sequence_label_size
+            ).to(torch.float)
+            model = MixtralForSequenceClassification(config)
+            model.to(torch_device)
+            model.eval()
+            result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
+            self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
     # Copied from tests.models.llama.test_modeling_llama.LlamaModelTest.test_llama_token_classification_model with Llama->Mixtral,llama->Mixtral
     def test_Mixtral_token_classification_model(self):
@@ -515,32 +749,36 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         r"""
         Let's make sure we can actually compute the loss and do a backward on it.
         """
-        config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        config.num_labels = 3
-        config.num_local_experts = 8
-        config.output_router_logits = True
-        input_ids = input_dict["input_ids"]
-        attention_mask = input_ids.ne(1).to(torch_device)
-        model = MixtralForCausalLM(config)
-        model.to(torch_device)
-        model.eval()
-        result = model(input_ids, attention_mask=attention_mask)
-        self.assertEqual(result.router_logits[0].shape, (91, config.num_local_experts))
-        torch.testing.assert_close(result.aux_loss.cpu(), torch.tensor(2, dtype=torch.float32), rtol=1e-2, atol=1e-2)
-        # First, we make sure that adding padding tokens doesn't change the loss
-        # loss(input_ids, attention_mask=None) == loss(input_ids + padding, attention_mask=attention_mask_with_padding)
-        pad_length = 1000
-        # Add padding tokens (assume that pad_token_id=1) to input_ids
-        padding_block = torch.ones(input_ids.shape[0], pad_length, dtype=torch.int32).to(torch_device)
-        padded_input_ids = torch.cat((padding_block, input_ids), dim=1)  # this is to simulate padding to the left
-        padded_attention_mask = padded_input_ids.ne(1).to(torch_device)
-        padded_result = model(padded_input_ids, attention_mask=padded_attention_mask)
-        torch.testing.assert_close(result.aux_loss.cpu(), padded_result.aux_loss.cpu(), rtol=1e-4, atol=1e-4)
-        # We make sure that the loss of includding padding tokens != the loss without padding tokens
-        # if attention_mask=None --> we don't exclude padding tokens
-        include_padding_result = model(padded_input_ids, attention_mask=None)
-        # This is to mimic torch.testing.assert_not_close
-        self.assertNotAlmostEqual(include_padding_result.aux_loss.item(), result.aux_loss.item())
+        # Starting 1.20, we added torch.inference_mode context manager here.
+        with torch.inference_mode():
+            config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            config.num_labels = 3
+            config.num_local_experts = 8
+            config.output_router_logits = True
+            input_ids = input_dict["input_ids"]
+            attention_mask = input_ids.ne(1).to(torch_device)
+            model = MixtralForCausalLM(config)
+            model.to(torch_device)
+            model.eval()
+            result = model(input_ids, attention_mask=attention_mask)
+            self.assertEqual(result.router_logits[0].shape, (91, config.num_local_experts))
+            torch.testing.assert_close(
+                result.aux_loss.cpu(), torch.tensor(2, dtype=torch.float32), rtol=1e-2, atol=1e-2
+            )
+            # First, we make sure that adding padding tokens doesn't change the loss
+            # loss(input_ids, attention_mask=None) == loss(input_ids + padding, attention_mask=attention_mask_with_padding)
+            pad_length = 1000
+            # Add padding tokens (assume that pad_token_id=1) to input_ids
+            padding_block = torch.ones(input_ids.shape[0], pad_length, dtype=torch.int32).to(torch_device)
+            padded_input_ids = torch.cat((padding_block, input_ids), dim=1)  # this is to simulate padding to the left
+            padded_attention_mask = padded_input_ids.ne(1).to(torch_device)
+            padded_result = model(padded_input_ids, attention_mask=padded_attention_mask)
+            torch.testing.assert_close(result.aux_loss.cpu(), padded_result.aux_loss.cpu(), rtol=1e-4, atol=1e-4)
+            # We make sure that the loss of includding padding tokens != the loss without padding tokens
+            # if attention_mask=None --> we don't exclude padding tokens
+            include_padding_result = model(padded_input_ids, attention_mask=None)
+            # This is to mimic torch.testing.assert_not_close
+            self.assertNotAlmostEqual(include_padding_result.aux_loss.item(), result.aux_loss.item())
 
 
 @require_torch
