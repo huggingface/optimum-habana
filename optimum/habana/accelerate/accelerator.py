@@ -191,6 +191,7 @@ class GaudiAccelerator(Accelerator):
         self.autocast_handler = None
         self.profile_handler = None
         self.has_lomo_optimizer = False
+        self.has_fp8_handler=False
 
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
