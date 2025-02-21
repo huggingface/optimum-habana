@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 ```
 
 
@@ -204,14 +204,14 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
-python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
---world_size 16 ./run_generation.py \ 
---model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \ 
---bf16 \ 
+python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
+--world_size 16 ./run_generation.py \
+--model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \
+--bf16 \
 --trim_logits \
---batch_size 1 \ 
---use_hpu_graphs \ 
---use_kv_cache  \ 
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache  \
 --parallel_strategy "ep" \
 --prompt "DeepSpeed is a machine learning framework"
 ```
@@ -637,7 +637,7 @@ python run_generation.py \
 ### Saving FP8 Checkpoints in Hugging Face format
 After quantizing the model, we can save it to a local path.
 
-> [!NOTE]  
+> [!NOTE]
 > Before executing the command below, please refer to the [Running with FP8](#running-with-fp8) section to measure the model quantization statistics.
 
 Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
