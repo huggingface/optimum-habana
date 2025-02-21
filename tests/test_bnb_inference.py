@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import os
 
 import torch
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -22,10 +21,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from optimum.habana.transformers import modeling_utils
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 modeling_utils.adapt_transformers_to_gaudi()
 
-assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
+assert OH_DEVICE_CONTEXT != "gaudi1", "Execution does not support on Gaudi1"
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 

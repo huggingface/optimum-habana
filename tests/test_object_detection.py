@@ -27,11 +27,12 @@ from transformers import AutoProcessor, DetrForObjectDetection
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from .test_examples import TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
 adapt_transformers_to_gaudi()
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     # Gaudi2 CI baselines
     LATENCY_DETR_BF16_GRAPH_BASELINE = 7.0
 else:

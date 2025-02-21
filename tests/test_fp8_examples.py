@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -8,9 +7,10 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "fp8": [
@@ -109,17 +109,15 @@ def _test_fp8_train(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             train_samples_per_second=results["train_samples_per_second"],
         )
         baseline.assertRef(
             compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             eval_accuracy=results["eval_accuracy"],
         )
 

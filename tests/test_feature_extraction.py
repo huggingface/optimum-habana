@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import time
 from unittest import TestCase
 
@@ -25,10 +24,12 @@ from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 adapt_transformers_to_gaudi()
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     # Gaudi2 CI baselines
     LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.6812
 else:

@@ -13,13 +13,13 @@ import pytest
 from optimum.habana.utils import set_seed
 
 from .test_examples import TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
 prev_quant_model_name = None
 prev_quant_rank = 0
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
@@ -366,18 +366,20 @@ def _test_text_generation(
         with open(Path(tmp_dir) / "results.json") as fp:
             results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             throughput=results["throughput"],
         )
 
         # Verify output for 1 HPU, BF16
         if check_output:
-            baseline.assertRef(compare=operator.eq, context=[device], output=results["output"][0][0])
+            baseline.assertRef(
+                compare=operator.eq,
+                context=[OH_DEVICE_CONTEXT],
+                output=results["output"][0][0],
+            )
 
 
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, check_output", MODELS_TO_TEST["bf16_1x"])
@@ -394,7 +396,7 @@ def test_text_generation_bf16_1x(
     )
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len", MODELS_TO_TEST["fp8"]
 )
@@ -423,7 +425,7 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -454,7 +456,7 @@ def test_text_generation_gptq(
     )
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
     MODELS_TO_TEST["load_quantized_model_with_autoawq"],
@@ -490,20 +492,20 @@ def test_text_generation_deepspeed(model_name: str, world_size: int, batch_size:
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline, token):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline, token):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
@@ -524,7 +526,7 @@ def test_text_generation_contrastive_search(model_name: str, batch_size: int, re
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
-@pytest.mark.skipif(condition=not bool(int(os.environ.get("GAUDI2_CI", "0"))), reason="Skipping test for G1")
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, batch_size: int, reuse_cache: bool, baseline, token):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)

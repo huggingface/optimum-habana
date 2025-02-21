@@ -14,7 +14,6 @@
 # limitations under the License.
 
 
-import os
 import time
 from unittest import TestCase
 
@@ -24,8 +23,10 @@ import pytest
 import torch
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
+from .utils import OH_DEVICE_CONTEXT
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     # Gaudi2 CI baselines
     LATENCY_VIDEOMAE_BF16_GRAPH_BASELINE = 17.544198036193848
 else:

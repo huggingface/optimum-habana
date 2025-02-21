@@ -9,8 +9,10 @@ import pytest
 
 from optimum.habana.utils import set_seed
 
+from .utils import OH_DEVICE_CONTEXT
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     MODEL_OUTPUTS = {
         "bigcode/starcoder": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_twice():\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_thrice():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_four_times():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n   ',
         "bigcode/starcoder2-3b": 'def print_hello_world():\n    print("Hello World")\n\ndef print_hello_world_with_name(name):\n    print("Hello World, " + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print("Hello World, " + name + ", " + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print("Hello',
