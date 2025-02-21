@@ -1,0 +1,69 @@
+{
+    "gaudi2": {
+        "timdettmers/openassistant-guanaco": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 4e-4,
+                    "train_batch_size": 1,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 16",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 64",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules query_key_value dense dense_h_to_4h dense_4h_to_h",
+                        "--dataset_concatenation",
+                        "--max_seq_length 256",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--pipelining_fwd_bwd",
+                        "--validation_split_percentage 10"
+                    ]
+                }
+            }
+        },
+        "mamamiya405/finred": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 4e-4,
+                    "train_batch_size": 1,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 16",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 64",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules query_key_value dense dense_h_to_4h dense_4h_to_h",
+                        "--max_seq_length 256",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--pipelining_fwd_bwd",
+                        "--validation_split_percentage 10"
+                    ]
+                }
+            }
+	}
+    }
+}

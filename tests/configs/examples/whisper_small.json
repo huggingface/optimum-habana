@@ -1,0 +1,63 @@
+{
+    "gaudi1": {
+        "mozilla-foundation/common_voice_11_0": {
+            "num_train_epochs": 10,
+            "eval_batch_size": 2,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 8,
+                    "metrics": ["eval_wer", "eval_samples_per_second", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name hi",
+                        "--language hindi",
+                        "--task transcribe",
+                        "--train_split_name train+validation",
+                        "--eval_split_name test",
+                        "--preprocessing_num_workers 1",
+                        "--generation_max_length 225",
+                        "--max_duration_in_seconds 30",
+                        "--text_column_name sentence",
+                        "--freeze_feature_encoder False",
+                        "--dataloader_num_workers 8",
+                        "--predict_with_generate",
+                        "--use_hpu_graphs_for_inference",
+                        "--label_features_max_length 128",
+                        "--pipelining_fwd_bwd True",
+                        "--trust_remote_code True"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "mozilla-foundation/common_voice_11_0": {
+            "num_train_epochs": 10,
+            "eval_batch_size": 8,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 8e-5,
+                    "train_batch_size": 32,
+                    "metrics": ["eval_wer", "eval_samples_per_second", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name hi",
+                        "--language hindi",
+                        "--task transcribe",
+                        "--train_split_name train+validation",
+                        "--eval_split_name test",
+                        "--preprocessing_num_workers 1",
+                        "--generation_max_length 225",
+                        "--max_duration_in_seconds 30",
+                        "--text_column_name sentence",
+                        "--freeze_feature_encoder False",
+                        "--dataloader_num_workers 8",
+                        "--predict_with_generate",
+                        "--use_hpu_graphs_for_inference",
+                        "--label_features_max_length 128",
+                        "--trust_remote_code True"
+                    ]
+                }
+            }
+        }
+    }
+}

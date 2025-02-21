@@ -1,0 +1,33 @@
+{
+    "gaudi2": {
+        "tatsu-lab/alpaca": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 1,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 10,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_checkpointing",
+                        "--eval_strategy epoch",
+                        "--eval_delay 2",
+                        "--save_strategy no",
+                        "--warmup_ratio 0.03",
+                        "--lr_scheduler_type cosine",
+                        "--logging_steps 1",
+                        "--lora_rank 4",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16",
+                        "--use_flash_attention True",
+                        "--flash_attention_causal_mask True"
+                    ]
+                }
+            }
+        }
+    }
+}
