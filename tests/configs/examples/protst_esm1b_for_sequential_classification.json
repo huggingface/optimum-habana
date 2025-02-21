@@ -1,0 +1,24 @@
+{
+    "gaudi2": {
+        "prost-sequence-classification": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 32,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--save_strategy no",
+                        "--tokenizer_name facebook/esm1b_t33_650M_UR50S",
+                        "--use_hpu_graphs_for_inference",
+                        "--use_hpu_graphs_for_training",
+                        "--trust_remote_code",
+                        "--torch_dtype bfloat16",
+                        "--label_names labels"
+                    ]
+                }
+            }
+        }
+    }
+}

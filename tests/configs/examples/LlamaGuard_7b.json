@@ -1,0 +1,21 @@
+{
+    "gaudi2": {
+        "mrpc": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 8,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 32,
+                    "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_seq_length 128",
+                        "--add_pad_token True",
+                        "--use_hpu_graphs_for_inference",
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
+                    ]
+                }
+            }
+        }
+    }
+}

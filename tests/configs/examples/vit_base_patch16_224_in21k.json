@@ -1,0 +1,76 @@
+{
+    "gaudi1": {
+        "cifar10": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 64,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 64,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--image_column_name img",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 64,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--image_column_name img",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True",
+                        "--throughput_warmup_steps 10"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "cifar10": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 64,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 128,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--image_column_name img",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 128,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--image_column_name img",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True",
+                        "--throughput_warmup_steps 8"
+                    ]
+                }
+            }
+        }
+    }
+}

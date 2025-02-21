@@ -1,0 +1,56 @@
+{
+    "gaudi1": {
+        "wikitext": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 4,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 4e-4,
+                    "train_batch_size": 4,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "wikitext": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 16,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 8e-4,
+                    "train_batch_size": 16,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        }
+    }
+}

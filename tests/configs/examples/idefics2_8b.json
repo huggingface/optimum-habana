@@ -1,0 +1,36 @@
+{
+    "gaudi2": {
+        "image2text_lora_finetune": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 2,
+                    "metrics": ["eval_accuracy", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 8",
+                        "--eval_strategy no",
+                        "--save_strategy no",
+                        "--warmup_steps 50",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm 0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 8",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules '.*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$'",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--input_column_name image query",
+                        "--output_column_name answers",
+                        "--remove_unused_columns False",
+                        "--max_seq_length 512"
+                    ]
+                }
+            }
+        }
+    }
+}

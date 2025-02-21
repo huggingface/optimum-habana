@@ -1,0 +1,54 @@
+{
+    "gaudi1": {
+        "common_language": {
+            "num_train_epochs": 10,
+            "eval_batch_size": 64,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 32,
+                    "metrics": ["eval_accuracy", "eval_samples_per_second", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--audio_column_name audio",
+                        "--label_column_name language",
+                        "--remove_unused_columns False",
+                        "--max_length_seconds 8",
+                        "--attention_mask False",
+                        "--warmup_ratio 0.1",
+                        "--seed 0",
+                        "--dataloader_num_workers 1",
+                        "--use_hpu_graphs_for_training",
+                        "--use_hpu_graphs_for_inference",
+                        "--trust_remote_code True"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "common_language": {
+            "num_train_epochs": 5,
+            "eval_batch_size": 64,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 32,
+                    "metrics": ["eval_accuracy", "eval_samples_per_second", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--audio_column_name audio",
+                        "--label_column_name language",
+                        "--remove_unused_columns False",
+                        "--max_length_seconds 8",
+                        "--attention_mask False",
+                        "--warmup_ratio 0.1",
+                        "--seed 0",
+                        "--dataloader_num_workers 1",
+                        "--use_hpu_graphs_for_training",
+                        "--use_hpu_graphs_for_inference",
+                        "--trust_remote_code True"
+                    ]
+                }
+            }
+        }
+    }
+}
