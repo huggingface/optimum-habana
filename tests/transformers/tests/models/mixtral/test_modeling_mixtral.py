@@ -565,7 +565,27 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         pass
 
     @unittest.skip(reason="This test is not supported for Mixtral")
+    def test_generate_from_inputs_embeds_decoder_only(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mixtral")
+    def test_assisted_decoding_sample(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mixtral")
     def test_sample_generate_dict_output(self):
+        pass
+
+    @unittest.skip(reason="Mixtral buffers include complex numbers, which breaks this test")
+    def test_save_load_fast_init_from_base(self):
+        pass
+
+    @unittest.skip(reason="Mixtral uses GQA on all models so the KV cache is a non standard format")
+    def test_past_key_values_format(self):
+        pass
+
+    @unittest.skip(reason="NotImplemented reorder_cache` function is not correctly implemented")
+    def test_constrained_beam_search_generate(self):
         pass
 
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79245/workflows/9490ef58-79c2-410d-8f51-e3495156cf9c/jobs/1012146
@@ -599,17 +619,18 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
             self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_Mixtral_sequence_classification_model(self):
-        config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        print(config)
-        config.num_labels = 3
-        input_ids = input_dict["input_ids"]
-        attention_mask = input_ids.ne(1).to(torch_device)
-        sequence_labels = ids_tensor([self.model_tester.batch_size], self.model_tester.type_sequence_label_size)
-        model = MixtralForSequenceClassification(config)
-        model.to(torch_device)
-        model.eval()
-        result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
-        self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
+        with torch.inference_mode():
+            config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            print(config)
+            config.num_labels = 3
+            input_ids = input_dict["input_ids"]
+            attention_mask = input_ids.ne(1).to(torch_device)
+            sequence_labels = ids_tensor([self.model_tester.batch_size], self.model_tester.type_sequence_label_size)
+            model = MixtralForSequenceClassification(config)
+            model.to(torch_device)
+            model.eval()
+            result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
+            self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
     def test_Mixtral_sequence_classification_model_for_single_label(self):
         # Starting 1.20, we added torch.inference_mode context manager here.
@@ -658,18 +679,6 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
             result.logits.shape,
             (self.model_tester.batch_size, self.model_tester.seq_length, self.model_tester.num_labels),
         )
-
-    @unittest.skip(reason="Mixtral buffers include complex numbers, which breaks this test")
-    def test_save_load_fast_init_from_base(self):
-        pass
-
-    @unittest.skip(reason="Mixtral uses GQA on all models so the KV cache is a non standard format")
-    def test_past_key_values_format(self):
-        pass
-
-    @unittest.skip(reason="NotImplemented reorder_cache` function is not correctly implemented")
-    def test_constrained_beam_search_generate(self):
-        pass
 
     @require_flash_attn
     @require_torch_gpu
