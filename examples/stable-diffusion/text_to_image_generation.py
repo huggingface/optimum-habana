@@ -557,8 +557,6 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
         elif inpainting:
             # SD Inpainting pipeline
