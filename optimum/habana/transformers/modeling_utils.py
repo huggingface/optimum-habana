@@ -17,8 +17,8 @@ import accelerate
 import transformers
 import transformers.utils.fx
 
-from ..accelerate.utils import extract_model_from_parallel
-from ..accelerate.utils.modeling import gaudi_check_device_same
+from ..local_accelerate.utils import extract_model_from_parallel
+from ..local_accelerate.utils.modeling import gaudi_check_device_same
 from ..quantizers.bitsandbytes import (
     gaudi_bitsandbytesconfig_post_init,
     gaudi_create_quantized_param,

@@ -39,8 +39,10 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs
+from accelerate.utils.dataclasses import DistributedType
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -60,8 +62,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 from optimum.habana.transformers.trainer import _is_peft_model
 from optimum.habana.utils import set_seed
@@ -834,12 +834,11 @@ def main(args):
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.mixed_precision == "bf16"
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_dir=logging_dir,
-        force_autocast=gaudi_config.use_torch_autocast,
     )
     if args.report_to == "wandb":
         import wandb
@@ -1088,7 +1087,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if accelerator.distributed_type == DistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)

@@ -34,8 +34,10 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
+from accelerate.utils.dataclasses import DistributedType
 from datasets import load_dataset
 from diffusers import (
     AutoencoderKL,
@@ -68,8 +70,6 @@ from tqdm.auto import tqdm
 from transformers import T5EncoderModel
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.utils import set_seed
 
 
@@ -643,12 +643,11 @@ def main(args):
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=False)
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
         kwargs_handlers=[kwargs],
     )
 
@@ -762,7 +761,7 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        if not accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
             while len(models) > 0:
                 model = models.pop()
 
@@ -1075,7 +1074,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process or accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
