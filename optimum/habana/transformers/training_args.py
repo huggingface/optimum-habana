@@ -336,6 +336,15 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Use this to override default attn_implementation in transformers
+    attn_implementation: Optional[str] = field(
+        default="eager",
+        metadata={
+            "help": "choose whether to use scale dot product attention (SDPA) or not.",
+            "choices": ["eager", "sdpa"],
+        },
+    )
+
     sdp_on_bf16: bool = field(
         default=False,
         metadata={"help": "Allow pyTorch to use reduced precision in the SDPA math backend"},
