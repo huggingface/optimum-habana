@@ -1048,7 +1048,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         reuse_cache: Optional[bool] = None,
@@ -1110,7 +1110,9 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1, :]
 
-        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:

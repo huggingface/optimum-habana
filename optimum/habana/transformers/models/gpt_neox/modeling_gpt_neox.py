@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.configuration_gpt_neox import GPTNeoXConfig
@@ -11,9 +10,11 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXLayer,
     GPTNeoXMLP,
     GPTNeoXModel,
+    KwargsForCausalLM,
     apply_rotary_pos_emb,
     logger,
 )
+from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ...modeling_rope_utils import GaudiRotaryEmbedding
@@ -82,6 +83,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
         super().__init__(config, layer_idx)
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
+        self.num_attention_heads = config.num_attention_heads
 
     def forward(
         self,
@@ -159,7 +161,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
             value,
             attention_mask=attention_mask,
             head_mask=head_mask,
-            norm_factor=self.norm_factor,
+            norm_factor=self.scaling,
             attention_dropout=self.config.attention_dropout,
             training=self.training,
         )
@@ -173,6 +175,18 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
             outputs += (attn_weights,)
 
         return outputs
+
+    @classmethod
+    def _merge_heads(cls, tensor, num_attention_heads, attn_head_size):
+        """
+        Merges attn_head_size dim and num_attn_heads dim into hidden dim
+        """
+        # tensor [bs, num_attention_heads, seq_len, attn_head_size]
+        tensor = tensor.permute(0, 2, 1, 3).contiguous()
+        # -> [bs, seq_len, num_attention_heads, attn_head_size]
+        tensor = tensor.view(tensor.size(0), tensor.size(1), num_attention_heads * attn_head_size)
+        # -> [bs, seq_len, hidden_size]
+        return tensor
 
 
 class GaudiGPTNeoXLayer(GPTNeoXLayer):
@@ -408,7 +422,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-        **kwargs,  # Unused for now, mostly for the loss correction
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -425,28 +440,25 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
+            **kwargs,
         )
 
         hidden_states = outputs[0]
-        lm_logits = self.embed_out(hidden_states)
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.embed_out(hidden_states[:, slice_indices, :])
 
-        lm_loss = None
+        loss = None
         if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(lm_logits.device)
-            # we are doing next-token prediction; shift prediction scores and input ids by one
-            shift_logits = lm_logits[:, :-1, :].contiguous()
-            labels = labels[:, 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
-            lm_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
-            output = (lm_logits,) + outputs[1:]
-            return ((lm_loss,) + output) if lm_loss is not None else output
+            output = (logits,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
 
         return CausalLMOutputWithPast(
-            loss=lm_loss,
-            logits=lm_logits,
+            loss=loss,
+            logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
