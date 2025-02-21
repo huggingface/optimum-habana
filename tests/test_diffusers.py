@@ -3906,8 +3906,8 @@ class GaudiCogVideoXPipelineTester(TestCase):
             generator=torch.Generator(device="cpu").manual_seed(42),
         ).frames[0]
 
-        assert video is not None
-        assert 49 == len(video)
+        self.assertIsNotNone(video)
+        self.assertEqual(49 == len(video))
 
 class GaudiTextToVideoSDPipelineTester(TestCase):
     """

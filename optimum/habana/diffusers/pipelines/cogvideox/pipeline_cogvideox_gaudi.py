@@ -347,20 +347,6 @@ from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCaus
 setattr(CogVideoXCausalConv3d, 'forward', CogVideoXCausalConv3dforwardGaudi)
 setattr(AutoencoderKLCogVideoX, 'tiled_decode', tiled_decode_gaudi)
 
-class time_box_t():
-    def __init__(self):
-        self.t0=None
-
-    def start(self):
-        self.t0 = tm_perf.perf_counter()
-
-    def show_time(self, desc):
-        torch.hpu.synchronize()
-        t1 = tm_perf.perf_counter()
-        duration = t1-self.t0
-        self.t0 = t1
-        print(f'{desc} duration:{duration:.3f}s')
-
 @dataclass
 class GaudiTextToVideoSDPipelineOutput(BaseOutput):
     r"""
@@ -632,8 +618,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
                 callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-            time_box = time_box_t()
-            time_box.start()
             # 0. Default height and width to unet
             height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
             width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
@@ -707,7 +691,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
-            time_box.show_time('prepare latents')
 
             # 7. Denoising loop
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -779,14 +762,10 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                         progress_bar.update()
                 if not self.use_hpu_graphs:
                     htcore.mark_step()
-        time_box.show_time('transformer_hpu')
 
-        #HabanaProfile.stop()
         if not output_type == "latent":
             video = self.decode_latents(latents)
-            time_box.show_time('decode latents')
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
-            time_box.show_time('postprocess_video')
         else:
             video = latents
 
