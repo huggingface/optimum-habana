@@ -151,6 +151,7 @@ from .idefics2 import (
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
 )
+from .janus import JanusMultiModalForCausalLM, JanusMultiModalConfig
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
