@@ -1,0 +1,440 @@
+{
+  "tests/test_examples.py::CausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_single_card": {
+    "gaudi2": {
+      "perplexity": 26.39,
+      "train_runtime": 356.07,
+      "train_samples_per_second": 14.06
+    }
+  },
+  "tests/test_examples.py::CausalLanguageModelingLORAExampleTester::test_run_lora_clm_llama-7b_single_card": {
+    "gaudi1": {
+      "perplexity": 3.9168,
+      "train_runtime": 132.665,
+      "train_samples_per_second": 2.295
+    },
+    "gaudi2": {
+      "perplexity": 3.8436,
+      "train_runtime": 113.9713,
+      "train_samples_per_second": 18.428
+    }
+  },
+  "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_LlamaGuard-7b_deepspeed": {
+    "gaudi2": {
+      "eval_f1": 0.8873483535528596,
+      "train_runtime": 62.4539,
+      "train_samples_per_second": 342.169
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_CodeLlama-13b-Instruct-hf_deepspeed": {
+    "gaudi2": {
+      "perplexity": 6.877496628184696,
+      "train_runtime": 542.2985,
+      "train_samples_per_second": 18.789
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_bloom-7b1_deepspeed": {
+    "gaudi1": {
+      "train_runtime": 1556.481,
+      "train_samples_per_second": 4.757
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_chatglm3-6b_deepspeed": {
+    "gaudi2": {
+      "perplexity": 16.51629,
+      "train_runtime": 445,
+      "train_samples_per_second": 18.216
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_deepspeed": {
+    "gaudi2": {
+      "perplexity": 924.062,
+      "train_runtime": 75.518,
+      "train_samples_per_second": 81.097
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_gpt-neox-20b_deepspeed": {
+    "gaudi2": {
+      "perplexity": 8.169664686471043,
+      "train_runtime": 445,
+      "train_samples_per_second": 7.328
+    }
+  },
+  "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_gpt2-xl_deepspeed": {
+    "gaudi1": {
+      "perplexity": 12.6744,
+      "train_runtime": 366.8694,
+      "train_samples_per_second": 16.464
+    },
+    "gaudi2": {
+      "perplexity": 13.237754028004865,
+      "train_runtime": 206.5775,
+      "train_samples_per_second": 95.539
+    }
+  },
+  "tests/test_examples.py::DeepspeedSFTExampleTester::test_sft_Qwen2-72B_deepspeed": {
+    "gaudi2": {
+      "perplexity": 3.7020898897918824,
+      "train_runtime": 918.8018,
+      "train_samples_per_second": 7.554
+    }
+  },
+  "tests/test_examples.py::DeepspeedSummarizationExampleTester::test_run_summarization_flan-t5-xxl_deepspeed": {
+    "gaudi2": {
+      "eval_rougeLsum": 29.308,
+      "train_runtime": 155.86,
+      "train_samples_per_second": 28.387
+    }
+  },
+  "tests/test_examples.py::EagerModeCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_single_card": {
+    "gaudi2": {
+      "perplexity": 26.69,
+      "train_runtime": 560.8188,
+      "train_samples_per_second": 8.597
+    }
+  },
+  "tests/test_examples.py::ImageClassificationExampleTester::test_run_image_classification_swin-base-patch4-window7-224-in22k_single_card": {
+    "gaudi1": {
+      "eval_accuracy": 0.9871,
+      "train_runtime": 246.4134,
+      "train_samples_per_second": 212.722
+    },
+    "gaudi2": {
+      "eval_accuracy": 0.9850666666666666,
+      "train_runtime": 77.8934,
+      "train_samples_per_second": 826.766
+    }
+  },
+  "tests/test_examples.py::ImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_single_card": {
+    "gaudi1": {
+      "eval_accuracy": 0.9812,
+      "train_runtime": 136.9418,
+      "train_samples_per_second": 359.584
+    },
+    "gaudi2": {
+      "eval_accuracy": 0.9690666666666666,
+      "train_runtime": 54.9734,
+      "train_samples_per_second": 870.272
+    }
+  },
+  "tests/test_examples.py::MultiCardAudioClassificationExampleTester::test_run_audio_classification_ast-finetuned-speech-commands-v2_multi_card": {
+    "gaudi2": {
+      "eval_accuracy": 0.1871,
+      "eval_samples_per_second": 2301.088,
+      "train_runtime": 139.9477,
+      "train_samples_per_second": 1955.74
+    }
+  },
+  "tests/test_examples.py::MultiCardAudioClassificationExampleTester::test_run_audio_classification_wav2vec2-base_multi_card": {
+    "gaudi1": {
+      "eval_accuracy": 0.8013,
+      "eval_samples_per_second": 329.12,
+      "train_runtime": 366.8081,
+      "train_samples_per_second": 716.385
+    },
+    "gaudi2": {
+      "eval_accuracy": 0.7228,
+      "eval_samples_per_second": 3640.021,
+      "train_runtime": 63.4079,
+      "train_samples_per_second": 2975.844
+    }
+  },
+  "tests/test_examples.py::MultiCardBridgetowerExampleTester::test_run_bridgetower_bridgetower-large-itm-mlm-itc_multi_card": {
+    "gaudi2": {
+      "train_runtime": 224.42,
+      "train_samples_per_second": 904.93
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingAdaloraExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 2.59,
+      "train_runtime": 459,
+      "train_samples_per_second": 107
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_multi_card": {
+    "gaudi2": {
+      "perplexity": 954.5995,
+      "train_runtime": 82.6617,
+      "train_samples_per_second": 94.524
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingIA3ExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 3.3,
+      "train_runtime": 262.8,
+      "train_samples_per_second": 161
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester2::test_run_lora_clm_falcon-40b_multi_card": {
+    "gaudi2": {
+      "perplexity": 1.6,
+      "train_runtime": 710,
+      "train_samples_per_second": 15.0
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester2::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 2.3665,
+      "train_runtime": 294.5707,
+      "train_samples_per_second": 148.093
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester::test_run_lora_clm_falcon-40b_multi_card": {
+    "gaudi2": {
+      "perplexity": 4.0,
+      "train_runtime": 550,
+      "train_samples_per_second": 15.0
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi1": {
+      "perplexity": 2.7542,
+      "train_runtime": 538.0159,
+      "train_samples_per_second": 20.397
+    },
+    "gaudi2": {
+      "perplexity": 2.3665,
+      "train_runtime": 294.5707,
+      "train_samples_per_second": 148.093
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 2.4259,
+      "train_runtime": 186.2483,
+      "train_samples_per_second": 93.5
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLlamaAdapterExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 5.575,
+      "train_runtime": 131.7,
+      "train_samples_per_second": 294
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLnExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 2.83,
+      "train_runtime": 249,
+      "train_samples_per_second": 165
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLoRACPExampleTester::test_run_lora_clm_llama-7b_deepspeed": {
+    "gaudi2": {
+      "perplexity": 2.8889,
+      "train_runtime": 147.3597,
+      "train_samples_per_second": 34.41
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingLoRAFP8ExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 2.3692,
+      "train_runtime": 411.9935,
+      "train_samples_per_second": 232.439
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingPTuningExampleTester::test_run_prompt_tuning_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 1.047,
+      "train_runtime": 18.7,
+      "train_samples_per_second": 63.161
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingPrefixTuningExampleTester::test_run_prompt_tuning_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 1.172,
+      "train_runtime": 16.1,
+      "train_samples_per_second": 63.249
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingPromptTuningExampleTester::test_run_prompt_tuning_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 1.224,
+      "train_runtime": 16.5,
+      "train_samples_per_second": 63.161
+    }
+  },
+  "tests/test_examples.py::MultiCardCausalLanguageModelingVeraExampleTester::test_run_lora_clm_llama-7b_multi_card": {
+    "gaudi2": {
+      "perplexity": 9.064502567217577,
+      "train_runtime": 312.9258,
+      "train_samples_per_second": 127.305
+    }
+  },
+  "tests/test_examples.py::MultiCardDPOExampleTester::test_dpo_llama-7b_multi_card": {
+    "gaudi2": {
+      "train_runtime": 234.6471,
+      "train_samples_per_second": 13.499
+    }
+  },
+  "tests/test_examples.py::MultiCardImageClassificationExampleTester::test_run_image_classification_swin-base-patch4-window7-224-in22k_multi_card": {
+    "gaudi1": {
+      "eval_accuracy": 0.9819,
+      "train_runtime": 117.6424,
+      "train_samples_per_second": 1683.344
+    },
+    "gaudi2": {
+      "eval_accuracy": 0.9821,
+      "train_runtime": 62.9986,
+      "train_samples_per_second": 6202.525
+    }
+  },
+  "tests/test_examples.py::MultiCardImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_multi_card": {
+    "gaudi1": {
+      "eval_accuracy": 0.9803,
+      "train_runtime": 59.972,
+      "train_samples_per_second": 2508.955
+    },
+    "gaudi2": {
+      "eval_accuracy": 0.9679,
+      "train_runtime": 23.99,
+      "train_samples_per_second": 6718.643
+    }
+  },
+  "tests/test_examples.py::MultiCardImageToTextModelingLoRAExampleTester::test_run_image2text_lora_finetune_Llama-3.2-11B-Vision-Instruct_multi_card": {
+    "gaudi2": {
+      "eval_accuracy": 0.6,
+      "train_runtime": 350,
+      "train_samples_per_second": 20.48
+    }
+  },
+  "tests/test_examples.py::MultiCardImageToTextModelingLoRAExampleTester::test_run_image2text_lora_finetune_idefics2-8b_multi_card": {
+    "gaudi2": {
+      "eval_accuracy": 0.6,
+      "train_runtime": 286,
+      "train_samples_per_second": 11.8
+    }
+  },
+  "tests/test_examples.py::MultiCardImageToTextModelingLoRAExampleTester::test_run_image2text_lora_finetune_llava-1.5-7b-hf_multi_card": {
+    "gaudi2": {
+      "eval_accuracy": 0.2122,
+      "train_runtime": 118.5782,
+      "train_samples_per_second": 25.146
+    }
+  },
+  "tests/test_examples.py::MultiCardMaskedLanguageModelingExampleTester::test_run_mlm_roberta-large_multi_card": {
+    "gaudi1": {
+      "perplexity": 2.7851,
+      "train_runtime": 75.0033,
+      "train_samples_per_second": 217.752
+    },
+    "gaudi2": {
+      "perplexity": 2.829522488584474,
+      "train_runtime": 22.7101,
+      "train_samples_per_second": 1056.875
+    }
+  },
+  "tests/test_examples.py::MultiCardPPOExampleTester::test_ppo_llama-7b_multi_card": {
+    "gaudi2": {
+      "train_runtime": 62,
+      "train_samples_per_second": 0.5
+    }
+  },
+  "tests/test_examples.py::MultiCardProteinFoldingClassificationTester::test_run_sequence_classification_protst-esm1b-for-sequential-classification_multi_card": {
+    "gaudi2": {
+      "eval_accuracy": 0.5436668594563332,
+      "train_runtime": 38.9504,
+      "train_samples_per_second": 768.648
+    }
+  },
+  "tests/test_examples.py::MultiCardQuestionAnsweringExampleTester::test_run_qa_roberta-large_multi_card": {
+    "gaudi1": {
+      "eval_f1": 94.2867,
+      "train_runtime": 304.9084,
+      "train_samples_per_second": 366.177
+    },
+    "gaudi2": {
+      "eval_f1": 94.09,
+      "train_runtime": 79.333,
+      "train_samples_per_second": 2138.366
+    }
+  },
+  "tests/test_examples.py::MultiCardRewardExampleTester::test_reward_modeling_llama-7b_multi_card": {
+    "gaudi2": {
+      "train_runtime": 250,
+      "train_samples_per_second": 1.6
+    }
+  },
+  "tests/test_examples.py::MultiCardSFTChatExampleTester::test_sft_Qwen2-7B_multi_card": {
+    "gaudi2": {
+      "train_runtime": 423.995,
+      "train_samples_per_second": 7.342
+    }
+  },
+  "tests/test_examples.py::MultiCardSFTChatPeftExampleTester::test_sft_Qwen2-7B_multi_card": {
+    "gaudi2": {
+      "train_runtime": 410,
+      "train_samples_per_second": 120
+    }
+  },
+  "tests/test_examples.py::MultiCardSFTExampleTester::test_sft_llama-7b_multi_card": {
+    "gaudi2": {
+      "train_runtime": 206,
+      "train_samples_per_second": 51.54
+    }
+  },
+  "tests/test_examples.py::MultiCardSeq2SeqSpeechRecognitionExampleTester::test_run_speech_recognition_seq2seq_whisper-small_multi_card": {
+    "gaudi1": {
+      "eval_samples_per_second": 6.851,
+      "eval_wer": 2.1133,
+      "train_runtime": 551.3249,
+      "train_samples_per_second": 145.59
+    },
+    "gaudi2": {
+      "eval_samples_per_second": 31.0,
+      "eval_wer": 0.4693843594009983,
+      "train_runtime": 380.0,
+      "train_samples_per_second": 218.0
+    }
+  },
+  "tests/test_examples.py::MultiCardSpeechRecognitionExampleTester::test_run_speech_recognition_ctc_wav2vec2-large-lv60_multi_card": {
+    "gaudi1": {
+      "eval_samples_per_second": 54.189,
+      "eval_wer": 0.0496,
+      "train_runtime": 984.3022,
+      "train_samples_per_second": 63.043
+    },
+    "gaudi2": {
+      "eval_samples_per_second": 196.665,
+      "eval_wer": 0.1109,
+      "train_runtime": 308.8036,
+      "train_samples_per_second": 225.572
+    }
+  },
+  "tests/test_examples.py::MultiCardTextClassificationExampleTester::test_run_glue_bert-large-uncased-whole-word-masking_multi_card": {
+    "gaudi1": {
+      "eval_f1": 0.8897,
+      "train_runtime": 65.644,
+      "train_samples_per_second": 919.623
+    },
+    "gaudi2": {
+      "eval_f1": 0.8452579034941764,
+      "train_runtime": 31.445,
+      "train_samples_per_second": 2845.068
+    }
+  },
+  "tests/test_examples.py::QuestionAnsweringExampleTester::test_run_qa_roberta-large_single_card": {
+    "gaudi1": {
+      "eval_f1": 94.2959,
+      "train_runtime": 1771.3319,
+      "train_samples_per_second": 50.815
+    },
+    "gaudi2": {
+      "eval_f1": 94.5886,
+      "train_runtime": 361.4789,
+      "train_samples_per_second": 266.47
+    }
+  },
+  "tests/test_examples.py::TextClassificationExampleTester::test_run_glue_bert-large-uncased-whole-word-masking_single_card": {
+    "gaudi1": {
+      "eval_f1": 0.9022,
+      "train_runtime": 90.3943,
+      "train_samples_per_second": 172.792
+    },
+    "gaudi2": {
+      "eval_f1": 0.867,
+      "train_runtime": 33.2909,
+      "train_samples_per_second": 1100.598
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+    "gaudi1": {
+        "squad": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 48,
+                    "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 4e-4,
+                    "train_batch_size": 48,
+                    "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "squad": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 64,
+                    "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 64,
+                    "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        }
+    }
+}

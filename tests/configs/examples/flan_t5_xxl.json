@@ -1,0 +1,28 @@
+{
+    "gaudi2": {
+        "cnn_dailymail": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 22,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 22,
+                    "metrics": ["eval_rougeLsum", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--max_steps 20",
+                        "--max_eval_samples 880",
+                        "--dataset_config 3.0.0",
+                        "--source_prefix summarize: ",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--generation_max_length 129",
+                        "--gradient_checkpointing",
+                        "--adam_epsilon 1e-08",
+                        "--deepspeed examples/summarization/ds_flan_t5_z3_config_bf16.json"
+                    ]
+                }
+            }
+        }
+    }
+}

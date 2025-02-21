@@ -1,0 +1,21 @@
+{
+    "gaudi2": {
+        "wikitext": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 2,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 2,
+                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--gradient_checkpointing",
+                        "--use_hpu_graphs_for_inference",
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
+                    ]
+                }
+            }
+        }
+    }
+}
