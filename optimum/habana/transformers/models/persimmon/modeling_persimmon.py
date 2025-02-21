@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.persimmon.configuration_persimmon import PersimmonConfig
@@ -40,6 +39,7 @@ class GaudiPersimmonAttention(PersimmonAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -167,6 +167,7 @@ class GaudiPersimmonDecoderLayer(PersimmonDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -187,6 +188,7 @@ class GaudiPersimmonDecoderLayer(PersimmonDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
         )
         hidden_states = residual + hidden_states
@@ -241,7 +243,7 @@ def gaudi_persimmon_model_forward(
 
     # retrieve input_ids and inputs_embeds
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         batch_size, seq_length = input_ids.shape
     elif inputs_embeds is not None:
@@ -362,6 +364,7 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from PersimmonForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/persimmon/modeling_persimmon.py
@@ -396,16 +399,12 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(
+                logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
 
         if not return_dict:
             output = (logits,) + outputs[1:]
