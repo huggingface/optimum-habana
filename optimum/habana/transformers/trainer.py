@@ -35,10 +35,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-from accelerate import skip_first_batches
+from accelerate import Accelerator, skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
+    DistributedType,
     GradientAccumulationPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
@@ -88,7 +89,7 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
+from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.utils import (
     ADAPTER_CONFIG_NAME,
     ADAPTER_SAFE_WEIGHTS_NAME,
@@ -106,8 +107,8 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
+from ..distributed import parallel_state
+from ..local_accelerate.utils import FP8ContextWrapper, convert_model
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -217,7 +218,7 @@ class GaudiTrainer(Trainer):
         self,
         model: Union[PreTrainedModel, torch.nn.Module] = None,
         gaudi_config: GaudiConfig = None,
-        args: TrainingArguments = None,
+        args: GaudiTrainingArguments = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Union[Dataset, IterableDataset, "datasets.Dataset"]] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset], "datasets.Dataset"]] = None,
@@ -300,6 +301,7 @@ class GaudiTrainer(Trainer):
                 except ImportError as error:
                     error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
                     raise error
+
                 if self.gaudi_config.use_dynamic_shapes:
                     hthpu.enable_dynamic_shape()
                 else:
@@ -747,7 +749,7 @@ class GaudiTrainer(Trainer):
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.is_fp8_enabled:
+            if self.accelerator.state.mixed_precision == "fp8":
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
@@ -780,6 +782,9 @@ class GaudiTrainer(Trainer):
         elif self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             # In this case we are in DDP + LOMO, which should be supported
             self.optimizer = self.accelerator.prepare(self.optimizer)
+
+        if self.accelerator.state.mixed_precision == "fp8":
+            self.model = convert_model(model, _minimize_memory=self.args.minimize_memory)
 
         if self.is_fsdp_enabled:
             self.model = self.model_wrapped = model
@@ -903,7 +908,7 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
         _grad_norm: Optional[float] = None
-        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED and (
+        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == DistributedType.DEEPSPEED and (
             # Gradient clipping
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
@@ -1280,7 +1285,7 @@ class GaudiTrainer(Trainer):
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
@@ -1288,7 +1293,7 @@ class GaudiTrainer(Trainer):
             else:
                 if (
                     _grad_norm is not None
-                    and self.accelerator.distributed_type != GaudiDistributedType.FSDP
+                    and self.accelerator.distributed_type != DistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
                     grad_norm = _grad_norm.detach().item()
@@ -1540,7 +1545,7 @@ class GaudiTrainer(Trainer):
 
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
-        if self.accelerator.state.is_fp8_enabled and self.model.training:
+        if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
             ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
 
         return ctx_manager
@@ -1586,7 +1591,7 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
@@ -1597,7 +1602,7 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
+            if self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing:
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -2460,14 +2465,40 @@ class GaudiTrainer(Trainer):
         args = {
             "deepspeed_plugin": self.args.deepspeed_plugin,
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
-            "distribution_strategy": self.args.distribution_strategy,
-            "dynamic": self.args.compile_dynamic,
+            # "distribution_strategy": self.args.distribution_strategy,
+            # "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
-            "use_regional_compilation": self.args.use_regional_compilation,
+            # "use_regional_compilation": self.args.use_regional_compilation,
         }
 
         # create accelerator object
-        self.accelerator = GaudiAccelerator(**args)
+        self.accelerator = Accelerator(**args)
+
+        # we patch accelerator with the mpu here as it used to be interwined with the custom accelerator implementation
+        # should this be somewhere else ?
+        self.accelerator.mpu = parallel_state
+
+        context_parallel_size = self.args.context_parallel_size
+        if not is_deepspeed_available():
+            context_parallel_size = 1
+
+        if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not self.args.use_cpu:
+            context_parallel_size = self.args.context_parallel_size
+            if not is_deepspeed_available():
+                context_parallel_size = 1
+
+            if self.accelerator.mpu.is_unitialized():
+                self.accelerator.mpu.initialize_model_parallel(
+                    sequence_parallel_size=context_parallel_size, use_fp8=False
+                )
+            else:
+                if self.accelerator.mpu.get_sequence_parallel_world_size() != context_parallel_size:
+                    raise ValueError(
+                        "The initialized sequence parallel world size does not match the context parallel size."
+                    )
+                if self.accelerator.mpu.amax_reduction_is_initialized():
+                    logger.info("FP8 amax reduction group is already initialized.")
+
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 

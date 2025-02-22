@@ -34,8 +34,7 @@ jobs:
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             -e HF_HOME=/data \
             --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
+            --shm-size=64G \
             vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
@@ -59,7 +58,6 @@ jobs:
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             -e HF_HOME=/data \
             --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
+            --shm-size=64G \
             vault.habana.ai/gaudi-docker/1.19.0/ubuntu22.04/habanalabs/pytorch-installer-2.5.1:latest \
             /bin/bash tests/ci/fast_tests_diffusers.sh
