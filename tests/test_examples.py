@@ -532,6 +532,8 @@ class ExampleTestMeta(type):
 
             if self.EXAMPLE_NAME == "run_audio_classification":
                 extra_command_line_arguments.append("--sdp_on_bf16")
+                if "wav2vec2" in model_name:
+                    extra_command_line_arguments.append("--attn_implementation sdpa")
 
             if self.EXAMPLE_NAME == "run_image_classification":
                 extra_command_line_arguments.append("--sdp_on_bf16")
@@ -551,6 +553,11 @@ class ExampleTestMeta(type):
             if self.EXAMPLE_NAME == "run_speech_recognition_seq2seq":
                 if model_name == "openai/whisper-small":
                     extra_command_line_arguments.append("--sdp_on_bf16")
+
+            if self.EXAMPLE_NAME == "run_speech_recognition_ctc":
+                if "wav2vec2" in model_name:
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+                    extra_command_line_arguments.append("--attn_implementation sdpa")
 
             if self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments.append("--sdp_on_bf16")
