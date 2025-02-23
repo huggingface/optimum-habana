@@ -224,7 +224,7 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
 
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl",  "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -235,7 +235,7 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl",  "chatglm"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -316,7 +316,7 @@ def main():
             model=args.model_name_or_path,
             config=args.model_name_or_path,
             tokenizer=args.model_name_or_path,
-            image_processor=args.model_name_or_path,
+            image_processor=None if model_type == "chatglm" else args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -349,6 +349,9 @@ def main():
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
 
+    if model_type == "chatglm":
+        generate_kwargs["reuse_cache"] = True
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
@@ -356,7 +359,7 @@ def main():
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
 
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next", "chatglm"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -365,7 +368,23 @@ def main():
                 kwargs["max_length"] = args.max_input_tokens
                 kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
+            if model_type == "chatglm":
+                if prompt is None:
+                   prompt = "What is shown in this image?"
+                query = [{"role": "user", "image": image, "content": prompt}]
+
+                model_inputs = processor.apply_chat_template(
+                    query,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors=None,
+                    return_dict=True,
+                )
+                generator.model.adjust_multimodal_inputs(model_inputs)
+                model_inputs.convert_to_tensors(tensor_type="pt")
+                model_inputs.to("hpu")
+            else:
+                model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
