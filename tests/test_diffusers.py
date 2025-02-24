@@ -90,6 +90,7 @@ from transformers import (
     DPTConfig,
     DPTFeatureExtractor,
     DPTForDepthEstimation,
+    T5Config,
     T5EncoderModel,
     T5Tokenizer,
 )
