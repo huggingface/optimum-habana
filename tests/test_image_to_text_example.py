@@ -11,8 +11,8 @@ from .test_examples import TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
 
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
-    # Gaudi2 CI baselines
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # Gaudi2+
     MODELS_TO_TEST = {
         "bf16": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
@@ -36,7 +36,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
         ],
     }
 else:
-    # Gaudi1 CI baselines
+    # Gaudi1
     MODELS_TO_TEST = {
         "bf16": [
             ("llava-hf/llava-1.5-7b-hf", 1),
