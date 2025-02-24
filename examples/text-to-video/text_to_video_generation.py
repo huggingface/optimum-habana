@@ -23,8 +23,7 @@ from pathlib import Path
 import torch
 from diffusers.utils.export_utils import export_to_video
 
-from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
-from optimum.habana.diffusers import GaudiCogVideoXPipeline
+from optimum.habana.diffusers import GaudiCogVideoXPipeline, GaudiTextToVideoSDPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
@@ -186,7 +185,7 @@ def main():
         kwargs["torch_dtype"] = torch.float32
 
     # Generate images
-    if args.pipeline_type[0] == 'sdp':
+    if args.pipeline_type[0] == "sdp":
         pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
             args.model_name_or_path, **kwargs
         )
@@ -219,10 +218,8 @@ def main():
             else:
                 logger.warning("--output_type should be equal to 'mp4' to save images in --video_save_dir.")
 
-    elif args.pipeline_type[0] == 'cogvideox':
-        pipeline: GaudiCogVideoXPipeline= GaudiCogVideoXPipeline.from_pretrained(
-            args.model_name_or_path, **kwargs
-        )
+    elif args.pipeline_type[0] == "cogvideox":
+        pipeline: GaudiCogVideoXPipeline = GaudiCogVideoXPipeline.from_pretrained(args.model_name_or_path, **kwargs)
         pipeline.vae.enable_tiling()
         pipeline.vae.enable_slicing()
         video = pipeline(
@@ -235,11 +232,10 @@ def main():
         ).frames[0]
         video_save_dir = Path(args.video_save_dir)
         video_save_dir.mkdir(parents=True, exist_ok=True)
-        filename = video_save_dir / f"cogvideoX_out.mp4"
+        filename = video_save_dir / "cogvideoX_out.mp4"
         export_to_video(video, str(filename.resolve()), fps=8)
     else:
         logger.error(f"unsupported pipe line:{args.pipeline_type}")
-
 
 
 if __name__ == "__main__":

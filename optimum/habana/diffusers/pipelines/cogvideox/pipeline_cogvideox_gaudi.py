@@ -13,23 +13,29 @@
 # limitations under the License.
 
 import inspect
-import time as tm_perf
+import math
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Union
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from diffusers import CogVideoXPipeline
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
-from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from diffusers.utils import BaseOutput, logging
-from diffusers.utils.torch_utils import randn_tensor
 from diffusers.models.attention import Attention
+from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3d
 from diffusers.models.autoencoders.vae import DecoderOutput
-from diffusers.utils import USE_PEFT_BACKEND
+from diffusers.models.modeling_outputs import Transformer2DModelOutput
+from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from diffusers.utils import (
+    USE_PEFT_BACKEND,
+    BaseOutput,
+    is_torch_version,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
+from diffusers.utils.torch_utils import randn_tensor
 from transformers import T5EncoderModel, T5Tokenizer
 
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
@@ -44,6 +50,7 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -52,6 +59,7 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+
 
 def apply_rotary_emb(
     x: torch.Tensor,
@@ -69,6 +77,7 @@ def apply_rotary_emb(
     x = torch.ops.hpu.rotary_pos_embedding(x, sin, cos, None, 0, 1)
 
     return x
+
 
 class CogVideoXAttnProcessorGaudi:
     r"""
@@ -122,7 +131,14 @@ class CogVideoXAttnProcessorGaudi:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
         hidden_states = self.fused_scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_casual=False, scale=None, softmax_mode='fast'
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_casual=False,
+            scale=None,
+            softmax_mode="fast",
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -136,6 +152,7 @@ class CogVideoXAttnProcessorGaudi:
             [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
         )
         return hidden_states, encoder_hidden_states
+
 
 def cogvideoXTransformerForwardGaudi(
     self,
@@ -158,9 +175,7 @@ def cogvideoXTransformerForwardGaudi(
         scale_lora_layers(self, lora_scale)
     else:
         if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-            logger.warning(
-                "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-            )
+            logger.warning("Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective.")
 
     batch_size, num_frames, channels, height, width = hidden_states.shape
 
@@ -183,6 +198,7 @@ def cogvideoXTransformerForwardGaudi(
     hidden_states = hidden_states[:, text_seq_length:]
 
     import habana_frameworks.torch.core as htcore
+
     # 3. Transformer blocks
     for i, block in enumerate(self.transformer_blocks):
         if self.training and self.gradient_checkpointing:
@@ -240,6 +256,7 @@ def cogvideoXTransformerForwardGaudi(
         return (output,)
     return Transformer2DModelOutput(sample=output)
 
+
 def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
     r"""
     Decode a batch of images using a tiled decoder.
@@ -264,7 +281,7 @@ def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union
     #   - Assume everything as above but now HxW is 240x360 by tiling in half
     # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
 
-    print('run gaudi pipelined tiled decode!')
+    print("run gaudi pipelined tiled decode!")
     batch_size, num_channels, num_frames, height, width = z.shape
 
     overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor_height))
@@ -276,6 +293,7 @@ def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union
     frame_batch_size = self.num_latent_frames_batch_size
 
     import habana_frameworks.torch.core as htcore
+
     # Split z into overlapping tiles and decode them separately.
     # The tiles have an overlap to avoid seams between tiles.
     rows = []
@@ -327,25 +345,28 @@ def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union
     return DecoderOutput(sample=dec)
 
 
-def CogVideoXCausalConv3dforwardGaudi(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
-    #print('run gaudi CogVideoXCausalConv3d forward!')
+def CogVideoXCausalConv3dforwardGaudi(
+    self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    # print('run gaudi CogVideoXCausalConv3d forward!')
     inputs = self.fake_context_parallel_forward(inputs, conv_cache)
-    #conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
+    # conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
     padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
     inputs_pad = F.pad(inputs, padding_2d, mode="constant", value=0)
 
     output = self.conv(inputs_pad)
-    if self.time_kernel_size>1:
-        if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1:].shape:
-            conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1:])
+    if self.time_kernel_size > 1:
+        if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1 :].shape:
+            conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1 :])
         else:
-            conv_cache = inputs[:, :, -self.time_kernel_size + 1:].clone()
+            conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
     return output, conv_cache
 
-from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3d
-setattr(CogVideoXCausalConv3d, 'forward', CogVideoXCausalConv3dforwardGaudi)
-setattr(AutoencoderKLCogVideoX, 'tiled_decode', tiled_decode_gaudi)
+
+setattr(CogVideoXCausalConv3d, "forward", CogVideoXCausalConv3dforwardGaudi)
+setattr(AutoencoderKLCogVideoX, "tiled_decode", tiled_decode_gaudi)
+
 
 @dataclass
 class GaudiTextToVideoSDPipelineOutput(BaseOutput):
@@ -360,6 +381,7 @@ class GaudiTextToVideoSDPipelineOutput(BaseOutput):
     """
 
     frames: torch.Tensor
+
 
 def retrieve_timesteps(
     scheduler,
@@ -420,7 +442,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-
 class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py#L84
@@ -459,6 +480,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             block.attn1.set_processor(CogVideoXAttnProcessorGaudi())
 
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
         self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
 
     @property
@@ -506,7 +528,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
 
     @torch.no_grad()
     def __call__(
@@ -644,7 +665,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             else:
                 batch_size = prompt_embeds.shape[0]
 
-
             device = self._execution_device
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -696,6 +716,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
             outputs = []
             import habana_frameworks.torch.core as htcore
+
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 # for DPM-solver++
                 old_pred_original_sample = None
@@ -721,16 +742,18 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                     # perform guidance
                     if use_dynamic_cfg:
                         self._guidance_scale = 1 + guidance_scale * (
-                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0))
+                            / 2
                         )
                     if do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-
                     # compute the previous noisy sample x_t -> x_t-1
                     if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[
+                            0
+                        ]
                     else:
                         latents, old_pred_original_sample = self.scheduler.step(
                             noise_pred,
@@ -756,7 +779,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                         latents = callback_outputs.pop("latents", latents)
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
@@ -804,11 +826,11 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                 graph.capture_begin()
                 outputs = self.transformer(
                     self.transformer,
-                    hidden_states = inputs[0],
-                    encoder_hidden_states = inputs[1],
+                    hidden_states=inputs[0],
+                    encoder_hidden_states=inputs[1],
                     timestep=inputs[2],
                     image_rotary_emb=inputs[3],
-                    return_dict=inputs[4]
+                    return_dict=inputs[4],
                 )[0]
                 graph.capture_end()
                 graph_inputs = inputs
