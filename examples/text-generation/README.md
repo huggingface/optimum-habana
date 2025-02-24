@@ -251,7 +251,8 @@ python run_generation.py \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
 --bf16 \
---sdp_on_bf16
+--sdp_on_bf16 \
+--trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
