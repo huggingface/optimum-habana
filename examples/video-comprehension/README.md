@@ -40,4 +40,3 @@ python3 run_example.py \
     --output_dir 'cogvideo_out' \
 ```
 
-

@@ -30,9 +30,11 @@ from optimum.habana.transformers.modeling_utils import (
     GaudiVideoLlavaForConditionalGeneration,
     adapt_transformers_to_gaudi,
 )
+
 from optimum.habana.diffusers import GaudiCogVideoXPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from diffusers.utils.export_utils import export_to_video
+
 
 
 logging.basicConfig(
@@ -54,7 +56,6 @@ def read_video_pyav(container, indices):
         if i >= start_index and i in indices:
             frames.append(frame)
     return np.stack([x.to_ndarray(format="rgb24") for x in frames])
-
 
 def cogvideoX_generate(args):
     gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
@@ -85,7 +86,6 @@ def cogvideoX_generate(args):
     filename = video_save_dir / "cogvideoX_out.mp4"
     export_to_video(video, str(filename.resolve()), fps=8)
 
-
 def main():
     parser = argparse.ArgumentParser()
 
@@ -103,6 +103,7 @@ def main():
         help="pipeline type:sdp or cogvideoX",
     )
     parser.add_argument(
+
         "--video_path",
         default=None,
         type=str,
@@ -159,6 +160,7 @@ def main():
     )
 
     args = parser.parse_args()
+
     if args.pipeline_type[0] == "cogvideox":
         cogvideoX_generate(args)
         return None

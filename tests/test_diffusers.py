@@ -3800,6 +3800,7 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
+
 class GaudiCogVideoXPipelineTester(TestCase):
     """
     Tests the TextToVideoSDPipeline for Gaudi.
@@ -3941,6 +3942,7 @@ class GaudiTextToVideoSDPipelineTester(TestCase):
     """
 
     def get_dummy_components(self):
+
         set_seed(0)
         unet = UNet3DConditionModel(
             block_out_channels=(4, 8),
@@ -4363,7 +4365,6 @@ class PipelineTesterMixin:
         for k, v in parameters.items():
             if v.default != inspect._empty:
                 optional_parameters.add(k)
-
         parameters = set(parameters.keys())
         parameters.remove("self")
         parameters.discard("kwargs")  # kwargs can be added if arguments of pipeline call function are deprecated
@@ -4433,7 +4434,6 @@ class PipelineTesterMixin:
 
             if "batch_size" in inputs:
                 batched_input["batch_size"] = batch_size
-
             batched_inputs.append(batched_input)
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
@@ -5174,7 +5174,6 @@ class StableDiffusionInpaintPipelineTests(
         mask_image = load_image(
             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
         )
-
         prompts = [
             "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         ]
