@@ -47,7 +47,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "wav2vec2": [
         ("facebook/wav2vec2-base", "Habana/wav2vec2"),
-        # ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
+        ("facebook/wav2vec2-large-lv60", "Habana/wav2vec2"),
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
@@ -65,6 +65,7 @@ MODELS_TO_TEST_MAPPING = {
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
     "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
+    "llava": [("llava-hf/llava-1.5-7b-hf", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [

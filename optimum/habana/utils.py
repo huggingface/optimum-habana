@@ -403,3 +403,15 @@ def get_device_name():
         return "gaudi3"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
+
+
+def get_device_count():
+    """
+    Returns the number of the current gaudi devices
+    """
+    import habana_frameworks.torch.utils.experimental as htexp
+
+    if htexp.hpu.is_available():
+        return htexp.hpu.device_count()
+    else:
+        raise ValueError("No hpu is found avail on this system")

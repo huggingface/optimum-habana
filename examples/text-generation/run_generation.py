@@ -29,7 +29,7 @@ from pathlib import Path
 
 import torch
 from transformers import BatchEncoding
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -227,6 +227,11 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
         "--show_graphs_count",
         action="store_true",
         help="Show statistics of HPU graph compilation.",
@@ -323,12 +328,28 @@ def setup_parser(parser):
     parser.add_argument(
         "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
+    parser.add_argument(
+        "--save_quantized_model_with_inc",
+        action="store_true",
+        help="Save quantized Huggingface checkpoint using INC.",
+    )
+    parser.add_argument(
+        "--saved_model_path",
+        type=str,
+        default="inc_quantized_model",
+        help="A path to save quantized checkpoint.",
+    )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
         "--load_quantized_model_with_autogptq",
         action="store_true",
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
     )
     quant_parser_group.add_argument(
         "--disk_offload",
@@ -338,13 +359,19 @@ def setup_parser(parser):
     quant_parser_group.add_argument(
         "--load_quantized_model_with_inc",
         action="store_true",
-        help="Load a Huggingface quantized checkpoint using INC.",
+        help="Load a quantized Huggingface checkpoint using INC.",
     )
     quant_parser_group.add_argument(
         "--local_quantized_inc_model_path",
         type=str,
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
+    )
+    parser.add_argument(
+        "--attn_batch_split",
+        default=1,
+        type=int,
+        help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
 
     args = parser.parse_args()
@@ -361,6 +388,8 @@ def setup_parser(parser):
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
@@ -773,6 +802,8 @@ def main():
         print(separator)
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

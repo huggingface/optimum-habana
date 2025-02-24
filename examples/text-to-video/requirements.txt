@@ -1,5 +1,0 @@
-opencv-python-headless
-sentencepiece
-imageio
-imageio-ffmpeg
-

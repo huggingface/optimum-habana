@@ -18,6 +18,14 @@ import transformers
 import transformers.utils.fx
 
 from ..accelerate.utils import extract_model_from_parallel
+from ..accelerate.utils.modeling import gaudi_check_device_same
+from ..quantizers.bitsandbytes import (
+    gaudi_bitsandbytesconfig_post_init,
+    gaudi_create_quantized_param,
+    gaudi_is_bitsandbytes_available,
+    gaudi_validate_bnb_backend_availability,
+    gaudi_validate_environment,
+)
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
@@ -26,6 +34,14 @@ from .generation import (
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
+from .integrations.awq import (
+    GaudiAWQLinearVersion,
+    gaudi_awq_config_post_init,
+    gaudi_awq_quantizer_process_model_after_weight_loading,
+    gaudi_awq_quantizer_process_model_before_weight_loading,
+    gaudi_awq_quantizer_validate_environment,
+)
+from .modeling_utils_transformers import load_state_dict
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -40,6 +56,8 @@ from .models import (
     DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
+    DeepseekV3Config,
+    DeepseekV3ForCausalLM,
     Gaudi2Idefics2ImageProcessor,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -104,6 +122,7 @@ from .models import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMixtralSparseMoeBlock,
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
@@ -139,6 +158,13 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -146,6 +172,7 @@ from .models import (
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
+    GaudiVideoLlavaForConditionalGeneration,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
@@ -218,9 +245,6 @@ from .models import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
-    gaudi_mixtral_block_dynamic_moe_forward,
-    gaudi_mixtral_block_moe_forward,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
@@ -265,6 +289,7 @@ from .models import (
     gaudi_xglm_attention_forward,
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
+    gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
 
 
@@ -276,12 +301,24 @@ def adapt_transformers_to_gaudi():
     accelerate.utils.extract_model_from_parallel = extract_model_from_parallel
     accelerate.utils.other.extract_model_from_parallel = extract_model_from_parallel
     accelerate.accelerator.extract_model_from_parallel = extract_model_from_parallel
+    accelerate.utils.modeling.check_device_same = gaudi_check_device_same
+
+    transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
+    transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.quantizers.quantizer_bnb_4bit.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
+    transformers.integrations.bitsandbytes.validate_bnb_backend_availability = gaudi_validate_bnb_backend_availability
+    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.validate_environment = gaudi_validate_environment
+    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.create_quantized_param = gaudi_create_quantized_param
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []
 
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
+
+    # override of load_state_dict for deepseekv3. Delete on upgrade to transformers v4.48
+    transformers.modeling_utils.load_state_dict = load_state_dict
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
@@ -561,13 +598,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
-    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.sparse_moe_forward = (
-        gaudi_mixtral_block_sparse_moe_forward
-    )
-    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.dynamic_moe_forward = (
-        gaudi_mixtral_block_dynamic_moe_forward
-    )
-    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_moe_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock = GaudiMixtralSparseMoeBlock
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
     transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig
@@ -648,6 +679,19 @@ def adapt_transformers_to_gaudi():
         gaudi_qwen2moe_block_sparse_moe_forward
     )
 
+    # Optimization for qwen2-vl Gaudi
+    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiQwen2VisionSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLVisionBlock = GaudiQwen2VLVisionBlock
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VisionTransformerPretrainedModel = (
+        GaudiQwen2VisionTransformerPretrainedModel
+    )
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLSdpaAttention = GaudiQwen2VLSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLDecoderLayer = GaudiQwen2VLDecoderLayer
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLModel = GaudiQwen2VLModel
+    transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
+        GaudiQwen2VLForConditionalGeneration
+    )
+
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
@@ -677,6 +721,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
+    # Optimization for VideoLlava on Gaudi
+    transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
+        GaudiVideoLlavaForConditionalGeneration
+    )
+
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
     transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
@@ -701,9 +750,12 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
+    # Optimization for deepseek on Gaudi
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+    transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
+    transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
@@ -720,6 +772,11 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("minicpm3", MiniCPM3Config)
     transformers.AutoModelForCausalLM.register(MiniCPM3Config, MiniCPM3ForCausalLM)
 
+    # Optimization for XLMRoberta model on Gaudi
+    transformers.models.xlm_roberta.modeling_xlm_roberta.XLMRobertaSdpaSelfAttention.forward = (
+        gaudi_XLMRoberta_Sdpa_SelfAttention_forward
+    )
+
     # Optimization for Baichuan2 on Gaudi
     transformers.AutoConfig.register("baichuan", BaichuanConfig)
     transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
@@ -732,6 +789,16 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
     transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)
+
+    transformers.quantizers.quantizer_awq.AwqQuantizer.validate_environment = gaudi_awq_quantizer_validate_environment
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_before_weight_loading = (
+        gaudi_awq_quantizer_process_model_before_weight_loading
+    )
+    transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_after_weight_loading = (
+        gaudi_awq_quantizer_process_model_after_weight_loading
+    )
+    transformers.utils.quantization_config.AWQLinearVersion = GaudiAWQLinearVersion
+    transformers.utils.quantization_config.AwqConfig.post_init = gaudi_awq_config_post_init
 
     # Optimization for DETR model on Gaudi
     transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
