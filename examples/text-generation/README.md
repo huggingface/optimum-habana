@@ -843,7 +843,10 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
+> Please add the flags COMPLEXGUID_DISABLE_RMS_NORM=true and ENABLE_EXPERIMENTAL_FLAGS=true for llama-70b accuracy issues when using lm_eval. Please note this is a workaround for the current release only.
+>
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
+
 
 ### Examples
 
