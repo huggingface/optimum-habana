@@ -202,6 +202,9 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
+> [!NOTE]
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 for Llama 3.1-405B stability issues. Please note this is a workaround for the current release only.
+
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
 python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
