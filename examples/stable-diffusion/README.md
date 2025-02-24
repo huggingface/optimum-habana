@@ -74,7 +74,7 @@ python text_to_image_generation.py \
 Here is how to generate images with two prompts on two HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
@@ -144,7 +144,7 @@ python text_to_image_generation.py \
 Here is how to generate images and depth maps with two prompts on two HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
@@ -229,7 +229,7 @@ python text_to_image_generation.py \
 
 Here is how to generate SDXL images with two prompts on two HPUs:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
@@ -487,7 +487,7 @@ python text_to_image_generation.py \
 Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \

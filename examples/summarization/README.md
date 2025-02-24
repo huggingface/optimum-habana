@@ -152,7 +152,7 @@ And as with the CSV files, you can specify which values to select from the file,
 
 Here is an example on 8 HPUs:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_summarization.py \
     --model_name_or_path t5-small \
     --do_train \
@@ -181,7 +181,7 @@ python ../gaudi_spawn.py \
 
 Here is an example on 8 HPUs on Gaudi2/Gaudi3 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
+PT_HPU_MAX_COMPOUND_OP_SIZE=512 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_summarization.py \
     --model_name_or_path google/flan-t5-xxl \
     --do_train \

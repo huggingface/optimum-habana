@@ -176,7 +176,7 @@ $ huggingface-cli login
 3. When running the script, pass the following arguments:
 
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=1 python run_image_classification.py \
     --push_to_hub \
     --push_to_hub_model_id <name-your-model> \
     ...
@@ -288,7 +288,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with ViT on Cifar10 on 1 Gaudi card with the following command:
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=1 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \

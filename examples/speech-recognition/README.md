@@ -102,7 +102,7 @@ On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of
 The following command shows how to fine-tune [wav2vec2-large-lv60](https://huggingface.co/facebook/wav2vec2-large-lv60) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using 8 HPUs.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_speech_recognition_ctc.py \
     --dataset_name librispeech_asr \
     --model_name_or_path facebook/wav2vec2-large-lv60 \
@@ -154,7 +154,7 @@ DeepSpeed can be used with almost the same command as for a multi-card run:
 
 For example:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_speech_recognition_ctc.py \
     --dataset_name librispeech_asr \
     --model_name_or_path facebook/wav2vec2-large-lv60 \
@@ -273,7 +273,7 @@ If training on a different language, you should be sure to change the `language`
 ### Multi HPU Whisper Training with Seq2Seq
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-large" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \

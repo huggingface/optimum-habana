@@ -149,7 +149,7 @@ PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py \
 Similarly to multi-card training, here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using DeepSpeed with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -199,7 +199,7 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 
 Here is a command you can run to train a Llama model for question answering:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
   --world_size 8 --use_deepspeed run_qa.py \
   --model_name_or_path FlagAlpha/Llama2-Chinese-13b-Chat \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -237,7 +237,7 @@ b) Run the above commands with `--model_name_or_path albert-xxlarge-v1`, `--use_
 
 Here is a command you can run to train a Llama model for question answering:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
   --world_size 8 --use_deepspeed run_qa.py \
   --model_name_or_path FlagAlpha/Llama2-Chinese-13b-Chat \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -266,7 +266,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with BERT on SQuAD on 1 Gaudi card with the following command:
 ```bash
-python run_qa.py \
+PT_HPU_LAZY_MODE=1 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \

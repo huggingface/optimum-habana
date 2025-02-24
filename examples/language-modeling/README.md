@@ -79,7 +79,7 @@ python run_clm.py \
 ### Multi-card Training (GPT2)
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
@@ -109,7 +109,7 @@ Fine tuning on 8 HPU cards takes around 6 minutes with a batch size of 32 (4 per
 It reaches a perplexity of 14.011.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-j-6b \
     --dataset_name wikitext \
@@ -133,7 +133,7 @@ This example has been validated with the following DeepSpeed ZeRO-2 config: http
 
 ### Multi-card Training with Deepspeed (chatglm3-6b)
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --config_name THUDM/chatglm3-6b \
     --tokenizer_name THUDM/chatglm3-6b \
@@ -159,7 +159,7 @@ python ../gaudi_spawn.py \
 
 ### Multi-card Training with Deepspeed (Baichuan2-13B-Chat)
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --config_name baichuan-inc/Baichuan2-13B-Chat \
     --tokenizer_name baichuan-inc/Baichuan2-13B-Chat \
@@ -197,7 +197,7 @@ It reaches a perplexity of 10.469.
 > Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --hostfile path_to_my_hostfile --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-neox-20b \
     --dataset_name wikitext \
@@ -275,7 +275,7 @@ concatenates all texts and then splits them into blocks of the same length).
 ### Multi-card Training
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_mlm.py \
     --model_name_or_path roberta-base \
     --dataset_name wikitext \
@@ -330,7 +330,7 @@ python run_clm.py \
 Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT2-XL:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path gpt2-xl \
     --dataset_name wikitext \
@@ -493,7 +493,7 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
 
 - Multi-card finetuning of Llama1-7B:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
@@ -565,7 +565,7 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
 
 - Multi-card finetuning of codegen-16B-mono:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path Salesforce/codegen-16B-mono \
     --dataset_name b-mc2/sql-create-context \
@@ -594,7 +594,7 @@ python ../gaudi_spawn.py \
 
 - Multi-card finetuning of gemma2 using chat template:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 --use_mpi run_lora_clm.py \
     --model_name_or_path google/gemma-2b-it \
     --per_device_train_batch_size 16 \
@@ -867,7 +867,7 @@ Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuni
 
 Use the prompt finetuned model for text-generation:
 ```bash
-python3 ../text-generation/run_generation.py \
+PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf  \
     --max_new_tokens 128 \
     --bf16 \

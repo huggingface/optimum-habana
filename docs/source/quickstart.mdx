@@ -121,7 +121,7 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 With DeepSpeed successfully installed we can now run a distributed GPT-2 inference on an 8 HPU system as follows:
 ```bash
 number_of_devices=8 \
-python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
 run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --use_hpu_graphs \
@@ -167,7 +167,7 @@ python run_clm.py \
 To train GPT-2 model using multi-card Gaudi system:
 ```bash
 number_of_devices=8 \
-python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
 run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
