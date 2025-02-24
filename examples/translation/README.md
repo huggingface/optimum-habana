@@ -135,7 +135,7 @@ python run_translation.py \
  Here is an example of distributing training on 8 HPUs:
 
  ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
@@ -167,7 +167,7 @@ python ../gaudi_spawn.py \
  Here is an example with DeepSpeed on 8 HPUs:
 
  ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_translation.py \
     --model_name_or_path t5-small \
     --do_train \

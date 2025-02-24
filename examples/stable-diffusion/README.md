@@ -72,7 +72,7 @@ python text_to_image_generation.py \
 Distributed inference with multiple HPUs is also supported. Below is an example demonstrating how to generate images with two prompts on two HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
@@ -147,7 +147,12 @@ python text_to_image_generation.py \
 Here is how to generate images and depth maps with two prompts on two HPUs:
 
 ```bash
+<<<<<<< HEAD
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
+=======
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 10 \
@@ -219,7 +224,12 @@ python text_to_image_generation.py \
 SDXL also supports distributed inferencing with Intel Gaudi accelerators. Below is an example of generating SDXL images in a distributed manner using two prompts on two HPUs:
 
 ```bash
+<<<<<<< HEAD
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
+=======
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
     --prompts_2 "Red tone" "Blue tone" \
@@ -481,7 +491,30 @@ The ControlNet example can be run with multiple prompts by supplying more than o
 Additionally, it supports distributed execution. Below is an example of generating images conditioned by the Canny edge model using two prompts on two HPUs:
 
 ```bash
+<<<<<<< HEAD
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
+=======
+python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
+
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \

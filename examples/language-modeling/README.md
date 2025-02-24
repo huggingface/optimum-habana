@@ -79,7 +79,7 @@ python run_clm.py \
 ### Multi-card Training (GPT2)
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
@@ -109,7 +109,7 @@ Fine tuning on 8 HPU cards takes around 6 minutes with a batch size of 32 (4 per
 It reaches a perplexity of 14.011.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-j-6b \
     --dataset_name wikitext \
@@ -131,6 +131,63 @@ python ../gaudi_spawn.py \
 This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 
 
+<<<<<<< HEAD
+=======
+### Multi-card Training with Deepspeed (chatglm3-6b)
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name THUDM/chatglm3-6b \
+    --tokenizer_name THUDM/chatglm3-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 6 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
+### Multi-card Training with Deepspeed (Baichuan2-13B-Chat)
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --config_name baichuan-inc/Baichuan2-13B-Chat \
+    --tokenizer_name baichuan-inc/Baichuan2-13B-Chat \
+    --dataset_name wikitext \
+    --num_train_epochs 30 \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --deepspeed llama2_ds_zero3_config.json \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --block_size 1024 \
+    --use_cache False \
+    --overwrite_output_dir \
+    --logging_first_step True \
+    --logging_steps 20
+```
+
+
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 
 The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
@@ -143,7 +200,7 @@ It reaches a perplexity of 10.469.
 > Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --hostfile path_to_my_hostfile --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-neox-20b \
     --dataset_name wikitext \
@@ -175,7 +232,7 @@ converge slightly slower (over-fitting takes more epochs).
 ### Multi-card Training
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_mlm.py \
     --model_name_or_path roberta-base \
     --dataset_name wikitext \
@@ -229,6 +286,81 @@ python run_clm.py \
     --bf16
 ```
 
+<<<<<<< HEAD
+=======
+
+## Using DeepSpeed
+
+Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT2-XL:
+
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path gpt2-xl \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --learning_rate 4e-4 \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --gradient_checkpointing \
+    --use_cache False \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
+```
+
+Here is another example with Bloom-7B1:
+
+```bash
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path bigscience/bloom-7b1 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 8 \
+    --do_train \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/roberta-base \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_cache False \
+    --throughput_warmup_steps 3 \
+    --save_strategy "no" \
+    --learning_rate 1e-04 \
+    --deepspeed path_to_my_deepspeed_config
+```
+[This](https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_3_gaudi1.json) is a DeepSpeed configuration you can use to train this model on Gaudi1.
+
+
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
 ## Inference
 
 To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
@@ -289,10 +421,148 @@ python3 run_lora_clm.py \
     --validation_split_percentage 4 \
     --adam_epsilon 1e-08
 ```
+<<<<<<< HEAD
+=======
+- Single-card finetuning of Falcon-40B:
+```bash
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
+    --model_name_or_path tiiuae/falcon-40b \
+    --dataset_name timdettmers/openassistant-guanaco \
+    --bf16 True \
+    --output_dir ./model_lora_falcon \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --max_grad_norm  0.3 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --throughput_warmup_steps 3 \
+    --lora_rank=64 \
+    --lora_alpha=16 \
+    --lora_dropout=0.1 \
+    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
+    --dataset_concatenation \
+    --max_seq_length 256 \
+    --low_cpu_mem_usage True \
+    --adam_epsilon 1e-08 \
+    --do_eval \
+    --validation_split_percentage 5
+```
+
+- Multi-card finetuning of Llama1-7B:
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path huggyllama/llama-7b \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 True \
+    --output_dir ./model_lora_llama_ddp \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 8 \
+    --gradient_accumulation_steps 2 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm  0.3 \
+    --logging_steps 1 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --ddp_bucket_cap_mb 50 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
+    --low_cpu_mem_usage True
+```
+
+- Multi-card finetuning of Llama2-7B with FP8:
+```bash
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 1 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm 0.3 \
+    --logging_steps 20 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 18 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --ddp_bucket_cap_mb 50 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 10 \
+    --low_cpu_mem_usage True \
+    --pipelining_fwd_bwd \
+    --fp8 True
+```
+
+- Multi-card finetuning of codegen-16B-mono:
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path Salesforce/codegen-16B-mono \
+    --dataset_name b-mc2/sql-create-context \
+    --sql_prompt \
+    --bf16 True \
+    --output_dir ./finetuned-models/codegen-finetune-on-sql-create-context-hpu8-lora8-bs4 \
+    --num_train_epochs 5 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 1e-4 \
+    --logging_steps 1 \
+    --dataset_concatenation \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --use_hpu_graphs_for_inference \
+    --lora_target_modules "qkv_proj" \
+    --lora_rank 8 \
+    --do_eval \
+    --validation_split_percentage 10 \
+    --use_cache False
+```
+>>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
 
 - Multi-card finetuning of gemma2 using chat template:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 --use_mpi run_lora_clm.py \
     --model_name_or_path google/gemma-2b-it \
     --per_device_train_batch_size 16 \
@@ -509,7 +779,7 @@ Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuni
 
 Use the prompt finetuned model for text-generation:
 ```bash
-python3 ../text-generation/run_generation.py \
+PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf  \
     --max_new_tokens 128 \
     --bf16 \

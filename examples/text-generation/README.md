@@ -44,16 +44,16 @@ In this section, we present how to benchmark a model on Intel Gaudi AI Accelerat
 To run generation with DeepSpeed-inference, you must launch the script as follows:
 
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size number_of_devices run_generation.py ARGS
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size number_of_devices run_generation.py ARGS
 ```
 
 To run multiple DeepSpeed tasks simultaneously, you can launch them with different `master_port` and [`HABANA_VISIBLE_MODULES`](https://docs.habana.ai/en/latest/PyTorch/PT_Multiple_Tenants_on_HPU/Multiple_Dockers_each_with_Single_Workload.html#running-distributed-workload-inside-the-docker-container), for example:
 
 ```bash
 # the following tasks could run simultaneously in a container with 8 HPUs
-HABANA_VISIBLE_MODULES="0,1" python ../gaudi_spawn.py --use_deepspeed --world_size 2 run_generation.py ARGS     # using the default master_port=29500
-HABANA_VISIBLE_MODULES="2,3,4,5" python ../gaudi_spawn.py --use_deepspeed --world_size 4 --master_port 29501 run_generation.py ARGS
-HABANA_VISIBLE_MODULES="6,7" python ../gaudi_spawn.py --use_deepspeed --world_size 2 --master_port 29502 run_generation.py ARGS
+HABANA_VISIBLE_MODULES="0,1" PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 2 run_generation.py ARGS     # using the default master_port=29500
+HABANA_VISIBLE_MODULES="2,3,4,5" PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 4 --master_port 29501 run_generation.py ARGS
+HABANA_VISIBLE_MODULES="6,7" PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 2 --master_port 29502 run_generation.py ARGS
 ```
 
 Without DeepSpeed-inference, you can run the script with:
@@ -136,7 +136,7 @@ Here are a few settings you may be interested in:
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path bigscience/bloom \
 --batch_size 1 \
 --use_hpu_graphs \
@@ -147,7 +147,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --max_new_tokens 4096 \
 --bf16 \
@@ -176,7 +176,7 @@ python run_generation.py \
 
 To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path tiiuae/falcon-40b \
 --max_new_tokens 2048 \
 --bf16 \
@@ -190,7 +190,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
 --bf16 \
@@ -375,7 +375,7 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP
 
 Here is an example to measure the tensor quantization statistics on LLama2-70b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_measure.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_70b_bs1_measure.txt \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
@@ -393,7 +393,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 
 Here is an example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_70b_bs1_quant.txt \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
@@ -411,7 +411,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --attn_softmax_bf16 \
@@ -457,7 +457,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
 > Please note that Falcon-180B is a gated model, and users are required to request access to it. Please refer to the instructions provided in the StarCoder example above.
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_falcon180b_bs1_quant.txt \
 --model_name_or_path tiiuae/falcon-180B \
@@ -474,7 +474,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path tiiuae/falcon-180B \
 --use_hpu_graphs \
@@ -494,7 +494,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_llama3_405b_bs1_quant.txt \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
@@ -512,7 +512,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --use_hpu_graphs \
@@ -670,7 +670,7 @@ You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc
 
 Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 2 run_lm_eval.py \
 -o acc_load_fp8_model.txt \
 --model_name_or_path neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8 \
@@ -745,7 +745,7 @@ Habana Flash Attention addresses large sequence lengths on prompt stage of infer
 Below example uses `flash_attention_recompute` mode in order to reduce memory consumption on prompt stage. Additionally since all sequences in a batch are of the same length it uses `flash_attention_causal_mask` which will further improve performance by taking advantage of specific lower-diagonal shape of inputs to softmax operation.
 
 ```bash
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --use_hpu_graphs \
 --limit_hpu_graphs \

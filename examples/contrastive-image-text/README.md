@@ -173,7 +173,7 @@ For training BridgeTower, you need to run the `run_bridgetower.py` script.
 For instance, to reproduce the results presented in [this blog post](https://huggingface.co/blog/bridgetower), you should run:
 
 ```bash
-python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --output_dir /tmp/bridgetower-test \
   --model_name_or_path BridgeTower/bridgetower-large-itm-mlm-itc \
   --dataset_name jmhessel/newyorker_caption_contest --dataset_config_name matching \
