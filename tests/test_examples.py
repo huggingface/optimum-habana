@@ -64,7 +64,6 @@ ACCURACY_PERF_FACTOR = 0.99
 TIME_PERF_FACTOR = 1.05
 
 
-IS_GAUDI2 = bool("gaudi2" == OH_DEVICE_CONTEXT)
 IS_GAUDI1 = bool("gaudi1" == OH_DEVICE_CONTEXT)
 
 
@@ -262,12 +261,12 @@ class ExampleTestMeta(type):
 
         models_measured_on_eager_mode = ["google/gemma-2b-it"]
 
-        if (fsdp or fp8) and not IS_GAUDI2:
+        if (fsdp or fp8) and IS_GAUDI1:
             return False
         elif (
             any(case in example_name for case in case_only_in_gaudi2)
             or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
-        ) and not IS_GAUDI2:
+        ) and IS_GAUDI1:
             return False
         elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
             return False
@@ -294,23 +293,23 @@ class ExampleTestMeta(type):
             return False
         elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
-        elif "gemma" in model_name and not IS_GAUDI2:
+        elif "gemma" in model_name and IS_GAUDI1:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
             return True
-        elif "gpt-neox" in model_name and IS_GAUDI2 and deepspeed:
-            # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
+        elif "gpt-neox" in model_name and not IS_GAUDI1 and deepspeed:
+            # GPT-NeoX is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "flan-t5" in model_name and IS_GAUDI2 and deepspeed:
-            # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+        elif "flan-t5" in model_name and not IS_GAUDI1 and deepspeed:
+            # Flan-T5 is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
-            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
+        elif "CodeLlama" in model_name and not IS_GAUDI1 and deepspeed:
+            # CodeLlama is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "Qwen2-72B" in model_name and IS_GAUDI2 and deepspeed:
+        elif "Qwen2-72B" in model_name and not IS_GAUDI1 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -320,21 +319,21 @@ class ExampleTestMeta(type):
             return True
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
             return True
-        elif "bridgetower" in model_name and IS_GAUDI2:
+        elif "bridgetower" in model_name and not IS_GAUDI1:
             return True
-        elif "falcon" in model_name and IS_GAUDI2 and not fsdp and not fp8:
+        elif "falcon" in model_name and not IS_GAUDI1 and not fsdp and not fp8:
             return True
-        elif "bloom" in model_name and deepspeed and not IS_GAUDI2:
+        elif "bloom" in model_name and deepspeed and IS_GAUDI1:
             return True
-        elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
+        elif "LlamaGuard" in model_name and deepspeed and not IS_GAUDI1:
             return True
-        elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+        elif "ast-finetuned-speech-commands-v2" in model_name and not IS_GAUDI1:
             return True
-        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
+        elif "huggyllama" in model_name and not IS_GAUDI1 and deepspeed:
             return True
-        elif "gemma" in model_name and IS_GAUDI2:
+        elif "gemma" in model_name and not IS_GAUDI1:
             return True
-        elif "chatglm3" in model_name and IS_GAUDI2 and deepspeed:
+        elif "chatglm3" in model_name and not IS_GAUDI1 and deepspeed:
             return True
 
         return False
@@ -444,7 +443,7 @@ class ExampleTestMeta(type):
                     # Assess accuracy
                     with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
                         results = json.load(fp)
-                        baseline = 0.43 if IS_GAUDI2 else 0.42
+                        baseline = 0.42 if not IS_GAUDI1 else 0.43
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
