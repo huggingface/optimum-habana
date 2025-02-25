@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ```
 
 > [!NOTE]
-> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for wav2vec stability issues. Please note this is a workaround for the current release only.
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for the current release only.
 
 ## Single-HPU
 
