@@ -29,7 +29,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
             ("meta-llama/Llama-2-7b-hf", 1, True, True),
             ("tiiuae/falcon-40b", 1, True, False),
             ("bigcode/starcoder", 256, True, True),
-            ("Salesforce/codegen2-1B", 1, False, False),
+            pytest.param("Salesforce/codegen2-1B", 1, False, False, marks=pytest.mark.skip("Deprecated")),
             ("mosaicml/mpt-30b", 1, False, False),
             ("mistralai/Mistral-7B-v0.1", 1, True, True),
             ("mistralai/Mixtral-8x7B-v0.1", 1, False, True),
