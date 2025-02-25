@@ -203,7 +203,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 ```
 
 > [!NOTE]
-> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 for Llama 3.1-405B stability issues. Please note this is a workaround for the current release only.
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 for Llama 3.1-405B[bf16] 2048/2048 tokens stability issues. Please note this is a workaround for the current release only.
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
@@ -846,7 +846,7 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
-> Please add the flags COMPLEXGUID_DISABLE_RMS_NORM=true and ENABLE_EXPERIMENTAL_FLAGS=true for llama-70b accuracy issues when using lm_eval. Please note this is a workaround for the current release only.
+> Please add the flags COMPLEXGUID_DISABLE_RMS_NORM=true and ENABLE_EXPERIMENTAL_FLAGS=true for models llama-70b[bf16]/llama-70b[PTQ fp8]/Llama-3.1-70B[fp8] accuracy issues when using lm_eval. Please note this is a workaround for the current release only.
 >
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
