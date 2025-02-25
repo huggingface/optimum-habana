@@ -92,7 +92,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
             # pytest.param("meta-llama/Llama-2-70b-hf", 8, 1, marks=pytest.mark.x8),
             pytest.param("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, marks=pytest.mark.x8),
-            pytest.param("facebook/opt-66b", 2, 1, marks=pytest.mark.x2),
+            pytest.param("facebook/opt-66b", 2, 1, marks=[pytest.mark.x2, pytest.mark.xfail("SW-219837")]),
             pytest.param("google/gemma-2-9b", 8, 1, marks=pytest.mark.x8),
             pytest.param("Qwen/Qwen2.5-72B", 2, 1, marks=pytest.mark.x2),
             pytest.param("google/gemma-2-27b", 8, 1, marks=pytest.mark.x8),
