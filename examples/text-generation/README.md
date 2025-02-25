@@ -190,6 +190,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
+ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
@@ -202,8 +203,6 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
-> [!NOTE]
-> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 for Llama 3.1-405B[bf16] 2048/2048 tokens stability issues on gaudi3. Please note this is a workaround for 1.20 release only.
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
