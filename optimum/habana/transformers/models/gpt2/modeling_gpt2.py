@@ -70,6 +70,7 @@ class GaudiGPT2Attention(GPT2Attention):
             attn_weights = attn_weights * head_mask
 
         attn_output = torch.matmul(attn_weights, value)
+        attn_output = attn_output.transpose(1, 2)
 
         return attn_output, attn_weights
 
