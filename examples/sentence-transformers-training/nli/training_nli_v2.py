@@ -85,8 +85,8 @@ def main():
         batch_sampler=BatchSamplers.NO_DUPLICATES,
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
-        eval_steps=10,
-        save_strategy="steps",
+        eval_steps=10,        
+        save_strategy="no",   #"steps"
         save_steps=10,
         save_total_limit=2,
         logging_steps=100,
@@ -123,8 +123,8 @@ def main():
     test_evaluator(model)
 
     # 8. Save the trained & evaluated model locally
-    final_output_dir = f"{output_dir}/final"
-    model.save(final_output_dir)
+    #final_output_dir = f"{output_dir}/final"
+    #model.save(final_output_dir)
 
 
 if __name__ == "__main__":

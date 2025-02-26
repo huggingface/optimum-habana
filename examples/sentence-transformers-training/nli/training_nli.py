@@ -107,7 +107,7 @@ def main():
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,
-        save_strategy="steps",
+        save_strategy="no",   #"steps"
         save_steps=100,
         save_total_limit=2,
         logging_steps=100,
@@ -146,13 +146,13 @@ def main():
     test_evaluator(model)
 
     # 8. Save the trained & evaluated model locally
-    final_output_dir = f"{output_dir}/final"
-    model.save(final_output_dir)
+    #final_output_dir = f"{output_dir}/final"
+    #model.save(final_output_dir)
 
-    if args.peft:
-        model.eval()
-        model = model.merge_and_unload()
-        model.save_pretrained(f"{output_dir}/merged")
+    #if args.peft:
+    #    model.eval()
+    #    model = model.merge_and_unload()
+    #    model.save_pretrained(f"{output_dir}/merged")
 
 
 if __name__ == "__main__":
