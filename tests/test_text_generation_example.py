@@ -92,7 +92,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
             # pytest.param("meta-llama/Llama-2-70b-hf", 8, 1, marks=pytest.mark.x8),
             pytest.param("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, marks=pytest.mark.x8),
-            pytest.param("facebook/opt-66b", 2, 1, marks=[pytest.mark.x2, pytest.mark.xfail("SW-219837")]),
+            pytest.param("facebook/opt-66b", 2, 1, marks=pytest.mark.x2),
             pytest.param("google/gemma-2-9b", 8, 1, marks=pytest.mark.x8),
             pytest.param("Qwen/Qwen2.5-72B", 2, 1, marks=pytest.mark.x2),
             pytest.param("google/gemma-2-27b", 8, 1, marks=pytest.mark.x8),
@@ -343,6 +343,10 @@ def _test_text_generation(
                 env_variables["QUANT_CONFIG"] = os.path.join(
                     path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
                 )
+
+        # Workaround for deepspeed 1.20.0 OOM error
+        if "facebook/opt-66b" in model_name:
+            env_variables["DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API"] = "1"
 
         command = [x for y in command for x in re.split(pattern, y) if x]
         if "starcoder" in model_name and check_output:
