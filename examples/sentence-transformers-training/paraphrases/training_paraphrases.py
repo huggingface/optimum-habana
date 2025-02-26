@@ -109,7 +109,7 @@ args = SentenceTransformerGaudiTrainingArguments(
     # Optional tracking/debugging parameters:
     evaluation_strategy="steps",
     eval_steps=1000,
-    save_strategy="no",   #"steps"
+    save_strategy="steps"
     save_steps=1000,
     save_total_limit=2,
     logging_steps=100,

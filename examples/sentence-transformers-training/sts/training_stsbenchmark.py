@@ -27,6 +27,7 @@ def main():
     # You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
     parser = argparse.ArgumentParser()
     parser.add_argument("model_name", help="model name or path", default="distilbert-base-uncased", nargs="?")
+    parser.add_argument("--saving_model_checkpoints", help="saving checkpoints", action="store_true", default=False)
     parser.add_argument("--peft", help="use LoRA", action="store_true", default=False)
     parser.add_argument("--lora_target_modules", nargs="+", default=["q_lin", "k_lin", "v_lin"])
     parser.add_argument("--bf16", help="use bf16", action="store_true", default=False)
@@ -104,7 +105,7 @@ def main():
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,
-        save_strategy="no",  # "steps"
+        save_strategy="steps" if args.saving_model_checkpoints else "no"
         save_steps=100,
         save_total_limit=2,
         logging_steps=100,
@@ -142,13 +143,14 @@ def main():
     test_evaluator(model)
 
     # 8. Save the trained & evaluated model locally
-    #final_output_dir = f"{output_dir}/final"
-    #model.save(final_output_dir)
+    if args.saving_model_checkpoints:
+        inal_output_dir = f"{output_dir}/final"
+        model.save(final_output_dir)
 
-    #if args.peft:
-    #    model.eval()
-    #    model = model.merge_and_unload()
-    #    model.save_pretrained(f"{output_dir}/merged")
+    if args.saving_model_checkpoints and args.peft:
+        model.eval()
+        model = model.merge_and_unload()
+        model.save_pretrained(f"{output_dir}/merged")
 
 
 if __name__ == "__main__":
