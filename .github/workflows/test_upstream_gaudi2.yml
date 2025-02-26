@@ -1,4 +1,4 @@
-name: Transformers Tests on Gaudi2
+name: Upstream Integrations (Gaudi2)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   transformers:
-    name: Test Transformers
+    name: Upstream Transformers Integration (Gaudi2)
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
 
     container:
@@ -49,7 +49,7 @@ jobs:
           pytest tests/trainer -s -vvvv
 
   accelerate:
-    name: Test Accelerate integration
+    name: Upstream Accelerate Integration (Gaudi2)
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
 
     container:
