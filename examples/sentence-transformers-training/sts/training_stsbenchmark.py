@@ -105,7 +105,7 @@ def main():
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,
-        save_strategy="steps" if args.saving_model_checkpoints else "no"
+        save_strategy="steps" if args.saving_model_checkpoints else "no",
         save_steps=100,
         save_total_limit=2,
         logging_steps=100,
