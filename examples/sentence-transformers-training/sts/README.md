@@ -33,7 +33,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```bash
 python training_stsbenchmark.py bert-base-uncased
 ```
-If you want to save the checkpoints for training model you need using '--saving_model_checkpoints' in the command and same as all examples below. 
+If you want to save the checkpoints for training model you need using `--saving_model_checkpoints` in the command and same for all examples below.
 
 ## Multi-card Training
 

@@ -85,7 +85,7 @@ def main():
         batch_sampler=BatchSamplers.NO_DUPLICATES,
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
-        eval_steps=10,        
+        eval_steps=10,
         save_strategy="steps",
         save_steps=10,
         save_total_limit=2,
