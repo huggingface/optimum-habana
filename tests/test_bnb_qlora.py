@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import subprocess
 
 import pytest
@@ -24,10 +23,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.transformers import modeling_utils
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 modeling_utils.adapt_transformers_to_gaudi()
 
-assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
+assert OH_DEVICE_CONTEXT != "gaudi1", "Execution does not support on Gaudi1"
 try:
     import sys
 

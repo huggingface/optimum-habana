@@ -125,12 +125,12 @@ from optimum.habana.diffusers.models import (
 from optimum.habana.utils import set_seed
 
 from .clip_coco_utils import calculate_clip_score, download_files
+from .utils import OH_DEVICE_CONTEXT
 
 
-IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+IS_GAUDI1 = bool("gaudi1" == OH_DEVICE_CONTEXT)
 
-
-if IS_GAUDI2:
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
     TEXTUAL_INVERSION_THROUGHPUT = 131.7606336456344
@@ -1695,7 +1695,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
 
     @slow
     @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_sd3_inference(self):
         repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
@@ -5985,7 +5985,7 @@ class GaudiFluxPipelineTester(TestCase):
         assert max_diff < 1e-4
 
     @slow
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_flux_inference(self):
         prompts = [
             "A cat holding a sign that says hello world",
@@ -6154,7 +6154,7 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
 
     @slow
     @check_gated_model_access("black-forest-labs/FLUX.1-dev")
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_flux_img2img_inference(self):
         repo_id = "black-forest-labs/FLUX.1-dev"
         image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
