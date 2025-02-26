@@ -508,9 +508,6 @@ def main():
                 **kwargs,
             )
 
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
-
     elif sd3:
         # SD3 pipelines
         if controlnet:
@@ -529,6 +526,7 @@ def main():
                 args.model_name_or_path,
                 **kwargs,
             )
+
     elif flux:
         # Flux pipelines
         if controlnet:
@@ -559,8 +557,6 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
         elif inpainting:
             # SD Inpainting pipeline
@@ -603,6 +599,10 @@ def main():
                     args.model_name_or_path,
                     **kwargs,
                 )
+
+    # Load LoRA weights if provided
+    if args.lora_id:
+        pipeline.load_lora_weights(args.lora_id)
 
     # Setup logging
     logging.basicConfig(

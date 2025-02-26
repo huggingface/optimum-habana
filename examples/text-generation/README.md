@@ -202,6 +202,20 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
+To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
+```bash
+python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
+--world_size 16 ./run_generation.py \ 
+--model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \ 
+--bf16 \ 
+--trim_logits \
+--batch_size 1 \ 
+--use_hpu_graphs \ 
+--use_kv_cache  \ 
+--parallel_strategy "ep" \
+--prompt "DeepSpeed is a machine learning framework"
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
@@ -237,7 +251,8 @@ python run_generation.py \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
 --bf16 \
---sdp_on_bf16
+--sdp_on_bf16 \
+--trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
@@ -623,7 +638,7 @@ python run_generation.py \
 ### Saving FP8 Checkpoints in Hugging Face format
 After quantizing the model, we can save it to a local path.
 
-> [!NOTE]  
+> [!NOTE]
 > Before executing the command below, please refer to the [Running with FP8](#running-with-fp8) section to measure the model quantization statistics.
 
 Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
