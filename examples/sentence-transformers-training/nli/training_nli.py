@@ -148,7 +148,7 @@ def main():
 
     # 8. Save the trained & evaluated model locally
     if args.saving_model_checkpoints:
-        inal_output_dir = f"{output_dir}/final"
+        final_output_dir = f"{output_dir}/final"
         model.save(final_output_dir)
 
     if args.saving_model_checkpoints and args.peft:
