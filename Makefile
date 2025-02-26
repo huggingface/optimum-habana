@@ -137,6 +137,12 @@ slow_tests_text_generation_example_8x: test_installs
 slow_tests_image_to_text_example: test_installs
 	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
 
+slow_tests_image_to_text_example_1x: test_installs
+	python -m pytest tests/test_image_to_text_example.py -v -s -m "not x8" --token $(TOKEN)
+
+slow_tests_image_to_text_example_8x: test_installs
+	python -m pytest tests/test_image_to_text_example.py -v -s -m x8 --token $(TOKEN)
+
 # Run visual question answering tests
 slow_tests_openclip_vqa_example: test_installs
 	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
