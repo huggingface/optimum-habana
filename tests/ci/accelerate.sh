@@ -4,17 +4,6 @@ hl-smi
 echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
 echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
-# Install Rust and build Safetensors
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
-rustup update
-git clone https://github.com/huggingface/safetensors
-cd safetensors
-pip install setuptools_rust
-git checkout fa833511664338bfc927fc02653ddb7d38d40be9
-pip install -e bindings/python
-cd ..
-
 # Install Accelerate and DeepSpeed
 git clone https://github.com/huggingface/accelerate.git
 cd accelerate
@@ -57,6 +46,12 @@ fi
 
 echo "Running DeepSpeed integration tests"
 make test_deepspeed
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
+echo "Running Examples tests"
+make test_examples
 if [ $? -ne 0 ]; then
     exit 1
 fi
