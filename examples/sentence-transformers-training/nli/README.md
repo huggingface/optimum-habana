@@ -46,6 +46,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```bash
 python training_nli.py bert-base-uncased
 ```
+If you want to save the checkpoints for the model you need using `--saving_model_checkpoints` in the command and same for all examples below.
 
 ## Multi-card Training
 
