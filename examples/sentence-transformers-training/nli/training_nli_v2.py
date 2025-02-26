@@ -86,7 +86,7 @@ def main():
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=10,        
-        save_strategy="steps"
+        save_strategy="steps",
         save_steps=10,
         save_total_limit=2,
         logging_steps=100,
