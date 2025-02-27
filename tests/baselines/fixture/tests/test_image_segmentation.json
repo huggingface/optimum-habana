@@ -2,6 +2,9 @@
   "tests/test_image_segmentation.py::GaudiSAMTester::test_no_latency_regression_bf16": {
     "gaudi2": {
       "latency": 98.92215728759766
+    },
+    "gaudi3": {
+      "latency": 98.92215728759766
     }
   }
 }
