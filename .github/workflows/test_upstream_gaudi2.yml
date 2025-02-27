@@ -53,6 +53,9 @@ jobs:
       - name: Run Trainer FSDP tests
         run: |
           pytest tests/trainer/test_trainer_fsdp.py -s -vvvv
+        env:
+          PT_HPU_LAZY_MODE: 1
+          PT_ENABLE_INT64_SUPPORT: 0
 
       - name: Run Trainer Seq2Seq tests
         run: |
