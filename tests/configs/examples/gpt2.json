@@ -5,9 +5,13 @@
             "eval_batch_size": 4,
             "distribution": {
                 "single_card": {
-                    "learning_rate": 5e-5,
+                    "learning_rate": 5e-05,
                     "train_batch_size": 4,
-                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",
@@ -15,9 +19,13 @@
                     ]
                 },
                 "multi_card": {
-                    "learning_rate": 4e-4,
+                    "learning_rate": 0.0004,
                     "train_batch_size": 4,
-                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",
@@ -33,18 +41,60 @@
             "eval_batch_size": 4,
             "distribution": {
                 "single_card": {
-                    "learning_rate": 2e-4,
+                    "learning_rate": 0.0002,
                     "train_batch_size": 16,
-                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"
                     ]
                 },
                 "multi_card": {
-                    "learning_rate": 8e-4,
+                    "learning_rate": 0.0008,
                     "train_batch_size": 16,
-                    "metrics": ["perplexity", "train_runtime", "train_samples_per_second"],
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi3": {
+        "wikitext": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 0.0002,
+                    "train_batch_size": 16,
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 0.0008,
+                    "train_batch_size": 16,
+                    "metrics": [
+                        "perplexity",
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"

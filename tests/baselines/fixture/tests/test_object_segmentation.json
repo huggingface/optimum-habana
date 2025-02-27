@@ -2,6 +2,9 @@
   "tests/test_object_segmentation.py::GaudiClipSegTester::test_no_latency_regression_autocast": {
     "gaudi2": {
       "latency": 5.3107380867004395
+    },
+    "gaudi3": {
+      "latency": 5.3107380867004395
     }
   }
 }

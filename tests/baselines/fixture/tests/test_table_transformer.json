@@ -5,6 +5,9 @@
     },
     "gaudi2": {
       "latency": 2.2
+    },
+    "gaudi3": {
+      "latency": 2.2
     }
   }
 }
