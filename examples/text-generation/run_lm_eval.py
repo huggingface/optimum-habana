@@ -230,6 +230,8 @@ class HabanaModelAdapter(HFLM):
         def get_model_dtype(model) -> str:
             if hasattr(model, "dtype"):
                 return model.dtype
+            elif hasattr(model, "parameters"):
+                return next(model.parameters()).dtype
             else:
                 return ""
 
