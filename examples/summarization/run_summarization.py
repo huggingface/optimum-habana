@@ -32,7 +32,6 @@ import numpy as np
 import torch
 import transformers
 from datasets import load_dataset
-from filelock import FileLock
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -70,17 +69,6 @@ check_optimum_habana_min_version("1.16.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
-try:
-    nltk.data.find("tokenizers/punkt")
-except (LookupError, OSError):
-    if is_offline_mode():
-        raise LookupError(
-            "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
-        )
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
-
-nltk.download("punkt_tab")  # Needed for version 3.8.2
 
 # A list of all multilingual tokenizer which require lang attribute.
 MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast]
@@ -367,6 +355,18 @@ def main():
     transformers.utils.logging.set_verbosity(log_level)
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
+
+    with training_args.main_process_first():
+        try:
+            nltk.data.find("tokenizers/punkt")
+            nltk.data.find("punkt_tab")  # Needed for version 3.8.2
+        except (LookupError, OSError):
+            if is_offline_mode():
+                raise LookupError(
+                    "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
+                )
+            nltk.download("punkt", quiet=True)
+            nltk.download("punkt_tab", quiet=True)
 
     gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
