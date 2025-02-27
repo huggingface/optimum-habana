@@ -197,7 +197,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with Wav2Vec2 on the Librispeech dataset on 1 Gaudi card with the following command:
 ```bash
-python run_speech_recognition_ctc.py \
+PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --dataset_name="librispeech_asr" \
     --model_name_or_path="facebook/wav2vec2-large-lv60" \
     --dataset_config_name="clean" \

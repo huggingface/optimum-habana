@@ -35,7 +35,7 @@ pip install -r requirements.txt
 Here's how to generate images using the Stable Diffusion 1.4 model with a single prompt:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 28 \
@@ -56,7 +56,7 @@ python text_to_image_generation.py \
 To generate images with multiple prompts, simply include two prompts in your input as shown below:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 32 \
@@ -101,7 +101,7 @@ You can run other older Stable Diffusion models in a similar manner. For example
 to generate images with this script. Here is an example demonstrating image generation with a single prompt:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 28 \
@@ -130,7 +130,7 @@ to generate RGBD images from text prompts.
 are open source. A [demo](https://huggingface.co/spaces/Intel/ldm3d) is also available. Here is how to run this model:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 28 \
@@ -176,7 +176,7 @@ by the Stability AI team.
 Here is how to generate SDXL images with a single prompt:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
     --num_images_per_prompt 28 \
@@ -196,10 +196,28 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
+<<<<<<< HEAD
 SDXL integrates a second text encoder (OpenCLIP ViT-bigG/14), alongside the original Stable Diffusion text encoder. This addition significantly increases the number of parameters, enabling more detailed and descriptive prompts. Below is an example of how to generate images using multiple prompts for both `prompt` (primary text encoder) and `prompt_2` (secondary text encoder), along with their respective negative prompts:
+=======
+Here is how to generate SDXL images with several prompts:
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --num_images_per_prompt 32 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
     --prompts_2 "Red tone" "Blue tone" \
@@ -242,8 +260,12 @@ inference in mixed FP8 precision.
 
 Here is how to generate SDXL images with optimized pipeline in FP8 precision:
 ```bash
+<<<<<<< HEAD
 QUANT_CONFIG=quantization/stable-diffusion-xl/quantize_config.json \
 python text_to_image_generation.py \
+=======
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
     --num_images_per_prompt 28 \
@@ -258,6 +280,30 @@ python text_to_image_generation.py \
     --optimize
 ```
 
+<<<<<<< HEAD
+=======
+Here is how to generate SDXL images with optimized pipeline in fp8:
+```bash
+QUANT_CONFIG=./quantization/quant_config.json PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16 \
+    --optimize
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 ### SDXL-Turbo
 
 The knowledge distillation technique can be used to train a distilled version of SDXL, allowing for high-quality
@@ -267,7 +313,7 @@ optimized for real-time synthesis.
 Here is how to generate images with multiple prompts:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/sdxl-turbo \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
     --num_images_per_prompt 32 \
@@ -305,6 +351,10 @@ huggingface-cli login
 Here is how to generate SD3 images with a single prompt:
 
 ```bash
+<<<<<<< HEAD
+=======
+PT_HPU_MAX_COMPOUND_OP_SIZE=1 PT_HPU_LAZY_MODE=1 \
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
@@ -369,7 +419,7 @@ FLUX.1 was introduced by Black Forest Labs [here](https://blackforestlabs.ai/ann
 Here is how to run FLUX.1-schnell model (distilled fast version of FLUX.1):
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path black-forest-labs/FLUX.1-schnell \
     --prompts "A cat holding a sign that says hello world" \
     --num_images_per_prompt 10 \
@@ -396,7 +446,7 @@ huggingface-cli login
 Here is how to run FLUX.1-dev model:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path black-forest-labs/FLUX.1-dev \
     --prompts "A cat holding a sign that says hello world" \
     --num_images_per_prompt 10 \
@@ -416,7 +466,7 @@ This model can also be quantized with some ops running in FP8 precision.
 Before quantization, run stats collection using measure mode:
 
 ```bash
-QUANT_CONFIG=quantization/flux/measure_config.json \
+QUANT_CONFIG=quantization/flux/measure_config.json PT_HPU_LAZY_MODE=1 \
 python text_to_image_generation.py \
     --model_name_or_path black-forest-labs/FLUX.1-dev \
     --prompts "A cat holding a sign that says hello world" \
@@ -436,7 +486,7 @@ python text_to_image_generation.py \
 After stats collection, here is how to run FLUX.1-dev in quantization mode:
 
 ```bash
-QUANT_CONFIG=quantization/flux/quantize_config.json \
+QUANT_CONFIG=quantization/flux/quantize_config.json PT_HPU_LAZY_MODE=1 \
 python text_to_image_generation.py \
     --model_name_or_path black-forest-labs/FLUX.1-dev \
     --prompts "A cat holding a sign that says hello world" \
@@ -462,7 +512,7 @@ by Lvmin Zhang and Maneesh Agrawala, enables conditioning the Stable Diffusion m
 Here is how to generate images conditioned by Canny edge model:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" \
@@ -481,7 +531,30 @@ The ControlNet example can be run with multiple prompts by supplying more than o
 Additionally, it supports distributed execution. Below is an example of generating images conditioned by the Canny edge model using two prompts on two HPUs:
 
 ```bash
+<<<<<<< HEAD
 python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
+=======
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
+
+```bash
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" "a rusty robot" \
@@ -497,7 +570,48 @@ python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
     --distributed
 ```
 
+<<<<<<< HEAD
 These ControlNet examples will preprocess the input image to derive Canny edges. Alternatively, you can use `--control_preprocessing_type none` to supply a preprocessed control image directly, enabling many additional use cases.
+=======
+Here is how to generate images conditioned by open pose model:
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
+    --prompts "Chef in the kitchen" \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
+    --control_preprocessing_type "none" \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png \
+    --control_preprocessing_type "none" \
+    --prompts "bird" \
+    --seed 0 \
+    --num_images_per_prompt 28 \
+    --batch_size 7 \
+    --image_save_dir /tmp/controlnet-2-1_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2 \
+    --sdp_on_bf16 \
+    --bf16
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 
 ## Inpainting
 
@@ -507,7 +621,7 @@ please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffuse
 ### Stable Diffusion Inpainting
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path  stabilityai/stable-diffusion-2-inpainting \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
@@ -526,8 +640,13 @@ python text_to_image_generation.py \
 ### Stable Diffusion XL Inpainting
 
 ```bash
+<<<<<<< HEAD
 python text_to_image_generation.py \
     --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1 \
+=======
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
     --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
@@ -639,7 +758,7 @@ Images can also be generated using initial input images to guide the diffusion-b
 Here is how to generate images using a single prompt and an input image with the `timbrooks/instruct-pix2pix` model, which is based on Stable Diffusion:
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "timbrooks/instruct-pix2pix" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
     --prompts "turn him into cyborg" \
@@ -656,7 +775,36 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+<<<<<<< HEAD
 > [!NOTE]
+=======
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+### Multiple Prompts
+
+Here is how to generate images with several prompts and one image.
+
+```bash
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
+    --model_name_or_path "timbrooks/instruct-pix2pix" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" "a strong soldier"\
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --image_guidance_scale 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -666,7 +814,7 @@ python image_to_image_generation.py \
 Here is how to refine SDXL images using a single image and prompt:
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
     --prompts "turn him into cyborg" \
@@ -687,7 +835,7 @@ python image_to_image_generation.py \
 Here is how to generate a FLUX.1 image using a single input image and prompt:
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "black-forest-labs/FLUX.1-dev" \
     --src_image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png" \
     --prompts "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k" \
@@ -709,7 +857,7 @@ python image_to_image_generation.py \
 Here is how to generate image variations of a single image (without any input prompts):
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "lambdalabs/sd-image-variations-diffusers" \
     --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \
     --num_images_per_prompt 20 \
@@ -728,7 +876,7 @@ python image_to_image_generation.py \
 Here is an example of performing depth-guided image generation:
 
 ```bash
-python depth_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python depth_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-2-depth" \
     --prompts "two tigers" \
     --base_image "http://images.cocodataset.org/val2017/000000039769.jpg" \
@@ -745,14 +893,86 @@ This section demonstrates how to use the `GaudiTextToVideoSDPipeline` for text-t
 The pipeline employs a UNet3D structure and generates videos through an iterative denoising process.
 
 ```bash
+<<<<<<< HEAD
 python text_to_video_generation.py \
     --model_name_or_path ali-vilab/text-to-video-ms-1.7b \
     --prompts "An astronaut riding a horse" \
+=======
+PT_HPU_LAZY_MODE=1 python unconditional_image_generation.py \
+    --model_name_or_path "google/ddpm-ema-celebahq-256" \
+    --batch_size 16 \
+    --use_habana \
+    --use_gaudi_ddim_scheduler \
+    --use_hpu_graphs \
+    --sdp_on_bf16 \
+    --bf16 \
+    --save_outputs \
+    --output_dir "/tmp/"
+```
+
+## Additional inference techniques
+
+Here is how to run the diffusers examples of inference techniques. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/overview_techniques).
+
+### Controlling brightness
+
+Here is how to run the example of controlling brightness. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/control_brightness).
+
+```bash
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python text_to_image_generation.py \
+    --model_name_or_path ptx0/pseudo-journey-v2 \
+    --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
+    --num_images_per_prompt 1 \
+    --batch_size 1 \
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
     --use_habana \
     --use_hpu_graphs \
     --dtype bf16
 ```
 
+<<<<<<< HEAD
+=======
+### Prompt weighting
+
+Here is how to run the example of prompt weighting. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/weighted_prompts).
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "a red cat playing with a ball+++" "a red cat playing with a ball---" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana --use_hpu_graphs \
+    --image_save_dir /tmp/stable_diffusion_images_compel \
+    --seed 33 \
+    --sdp_on_bf16 \
+    --bf16 \
+    --num_inference_steps 20 \
+    --use_compel
+```
+
+### Controlling image quality
+
+Here is how to run the example of improving image quality. For more details,
+please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffusers/main/en/using-diffusers/image_quality).
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --prompts "A squirrel eating a burger" \
+    --num_images_per_prompt 4 \
+    --batch_size 4 \
+    --use_habana \
+    --image_save_dir /tmp/stable_diffusion_images_freeu \
+    --seed 33 \
+    --use_freeu \
+    --sdp_on_bf16 \
+    --bf16
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
@@ -768,7 +988,7 @@ Here is how to generate video with one image prompt:
 
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
-python image_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
     --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
     --num_videos_per_prompt 1 \
@@ -791,7 +1011,7 @@ Here is how to generate videos with several image prompts:
 
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
-python image_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
     --image_path \
         "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
@@ -816,8 +1036,13 @@ python image_to_video_generation.py \
 
 Here is how to generate video conditioned by depth:
 
+<<<<<<< HEAD
 ```bash
 python image_to_video_generation.py \
+=======
+```
+PT_HPU_LAZY_MODE=1 python image_to_video_generation.py \
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
     --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
     --control_image_path \

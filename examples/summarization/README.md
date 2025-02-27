@@ -35,7 +35,7 @@ pip install -r requirements.txt
 Here is an example of a summarization task with T5:
 
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -68,7 +68,7 @@ And here is how you would use it on your own files, after adjusting the values f
 `--train_file`, `--validation_file`, `--text_column` and `--summary_column` to match your setup:
 
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -189,7 +189,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with T5 on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_eval \
     --dataset_name cnn_dailymail \
@@ -210,3 +210,25 @@ python run_summarization.py \
     --bf16_full_eval
 ```
 
+<<<<<<< HEAD
+=======
+You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
+```bash
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
+    --model_name_or_path facebook/bart-large-cnn \
+    --do_predict \
+    --dataset_name cnn_dailymail \
+    --dataset_config "3.0.0" \
+    --output_dir /tmp/tst-summarization \
+    --per_device_eval_batch_size 2 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --gaudi_config_name Habana/bart \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length \
+    --num_beams 1
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))

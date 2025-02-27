@@ -312,7 +312,7 @@ This directory contains an example script that demonstrates using FastViT with g
 ### Single-HPU inference
 
 ```bash
-python3 run_timm_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_timm_example.py \
     --model_name_or_path "timm/fastvit_t8.apple_in1k" \
     --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png" \
     --warmup 3 \

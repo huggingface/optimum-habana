@@ -33,10 +33,27 @@ pip install .
 
 Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
+<<<<<<< HEAD
+=======
+### Training with HPU lazy mode
+   
+```bash
+PT_HPU_LAZY_MODE=1 python train_hpu_lazy.py \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \
+    --device 'hpu' \
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-split train \
+    --dataset-download
+```
+
+python train_hpu_lazy.py --data-dir='./' --dataset hfds/johnowhitaker/imagenette2-320  --device='hpu' --model resnet50.a1_in1k 
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 ### Training with HPU graph mode
 
 ```bash
-python train_hpu_graph.py \
+PT_HPU_LAZY_MODE=1 python train_hpu_graph.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
@@ -50,10 +67,25 @@ python train_hpu_graph.py \
 
 Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
 
+<<<<<<< HEAD
+=======
+### Training with HPU lazy mode
+```bash
+PT_HPU_LAZY_MODE=1 torchrun --nnodes 1 --nproc_per_node 2 \
+    train_hpu_lazy.py \
+    --data-dir ./ \
+    --dataset hfds/johnowhitaker/imagenette2-320 \
+    --device 'hpu' \
+    --model resnet50.a1_in1k \
+    --train-split train \
+    --val-split train \
+    --dataset-download
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 ### Training with HPU graph mode
 
 ```bash
-torchrun --nnodes 1 --nproc_per_node 2 \
+PT_HPU_LAZY_MODE=1 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_graph.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
@@ -71,7 +103,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 
 ### HPU with graph mode
 ```bash
-python inference.py \
+PT_HPU_LAZY_MODE=1 python inference.py \
     --data-dir='./' \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device='hpu' \
@@ -80,6 +112,18 @@ python inference.py \
     --graph_mode
 ```
 
+<<<<<<< HEAD
+=======
+### HPU with lazy mode
+```bash
+PT_HPU_LAZY_MODE=1 python inference.py \
+    --data-dir='./' \
+    --dataset hfds/johnowhitaker/imagenette2-320 \
+    --device='hpu' \
+    --model resnet50.a1_in1k \
+    --split train
+```
+>>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 
 
 
