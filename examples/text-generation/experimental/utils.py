@@ -154,7 +154,7 @@ def setup_env(args):
     adapt_transformers_to_gaudi()
 
     if args.pt2e_quant:
-        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "1")
+        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "0")
         os.environ.setdefault("PT_HPU_USE_FX_GRAPH_FREEZING", "1")
 
 
@@ -491,7 +491,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 
         model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model, logger)
 
     return model, args.assistant_model

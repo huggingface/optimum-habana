@@ -487,7 +487,7 @@ def main():
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile or model.config.model_type == "llama":
+    if args.torch_compile or args.pt2e_quant:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
