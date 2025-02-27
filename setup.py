@@ -29,13 +29,13 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.45.2, < 4.46.0",
-    "optimum",
     "torch",
+    "optimum",
     "accelerate@git+https://github.com/huggingface/accelerate.git@hpu-support",
+    "transformers@git+https://github.com/huggingface/transformers.git@hpu-support",
+    "sentence-transformers == 3.3.1",
     "diffusers >= 0.31.0, < 0.32.0",
     "huggingface_hub >= 0.24.7",
-    "sentence-transformers == 3.3.1",
 ]
 
 TESTS_REQUIRE = [

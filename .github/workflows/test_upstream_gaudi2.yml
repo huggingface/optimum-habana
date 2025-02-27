@@ -46,7 +46,23 @@ jobs:
 
       - name: Run Trainer tests
         run: |
-          pytest tests/trainer -s -vvvv
+          pytest tests/trainer/test_trainer.py -s -vvvv
+
+      - name: Run Trainer FSDP tests
+        run: |
+          pytest tests/trainer/test_trainer_fsdp.py -s -vvvv
+
+      - name: Run Trainer Seq2Seq tests
+        run: |
+          pytest tests/trainer/test_trainer_seq2seq.py -s -vvvv
+
+      - name: Run Distributed Trainer tests
+        run: |
+          pytest tests/trainer/test_trainer_distributed* -s -vvvv
+
+      - name: Run Trainer Utils tests
+        run: |
+          pytest tests/trainer/test_data_collator.py tests/trainer/test_utils.py tests/trainer/test_callback.py -s -vvvv
 
   # accelerate:
   #   name: Upstream Accelerate Integration (Gaudi2)
