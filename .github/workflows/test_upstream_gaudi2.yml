@@ -21,6 +21,7 @@ jobs:
       options: --runtime=habana --shm-size=64G --cap-add=sys_nice --env HABANA_VISIBLE_DEVICES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
+        RUN_THIRD_PARTY_DEVICE_TESTS: 1
         TRANSFORMERS_TEST_DEVICE: hpu
         PT_ENABLE_INT64_SUPPORT: 1
         PT_HPU_LAZY_MODE: 0
@@ -42,7 +43,9 @@ jobs:
 
       - name: Install Transformers with Accelerate and DeepSpeed
         run: |
-          pip install -e .[testing] git+https://github.com/huggingface/accelerate.git@hpu-support git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0 "numpy<2.0.0"
+          pip install -e .[testing] \
+            git+https://github.com/huggingface/accelerate.git@hpu-support \
+            git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0 "numpy<2.0.0"
 
       - name: Run Trainer tests
         run: |
