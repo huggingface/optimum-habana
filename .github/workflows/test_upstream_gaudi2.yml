@@ -25,7 +25,6 @@ jobs:
         TRANSFORMERS_TEST_DEVICE: hpu
         PT_ENABLE_INT64_SUPPORT: 1
         PT_HPU_LAZY_MODE: 0
-        MASTER_PORT: 12345
         RUN_SLOW: 1
 
     steps:
