@@ -34,6 +34,10 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
+      - name: Fix Visible Modules if missing
+        run: |
+          export HABANA_VISIBLE_MODULES=$(hl-smi -Q module_id -f csv,noheader | tr '\n' ',' | sed 's/,$//')
+
       - name: Checkout to Transformers
         uses: actions/checkout@v4
         with:
