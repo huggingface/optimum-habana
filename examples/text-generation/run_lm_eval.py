@@ -222,7 +222,7 @@ class HabanaModelAdapter(HFLM):
         def get_model_num_params(model) -> int:
             if hasattr(model, "num_parameters"):
                 return model.num_parameters()
-            if hasattr(model, "parameters"):
+            elif hasattr(model, "parameters"):
                 return sum(p.numel() for p in model.parameters())
             else:
                 return -1
