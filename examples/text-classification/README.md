@@ -45,7 +45,7 @@ For the following cases, an example of a Gaudi configuration file is given
 The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
 
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
@@ -152,7 +152,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with BERT on GLUE on 1 Gaudi card with the following command:
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
@@ -207,7 +207,7 @@ You can look at the [documentation](https://huggingface.co/docs/optimum/habana/u
 You can run inference with Llama Guard on GLUE on 1 Gaudi card with the following command:
 
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path meta-llama/LlamaGuard-7b \
   --gaudi_config Habana/llama \
   --task_name mrpc \
@@ -264,7 +264,7 @@ You can look at the [documentation](https://huggingface.co/docs/optimum/habana/u
 You can run inference with Llama Guard on GLUE on 1 Gaudi card with the following command:
 
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path meta-llama/LlamaGuard-7b \
   --gaudi_config Habana/llama \
   --task_name mrpc \

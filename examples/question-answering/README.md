@@ -307,7 +307,7 @@ The [`run_seq2seq_qa.py`](https://github.com/huggingface/optimum-habana/blob/mai
 The following command fine-tunes T5 on the SQuAD2.0 dataset:
 
 ```bash
-python run_seq2seq_qa.py \
+PT_HPU_LAZY_MODE=1 python run_seq2seq_qa.py \
   --model_name_or_path t5-small \
   --gaudi_config_name Habana/t5 \
   --dataset_name squad_v2 \

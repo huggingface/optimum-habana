@@ -37,7 +37,7 @@ The following examples fine-tune GPT-2, GPT-J-6B and GPT-NeoX-20B on WikiText-2.
 ### Single-card Training (GPT2)
 
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
@@ -59,7 +59,7 @@ a perplexity of about 20.9963 once fine-tuned on the dataset.
 To run on your own training and validation files, use the following command:
 
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path gpt2 \
     --train_file path_to_train_file \
     --validation_file path_to_validation_file \
@@ -229,7 +229,7 @@ converge slightly slower (over-fitting takes more epochs).
 ### Single-card Training
 
 ```bash
-python run_mlm.py \
+PT_HPU_LAZY_MODE=1 python run_mlm.py \
     --model_name_or_path roberta-base \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
@@ -249,7 +249,7 @@ python run_mlm.py \
 To run on your own training and validation files, use the following command:
 
 ```bash
-python run_mlm.py \
+PT_HPU_LAZY_MODE=1 python run_mlm.py \
     --model_name_or_path roberta-base \
     --train_file path_to_train_file \
     --validation_file path_to_validation_file \
@@ -306,7 +306,7 @@ You can easily train a model from scratch by replacing `--model_name_or_path my_
 
 For example with GPT2:
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --config_name gpt2 \
     --tokenizer_name gpt2 \
     --dataset_name wikitext \
@@ -375,7 +375,7 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 Here is another example with Bloom-7B1:
 
 ```bash
-DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path bigscience/bloom-7b1 \
     --dataset_name wikitext \
@@ -402,7 +402,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with GPT2 on the Wikitext dataset on 1 Gaudi card with the following command:
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
@@ -458,7 +458,7 @@ python3 run_lora_clm.py \
 ```
 - Single-card finetuning of Falcon-40B:
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 run_lora_clm.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
@@ -528,7 +528,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Llama2-7B with FP8:
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --dataset_name tatsu-lab/alpaca \
@@ -623,7 +623,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Falcon-40B:
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -663,8 +663,8 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=10 \
-python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 \
+python3 ../gaudi_spawn.py --use_deepspeed --world_size 8 run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --deepspeed llama2_ds_zero3_config.json \
   --dataset_name tatsu-lab/alpaca \
@@ -744,7 +744,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   - Falcon-180B example command saves only the LoRA parameters at end
   - For inference we need to merge the pretrained model and LoRA weights
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-180B \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -784,7 +784,7 @@ Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_typ
 To run on your own training and validation files, use the following command:
 
 ```bash
-python run_lora_clm.py \
+PT_HPU_LAZY_MODE=1 python run_lora_clm.py \
     --model_name_or_path bigcode/starcoder \
     --train_file path_to_train_file \
     --validation_file path_to_validation_file \
@@ -827,7 +827,7 @@ To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
 Here are single-/multi-device command examples for Llama2-7B:
 - single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
-python3 run_prompt_tuning_clm.py \
+PT_HPU_LAZY_MODE=1 python3 run_prompt_tuning_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --output_dir prompt_tuning_out \
     --bf16 True \
@@ -846,7 +846,7 @@ python3 run_prompt_tuning_clm.py \
 
 - multi-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
-python3 ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_prompt_tuning_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --output_dir prompt_tuning_out \
@@ -884,7 +884,7 @@ PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
 To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
 Here is a multi-device command example for [google/flan-t5-base](https://huggingface.co/google/flan-t5-base):
 ```bash
-python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
     --model_name_or_path google/flan-t5-base \
     --do_train \
     --report_to=none \
@@ -906,7 +906,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.p
 To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
 Here is a multi-device command example for [google/flan-t5-xl](https://huggingface.co/google/flan-t5-xl):
 ```bash
-python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
     --model_name_or_path google/flan-t5-xl \
     --do_train \
     --report_to=none \
@@ -935,7 +935,7 @@ We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepS
 > This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
 
 ```bash
-python3 ../gaudi_spawn.py  \
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py  \
         --world_size 8  --use_deepspeed run_lora_clm.py \
         --model_name_or_path meta-llama/Llama-3.1-8B \
         --dataset_name tatsu-lab/alpaca \
@@ -979,7 +979,7 @@ To use the streaming dataset mode which can be very useful for large datasets, a
 
 For example:
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
@@ -1003,7 +1003,7 @@ python run_clm.py \
 When training a model from scratch, configuration values may be overridden with the help of `--config_overrides`:
 
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_type gpt2 \
     --tokenizer_name gpt2 \
     --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=1024" \

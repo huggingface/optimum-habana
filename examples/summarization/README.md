@@ -35,7 +35,7 @@ pip install -r requirements.txt
 Here is an example of a summarization task with T5:
 
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -68,7 +68,7 @@ And here is how you would use it on your own files, after adjusting the values f
 `--train_file`, `--validation_file`, `--text_column` and `--summary_column` to match your setup:
 
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -246,7 +246,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with T5 on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path t5-small \
     --do_eval \
     --dataset_name cnn_dailymail \
@@ -268,7 +268,7 @@ python run_summarization.py \
 
 You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
 ```bash
-python run_summarization.py \
+PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --model_name_or_path facebook/bart-large-cnn \
     --do_predict \
     --dataset_name cnn_dailymail \

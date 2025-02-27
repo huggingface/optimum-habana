@@ -20,7 +20,7 @@ This directory contains two example scripts that demonstrate how to perform obje
 ### ClipSeg Model
 
 ```bash
-python3 run_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_example.py \
     --model_name_or_path "CIDAS/clipseg-rd64-refined" \
     --image_path "http://images.cocodataset.org/val2017/000000039769.jpg" \
     --prompt "cat, remote, blanket" \
@@ -36,7 +36,7 @@ Models that have been validated:
 ### Segment Anything Model
 
 ```bash
-python3 run_example_sam.py \
+PT_HPU_LAZY_MODE=1 python3 run_example_sam.py \
     --model_name_or_path "facebook/sam-vit-huge" \
     --image_path "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png" \
     --point_prompt "450,600" \

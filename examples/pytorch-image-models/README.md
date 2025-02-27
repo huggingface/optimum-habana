@@ -49,7 +49,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ### Training with HPU lazy mode
    
 ```bash
-python train_hpu_lazy.py \
+PT_HPU_LAZY_MODE=1 python train_hpu_lazy.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
@@ -63,7 +63,7 @@ python train_hpu_lazy.py --data-dir='./' --dataset hfds/johnowhitaker/imagenette
 ### Training with HPU graph mode
 
 ```bash
-python train_hpu_graph.py \
+PT_HPU_LAZY_MODE=1 python train_hpu_graph.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
@@ -95,7 +95,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 
 ### Training with HPU lazy mode
 ```bash
-torchrun --nnodes 1 --nproc_per_node 2 \
+PT_HPU_LAZY_MODE=1 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_lazy.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
@@ -108,7 +108,7 @@ torchrun --nnodes 1 --nproc_per_node 2 \
 ### Training with HPU graph mode
 
 ```bash
-torchrun --nnodes 1 --nproc_per_node 2 \
+PT_HPU_LAZY_MODE=1 torchrun --nnodes 1 --nproc_per_node 2 \
     train_hpu_graph.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
@@ -140,7 +140,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 
 ### HPU with graph mode
 ```bash
-python inference.py \
+PT_HPU_LAZY_MODE=1 python inference.py \
     --data-dir='./' \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device='hpu' \
@@ -151,7 +151,7 @@ python inference.py \
 
 ### HPU with lazy mode
 ```bash
-python inference.py \
+PT_HPU_LAZY_MODE=1 python inference.py \
     --data-dir='./' \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device='hpu' \

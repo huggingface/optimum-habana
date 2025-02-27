@@ -29,7 +29,7 @@ pip install -r requirements.txt
 ## Single-HPU inference
 
 ```bash
-python3 text_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python3 text_to_video_generation.py \
     --model_name_or_path ali-vilab/text-to-video-ms-1.7b \
     --prompts "An astronaut riding a horse" \
     --use_habana \

@@ -21,7 +21,7 @@ limitations under the License.
 The `run_pipeline.py` script showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
 
 ```bash
-python3 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python3 run_pipeline.py \
     --model_name_or_path Salesforce/blip-vqa-capfilt-large \
     --image_path "https://storage.googleapis.com/sfr-vision-language-research/BLIP/demo.jpg" \
     --question "how many dogs are in the picture?" \
@@ -46,7 +46,7 @@ pip install -r openclip_requirements.txt
 By default, the script runs the sample outlined in [BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 notebook](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb) which can be run as follows:
 
 ```bash
-python run_openclip_vqa.py \
+PT_HPU_LAZY_MODE=1 python run_openclip_vqa.py \
     --use_hpu_graphs \
     --bf16
 ```
@@ -54,7 +54,7 @@ python run_openclip_vqa.py \
 One can also run other OpenCLIP models by specifying model, classifier labels and image URL(s) like so:
 
 ```bash
-python run_openclip_vqa.py \
+PT_HPU_LAZY_MODE=1 python run_openclip_vqa.py \
     --model_name_or_path laion/CLIP-ViT-g-14-laion2B-s12B-b42K \
     --labels "a dog" "a cat" \
     --image_path "http://images.cocodataset.org/val2017/000000039769.jpg" \

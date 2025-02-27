@@ -258,7 +258,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with CLIP on COCO on 1 Gaudi card with the following command:
 ```bash
-python run_clip.py \
+PT_HPU_LAZY_MODE=1 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
