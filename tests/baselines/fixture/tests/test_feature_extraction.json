@@ -5,6 +5,9 @@
     },
     "gaudi2": {
       "time_per_iter": 0.6812
+    },
+    "gaudi3": {
+      "time_per_iter": 0.6812
     }
   }
 }

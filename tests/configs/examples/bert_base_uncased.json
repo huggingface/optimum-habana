@@ -4,18 +4,26 @@
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
-                "learning_rate": 5e-5,
+                "learning_rate": 5e-05,
                 "train_batch_size": 24,
-                "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                "metrics": [
+                    "eval_f1",
+                    "train_runtime",
+                    "train_samples_per_second"
+                ],
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
-                "learning_rate": 2e-4,
+                "learning_rate": 0.0002,
                 "train_batch_size": 24,
-                "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                "metrics": [
+                    "eval_f1",
+                    "train_runtime",
+                    "train_samples_per_second"
+                ],
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
@@ -28,18 +36,26 @@
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
-                "learning_rate": 6e-5,
+                "learning_rate": 6e-05,
                 "train_batch_size": 64,
-                "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                "metrics": [
+                    "eval_f1",
+                    "train_runtime",
+                    "train_samples_per_second"
+                ],
                 "extra_arguments": [
                     "--max_seq_length 128",
                     "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
-                "learning_rate": 5e-4,
+                "learning_rate": 0.0005,
                 "train_batch_size": 64,
-                "metrics": ["eval_f1", "train_runtime", "train_samples_per_second"],
+                "metrics": [
+                    "eval_f1",
+                    "train_runtime",
+                    "train_samples_per_second"
+                ],
                 "extra_arguments": [
                     "--max_seq_length 128",
                     "--use_hpu_graphs_for_inference"
