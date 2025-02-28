@@ -28,6 +28,56 @@ except ImportError:
 from ..modeling_all_models import apply_customized_rope_module
 
 
+def gaudi_eager_attention_forward(
+    query, key, value, attention_mask, head_mask, norm_factor, attention_dropout, training, **_kwargs
+):
+    """
+    Copied from: https://github.com/huggingface/transformers/blob/v4.47.1/src/transformers/models/gpt_neox/modeling_gpt_neox.py#L98
+    Changes:
+    - transposition at the end is commented
+    """
+    # q, k, v: [bs, num_attention_heads, seq_len, attn_head_size]
+    batch_size, num_attention_heads, query_length, attn_head_size = query.size()
+    key_length = key.size(-2)
+
+    query = query.view(batch_size * num_attention_heads, query_length, attn_head_size)
+    key = key.view(batch_size * num_attention_heads, key_length, attn_head_size)
+    attn_scores = torch.zeros(
+        batch_size * num_attention_heads,
+        query_length,
+        key_length,
+        dtype=query.dtype,
+        device=key.device,
+    )
+    attn_scores = torch.baddbmm(
+        attn_scores,
+        query,
+        key.transpose(1, 2),
+        beta=1.0,
+        alpha=norm_factor,
+    )
+    attn_scores = attn_scores.view(batch_size, num_attention_heads, query_length, key_length)
+
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key.shape[-2]]
+        attn_scores = attn_scores + causal_mask
+
+    attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+    attn_weights = attn_weights.to(value.dtype)
+
+    # Mask heads if we want to
+    if head_mask is not None:
+        attn_weights = attn_weights * head_mask
+
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=attention_dropout, training=training)
+    attn_output = torch.matmul(attn_weights, value)
+
+    # # Reshape outputs
+    # attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
         super().__init__(config, layer_idx)
@@ -44,6 +94,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         output_attentions: Optional[bool] = False,
         padding_mask: Optional[torch.Tensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ):
         """
@@ -52,6 +103,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         - add new args token_idx
         - optimize KV cache
         """
+        bsz, seq_len, _ = hidden_states.shape
         has_layer_past = layer_past is not None
 
         # Compute QKV
@@ -101,9 +153,18 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         present = (key, value) if use_cache else None
 
         # Compute attention
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = gaudi_eager_attention_forward(
+            query,
+            key,
+            value,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            norm_factor=self.norm_factor,
+            attention_dropout=self.config.attention_dropout,
+            training=self.training,
+        )
 
-        # Reshape outputs
+        # Reshape outputs and final projection
         attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
         attn_output = self.dense(attn_output)
 
@@ -208,7 +269,7 @@ def gaudi_gpt_neox_model_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
@@ -347,6 +408,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,  # Unused for now, mostly for the loss correction
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
