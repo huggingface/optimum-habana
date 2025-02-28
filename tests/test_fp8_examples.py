@@ -10,24 +10,19 @@ from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
 
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "fp8": [
-            (
-                "mistralai/Mistral-7B-Instruct-v0.2",
-                "tatsu-lab/alpaca",
-                "",
-                "language-modeling",
-                8,
-                8,
-                "run_lora_clm.py",
-            ),
-        ],
-    }
-else:
-    # FP8 is not supported on Gaudi1
-    MODELS_TO_TEST = {"fp8": []}
+MODELS_TO_TEST = {
+    "fp8": [
+        (
+            "mistralai/Mistral-7B-Instruct-v0.2",
+            "tatsu-lab/alpaca",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+        ),
+    ],
+}
 
 
 def _test_fp8_train(
@@ -122,6 +117,7 @@ def _test_fp8_train(
         )
 
 
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FP8 is not supported on Gaudi1")
 @pytest.mark.parametrize(
     "model_name, dataset_name, gaudi_config, task, bs_train, bs_eval, script",
     MODELS_TO_TEST["fp8"],
