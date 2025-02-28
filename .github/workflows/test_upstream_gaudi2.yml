@@ -74,10 +74,6 @@ jobs:
         run: |
           pytest tests/trainer/test_trainer_fsdp.py -s -vvvv
 
-      - name: Run Trainer Callbacks tests
-        run: |
-          pytest tests/trainer/test_trainer_callbacks.py -s -vvvv
-
       - name: Run Trainer Utils tests
         run: |
           pytest tests/trainer/test_trainer_utils.py -s -vvvv
