@@ -1,3 +1,1 @@
 https://github.com/EleutherAI/lm-evaluation-harness/archive/refs/tags/v0.4.7.zip
-langdetect
-immutabledict

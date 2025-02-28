@@ -1031,7 +1031,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_config._pad_token_tensor is not None
                 and batch_size > 1
                 and len(inputs_tensor.shape) == 2
-                and inputs_tensor.shape[1] > 0  # Ensure there is at least one element in the second dimension
                 and torch.sum(inputs_tensor[:, -1] == generation_config._pad_token_tensor) > 0
             ):
                 logger.warning(

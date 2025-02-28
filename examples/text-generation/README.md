@@ -828,8 +828,8 @@ python run_generation.py \
 
 ## Language Model Evaluation Harness
 
-The evaluation of LLMs can be done using the `run_lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
- framework and provides the possibility to run one or more of the multiple tasks supported.
+The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
+ framework and provides the possibility to run one of four tasks: HellaSwag, Lambada_openai, PiQA, WinoGrande.
 
 For a more detailed description of parameters, please see the help message:
 ```
@@ -853,9 +853,10 @@ pip install -r requirements_lm_eval.txt
 > 
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
+
 ### Examples
 
-Evaluate Llama 7B on Gaudi2 on task PiQA, using the BF16 data type:
+Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type:
 ```
 python run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
@@ -865,19 +866,6 @@ python run_lm_eval.py \
 --batch_size=1 \
 --tasks piqa \
 -o eval.json
-```
-
-Evaluate Llama-3.2-1B on Gaudi2 on task MMLU, using the BF16 data type:
-```
-python run_lm_eval.py \
---model_name_or_path meta-llama/Llama-3.2-1B \
---use_hpu_graphs \
---use_kv_cache \
---bf16 \
---batch_size=16 \
---num_fewshot=5 \
---tasks mmlu \
--o eval_mmlu.json
 ```
 
 Evaluate Llama 70B on 8 Gaudi2 cards on task WinoGrande, using the BF16 data type:
@@ -891,23 +879,8 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
-Evaluate Llama-3.2-3B-Instruct on 8 Gaudi2 on task GSM8K (CoT), using the BF16 data type:
-```
-deepspeed --num_gpus 8 run_lm_eval.py \
---model_name_or_path meta-llama/Llama-3.2-3B-Instruct \
---attn_softmax_bf16 \
---use_hpu_graphs \
---use_kv_cache \
---bf16 \
---sdp_on_bf16 \
---trim_logits \
---batch_size=32 \
---tasks gsm8k_cot_llama \
---num_fewshot=8 \
---fewshot_as_multiturn \
---use_chat_template \
--o eval_gsm8k.json
-```
+
+
 ## Text-Generation Pipeline
 
 A Transformers-like pipeline is defined and provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation/text-generation-pipeline). It is optimized for Gaudi and can be called to generate text in your scripts.
