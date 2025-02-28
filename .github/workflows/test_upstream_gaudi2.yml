@@ -54,9 +54,9 @@ jobs:
 
       - name: Install Transformers with Accelerate and DeepSpeed
         run: |
-          pip install -e .[testing] "numpy<2.0.0" scipy \
-            git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0 \
-            git+https://github.com/huggingface/accelerate.git@hpu-support
+          pip install -e .[testing] "numpy<2.0.0" scipy scikit-learn \
+            git+https://github.com/huggingface/accelerate.git@hpu-support \
+            git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
 
       - name: Run Trainer tests
         run: |
@@ -74,13 +74,13 @@ jobs:
         run: |
           pytest tests/trainer/test_trainer_fsdp.py tests/fsdp/test_fsdp.py -s -vvvv
 
-      - name: Run Trainer Utils tests
-        run: |
-          pytest tests/trainer/test_trainer_utils.py -s -vvvv
-
       - name: Run Trainer Callbacks tests
         run: |
           pytest tests/trainer/test_trainer_callbacks.py -s -vvvv
+
+      - name: Run Trainer Utils tests
+        run: |
+          pytest tests/trainer/test_trainer_utils.py -s -vvvv
 
   accelerate:
     name: Upstream Accelerate Integration (Gaudi2)
