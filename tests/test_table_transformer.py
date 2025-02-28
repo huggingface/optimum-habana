@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import time
 from unittest import TestCase
 
@@ -25,11 +24,13 @@ from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 adapt_transformers_to_gaudi()
 
 MODEL_NAME = "microsoft/table-transformer-detection"
-if os.environ.get("GAUDI2_CI", "0") == "1":
+if OH_DEVICE_CONTEXT in ["gaudi2"]:
     LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 2.2
 else:
     LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 6.6
