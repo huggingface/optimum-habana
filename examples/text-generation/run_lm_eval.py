@@ -216,8 +216,9 @@ class HabanaModelAdapter(HFLM):
 
     def get_model_info(self) -> dict:
         """
-        Mod from method to get Hugging Face model information for experiment reproducibility.
+        Patched method to get Hugging Face model information for experiment reproducibility.
         source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L1375
+        Remove from SynapseAI 1.21
         """
 
         def get_model_num_params(model) -> int:
