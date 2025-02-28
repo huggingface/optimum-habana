@@ -54,17 +54,13 @@ jobs:
 
       - name: Install Transformers with Accelerate and DeepSpeed
         run: |
-          pip install -e .[testing] "numpy<2.0.0" \
+          pip install -e .[testing] "numpy<2.0.0" scipy \
             git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0 \
             git+https://github.com/huggingface/accelerate.git@hpu-support
 
       - name: Run Trainer tests
         run: |
           pytest tests/trainer/test_trainer.py -s -vvvv
-
-      - name: Run Trainer FSDP tests
-        run: |
-          pytest tests/trainer/test_trainer_fsdp.py -s -vvvv
 
       - name: Run Trainer Seq2Seq tests
         run: |
@@ -74,9 +70,17 @@ jobs:
         run: |
           pytest tests/trainer/test_trainer_distributed.py -s -vvvv
 
+      - name: Run Trainer FSDP tests
+        run: |
+          pytest tests/trainer/test_trainer_fsdp.py tests/fsdp/test_fsdp.py -s -vvvv
+
       - name: Run Trainer Utils tests
         run: |
-          pytest tests/trainer/test_data_collator.py tests/trainer/test_utils.py tests/trainer/test_callback.py -s -vvvv
+          pytest tests/trainer/test_trainer_utils.py -s -vvvv
+
+      - name: Run Trainer Callbacks tests
+        run: |
+          pytest tests/trainer/test_trainer_callbacks.py -s -vvvv
 
   accelerate:
     name: Upstream Accelerate Integration (Gaudi2)
@@ -93,7 +97,19 @@ jobs:
         RUN_SLOW: 1
 
     steps:
-      - name: HL-SMI
+      - name: HL-SMI (1)
+        run: |
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+
+      - name: Extract HPU visible modules
+        id: add-modules
+        run: |
+          export HABANA_VISIBLE_MODULES=$(hl-smi -Q module_id -f csv,noheader | tr '\n' ',' | sed 's/,$//')
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}" >> $GITHUB_ENV
+
+      - name: HL-SMI (2)
         run: |
           hl-smi
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
