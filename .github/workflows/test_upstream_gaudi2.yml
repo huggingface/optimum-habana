@@ -72,7 +72,7 @@ jobs:
 
       - name: Run Trainer FSDP tests
         run: |
-          pytest tests/trainer/test_trainer_fsdp.py tests/fsdp/test_fsdp.py -s -vvvv
+          pytest tests/trainer/test_trainer_fsdp.py -s -vvvv
 
       - name: Run Trainer Callbacks tests
         run: |
@@ -81,6 +81,14 @@ jobs:
       - name: Run Trainer Utils tests
         run: |
           pytest tests/trainer/test_trainer_utils.py -s -vvvv
+
+      - name: Run DeepSpeed Integration tests
+        run: |
+          pytest tests/deepspeed/test_deepspeed.py -s -vvvv
+
+      - name: Run FSDP Integration tests
+        run: |
+          pytest tests/fsdp/test_fsdp.py -s -vvvv
 
   accelerate:
     name: Upstream Accelerate Integration (Gaudi2)
