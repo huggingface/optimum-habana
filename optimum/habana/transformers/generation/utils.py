@@ -116,6 +116,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "minicpm3",
     "baichuan",
     "deepseek_v2",
+    "deepseek_v3",
     "chatglm",
 ]
 
@@ -1092,6 +1093,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "baichuan",
                 "chatglm",
+                "deepseek_v3",
             ], (
                 "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
             )
