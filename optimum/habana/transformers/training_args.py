@@ -22,6 +22,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from accelerate.state import AcceleratorState, DistributedType, PartialState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
@@ -45,8 +46,6 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -327,14 +326,14 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    # Overriding ddp_backend to replace all possible backends by hccl
-    ddp_backend: Optional[str] = field(
-        default="hccl",
-        metadata={
-            "help": "The backend to be used for distributed training.",
-            "choices": ["hccl"],
-        },
-    )
+    # # Overriding ddp_backend to replace all possible backends by hccl
+    # ddp_backend: Optional[str] = field(
+    #     default="hccl",
+    #     metadata={
+    #         "help": "The backend to be used for distributed training.",
+    #         "choices": ["hccl"],
+    #     },
+    # )
 
     # Use this to override default attn_implementation in transformers
     attn_implementation: Optional[str] = field(
@@ -914,22 +913,22 @@ class GaudiTrainingArguments(TrainingArguments):
                 "use_configured_state", False
             )
         if accelerator_state_kwargs["use_configured_state"]:
-            if GaudiPartialState._shared_state == {}:
+            if PartialState._shared_state == {}:
                 raise ValueError(
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
-            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
-            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
+            self.distributed_state = PartialState(cpu=self.use_cpu)
+            if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
                     "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
-            GaudiPartialState._reset_state()
+            AcceleratorState._reset_state()
+            PartialState._reset_state()
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
@@ -943,7 +942,6 @@ class GaudiTrainingArguments(TrainingArguments):
         self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             accelerator_state_kwargs["cpu"] = True
-            accelerator_state_kwargs["backend"] = self.ddp_backend
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -964,14 +962,11 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.deepspeed:
                 accelerator_state_kwargs["use_deepspeed"] = True
                 accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            else:
-                accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
-                "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
+                "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."
             )
 
         # Now we pop everything
@@ -982,7 +977,7 @@ class GaudiTrainingArguments(TrainingArguments):
             use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
             if use_deepspeed:
                 os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
+            self.distributed_state = PartialState(**accelerator_state_kwargs)
             if use_deepspeed:
                 del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
@@ -998,7 +993,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
             )
 
-        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
+        if self.distributed_state.distributed_type == DistributedType.NO:
             self._n_gpu = 0
 
         return device

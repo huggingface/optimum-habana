@@ -78,7 +78,6 @@ class GaudiPPOTrainer(PPOTrainer):
         Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L148
         The only differences are:
         - add new args for Gaudi in config
-        - use GaudiAccelerator instead of Accelerator
         """
         BaseTrainer.__init__(self, config)
 
@@ -97,10 +96,8 @@ class GaudiPPOTrainer(PPOTrainer):
                 f"model must be a PreTrainedModelWrapper, got {type(model)} - supported architectures are: {SUPPORTED_ARCHITECTURES}"
             )
         # Step 1: Initialize Accelerator
-        if config.use_habana:
-            from ...accelerate import GaudiAccelerator as Accelerator
-        else:
-            from accelerate import Accelerator
+        from accelerate import Accelerator
+
         self.accelerator = Accelerator(
             log_with=config.log_with,
             gradient_accumulation_steps=config.gradient_accumulation_steps,
