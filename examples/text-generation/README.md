@@ -149,6 +149,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
+ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
@@ -160,6 +161,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_flash_attention \
 --flash_attention_causal_mask
 ```
+
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
@@ -210,7 +212,8 @@ python run_generation.py \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
 --bf16 \
---sdp_on_bf16
+--sdp_on_bf16 \
+--trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
@@ -518,7 +521,7 @@ python run_generation.py \
 ### Saving FP8 Checkpoints in Hugging Face format
 After quantizing the model, we can save it to a local path.
 
-> [!NOTE]  
+> [!NOTE]
 > Before executing the command below, please refer to the [Running with FP8](#running-with-fp8) section to measure the model quantization statistics.
 
 Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
@@ -723,7 +726,14 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
+> Please add the flags for following models to improve accuracy when using lm_eval on gaudi2. Please note this is a workaround for 1.20 release only.
+> 
+> ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for llama-2-70b-hf[PTQ fp8]
+>
+> COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
+> 
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
+
 
 ### Examples
 
