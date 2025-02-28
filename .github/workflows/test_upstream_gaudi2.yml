@@ -72,7 +72,7 @@ jobs:
 
       - name: Run Distributed Trainer tests
         run: |
-          pytest tests/trainer/test_trainer_distributed* -s -vvvv
+          pytest tests/trainer/test_trainer_distributed.py -s -vvvv
 
       - name: Run Trainer Utils tests
         run: |
