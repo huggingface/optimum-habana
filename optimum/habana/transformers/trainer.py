@@ -637,51 +637,30 @@ class GaudiTrainer(Trainer):
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
+        (
+            num_train_epochs,
+            num_update_steps_per_epoch,
+            num_examples,
+            num_train_samples,
+            epoch_based,
+            len_dataloader,
+            max_steps,
+        ) = self.set_initial_training_values(args, train_dataloader, total_train_batch_size)
         if (
             self.accelerator.mpu.sequence_parallel_is_initialized()
             and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
         ):
             total_train_batch_size = total_train_batch_size / self.accelerator.mpu.get_sequence_parallel_world_size()
 
-        len_dataloader = None
         num_train_tokens = None
-        if has_length(train_dataloader):
-            len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
-            num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
-            num_examples = self.num_examples(train_dataloader)
-            if args.max_steps > 0:
-                max_steps = args.max_steps
-                num_train_epochs = args.max_steps // num_update_steps_per_epoch + int(
-                    args.max_steps % num_update_steps_per_epoch > 0
-                )
-                # May be slightly incorrect if the last batch in the training dataloader has a smaller size but it's
-                # the best we can do.
-                num_train_samples = args.max_steps * total_train_batch_size
-                if args.include_tokens_per_second:
-                    num_train_tokens = (
-                        self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
-                    )
+        if self.args.include_tokens_per_second:
+            num_train_tokens = self.num_tokens(train_dataloader, None if epoch_based else max_steps)
+            # If going by epochs, multiply tokens linearly
+            if len_dataloader is not None and epoch_based:
+                num_train_tokens *= args.num_train_epochs
+            # Otherwise since its steps, we just multiply by grad accum
             else:
-                max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
-                num_train_epochs = math.ceil(args.num_train_epochs)
-                num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
-                if args.include_tokens_per_second:
-                    num_train_tokens = self.num_tokens(train_dataloader) * args.num_train_epochs
-        elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
-            max_steps = args.max_steps
-            # Setting a very large number of epochs so we go as many times as necessary over the iterator.
-            num_train_epochs = sys.maxsize
-            num_update_steps_per_epoch = max_steps
-            num_examples = total_train_batch_size * args.max_steps
-            num_train_samples = args.max_steps * total_train_batch_size
-            if args.include_tokens_per_second:
-                num_train_tokens = self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
-        else:
-            raise ValueError(
-                "args.max_steps must be set to a positive value if dataloader does not have a length, was"
-                f" {args.max_steps}"
-            )
+                num_train_tokens *= args.gradient_accumulation_steps
 
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
@@ -708,21 +687,7 @@ class GaudiTrainer(Trainer):
         self.state.train_batch_size = self._train_batch_size
 
         # Compute absolute values for logging, eval, and save if given as ratio
-        if args.logging_steps is not None:
-            if args.logging_steps < 1:
-                self.state.logging_steps = math.ceil(max_steps * args.logging_steps)
-            else:
-                self.state.logging_steps = args.logging_steps
-        if args.eval_steps is not None:
-            if args.eval_steps < 1:
-                self.state.eval_steps = math.ceil(max_steps * args.eval_steps)
-            else:
-                self.state.eval_steps = args.eval_steps
-        if args.save_steps is not None:
-            if args.save_steps < 1:
-                self.state.save_steps = math.ceil(max_steps * args.save_steps)
-            else:
-                self.state.save_steps = args.save_steps
+        self.state.compute_steps(args, max_steps)
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
@@ -825,6 +790,7 @@ class GaudiTrainer(Trainer):
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
+        self._load_scaler(resume_from_checkpoint)
 
         if self.gaudi_config.use_fused_clip_norm:
             try:
@@ -898,25 +864,7 @@ class GaudiTrainer(Trainer):
                 torch.distributed.broadcast(param.data, src=0)
 
         # Update the references
-        self.callback_handler.model = self.model
-        self.callback_handler.optimizer = self.optimizer
-        self.callback_handler.lr_scheduler = self.lr_scheduler
-        self.callback_handler.train_dataloader = train_dataloader
-        if self.hp_name is not None and self._trial is not None:
-            # use self._trial because the SigOpt/Optuna hpo only call `_hp_search_setup(trial)` instead of passing trial
-            # parameter to Train when using DDP.
-            self.state.trial_name = self.hp_name(self._trial)
-        if trial is not None:
-            assignments = trial.assignments if self.hp_search_backend == HPSearchBackend.SIGOPT else trial
-            self.state.trial_params = hp_params(assignments)
-        else:
-            self.state.trial_params = None
-        # This should be the same if the state has been saved but in case the training arguments changed, it's safer
-        # to set this after the load.
-        self.state.max_steps = max_steps
-        self.state.num_train_epochs = num_train_epochs
-        self.state.is_local_process_zero = self.is_local_process_zero()
-        self.state.is_world_process_zero = self.is_world_process_zero()
+        self.state.init_training_references(self, train_dataloader, max_steps, num_train_epochs, trial)
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
@@ -992,6 +940,8 @@ class GaudiTrainer(Trainer):
                 remainder = args.gradient_accumulation_steps
             update_step = -1
             total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
+            if args.gradient_accumulation_steps == 1:
+                total_updates -= 1
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
@@ -1008,10 +958,7 @@ class GaudiTrainer(Trainer):
 
                     do_sync_step = (step + 1) % args.gradient_accumulation_steps == 0 or (step + 1) == steps_in_epoch
                     # Since we perform prefetching, we need to manually set sync_gradients
-                    if not do_sync_step:
-                        self.accelerator.gradient_state._set_sync_gradients(False)
-                    else:
-                        self.accelerator.gradient_state._set_sync_gradients(True)
+                    self.accelerator.gradient_state._set_sync_gradients(do_sync_step)
 
                     if self.args.include_num_input_tokens_seen:
                         main_input_name = getattr(self.model, "main_input_name", "input_ids")
@@ -1091,7 +1038,6 @@ class GaudiTrainer(Trainer):
 
                         # If the condition is true, we need to compute _grad_norm
                         if _should_compute_grad_norm:
-                            # deepspeed does its own clipping
                             if self.gaudi_config.use_fused_clip_norm and args.use_habana:
                                 # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                                 _grad_norm = self.FusedNorm.clip_norm(model.parameters())
@@ -1108,8 +1054,7 @@ class GaudiTrainer(Trainer):
 
                         self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
 
-                        optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
-                        if optimizer_was_run:
+                        if not self.accelerator.optimizer_step_was_skipped:
                             # Delay optimizer scheduling until metrics are generated
                             if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                                 self.lr_scheduler.step()
@@ -1650,6 +1595,11 @@ class GaudiTrainer(Trainer):
             # temporary fix to calculate loss correctly
             loss = loss / self.args.gradient_accumulation_steps
 
+        # Turning off loss scaling w.r.t. gradient accumulation when DeepSpeed is enabled
+        # https://github.com/huggingface/transformers/pull/35808
+        if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            kwargs["scale_wrt_gas"] = False
+
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
             assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
@@ -2168,7 +2118,7 @@ class GaudiTrainer(Trainer):
         inputs = self._prepare_inputs(inputs)
         if ignore_keys is None:
             if hasattr(self.model, "config"):
-                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", ["past_key_values"])
             else:
                 ignore_keys = []
 
@@ -2510,11 +2460,10 @@ class GaudiTrainer(Trainer):
 
         accelerator_config = self.args.accelerator_config.to_dict()
 
+        # Extract dataloader config params from accelerator config
+        dataloader_params = ["split_batches", "dispatch_batches", "even_batches", "use_seedable_sampler"]
         dataloader_config = DataLoaderConfiguration(
-            split_batches=accelerator_config.pop("split_batches"),
-            dispatch_batches=accelerator_config.pop("dispatch_batches"),
-            even_batches=accelerator_config.pop("even_batches"),
-            use_seedable_sampler=accelerator_config.pop("use_seedable_sampler"),
+            **{param: accelerator_config.pop(param) for param in dataloader_params}
         )
         if is_accelerate_available("1.1.0"):
             dataloader_config.data_seed = self.args.data_seed
@@ -2552,12 +2501,8 @@ class GaudiTrainer(Trainer):
         # post accelerator creation setup
         if self.is_fsdp_enabled:
             fsdp_plugin = self.accelerator.state.fsdp_plugin
-            fsdp_plugin.limit_all_gathers = self.args.fsdp_config.get(
-                "limit_all_gathers", fsdp_plugin.limit_all_gathers
-            )
-            fsdp_plugin.activation_checkpointing = self.args.fsdp_config.get(
-                "activation_checkpointing", fsdp_plugin.activation_checkpointing
-            )
+            for param in ["limit_all_gathers", "activation_checkpointing"]:
+                setattr(fsdp_plugin, param, self.args.fsdp_config.get(param, getattr(fsdp_plugin, param)))
             if fsdp_plugin.activation_checkpointing and self.args.gradient_checkpointing:
                 raise ValueError(
                     "The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg "
