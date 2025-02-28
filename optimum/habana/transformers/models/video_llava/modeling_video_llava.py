@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.video_llava.modeling_video_llava import (
     VideoLlavaCausalLMOutputWithPast,
     VideoLlavaConfig,
@@ -123,6 +124,42 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
 
         return final_embedding, final_attention_mask, final_labels, position_ids, final_input_ids
 
+    def _get_vision_features(
+        self,
+        pixel_values_images: Optional[torch.FloatTensor] = None,
+        pixel_values_videos: Optional[torch.FloatTensor] = None,
+        vision_feature_layer: Optional[int] = None,
+        vision_feature_select_strategy: Optional[str] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+        if pixel_values_images is None and pixel_values_videos is None:
+            raise ValueError("You have to specify `pixel_values_images` or `pixel_values_videos`")
+
+        # videos do not need to select features and it's always "full" (as it is done in the orig implementation)
+        if pixel_values_videos is not None:
+            batch_size_vid, num_frames, channels, height, width = pixel_values_videos.shape
+
+            pixel_values = pixel_values_videos.reshape(batch_size_vid * num_frames, channels, height, width)
+            video_outputs = self.video_tower(pixel_values, output_hidden_states=True)
+            video_outputs = video_outputs.hidden_states[vision_feature_layer].squeeze(1)
+        else:
+            video_outputs = None
+            num_frames = 0
+
+        if pixel_values_images is not None:
+            image_outputs = self.image_tower(pixel_values_images, output_hidden_states=True)
+            image_outputs = image_outputs.hidden_states[vision_feature_layer].squeeze(1)
+
+            if vision_feature_select_strategy == "default":
+                image_outputs = image_outputs[:, 1:]
+            elif vision_feature_select_strategy == "full":
+                image_outputs = image_outputs
+            else:
+                raise ValueError(f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}")
+        else:
+            image_outputs = None
+
+        return image_outputs, video_outputs, num_frames
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -132,7 +169,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[int] = None,
+        vision_feature_layer: Optional[Union[int, List[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -140,7 +177,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Union[Tuple, VideoLlavaCausalLMOutputWithPast]:
@@ -161,6 +198,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         outputs = self.language_model(
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -171,19 +209,9 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
-            num_logits_to_keep=0,
+            logits_to_keep=0,
             token_idx=token_idx,
-            trim_logits=kwargs.get("trim_logits"),
-            attn_softmax_bf16=kwargs.get("attn_softmax_bf16"),
-            reuse_cache=kwargs.get("reuse_cache"),
-            use_flash_attention=kwargs.get("use_flash_attention"),
-            flash_attention_recompute=kwargs.get("flash_attention_recompute"),
-            flash_attention_causal_mask=kwargs.get("flash_attention_causal_mask"),
-            flash_attention_fast_softmax=kwargs.get("flash_attention_fast_softmax"),
-            valid_sequence_lengths=kwargs.get("valid_sequence_lengths"),
-            cache_idx=kwargs.get("cache_idx"),
-            lazy_mode=kwargs.get("lazy_mode"),
-            num_virtual_tokens=kwargs.get("num_virtual_tokens"),
+            **kwargs,
         )
 
         logits = outputs[0]
@@ -194,7 +222,9 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         if labels is not None:
             # Shift so that tokens < n predict n
             if attention_mask is not None:
-                shift_attention_mask = attention_mask[..., 1:]
+                # we use the input attention mask to shift the logits and labels, because it is 2D.
+                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
+                shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
                 shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
                 shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
             else:
@@ -229,7 +259,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         pixel_values_videos=None,
         attention_mask=None,
         cache_position=None,
-        num_logits_to_keep=None,
+        logits_to_keep=None,
         **kwargs,
     ):
         token_idx = kwargs.get("token_idx", None)
@@ -242,7 +272,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 pixel_values_videos=pixel_values_videos,
                 attention_mask=attention_mask,
                 cache_position=cache_position,
-                num_logits_to_keep=num_logits_to_keep,
+                logits_to_keep=logits_to_keep,
                 **kwargs,
             )
         # Else, we need to update token_idx when merging features from videos/images with input embeddings
@@ -277,7 +307,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             cache_position=cache_position,
-            num_logits_to_keep=num_logits_to_keep,
+            logits_to_keep=logits_to_keep,
             **kwargs,
         )
         position_ids = model_inputs["position_ids"]
@@ -401,7 +431,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
                 "inputs_embeds": inputs_embeds,
             }
         )
-        if legacy_processing or cache_position[0] == 0:
+        if legacy_processing or (cache_position is not None and cache_position[0]) == 0:
             # If we're in cached decoding stage, pixel values should be None because input ids do not contain special image token anymore
             # Otherwise we need pixel values to be passed to model
             model_inputs["pixel_values_images"] = pixel_values_images
