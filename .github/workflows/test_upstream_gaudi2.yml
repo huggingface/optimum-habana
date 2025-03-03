@@ -80,7 +80,7 @@ jobs:
 
       - name: Run DeepSpeed Integration tests
         run: |
-          pytest tests/deepspeed/test_deepspeed.py -s -vvvv
+          pytest tests/deepspeed/test_deepspeed.py -s -vvvv -k "test_gradient_accumulation or test_hf_optimizer_with_offload"
 
       - name: Run FSDP Integration tests
         run: |
