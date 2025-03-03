@@ -237,7 +237,7 @@ class GaudiIdefics2Model(Idefics2Model):
         special_image_token_mask = torch.where(input_ids == self.image_token_id)
         new_inputs_embeds = inputs_embeds.clone()
         reshaped_image_hidden_states = image_hidden_states.view(-1, vision_hidden_size)
-        new_inputs_embeds[special_image_token_mask] = reshaped_image_hidden_states
+        new_inputs_embeds[special_image_token_mask] = reshaped_image_hidden_states.to(new_inputs_embeds.device)
         return new_inputs_embeds
 
 
@@ -257,7 +257,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, Idefics2CausalLMOutputWithPast]:
         """
@@ -336,7 +336,8 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
 
             hidden_states = outputs[0]
             # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            logits = self.lm_head(hidden_states[:, slice_indices, :])
 
             loss = None
             if labels is not None:

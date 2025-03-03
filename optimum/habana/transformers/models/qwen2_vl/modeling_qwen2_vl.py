@@ -37,7 +37,7 @@ from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     apply_rotary_pos_emb_vision,
     repeat_kv,
 )
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 
 try:
@@ -68,7 +68,8 @@ class GaudiVisionSdpaAttention(VisionSdpaAttention):
         self,
         hidden_states: torch.Tensor,
         cu_seqlens: torch.Tensor,
-        rotary_pos_emb: torch.Tensor = None,
+        rotary_pos_emb: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> torch.Tensor:
         """
@@ -79,8 +80,19 @@ class GaudiVisionSdpaAttention(VisionSdpaAttention):
         """
         seq_length = hidden_states.shape[0]
         q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
-        q = apply_rotary_pos_emb_vision(q.unsqueeze(0), rotary_pos_emb).squeeze(0)
-        k = apply_rotary_pos_emb_vision(k.unsqueeze(0), rotary_pos_emb).squeeze(0)
+        if position_embeddings is None:
+            logger.warning_once(
+                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
+                "through `rotary_pos_emb` (2D tensor of RoPE theta values), to using externally computed "
+                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.54 `rotary_pos_emb` will be "
+                "removed and `position_embeddings` will be mandatory."
+            )
+            emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+            cos = emb.cos().float()
+            sin = emb.sin().float()
+        else:
+            cos, sin = position_embeddings
+        q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
 
         attention_mask = torch.zeros([1, seq_length, seq_length], device=q.device, dtype=torch.bool)
         for i in range(1, len(cu_seqlens)):
@@ -110,9 +122,10 @@ class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
 
     def forward(
         self,
-        hidden_states,
-        cu_seqlens,
-        rotary_pos_emb,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        rotary_pos_emb: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> torch.Tensor:
         """
@@ -124,6 +137,7 @@ class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
             self.norm1(hidden_states),
             cu_seqlens=cu_seqlens,
             rotary_pos_emb=rotary_pos_emb,
+            position_embeddings=position_embeddings,
             use_flash_attention=use_flash_attention,
         )
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
@@ -354,6 +368,8 @@ class GaudiQwen2VisionTransformerPretrainedModel(Qwen2VisionTransformerPretraine
         """
         hidden_states = self.patch_embed(hidden_states)
         rotary_pos_emb = self.rot_pos_emb(grid_thw)
+        emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+        position_embeddings = (emb.cos(), emb.sin())
 
         cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0]).cumsum(
             dim=0, dtype=torch.int32
@@ -363,13 +379,13 @@ class GaudiQwen2VisionTransformerPretrainedModel(Qwen2VisionTransformerPretraine
         for blk in self.blocks:
             if self.gradient_checkpointing and self.training:
                 hidden_states = self._gradient_checkpointing_func(
-                    blk.__call__, hidden_states, cu_seqlens, rotary_pos_emb, use_flash_attention
+                    blk.__call__, hidden_states, cu_seqlens, None, position_embeddings, use_flash_attention
                 )
             else:
                 hidden_states = blk(
                     hidden_states,
                     cu_seqlens=cu_seqlens,
-                    rotary_pos_emb=rotary_pos_emb,
+                    position_embeddings=position_embeddings,
                     use_flash_attention=use_flash_attention,
                 )
 
@@ -633,7 +649,11 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         # if we get 4D attention mask we cannot calculate rope deltas anymore. TODO @raushan fixme
         if position_ids is None and (attention_mask is None or attention_mask.ndim == 2):
             # calculate RoPE index once per generation in the pre-fill stage only
-            if (cache_position is not None and cache_position[0] == 0) or self.rope_deltas is None:
+            if (
+                (cache_position is not None and cache_position[0] == 0)
+                or self.rope_deltas is None
+                or (past_key_values is None or past_key_values.get_seq_length() == 0)
+            ):
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids, image_grid_thw, video_grid_thw, attention_mask
                 )
@@ -646,6 +666,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 position_ids = position_ids.view(1, -1).expand(batch_size, -1)
                 if cache_position is not None:  # otherwise `deltas` is an int `0`
                     delta = delta.repeat_interleave(batch_size // delta.shape[0], dim=0)
+                    delta = delta.to(position_ids.device)
                 position_ids = position_ids.add(delta)
                 position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
 
@@ -730,8 +751,17 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
         # Exception 1: when passing input_embeds, input_ids may be missing entries
         # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
+        # Exception 3: with synced GPUs cache_position may go out of bounds, but we only want dummy token in that case.
+        #              (we can't check exception 3 while compiling)
+        # Exception 4: If input_embeds are passed then slice it through `cache_position`, to keep only the unprocessed tokens and
+        # generate the first token for each sequence. Later use the generated Input ids for continuation.
         if past_key_values is not None:
-            if inputs_embeds is not None:  # Exception 1
+            if inputs_embeds is not None and input_ids.shape[1] == 0:  # Exception 4
+                inputs_embeds = inputs_embeds[:, -cache_position.shape[0] :]
+            elif (
+                inputs_embeds is not None  # Exception 1
+                or (is_torchdynamo_compiling() or cache_position[-1] >= input_ids.shape[1])  # Exception 3
+            ):
                 input_ids = input_ids[:, -cache_position.shape[0] :]
             elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
                 input_ids = input_ids[:, cache_position]
@@ -741,7 +771,7 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             pixel_values_videos = None
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
-        if inputs_embeds is not None and cache_position[0] == 0:
+        if inputs_embeds is not None and len(cache_position) == inputs_embeds.shape[1]:
             model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
         else:
             model_inputs = {"input_ids": input_ids, "inputs_embeds": None}
