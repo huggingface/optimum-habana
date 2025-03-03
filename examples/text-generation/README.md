@@ -190,6 +190,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
@@ -496,6 +497,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_llama3_405b_bs1_quant.txt \
@@ -514,6 +516,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
