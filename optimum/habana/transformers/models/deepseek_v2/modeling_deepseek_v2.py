@@ -1137,6 +1137,9 @@ class DeepseekV2Attention(nn.Module):
                     )
 
         else:
+            query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
             attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
             htcore.mark_step()
 
@@ -1236,11 +1239,6 @@ class DeepseekV2Attention(nn.Module):
         key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
         key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
         key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
-        # if past_key_value is not None:
-        #     cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-        #     key_states, value_states = past_key_value.update(
-        #         key_states, value_states, self.layer_idx, cache_kwargs
-        #     )
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
 
@@ -1314,7 +1312,6 @@ class DeepseekV2Attention(nn.Module):
         cos, sin = self.rotary_emb(q_pe, seq_len=kv_seq_len)
         q_pe = apply_rotary_pos_emb(q_pe, cos, sin, q_position_ids)
         q_nope = torch.matmul(q_nope.transpose(0, 1), self.q_absorb).transpose(0, 1)  # opti
-        ##q_nope = torch.matmul(q_nope, self.q_absorb)
         compressed_kv, k_pe = self.compress_kv(hidden_states_kv, kv_position_ids)
 
         # update & get all compressed_kv, k_pe
