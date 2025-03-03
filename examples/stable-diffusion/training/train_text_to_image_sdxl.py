@@ -41,8 +41,10 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
+from accelerate.utils.dataclasses import DistributedType
 from datasets import load_dataset
 from diffusers import (
     AutoencoderKL,
@@ -61,8 +63,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
@@ -714,12 +714,11 @@ def main(args):
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.bf16
-    accelerator = GaudiAccelerator(
+    accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
     )
 
     if args.report_to == "wandb":
@@ -896,7 +895,7 @@ def main(args):
                         for idx, dt in enumerate(dataset["train"]):
                             dt["image"].save(f"{args.mediapipe}/{idx}.jpg")
                             f.write(dt["text"] + "\n")
-            if accelerator.distributed_type != GaudiDistributedType.NO:
+            if accelerator.distributed_type != DistributedType.NO:
                 torch.distributed.barrier()
 
             from media_pipe_imgdir import get_dataset_for_pipeline
@@ -1145,7 +1144,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if accelerator.distributed_type == DistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
