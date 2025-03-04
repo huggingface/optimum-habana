@@ -3,10 +3,10 @@ name: Unit and integration tests
 
 on:
   workflow_dispatch:
-  # pull_request:
-  #   branches: [ main ]
-  # push:
-  #   branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
