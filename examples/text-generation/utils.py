@@ -473,6 +473,9 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     if args.quant_config:
         model = setup_quantization(model, args)
 
+    if args.quant_config:
+        model = setup_quantization(model, args)
+
     model = model.eval().to(args.device)
 
     if args.use_hpu_graphs:
