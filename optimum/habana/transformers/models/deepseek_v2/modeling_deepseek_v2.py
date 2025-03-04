@@ -1247,7 +1247,7 @@ class DeepseekV2Attention(nn.Module):
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                 f" {attn_weights.size()}"
             )
-        assert attention_mask is not None
+
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
@@ -1311,7 +1311,7 @@ class DeepseekV2Attention(nn.Module):
 
         cos, sin = self.rotary_emb(q_pe, seq_len=kv_seq_len)
         q_pe = apply_rotary_pos_emb(q_pe, cos, sin, q_position_ids)
-        q_nope = torch.matmul(q_nope.transpose(0, 1), self.q_absorb).transpose(0, 1)  # opti
+        q_nope = torch.matmul(q_nope.transpose(0, 1), self.q_absorb).transpose(0, 1)
         compressed_kv, k_pe = self.compress_kv(hidden_states_kv, kv_position_ids)
 
         # update & get all compressed_kv, k_pe
