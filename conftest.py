@@ -1,5 +1,8 @@
 import json
 import logging
+import operator
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -70,6 +73,9 @@ class BaselineRequest:
             logging.getLogger().info(f"{'.'.join(context + [key])}:ref    = {ref}")
             assert compare(actual, ref)
 
+    def assertEqual(self, context=[], **kwargs):
+        self.assertRef(operator.eq, context, **kwargs)
+
 
 class Secret:
     """
@@ -89,6 +95,7 @@ class Secret:
 def pytest_addoption(parser):
     parser.addoption("--token", action="store", default=None)
     parser.addoption("--rebase", action="store_true", help="rebase baseline references from current run")
+    parser.addoption("--device", action="store", default=None)
 
 
 @pytest.fixture
@@ -98,6 +105,40 @@ def token(request):
 
 def pytest_sessionstart(session):
     session.stash["baseline"] = Baseline(session)
+
+    # User command-line option takes highest priority
+    if session.config.option.device is not None:
+        device = str(session.config.option.device).lower()
+    # User GAUDI2_CI environment variable takes second priority for backwards compatibility
+    elif "GAUDI2_CI" in os.environ:
+        device = "gaudi2" if os.environ["GAUDI2_CI"] == "1" else "gaudi1"
+    # Try to automatically detect it
+    else:
+        import habana_frameworks.torch.hpu as torch_hpu
+
+        name = torch_hpu.get_device_name().strip()
+        if not name:
+            raise RuntimeError("Expected a Gaudi device but did not detect one.")
+        device = name.split()[-1].lower()
+
+    # torch_hpu.get_device_name() returns GAUDI for G1
+    if "gaudi" == device:
+        # use "gaudi1" since this is used in tests, baselines, etc.
+        device = "gaudi1"
+
+    from tests import utils
+
+    utils.OH_DEVICE_CONTEXT = device
+    session.config.stash["device-context"] = device
+
+    # WA: delete the imported top-level tests module so we don't overshadow
+    # tests/transformers/tests module.
+    # This fixes python -m pytest tests/transformers/tests/models/ -s -v
+    del sys.modules["tests"]
+
+
+def pytest_report_header(config):
+    return [f"device context: {config.stash['device-context']}"]
 
 
 def pytest_sessionfinish(session):
