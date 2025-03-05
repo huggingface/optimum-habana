@@ -32,8 +32,10 @@ from lm_eval.models.huggingface import HFLM, TemplateLM
 
 # Local imports
 from run_generation import setup_parser
+import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
+from optimum.habana.transformers.generation import GaudiGenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
@@ -248,6 +250,7 @@ class HabanaModelAdapter(HFLM):
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
+    transformers.GenerationConfig = GaudiGenerationConfig
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
         # trust_remote_code fix was introduced in lm_eval 0.4.3
