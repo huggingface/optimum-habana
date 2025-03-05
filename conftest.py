@@ -2,11 +2,10 @@ import json
 import logging
 import operator
 import os
+import sys
 from pathlib import Path
 
 import pytest
-
-import tests.utils as oh_testutils
 
 
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("tests") / Path("baselines") / Path("fixture")
@@ -127,11 +126,19 @@ def pytest_sessionstart(session):
         # use "gaudi1" since this is used in tests, baselines, etc.
         device = "gaudi1"
 
-    oh_testutils.OH_DEVICE_CONTEXT = device
+    from tests import utils
+
+    utils.OH_DEVICE_CONTEXT = device
+    session.config.stash["device-context"] = device
+
+    # WA: delete the imported top-level tests module so we don't overshadow
+    # tests/transformers/tests module.
+    # This fixes python -m pytest tests/transformers/tests/models/ -s -v
+    del sys.modules["tests"]
 
 
-def pytest_report_header():
-    return [f"device context: {oh_testutils.OH_DEVICE_CONTEXT}"]
+def pytest_report_header(config):
+    return [f"device context: {config.stash['device-context']}"]
 
 
 def pytest_sessionfinish(session):
