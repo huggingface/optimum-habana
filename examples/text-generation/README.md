@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 ```
 
 
@@ -149,6 +149,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
@@ -165,14 +166,14 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
-python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
---world_size 16 ./run_generation.py \ 
---model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \ 
---bf16 \ 
+python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
+--world_size 16 ./run_generation.py \
+--model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \
+--bf16 \
 --trim_logits \
---batch_size 1 \ 
---use_hpu_graphs \ 
---use_kv_cache  \ 
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache  \
 --parallel_strategy "ep" \
 --prompt "DeepSpeed is a machine learning framework"
 ```
@@ -377,6 +378,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_llama3_405b_bs1_quant.txt \
@@ -395,6 +397,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
 ```bash
+DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API=true \
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
