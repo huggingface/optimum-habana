@@ -41,7 +41,6 @@ from transformers import (
     GPT2LMHeadModel,
     IntervalStrategy,
     LineByLineTextDataset,
-    LlamaForCausalLM,
     PretrainedConfig,
     TrainerCallback,
     get_polynomial_decay_schedule_with_warmup,
@@ -85,7 +84,6 @@ from transformers.utils.hp_naming import TrialShortNamer
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.accelerate import GaudiAccelerator, GaudiAcceleratorState
 from optimum.habana.utils import set_seed
-from optimum.habana.transformers.models.llama import LlamaConfig
 from optimum.utils import logging
 
 
@@ -1255,7 +1253,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         eval_dataset = RegressionDataset()
         model = RegressionDictModel()
         gaudi_config = get_gaudi_config()
-        args = GaudiTrainingArguments(self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none")
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
         _ = trainer.evaluate()
@@ -1266,7 +1266,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         eval_dataset = RepeatDataset(x)
-        args = GaudiTrainingArguments(self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none")
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
         gaudi_config = get_gaudi_config()
         trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, eval_dataset=eval_dataset)
         # By default the past_key_values are removed
@@ -1367,18 +1369,14 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
-            tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset
-        )
+        trainer = GaudiTrainer(tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset)
 
         trainer.train()
         parameters = dict(tiny_model.named_parameters())
         state = dataclasses.asdict(trainer.state)
 
         # Reinitialize trainer
-        trainer = GaudiTrainer(
-            tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset
-        )
+        trainer = GaudiTrainer(tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset)
 
         checkpoint = os.path.join(tmp_dir, "checkpoint-5")
 
@@ -1514,7 +1512,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     # tests that we do not require dataloader to have a .dataset attribute
     def test_dataloader_without_dataset(self):
         train_dataset = RegressionDataset(length=128)
-        args = GaudiTrainingArguments(output_dir=self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none")
+        args = GaudiTrainingArguments(
+            output_dir=self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
         trainer = CustomDataloaderTrainer(
             model=RegressionModel(),
             gaudi_config=get_gaudi_config(),
@@ -1540,9 +1540,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # Single evaluation dataset
         eval_dataset = RegressionDataset()
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
-            tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
-        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
         trainer.accelerator.prepare = lambda x: x
 
@@ -1594,9 +1592,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # Single evaluation dataset
         eval_dataset = RegressionDataset()
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
-            tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
-        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
         trainer.accelerator.prepare = lambda x: x
 
@@ -2047,9 +2043,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # this goes by the last `eval` step check to do so, so it won't be
         # the last model *saved*
         model_state = trainer.model.state_dict()
-        final_model_weights = safetensors.torch.load_file(
-            os.path.join(tmp_dir, "checkpoint-10", "model.safetensors")
-        )
+        final_model_weights = safetensors.torch.load_file(os.path.join(tmp_dir, "checkpoint-10", "model.safetensors"))
         for k, v in model_state.items():
             assert torch.allclose(v, final_model_weights[k]), f"{k} is not the same"
 
