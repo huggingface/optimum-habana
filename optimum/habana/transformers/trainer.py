@@ -25,7 +25,6 @@ import math
 import os
 import random
 import shutil
-import sys
 import time
 import warnings
 from collections.abc import Mapping
@@ -51,7 +50,6 @@ from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.feature_extraction_utils import FeatureExtractionMixin
 from transformers.image_processing_utils import BaseImageProcessor
-from transformers.integrations import hp_params
 from transformers.integrations.deepspeed import (
     deepspeed_load_checkpoint,
     is_deepspeed_available,
@@ -79,7 +77,6 @@ from transformers.trainer_utils import (
     PREFIX_CHECKPOINT_DIR,
     EvalLoopOutput,
     EvalPrediction,
-    HPSearchBackend,
     HubStrategy,
     PredictionOutput,
     SaveStrategy,
@@ -207,8 +204,8 @@ TRAINING_ARGS_NAME = "training_args.bin"
 TRAINER_STATE_NAME = "trainer_state.json"
 OPTIMIZER_NAME = "optimizer.pt"
 OPTIMIZER_NAME_BIN = "optimizer.bin"
-SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
+SCHEDULER_NAME = "scheduler.pt"
 
 
 class GaudiTrainer(Trainer):
@@ -450,6 +447,9 @@ class GaudiTrainer(Trainer):
         output_dir = os.path.join(checkpoint_dir, f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}")
         self.save_model(output_dir, _internal_call=True)
         if self.args.should_save:
+            # TODO
+            # Update the `TrainerControl` state to where we are currently
+            # self.state.stateful_callbacks["TrainerControl"] = self.control.state()
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
             torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
             torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
@@ -467,13 +467,22 @@ class GaudiTrainer(Trainer):
         if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "ddp":
             kwargs = {}
 
-            kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
-            if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
-                logger.warning(
-                    "ddp_find_unused_parameters and gradient_checkpointing are both True, which may lead to an error:"
-                    " https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
-                )
-            kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+            if self.args.ddp_find_unused_parameters is not None:
+                kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+                if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
+                    logger.warning(
+                        "ddp_find_unused_parameters and gradient_checkpointing are both True, which may lead to an error:"
+                        " https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
+                    )
+            elif isinstance(model, PreTrainedModel):
+                # find_unused_parameters breaks checkpointing as per
+                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                kwargs["find_unused_parameters"] = not model.is_gradient_checkpointing
+            else:
+                kwargs["find_unused_parameters"] = True
+
+            if self.args.ddp_bucket_cap_mb is not None:
+                kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
 
             if self.args.use_habana:
                 kwargs["gradient_as_bucket_view"] = True
@@ -499,6 +508,7 @@ class GaudiTrainer(Trainer):
     ):
         """
         Main training entry point.
+
         Args:
             resume_from_checkpoint (`str` or `bool`, *optional*):
                 If a `str`, local path to a saved checkpoint as saved by a previous instance of [`Trainer`]. If a
@@ -541,7 +551,7 @@ class GaudiTrainer(Trainer):
                 FutureWarning,
             )
         if len(kwargs) > 0:
-            raise TypeError(f"train() received got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
+            raise TypeError(f"train() got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
         # This might change the seed so needs to run first.
         self._hp_search_setup(trial)
         self._train_batch_size = self.args.train_batch_size
@@ -792,18 +802,15 @@ class GaudiTrainer(Trainer):
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
         self._load_scaler(resume_from_checkpoint)
 
-        if self.gaudi_config.use_fused_clip_norm:
+        if self.gaudi_config.use_fused_clip_norm and self.args.use_habana:
             try:
                 from habana_frameworks.torch.hpex.normalization import FusedClipNorm
             except ImportError as error:
-                error.msg = (
-                    f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
-                )
+                error.msg = f"Could not import habana_frameworks.torch.hpex.normalization. {error.msg}."
                 raise error
-            self.FusedNorm = FusedClipNorm(
-                model.parameters(),
-                args.max_grad_norm,
-            )
+            self.FusedNorm = FusedClipNorm(model.parameters(), args.max_grad_norm)
+        else:
+            self.FusedNorm = None
 
         # important: at this point:
         # self.model         is the Transformers Model
@@ -872,9 +879,10 @@ class GaudiTrainer(Trainer):
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
-        _grad_norm: Optional[float] = None
-        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED and (
-            # Gradient clipping
+        grad_norm: Optional[float] = None
+
+        # Gradient clipping
+        _should_compute_grad_norm: bool = self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED and (
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
 
@@ -891,6 +899,16 @@ class GaudiTrainer(Trainer):
             self.log_evaluate_save_time = 0
         else:
             self.log_evaluate_save_time = None
+
+        # Calculate the number of items in each batch for all epochs
+        num_items_in_batches = self.get_num_items_in_batches(
+            args,
+            epochs_trained,
+            num_train_epochs,
+            train_dataloader,
+            len_dataloader,
+            num_examples,
+        )
 
         hb_profiler = HabanaProfile(
             warmup=self.args.profiling_warmup_steps,
@@ -945,7 +963,8 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples, num_items_in_batch = self.get_batch_samples_transformers(epoch_iterator, num_batches)
+                batch_samples = self.get_iterator_batch_samples(epoch_iterator, num_batches)
+                num_items_in_batch = num_items_in_batches[epoch][update_step]
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1020,15 +1039,16 @@ class GaudiTrainer(Trainer):
 
                     if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                         # if loss is nan or inf simply add the average of previous logged losses
-                        tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                        tr_loss = tr_loss + tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     else:
                         if tr_loss.device != tr_loss_step.device:
                             raise ValueError(
                                 f"Calculated loss must be on the original device: {tr_loss.device} but device in use is {tr_loss_step.device}"
                             )
-                        tr_loss += tr_loss_step
+                        tr_loss = tr_loss + tr_loss_step
 
                     self.current_flos += float(self.floating_point_ops(inputs))
+
                     if args.use_lazy_mode:
                         self.htcore.mark_step()
 
@@ -1036,14 +1056,15 @@ class GaudiTrainer(Trainer):
                         # Since we perform prefetching, we need to manually set sync_gradients to True
                         self.accelerator.gradient_state._set_sync_gradients(True)
 
-                        # If the condition is true, we need to compute _grad_norm
+                        # If the condition is true, we need to compute grad_norm, deepspeed does its own clipping
                         if _should_compute_grad_norm:
-                            if self.gaudi_config.use_fused_clip_norm and args.use_habana:
+                            # Gradient clipping
+                            if self.FusedNorm is not None:
                                 # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
-                                _grad_norm = self.FusedNorm.clip_norm(model.parameters())
+                                grad_norm = self.FusedNorm.clip_norm(model.parameters())
                             else:
                                 # Revert to normal clipping otherwise
-                                _grad_norm = self.accelerator.clip_grad_norm_(
+                                grad_norm = self.accelerator.clip_grad_norm_(
                                     model.parameters(),
                                     args.max_grad_norm,
                                 )
@@ -1066,7 +1087,7 @@ class GaudiTrainer(Trainer):
                             self.htcore.mark_step()
                         self.control = self.callback_handler.on_step_end(args, self.state, self.control)
                         self._maybe_log_save_evaluate(
-                            tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time
+                            tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time
                         )
                     else:
                         self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
@@ -1086,7 +1107,7 @@ class GaudiTrainer(Trainer):
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
+            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
 
             if self.control.should_training_stop:
                 break
@@ -1242,6 +1263,8 @@ class GaudiTrainer(Trainer):
                     )
 
                 # If the model is on the GPU, it still works!
+                # workaround for FSDP bug https://github.com/pytorch/pytorch/issues/82963
+                # which takes *args instead of **kwargs
                 load_result = model.load_state_dict(state_dict, False)
 
             if has_been_loaded:
@@ -1269,6 +1292,7 @@ class GaudiTrainer(Trainer):
 
             # reset tr_loss to zero
             tr_loss -= tr_loss
+
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
@@ -1296,7 +1320,7 @@ class GaudiTrainer(Trainer):
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
 
-            self.log(logs, start_time=start_time)
+            self.log(logs, start_time)
 
         metrics = None
         if self.control.should_evaluate:
@@ -1476,7 +1500,9 @@ class GaudiTrainer(Trainer):
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         """
         Log `logs` on the various objects watching training.
+
         Subclass and override this method to inject custom behavior.
+
         Args:
             logs (`Dict[str, float]`):
                 The values to log.
@@ -1531,7 +1557,9 @@ class GaudiTrainer(Trainer):
     def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
         """
         A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
+        arguments, depending on the situation.
+
+        Modified by Habana to enable using `autocast` on Gaudi devices.
         """
         if self.use_cpu_amp:
             ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
@@ -1568,6 +1596,7 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
+        # TODO
         # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
         #     self.optimizer.train()
 
@@ -1590,8 +1619,7 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         # Finally we need to normalize the loss for reporting
-        if (not self.model_accepts_loss_kwargs and self.compute_loss_func is None) or (num_items_in_batch is None):
-            # TODO refer to todo in function get_batch_samples_transformers -
+        if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
             # temporary fix to calculate loss correctly
             loss = loss / self.args.gradient_accumulation_steps
 
@@ -2250,6 +2278,7 @@ class GaudiTrainer(Trainer):
     ) -> EvalLoopOutput:
         """
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
+
         Works both with or without labels.
         """
         args = self.args
@@ -2284,6 +2313,7 @@ class GaudiTrainer(Trainer):
                 self.deepspeed = self.model_wrapped
 
         model.eval()
+        # TODO
         # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
         #     self.optimizer.eval()
 
@@ -2467,6 +2497,7 @@ class GaudiTrainer(Trainer):
         )
         if is_accelerate_available("1.1.0"):
             dataloader_config.data_seed = self.args.data_seed
+
         non_blocking = accelerator_config.pop("non_blocking")
         if non_blocking and not self.args.dataloader_pin_memory:
             logger.warning(
@@ -2561,30 +2592,74 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_batch_samples_transformers(self, epoch_iterator, num_batches):
+    def get_num_items_in_batches(
+        self, args, epochs_trained, num_train_epochs, train_dataloader, len_dataloader, num_examples
+    ):
         """
-        Added "_transformers" at the end of the method name to avoid a wrong call to a similarly named method in TRL trainers.
+        Calculate the number of items in each batch for all epochs during training.
         """
+        steps_in_epoch = (
+            len_dataloader if len_dataloader is not None else args.max_steps * args.gradient_accumulation_steps
+        )
+
+        remainder = num_examples % args.gradient_accumulation_steps
+        if remainder == 0:
+            remainder = args.gradient_accumulation_steps
+
+        total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
+        if args.gradient_accumulation_steps == 1:
+            total_updates -= 1
+
+        num_items_in_batches = []
+        for epoch in range(epochs_trained, num_train_epochs):
+            epoch_dataloader = train_dataloader
+            if hasattr(epoch_dataloader, "set_epoch"):
+                epoch_dataloader.set_epoch(epoch)
+
+            epoch_iterator = iter(epoch_dataloader)
+            try:
+                first_batch = next(epoch_iterator)
+            except StopIteration:
+                break
+            # Check if the batch contains "labels" (once per epoch)
+            if "labels" not in first_batch:
+                num_items_in_batches.append([None] * total_updates)
+                continue
+
+            device = first_batch["labels"].device
+
+            # Reset the iterator
+            epoch_iterator = iter(epoch_dataloader)
+
+            num_items_in_batches.append([])
+            for update_step in range(total_updates):
+                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
+
+                num_items_in_batch = 0
+                for _ in range(num_batches):
+                    try:
+                        batch = next(epoch_iterator)
+                        num_items_in_batch += (batch["labels"].ne(-100)).sum().item()
+                    except StopIteration:
+                        break
+
+                if self.args.average_tokens_across_devices and num_items_in_batch > 0:
+                    num_items_in_batch = torch.tensor(num_items_in_batch, device=device)
+                    num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
+
+                # Set to None if no items in batch
+                if num_items_in_batch == 0:
+                    num_items_in_batch = None
+
+                num_items_in_batches[epoch].append(num_items_in_batch)
+
+        return num_items_in_batches
+
+    def get_iterator_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
-        num_items_in_batch = None
         for _ in range(num_batches):
             try:
                 batch_samples += [next(epoch_iterator)]
             except StopIteration:
                 break
-
-        # TODO: execute get_batch_samples outside of the training loop (before training) and uncomment the following lines
-        # if len(batch_samples) > 0 and "labels" in batch_samples[0]:
-        #     # For now we don't support object detection
-        #     try:
-        #         num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
-        #     except (TypeError, AttributeError):
-        #         pass
-
-        # if self.args.average_tokens_across_devices and num_items_in_batch is not None:
-        #     num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
-
-        # if torch.is_tensor(num_items_in_batch):
-        #     num_items_in_batch = num_items_in_batch.item()
-
-        return batch_samples, num_items_in_batch
+        return batch_samples
