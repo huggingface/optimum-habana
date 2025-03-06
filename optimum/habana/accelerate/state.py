@@ -57,7 +57,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
