@@ -27,17 +27,17 @@ from typing import Literal, Optional
 import psutil
 import torch
 import torch.nn.functional as F
+import transformers
 from lm_eval import evaluator, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
 
 # Local imports
 from run_generation import setup_parser
-import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
-from optimum.habana.transformers.generation import GaudiGenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
+from optimum.habana.transformers.generation import GaudiGenerationConfig
 from optimum.habana.utils import get_hpu_memory_stats
 
 
