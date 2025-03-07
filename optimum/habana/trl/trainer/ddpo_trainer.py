@@ -19,6 +19,7 @@ from typing import Any, Callable, Optional, Tuple
 from warnings import warn
 
 import torch
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from tqdm.auto import tqdm
@@ -28,7 +29,6 @@ from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
 from ... import GaudiConfig
-from ...accelerate import GaudiAccelerator
 from ...utils import set_seed
 
 
@@ -52,7 +52,6 @@ class GaudiDDPOTrainer(DDPOTrainer):
         The changes are:
         - add new args gaudi_config
         - support HPU graphs for trainable layers
-        - use GaudiAccelerator instead of Accelerator
         - support FusedClipNorm
         """
         if image_samples_hook is None:
@@ -99,7 +98,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         # number of timesteps within each trajectory to train on
         self.num_train_timesteps = int(self.config.sample_num_steps * self.config.train_timestep_fraction)
         kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-        self.accelerator = GaudiAccelerator(
+        self.accelerator = Accelerator(
             log_with=self.config.log_with,
             mixed_precision="bf16" if config.mixed_precision == "bf16" else "no",
             project_config=accelerator_project_config,
