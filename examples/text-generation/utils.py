@@ -439,12 +439,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
-    keep_module_on_host = False
-    if "Llama-3.1-405B" in args.model_name_or_path:
-        keep_module_on_host = True
-
-    load_to_meta = False if keep_module_on_host else model_on_meta(config)
+    load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -499,7 +494,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
-    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)

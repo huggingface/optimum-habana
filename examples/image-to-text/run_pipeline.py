@@ -328,6 +328,7 @@ def main():
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
+        processor.patch_size = config.vision_config.patch_size
     generate_kwargs = {
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,

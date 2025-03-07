@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -41,7 +40,6 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaVisionEncoder,
     MllamaVisionEncoderLayer,
     MllamaVisionModel,
-    _prepare_4d_causal_attention_mask_with_cache_position,
     _prepare_aspect_ratio_attention_mask,
     apply_rotary_pos_emb,
     repeat_kv,
@@ -639,9 +637,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -793,7 +789,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
             - add support if past_key_value is not Cache
         """
         if self.config._attn_implementation == "flash_attention_2":
-            if attention_mask is not None and 0.0 in attention_mask:
+            if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
 
@@ -827,7 +823,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         )
 
         # In case the provided `attention` mask is 2D, we generate a causal mask here (4D).
-        causal_mask = _prepare_4d_causal_attention_mask_with_cache_position(
+        causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position(
             attention_mask,
             sequence_length=sequence_length,
             target_length=target_length,
@@ -873,6 +869,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **loss_kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1871
@@ -916,18 +913,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
         loss = None
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -946,7 +932,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
         # sdpa is better for vision model in HPU
         config._attn_implementation = "sdpa"
-        super(GaudiMllamaForConditionalGeneration, self).__init__(config)
+        super().__init__(config)
 
     def forward(
         self,
@@ -985,9 +971,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if pixel_values is not None and inputs_embeds is not None:
             raise ValueError(
@@ -1280,13 +1264,8 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
 
         # Collect intermediate layer outputs from encoder output
-        all_intermediate_hidden_states = output[1]
-        intermediate_hidden_states = [
-            hidden_state
-            for idx, hidden_state in enumerate(all_intermediate_hidden_states)
-            if idx in self.intermediate_layers_indices
-        ]
-        intermediate_hidden_states = torch.stack(intermediate_hidden_states, dim=-1)
+        all_intermediate_hidden_states = [output[1][i] for i in self.intermediate_layers_indices]
+        intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
 
         """
         intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)

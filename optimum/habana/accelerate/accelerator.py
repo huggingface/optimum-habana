@@ -157,7 +157,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0`."
                 )
 
             mixed_precision = (
@@ -476,6 +476,9 @@ class GaudiAccelerator(Accelerator):
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
                         "device_id": torch.device("hpu", torch.hpu.current_device()),
                     }
+                    # There's issue with moving view tensors to device within FSDP class [See: https://github.com/pytorch/pytorch/issues/147321]
+                    # Due to above issue, view tensor's may lead to silent incorrent behavior, while pretending to be view they're really not
+                    model = model.to(kwargs["device_id"])
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
                         from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (

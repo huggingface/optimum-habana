@@ -57,6 +57,7 @@ def gaudi_T5Attention_forward(
     query_length=None,
     use_cache=False,
     output_attentions=False,
+    cache_position=None,
     token_idx=None,
 ):
     # Input is (batch_size, seq_length, dim)
@@ -196,6 +197,7 @@ def gaudi_T5LayerSelfAttention_forward(
     past_key_value=None,
     use_cache=False,
     output_attentions=False,
+    cache_position=None,
     token_idx=None,
 ):
     normed_hidden_states = self.layer_norm(hidden_states)
@@ -207,6 +209,7 @@ def gaudi_T5LayerSelfAttention_forward(
         past_key_value=past_key_value,
         use_cache=use_cache,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = hidden_states + self.dropout(attention_output[0])
@@ -228,6 +231,7 @@ def gaudi_T5Block_forward(
     use_cache=False,
     output_attentions=False,
     return_dict=True,
+    cache_position=None,
     token_idx=None,
 ):
     if past_key_value is not None:
@@ -255,6 +259,7 @@ def gaudi_T5Block_forward(
         past_key_value=self_attn_past_key_value,
         use_cache=use_cache,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states, present_key_value_state = self_attention_outputs[:2]
@@ -316,6 +321,7 @@ def gaudi_T5Stack_forward(
     output_attentions=None,
     output_hidden_states=None,
     return_dict=None,
+    cache_position=None,
     token_idx=None,
 ):
     use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -338,6 +344,13 @@ def gaudi_T5Stack_forward(
     else:
         err_msg_prefix = "decoder_" if self.is_decoder else ""
         raise ValueError(f"You have to specify either {err_msg_prefix}input_ids or {err_msg_prefix}inputs_embeds")
+
+    if self.gradient_checkpointing and self.training:
+        if use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+            )
+            use_cache = False
 
     if inputs_embeds is None:
         if self.embed_tokens is None:
@@ -378,13 +391,6 @@ def gaudi_T5Stack_forward(
     else:
         encoder_extended_attention_mask = None
 
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-            )
-            use_cache = False
-
     # Prepare head mask if needed
     head_mask = self.get_head_mask(head_mask, self.config.num_layers)
     cross_attn_head_mask = self.get_head_mask(cross_attn_head_mask, self.config.num_layers)
@@ -419,6 +425,7 @@ def gaudi_T5Stack_forward(
                 use_cache,
                 output_attentions,
                 True,
+                cache_position,
                 None,
             )
         else:
@@ -434,6 +441,8 @@ def gaudi_T5Stack_forward(
                 past_key_value=past_key_value,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                return_dict=return_dict,
+                cache_position=cache_position,
                 token_idx=token_idx,
             )
 
@@ -505,6 +514,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.LongTensor] = None,
 ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
     use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -555,6 +565,7 @@ def gaudi_T5ForConditionalGeneration_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 
