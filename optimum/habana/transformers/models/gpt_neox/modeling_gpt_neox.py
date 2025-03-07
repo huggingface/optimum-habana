@@ -530,6 +530,15 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
         return model_inputs
 
+    def _reorder_cache(self, past_key_values, beam_idx):
+        reordered_past = ()
+        for layer_past in past_key_values:
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past[:2])
+                + layer_past[2:],
+            )
+        return reordered_past
+
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE is not None:
