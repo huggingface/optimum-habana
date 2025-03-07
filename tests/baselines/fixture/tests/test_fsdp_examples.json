@@ -3,10 +3,18 @@
     "gaudi2": {
       "eval_f1": 85.7077,
       "train_samples_per_second": 2983.533
+    },
+    "gaudi3": {
+      "eval_f1": 85.7077,
+      "train_samples_per_second": 2983.533
     }
   },
   "tests/test_fsdp_examples.py::test_fsdp_bf16[meta-llama/Llama-2-7b-hf--language-modeling-8-8-run_lora_clm.py-auto_wrap]": {
     "gaudi2": {
+      "train_loss": 0.9093,
+      "train_samples_per_second": 85.016
+    },
+    "gaudi3": {
       "train_loss": 0.9093,
       "train_samples_per_second": 85.016
     }

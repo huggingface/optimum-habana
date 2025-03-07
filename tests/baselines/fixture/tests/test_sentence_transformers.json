@@ -5,6 +5,9 @@
     },
     "gaudi2": {
       "measured_throughput": 3614.2610109716247
+    },
+    "gaudi3": {
+      "measured_throughput": 3614.2610109716247
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/all-MiniLM-L6-v2]": {
@@ -12,6 +15,9 @@
       "measured_throughput": 1109.160132821451
     },
     "gaudi2": {
+      "measured_throughput": 2615.6975354038477
+    },
+    "gaudi3": {
       "measured_throughput": 2615.6975354038477
     }
   },
@@ -21,6 +27,9 @@
     },
     "gaudi2": {
       "measured_throughput": 958.5097903298335
+    },
+    "gaudi3": {
+      "measured_throughput": 958.5097903298335
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/all-mpnet-base-v2]": {
@@ -28,6 +37,9 @@
       "measured_throughput": 164.36556936723508
     },
     "gaudi2": {
+      "measured_throughput": 762.5595168883357
+    },
+    "gaudi3": {
       "measured_throughput": 762.5595168883357
     }
   },
@@ -37,6 +49,9 @@
     },
     "gaudi2": {
       "measured_throughput": 3487.3319366004903
+    },
+    "gaudi3": {
+      "measured_throughput": 3487.3319366004903
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/distiluse-base-multilingual-cased-v2]": {
@@ -44,6 +59,9 @@
       "measured_throughput": 947.7317550605878
     },
     "gaudi2": {
+      "measured_throughput": 3807.2486282025716
+    },
+    "gaudi3": {
       "measured_throughput": 3807.2486282025716
     }
   },
@@ -53,6 +71,9 @@
     },
     "gaudi2": {
       "measured_throughput": 1208.3672807492396
+    },
+    "gaudi3": {
+      "measured_throughput": 1208.3672807492396
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/multi-qa-distilbert-cos-v1]": {
@@ -60,6 +81,9 @@
       "measured_throughput": 216.47035182888888
     },
     "gaudi2": {
+      "measured_throughput": 944.6166139694299
+    },
+    "gaudi3": {
       "measured_throughput": 944.6166139694299
     }
   },
@@ -69,6 +93,9 @@
     },
     "gaudi2": {
       "measured_throughput": 545.3360251829846
+    },
+    "gaudi3": {
+      "measured_throughput": 545.3360251829846
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-MiniLM-L3-v2]": {
@@ -76,6 +103,9 @@
       "measured_throughput": 3029.398417051629
     },
     "gaudi2": {
+      "measured_throughput": 5734.318427972881
+    },
+    "gaudi3": {
       "measured_throughput": 5734.318427972881
     }
   },
@@ -85,6 +115,9 @@
     },
     "gaudi2": {
       "measured_throughput": 3896.1911011860166
+    },
+    "gaudi3": {
+      "measured_throughput": 3896.1911011860166
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2]": {
@@ -93,6 +126,9 @@
     },
     "gaudi2": {
       "measured_throughput": 3558.0778715789693
+    },
+    "gaudi3": {
+      "measured_throughput": 3558.0778715789693
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-multilingual-mpnet-base-v2]": {
@@ -100,6 +136,9 @@
       "measured_throughput": 518.4762252952173
     },
     "gaudi2": {
+      "measured_throughput": 2392.1654748794062
+    },
+    "gaudi3": {
       "measured_throughput": 2392.1654748794062
     }
   }
