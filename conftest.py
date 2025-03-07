@@ -98,19 +98,6 @@ def pytest_addoption(parser):
 def token(request):
     return Secret(request.config.option.token)
 
-def get_device_name_in_separate_process():
-    # Needs to be done in the separate process, because
-    # `torch_hpu.get_device_name()` occupies a device and doesn't release it.
-    # For tests what work in a separate process if there's a need for all devices
-    # not all of them will be available due the occupation from current pytest process.
-    import subprocess
-    script = \
-    "import habana_frameworks.torch.hpu as torch_hpu\n"\
-    "print(torch_hpu.get_device_name())"
-
-    result = subprocess.run(f"python -c '{script}'", shell=True, capture_output=True, text=True)
-
-    return result.stdout
 
 def pytest_sessionstart(session):
     session.stash["baseline"] = Baseline(session)
@@ -123,12 +110,11 @@ def pytest_sessionstart(session):
         device = "gaudi2" if os.environ["GAUDI2_CI"] == "1" else "gaudi1"
     # Try to automatically detect it
     else:
-        name = get_device_name_in_separate_process()
-        if not name:
-            raise RuntimeError("Expected a Gaudi device but did not detect one.")
-        device = name.strip().split()[-1].lower()
+        from optimum.habana.utils import get_device_name
 
-    # torch_hpu.get_device_name() returns GAUDI for G1
+        device = get_device_name()
+
+    # optimum.habana.utils.get_device_name() returns `gaudi` for G1
     if "gaudi" == device:
         # use "gaudi1" since this is used in tests, baselines, etc.
         device = "gaudi1"
