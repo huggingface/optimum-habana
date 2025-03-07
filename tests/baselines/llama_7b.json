@@ -519,7 +519,7 @@
                         "--gradient_accumulation_steps 2",
                         "--eval_strategy no",
                         "--save_strategy no",
-                        "--warmup_ratio  0.03",
+                        "--warmup_ratio  0.066",
                         "--lr_scheduler_type constant",
                         "--max_grad_norm  0.3",
                         "--logging_steps 1",
