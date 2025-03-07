@@ -15,7 +15,7 @@
       "predict_samples_per_second": 1.005
     },
     "gaudi2": {
-      "predict_rougeLsum": 21.8877,
+      "predict_rougeLsum": 21.639,
       "predict_samples_per_second": 3.848
     }
   },
