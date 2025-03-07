@@ -28,14 +28,6 @@ from .utils import OH_DEVICE_CONTEXT
 
 modeling_utils.adapt_transformers_to_gaudi()
 
-assert OH_DEVICE_CONTEXT != "gaudi1", "Execution does not support on Gaudi1"
-try:
-    import sys
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-except subprocess.CalledProcessError:
-    pytest.fail("Failed to install peft==0.12.0")
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 
@@ -87,7 +79,16 @@ def get_model(token: str):
     return model
 
 
-def test_nf4_quantization_inference(token: str):
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
+def test_nf4_quantization_inference(token: str, baseline):
+    try:
+        import sys
+
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    except subprocess.CalledProcessError:
+        pytest.fail("Failed to install peft==0.12.0")
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
@@ -146,8 +147,9 @@ def test_nf4_quantization_inference(token: str):
     model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
 
     trainer.train()
-    eval_loss = trainer.evaluate()["eval_loss"]
 
-    expected_eval_loss = 1.638
-
-    assert abs(eval_loss - expected_eval_loss) < 5e-2
+    baseline.assertRef(
+        compare=lambda actual, ref: abs(actual - ref) < 5e2,
+        context=[OH_DEVICE_CONTEXT],
+        eval_loss=trainer.evaluate()["eval_loss"],
+    )
