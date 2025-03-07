@@ -168,8 +168,11 @@ def main():
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument(
         "--ignore_eos",
-        action="store_true",
-        help="Whether to disable stopping with eos token when calling `generate`.",
+        nargs="?",
+        const=True,
+        default=True,
+        type=lambda x: x.lower() != "false" if isinstance(x, str) else True,
+        help="Whether to disable stopping with eos token when calling `generate`. Defaults to True.",
     )
     parser.add_argument(
         "--use_flash_attention",
