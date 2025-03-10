@@ -389,7 +389,7 @@ def gaudi_gpt_neox_model_forward(
 
 class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
     """
-    Inherits from GPTNeoXForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt_neox/modeling_gpt_neox.py
+    Inherits from GPTNeoXForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
     The only differences are:
     - add new args token_idx
     - add token_idx into model_inputs
