@@ -19,7 +19,8 @@ from .utils import OH_DEVICE_CONTEXT
 prev_quant_model_name = None
 prev_quant_rank = 0
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # Gaudi2+
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
@@ -114,7 +115,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
         ],
     }
 else:
-    # Gaudi1 CI
+    # Gaudi1
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
