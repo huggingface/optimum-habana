@@ -110,14 +110,11 @@ def pytest_sessionstart(session):
         device = "gaudi2" if os.environ["GAUDI2_CI"] == "1" else "gaudi1"
     # Try to automatically detect it
     else:
-        import habana_frameworks.torch.hpu as torch_hpu
+        from optimum.habana.utils import get_device_name
 
-        name = torch_hpu.get_device_name().strip()
-        if not name:
-            raise RuntimeError("Expected a Gaudi device but did not detect one.")
-        device = name.split()[-1].lower()
+        device = get_device_name()
 
-    # torch_hpu.get_device_name() returns GAUDI for G1
+    # optimum.habana.utils.get_device_name() returns `gaudi` for G1
     if "gaudi" == device:
         # use "gaudi1" since this is used in tests, baselines, etc.
         device = "gaudi1"
