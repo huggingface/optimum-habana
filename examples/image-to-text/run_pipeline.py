@@ -210,6 +210,7 @@ def main():
     args.world_size = int(os.getenv("WORLD_SIZE", "0"))
     args.global_rank = int(os.getenv("RANK", "0"))
 
+    os.environ["PT_HPUGRAPH_DISABLE_TENSOR_CACHE"] = "1"
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
@@ -323,7 +324,7 @@ def main():
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            generator.model = wrap_in_hpu_graph(generator.model)
+            generator.model = wrap_in_hpu_graph(generator.model, max_graphs=10)
 
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
