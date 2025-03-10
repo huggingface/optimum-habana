@@ -131,7 +131,7 @@ def setup_const_serialization(const_serialization_path):
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_optimum_habana_min_version("1.16.0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
