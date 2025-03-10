@@ -957,7 +957,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
                 hidden_states = hidden_states[:, -1, :]
 
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
         if self.config.final_logit_softcapping is not None:
             logits = logits / self.config.final_logit_softcapping
             logits = torch.tanh(logits)

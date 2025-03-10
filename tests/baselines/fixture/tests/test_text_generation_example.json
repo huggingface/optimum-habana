@@ -33,7 +33,7 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[EleutherAI/gpt-j-6b-1-False-False]": {
     "gaudi2": {
-      "throughput": 160.5823842101192
+      "throughput": 143.64228300147943
     },
     "gaudi3": {
       "throughput": 165.9126964936202
@@ -273,7 +273,7 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[meta-llama/Llama-2-7b-hf-1-True-True]": {
     "gaudi2": {
-      "output": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of performance",
+      "output": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
       "throughput": 141.25776956002076
     },
     "gaudi3": {
@@ -323,8 +323,8 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[mistralai/Mistral-7B-v0.1-1-True-True]": {
     "gaudi2": {
-      "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be easy to use and flexible, allowing users to quickly train models on a variety of hardware platforms.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be easy to use and flexible, allowing users to quickly train models on a variety of hardware platforms.\n\nDeepSpeed is a machine learning framework that accelerates training",
-      "throughput": 130.2172236767782
+      "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
+      "throughput": 134.94827207337997
     },
     "gaudi3": {
       "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
@@ -333,8 +333,8 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[mistralai/Mixtral-8x7B-v0.1-1-False-True]": {
     "gaudi2": {
-      "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed?\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n##",
-      "throughput": 23.7931001677926
+      "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
+      "throughput": 71.29570003665306
     },
     "gaudi3": {
       "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with multiple GPUs. It is designed to be easy to use and efficient, and it supports a wide range of models and tasks.\n\nDeepSpeed is a deep learning framework that enables training of large models on a single machine with multiple GPUs. It is designed to be easy to use and efficient, and it supports a wide range of models and tasks.\n\nDeepSpeed is a deep learning framework that enables training of large models on a",
@@ -375,7 +375,7 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[state-spaces/mamba-130m-hf-1536-False-False]": {
     "gaudi2": {
-      "throughput": 5385.511100161605
+      "throughput": 3100.9825044466907
     },
     "gaudi3": {
       "throughput": 1948.1615848330302
