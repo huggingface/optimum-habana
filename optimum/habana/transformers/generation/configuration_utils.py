@@ -43,6 +43,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Mark required tensor(s) as dynamic.
     attn_batch_split (`int`, *optional*):
         Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.
+    logits_bf16 (`bool`, *optional*):
+        Keep logits in bf16.
     """
 
     def __init__(self, **kwargs):
@@ -65,3 +67,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.valid_sequence_lengths = kwargs.get("valid_sequence_lengths", None)
         self.use_mark_dynamic = kwargs.get("use_mark_dynamic", None)
         self.attn_batch_split = kwargs.get("attn_batch_split", 1)
+        self.logits_bf16 = kwargs.get("logits_bf16", None)

@@ -1271,6 +1271,9 @@ class GaudiGenerationMixin(GenerationMixin):
         # prepare for attention batch splitting
         model_kwargs["attn_batch_split"] = generation_config.attn_batch_split
 
+        # Keep logits in bf16
+        model_kwargs["logits_bf16"] = kwargs.get("logits_bf16")
+
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False

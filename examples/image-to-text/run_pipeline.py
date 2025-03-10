@@ -216,6 +216,11 @@ def main():
         action="store_true",
         help="Allow PyTorch to use reduced precision in the SDPA math backend",
     )
+    parser.add_argument(
+        "--logits_bf16",
+        action="store_true",
+        help="Compute logits in bf16",
+    )
 
     args = parser.parse_args()
 
@@ -354,6 +359,7 @@ def main():
         "bucket_size": args.bucket_size,
         "do_sample": args.do_sample,
         "limit_hpu_graphs": args.limit_hpu_graphs,
+        "logits_bf16": args.logits_bf16,
     }
 
     if args.sdp_on_bf16:
