@@ -30,7 +30,7 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import (
+'''from peft import (
     AdaLoraConfig,
     AdaptionPromptConfig,
     IA3Config,
@@ -41,7 +41,7 @@ from peft import (
     get_peft_model,
     tuners,
 )
-from peft.utils.other import fsdp_auto_wrap_policy
+from peft.utils.other import fsdp_auto_wrap_policy'''
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -871,7 +871,7 @@ def main():
 
     if training_args.do_train or training_args.do_eval:
         # PEFT settings
-        if finetune_args.peft_type == "lora":
+        '''if finetune_args.peft_type == "lora":
             peft_config = LoraConfig(
                 r=finetune_args.lora_rank,
                 lora_alpha=finetune_args.lora_alpha,
@@ -924,13 +924,14 @@ def main():
             peft_config = LNTuningConfig(
                 target_modules=finetune_args.ln_target_modules,
                 task_type=TaskType.CAUSAL_LM,
-            )
+            )'''
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
-        lora_model = get_peft_model(model, peft_config)
+        # lora_model = get_peft_model(model, peft_config)
+        lora_model = model
         if training_args.bf16 and finetune_args.peft_type != "ia3":
             lora_model = lora_model.to(torch.bfloat16)
-        lora_model.print_trainable_parameters()
+        # lora_model.print_trainable_parameters()
         gaudi_config = GaudiConfig()
         gaudi_config.use_fused_adam = True
         gaudi_config.use_fused_clip_norm = True
@@ -948,9 +949,9 @@ def main():
             preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         )
 
-        # Solution for https://github.com/huggingface/peft/blob/v0.6.2/README.md#caveats (1)
+        '''# Solution for https://github.com/huggingface/peft/blob/v0.6.2/README.md#caveats (1)
         if training_args.fsdp and training_args.fsdp_config["auto_wrap_policy"] == "TRANSFORMER_BASED_WRAP":
-            trainer.accelerator.state.fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(lora_model)
+            trainer.accelerator.state.fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(lora_model)'''
 
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
