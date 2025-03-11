@@ -95,7 +95,16 @@ class Secret:
 def pytest_addoption(parser):
     parser.addoption("--token", action="store", default=None)
     parser.addoption("--rebase", action="store_true", help="rebase baseline references from current run")
-    parser.addoption("--device", action="store", default=None)
+    parser.addoption(
+        "--device",
+        "--device-context",
+        action="store",
+        default=None,
+        help=(
+            "Used to enable device specific test configurations and baselines."
+            " If unspecified, the default is to auto-detect the device."
+        ),
+    )
 
 
 @pytest.fixture
@@ -103,25 +112,35 @@ def token(request):
     return Secret(request.config.option.token)
 
 
+def pytest_configure(config):
+    name = ""
+    try:
+        from optimum.habana.utils import get_device_name
+
+        name = get_device_name()
+
+        # get_device_name() returns `gaudi` for G1
+        if "gaudi" == name:
+            # use "gaudi1" since this is used in tests, baselines, etc.
+            name = "gaudi1"
+    except ValueError:
+        pass  # ignore unsupported device, we'll handle it in sessionstart
+    finally:
+        config.stash["physical-device"] = name
+
+
 def pytest_sessionstart(session):
     session.stash["baseline"] = Baseline(session)
 
     # User command-line option takes highest priority
     if session.config.option.device is not None:
-        device = str(session.config.option.device).lower()
-    # User GAUDI2_CI environment variable takes second priority for backwards compatibility
-    elif "GAUDI2_CI" in os.environ:
-        device = "gaudi2" if os.environ["GAUDI2_CI"] == "1" else "gaudi1"
-    # Try to automatically detect it
+        device = str(session.config.option.device).strip().lower()
+    # Otherwise, use physical device (auto-detected)
     else:
-        from optimum.habana.utils import get_device_name
+        device = session.config.stash["physical-device"]
 
-        device = get_device_name()
-
-    # optimum.habana.utils.get_device_name() returns `gaudi` for G1
-    if "gaudi" == device:
-        # use "gaudi1" since this is used in tests, baselines, etc.
-        device = "gaudi1"
+    if not device:
+        raise RuntimeError("Expected a device context but did not detect one.")
 
     from tests import utils
 
@@ -135,7 +154,23 @@ def pytest_sessionstart(session):
 
 
 def pytest_report_header(config):
-    return [f"device context: {config.stash['device-context']}"]
+    header = []
+    if "GAUDI2_CI" in os.environ:
+        del os.environ["GAUDI2_CI"]  # prevent someone from trying to use it in tests
+        header.append("\n!!!!!!!!!!!!!!! NOTICE !!!!!! NOTICE !!!!!!!!!!!!!!!!!!!!!!")
+        header.append("!! GAUDI2_CI environment variable has been discontinued. !!")
+        header.append("!! The CI device context will be auto-detected or can be !!")
+        header.append("!! overridden with '--device-context' option. See --help !!")
+        header.append("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+
+    header.append(f" device context: {config.stash['device-context']}")
+    header.append(f"physical device: {config.stash['physical-device'] or None}")
+
+    if config.stash["device-context"] != config.stash["physical-device"]:
+        header.append("\nBEWARE: The 'device context' != 'physical-device'.")
+        header.append("BEWARE: It is assumed you know what you are doing.\n")
+
+    return header
 
 
 def pytest_sessionfinish(session):
