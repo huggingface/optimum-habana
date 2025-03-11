@@ -2364,12 +2364,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             # contrastive_search main logic end
 
-            # synced_gpus: don't waste resources running the code we don't need; kwargs must be updated before skipping
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs,
-                model_kwargs,
-                is_encoder_decoder=self.config.is_encoder_decoder,
-            )
             if synced_gpus and this_peer_finished:
                 continue
 
@@ -2387,6 +2381,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if streamer is not None:
                 streamer.put(next_tokens.cpu())
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs,
+                model_kwargs,
+                is_encoder_decoder=self.config.is_encoder_decoder,
+            )
 
             # increase cur_len
             cur_len = cur_len + 1
