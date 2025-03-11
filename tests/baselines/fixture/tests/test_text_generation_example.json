@@ -226,7 +226,7 @@
       "throughput": 36.578709544111
     },
     "gaudi3": {
-      "output": "DeepSpeed is a machine learning framework that enables you to train large models on a single GPU. It is a framework that is used to train large models on a single GPU.\n\nThe main idea is to use a large amount of memory to fit the model on a single GPU.\n\nThe main idea is to use a large amount of memory to fit the model on a single GPU.\n\nThe main idea is to use a large amount of memory to fit the model on a single GPU.\n\nDeepSpeed is a framework that allows you",
+      "output": "DeepSpeed is a machine learning framework that enables you to train large models on a single GPU. It is a framework that is used to train large models on a single GPU.\n\nThe main idea is to use a large amount of memory to fit the model on a single GPU.\n\nThe main idea of \u200b\u200bthe algorithm is to use the gradient of the loss function to update the model parameters.\n\nThe main idea of \u200b\u200bthe algorithm is to use the gradient of the loss function to update the model parameters.\n\nThe main idea of",
       "throughput": 46.04685368495098
     }
   },
