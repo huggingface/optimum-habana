@@ -900,16 +900,6 @@ class GaudiTrainer(Trainer):
         else:
             self.log_evaluate_save_time = None
 
-        # Calculate the number of items in each batch for all epochs
-        num_items_in_batches = self.get_num_items_in_batches(
-            args,
-            epochs_trained,
-            num_train_epochs,
-            train_dataloader,
-            len_dataloader,
-            num_examples,
-        )
-
         hb_profiler = HabanaProfile(
             warmup=self.args.profiling_warmup_steps,
             active=self.args.profiling_steps,
@@ -963,8 +953,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples = self.get_iterator_batch_samples(epoch_iterator, num_batches)
-                num_items_in_batch = num_items_in_batches[epoch][update_step]
+                batch_samples, num_items_in_batch = self.get_batch_samples_transformers(epoch_iterator, num_batches)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1619,7 +1608,8 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         # Finally we need to normalize the loss for reporting
-        if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
+        if (not self.model_accepts_loss_kwargs and self.compute_loss_func is None) or (num_items_in_batch is None):
+            # TODO refer to todo in function get_batch_samples_transformers -
             # temporary fix to calculate loss correctly
             loss = loss / self.args.gradient_accumulation_steps
 
@@ -2592,74 +2582,30 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_num_items_in_batches(
-        self, args, epochs_trained, num_train_epochs, train_dataloader, len_dataloader, num_examples
-    ):
+    def get_batch_samples_transformers(self, epoch_iterator, num_batches):
         """
-        Calculate the number of items in each batch for all epochs during training.
+        Added "_transformers" at the end of the method name to avoid a wrong call to a similarly named method in TRL trainers.
         """
-        steps_in_epoch = (
-            len_dataloader if len_dataloader is not None else args.max_steps * args.gradient_accumulation_steps
-        )
-
-        remainder = num_examples % args.gradient_accumulation_steps
-        if remainder == 0:
-            remainder = args.gradient_accumulation_steps
-
-        total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
-        if args.gradient_accumulation_steps == 1:
-            total_updates -= 1
-
-        num_items_in_batches = []
-        for epoch in range(epochs_trained, num_train_epochs):
-            epoch_dataloader = train_dataloader
-            if hasattr(epoch_dataloader, "set_epoch"):
-                epoch_dataloader.set_epoch(epoch)
-
-            epoch_iterator = iter(epoch_dataloader)
-            try:
-                first_batch = next(epoch_iterator)
-            except StopIteration:
-                break
-            # Check if the batch contains "labels" (once per epoch)
-            if "labels" not in first_batch:
-                num_items_in_batches.append([None] * total_updates)
-                continue
-
-            device = first_batch["labels"].device
-
-            # Reset the iterator
-            epoch_iterator = iter(epoch_dataloader)
-
-            num_items_in_batches.append([])
-            for update_step in range(total_updates):
-                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-
-                num_items_in_batch = 0
-                for _ in range(num_batches):
-                    try:
-                        batch = next(epoch_iterator)
-                        num_items_in_batch += (batch["labels"].ne(-100)).sum().item()
-                    except StopIteration:
-                        break
-
-                if self.args.average_tokens_across_devices and num_items_in_batch > 0:
-                    num_items_in_batch = torch.tensor(num_items_in_batch, device=device)
-                    num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
-
-                # Set to None if no items in batch
-                if num_items_in_batch == 0:
-                    num_items_in_batch = None
-
-                num_items_in_batches[epoch].append(num_items_in_batch)
-
-        return num_items_in_batches
-
-    def get_iterator_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
+        num_items_in_batch = None
         for _ in range(num_batches):
             try:
                 batch_samples += [next(epoch_iterator)]
             except StopIteration:
                 break
-        return batch_samples
+
+        # TODO: execute get_batch_samples outside of the training loop (before training) and uncomment the following lines
+        # if len(batch_samples) > 0 and "labels" in batch_samples[0]:
+        #     # For now we don't support object detection
+        #     try:
+        #         num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+        #     except (TypeError, AttributeError):
+        #         pass
+
+        # if self.args.average_tokens_across_devices and num_items_in_batch is not None:
+        #     num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
+
+        # if torch.is_tensor(num_items_in_batch):
+        #     num_items_in_batch = num_items_in_batch.item()
+
+        return batch_samples, num_items_in_batch
