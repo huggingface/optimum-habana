@@ -49,7 +49,6 @@ jobs:
       - name: Checkout to Transformers
         uses: actions/checkout@v4
         with:
-          ref: hpu-support
           repository: huggingface/transformers
 
       - name: Install Transformers with Accelerate & DeepSpeed
@@ -123,7 +122,7 @@ jobs:
         run: |
           pip install -e .[testing] \
             git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0 \
-            git+https://github.com/huggingface/transformers.git@hpu-support
+            git+https://github.com/huggingface/transformers.git
 
       - name: Run CLI tests
         run: |
