@@ -12,8 +12,8 @@
         "overlap_comm": false,
         "contiguous_gradients": false,
 	"reduce_scatter": false,
-	"stage3_prefetch_bucket_size": 800000000,
-	"stage3_max_live_parameters": 3200000000,
+	"stage3_prefetch_bucket_size": 855638016,
+	"stage3_max_live_parameters": 5000000000,
         "stage3_gather_16bit_weights_on_model_save": true
     },
     "timers": {
