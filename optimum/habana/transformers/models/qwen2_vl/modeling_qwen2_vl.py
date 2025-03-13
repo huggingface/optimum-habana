@@ -517,6 +517,8 @@ class GaudiQwen2VLModel(Qwen2VLModel):
 
 # from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1420
 class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
+    # todo: change when the following gets fixed https://github.com/huggingface/transformers/blame/66f29aaaf55c8fe0c3dbcd24beede2ca4effac56/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L390C5-L390C27 
+    _supports_static_cache = True
     def forward(
         self,
         input_ids: torch.LongTensor = None,
