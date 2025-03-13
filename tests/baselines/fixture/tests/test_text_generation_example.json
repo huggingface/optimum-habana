@@ -2,25 +2,40 @@
   "tests/test_text_generation_example.py::test_text_generation_awq[TheBloke/Llama-2-7b-Chat-AWQ-1-10-False-128-2048]": {
     "gaudi2": {
       "throughput": 456.7
+    },
+    "gaudi3": {
+      "throughput": 456.7
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_beam_search[Qwen/Qwen2-7b-Instruct-1-True]": {
     "gaudi2": {
+      "throughput": 91.24938949709826
+    },
+    "gaudi3": {
       "throughput": 91.24938949709826
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[CohereForAI/c4ai-command-r-v01-1-False-False]": {
     "gaudi2": {
       "throughput": 29.50315234651154
+    },
+    "gaudi3": {
+      "throughput": 29.50315234651154
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Deci/DeciLM-7B-1-False-False]": {
     "gaudi2": {
       "throughput": 115
+    },
+    "gaudi3": {
+      "throughput": 115
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[EleutherAI/gpt-j-6b-1-False-False]": {
     "gaudi2": {
+      "throughput": 160.5823842101192
+    },
+    "gaudi3": {
       "throughput": 160.5823842101192
     }
   },
@@ -32,10 +47,16 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[EleutherAI/gpt-neo-2.7B-1-False-False]": {
     "gaudi2": {
       "throughput": 257.2476416844122
+    },
+    "gaudi3": {
+      "throughput": 257.2476416844122
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[EleutherAI/gpt-neox-20b-1-False-False]": {
     "gaudi2": {
+      "throughput": 50.67672679310354
+    },
+    "gaudi3": {
       "throughput": 50.67672679310354
     }
   },
@@ -47,10 +68,16 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen1.5-7B-4-False-False]": {
     "gaudi2": {
       "throughput": 490.8621617893209
+    },
+    "gaudi3": {
+      "throughput": 490.8621617893209
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen1.5-MoE-A2.7B-1-True-False]": {
     "gaudi2": {
+      "throughput": 44.25834541569395
+    },
+    "gaudi3": {
       "throughput": 44.25834541569395
     }
   },
@@ -58,10 +85,17 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of PyTorch and TensorFlow, and it supports a wide range of models, including transformers, convolutional neural networks, and recurrent neural networks.\nDeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of Py",
       "throughput": 8870.945160540245
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of PyTorch and TensorFlow, and it supports a wide range of models, including transformers, convolutional neural networks, and recurrent neural networks.\nDeepSpeed is a machine learning framework that provides a unified interface for training deep learning models. It is designed to be easy to use and to provide high performance. DeepSpeed is built on top of Py",
+      "throughput": 8870.945160540245
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen2.5-7B-4-False-False]": {
     "gaudi2": {
+      "throughput": 490
+    },
+    "gaudi3": {
       "throughput": 490
     }
   },
@@ -71,15 +105,24 @@
     },
     "gaudi2": {
       "throughput": 446.4029486883532
+    },
+    "gaudi3": {
+      "throughput": 446.4029486883532
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[THUDM/chatglm2-6b-1-True-False]": {
     "gaudi2": {
       "throughput": 150
+    },
+    "gaudi3": {
+      "throughput": 150
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[THUDM/chatglm3-6b-1-True-False]": {
     "gaudi2": {
+      "throughput": 150
+    },
+    "gaudi3": {
       "throughput": 150
     }
   },
@@ -91,15 +134,24 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[adept/persimmon-8b-base-4-False-False]": {
     "gaudi2": {
       "throughput": 366.73968820698406
+    },
+    "gaudi3": {
+      "throughput": 366.73968820698406
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[baichuan-inc/Baichuan2-13B-Chat-1-False-False]": {
     "gaudi2": {
       "throughput": 66
+    },
+    "gaudi3": {
+      "throughput": 66
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[baichuan-inc/Baichuan2-7B-Chat-1-True-False]": {
     "gaudi2": {
+      "throughput": 108
+    },
+    "gaudi3": {
       "throughput": 108
     }
   },
@@ -110,6 +162,10 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[bigcode/starcoder-256-True-True]": {
     "gaudi2": {
+      "output": "def print_hello_world():\n    print(\"Hello World\")\n\ndef print_hello_world_twice():\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_thrice():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_four_times():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n   ",
+      "throughput": 6846.575763562658
+    },
+    "gaudi3": {
       "output": "def print_hello_world():\n    print(\"Hello World\")\n\ndef print_hello_world_twice():\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_thrice():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n\ndef print_hello_world_four_times():\n    print_hello_world()\n    print_hello_world()\n    print_hello_world()\n   ",
       "throughput": 6846.575763562658
     }
@@ -123,6 +179,10 @@
     "gaudi2": {
       "output": "def print_hello_world():\n    print(\"Hello World\")\n\ndef print_hello_world_with_name(name):\n    print(\"Hello World, \" + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print(\"Hello World, \" + name + \", \" + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print(\"Hello",
       "throughput": 261.07213776344133
+    },
+    "gaudi3": {
+      "output": "def print_hello_world():\n    print(\"Hello World\")\n\ndef print_hello_world_with_name(name):\n    print(\"Hello World, \" + name)\n\ndef print_hello_world_with_name_and_age(name, age):\n    print(\"Hello World, \" + name + \", \" + str(age))\n\ndef print_hello_world_with_name_and_age_and_gender(name, age, gender):\n    print(\"Hello",
+      "throughput": 261.07213776344133
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[bigscience/bloomz-7b1-1-False-False]": {
@@ -131,20 +191,32 @@
     },
     "gaudi2": {
       "throughput": 130.0472971205316
+    },
+    "gaudi3": {
+      "throughput": 130.0472971205316
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[codellama/CodeLlama-34b-hf-1-True-False]": {
     "gaudi2": {
+      "throughput": 32.644
+    },
+    "gaudi3": {
       "throughput": 32.644
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[deepseek-ai/DeepSeek-V2-Lite-1-False-False]": {
     "gaudi2": {
       "throughput": 35
+    },
+    "gaudi3": {
+      "throughput": 35
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[facebook/xglm-1.7B-1-False-False]": {
     "gaudi2": {
+      "throughput": 357.46365062825083
+    },
+    "gaudi3": {
       "throughput": 357.46365062825083
     }
   },
@@ -152,10 +224,18 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that enables you to train models with trillions of parameters and beyond, using model parallelism to partition large models over multiple GPUs.\n\nThe following is a brief introduction to the DeepSpeed model parallel training.\n\n<h2>1. Introduction</h2>\n\nThe DeepSpeed model parallel training is a simple and effective way to train large models. It is a framework that enables you to train models with trillions of parameters and beyond.\n\nDeepSpeed is a distributed deep learning optimization toolkit that makes it easy and efficient",
       "throughput": 36.578709544111
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that enables you to train models with trillions of parameters and beyond, using model parallelism to partition large models over multiple GPUs.\n\nThe following is a brief introduction to the DeepSpeed model parallel training.\n\n<h2>1. Introduction</h2>\n\nThe DeepSpeed model parallel training is a simple and effective way to train large models. It is a framework that enables you to train models with trillions of parameters and beyond.\n\nDeepSpeed is a distributed deep learning optimization toolkit that makes it easy and efficient",
+      "throughput": 36.578709544111
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[google/gemma-2-9b-1-False-True]": {
     "gaudi2": {
+      "output": "DeepSpeed is a machine learning framework that enables training of large-scale deep learning models on a single GPU or across multiple GPUs. It is designed to be easy to use and highly scalable, making it a powerful tool for researchers and practitioners working with large-scale deep learning models.\n\nDeepSpeed is built on top of PyTorch, a popular deep learning framework, and provides a set of tools and libraries that make it easy to train large-scale models. It includes features such as zero-shot inference, which allows models to be",
+      "throughput": 92.302359446567
+    },
+    "gaudi3": {
       "output": "DeepSpeed is a machine learning framework that enables training of large-scale deep learning models on a single GPU or across multiple GPUs. It is designed to be easy to use and highly scalable, making it a powerful tool for researchers and practitioners working with large-scale deep learning models.\n\nDeepSpeed is built on top of PyTorch, a popular deep learning framework, and provides a set of tools and libraries that make it easy to train large-scale models. It includes features such as zero-shot inference, which allows models to be",
       "throughput": 92.302359446567
     }
@@ -169,6 +249,10 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models. DeepSpeed is designed to be scalable, and it can be used to train models on a single machine or on a cluster of machines. DeepSpeed is designed to be efficient,",
       "throughput": 109.70751574382221
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models. DeepSpeed is designed to be scalable, and it can be used to train models on a single machine or on a cluster of machines. DeepSpeed is designed to be efficient,",
+      "throughput": 109.70751574382221
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[gpt2-xl-1-False-False]": {
@@ -176,6 +260,9 @@
       "throughput": 142.11481820425706
     },
     "gaudi2": {
+      "throughput": 281.8734689674413
+    },
+    "gaudi3": {
       "throughput": 281.8734689674413
     }
   },
@@ -188,20 +275,33 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
       "throughput": 141.25776956002076
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework for deep learning. It is designed to be fast and efficient, while also being easy to use. DeepSpeed is based on the TensorFlow framework, and it uses the TensorFlow library to perform computations.\nDeepSpeed is a deep learning framework that is designed to be fast and efficient. It is based on the TensorFlow library and uses the TensorFlow library to perform computations. DeepSpeed is designed to be easy to use and to provide a high level of flex",
+      "throughput": 141.25776956002076
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[meta-llama/Llama-2-7b-hf-512-False-False]": {
     "gaudi2": {
+      "throughput": 8711
+    },
+    "gaudi3": {
       "throughput": 8711
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[meta-llama/Llama-2-7b-hf-512-True-False]": {
     "gaudi2": {
       "throughput": 12808
+    },
+    "gaudi3": {
+      "throughput": 12808
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[meta-llama/Meta-Llama-3-8B-1-True-False]": {
     "gaudi2": {
+      "throughput": 129
+    },
+    "gaudi3": {
       "throughput": 129
     }
   },
@@ -210,6 +310,9 @@
       "throughput": 92.53083167241344
     },
     "gaudi2": {
+      "throughput": 224.72307766211117
+    },
+    "gaudi3": {
       "throughput": 224.72307766211117
     }
   },
@@ -222,16 +325,27 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
       "throughput": 130.2172236767782
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
+      "throughput": 130.2172236767782
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[mistralai/Mixtral-8x7B-v0.1-1-False-True]": {
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
       "throughput": 23.7931001677926
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## Introduction\n\nDeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\n## What is DeepSpeed",
+      "throughput": 23.7931001677926
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[mosaicml/mpt-30b-1-False-False]": {
     "gaudi2": {
+      "throughput": 36.06464336116623
+    },
+    "gaudi3": {
       "throughput": 36.06464336116623
     }
   },
@@ -243,6 +357,9 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[openbmb/MiniCPM3-4B-1-False-False]": {
     "gaudi2": {
       "throughput": 65.116
+    },
+    "gaudi3": {
+      "throughput": 65.116
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[stabilityai/stablelm-2-12b-1-False-False]": {
@@ -251,10 +368,16 @@
     },
     "gaudi2": {
       "throughput": 74.8904496532218
+    },
+    "gaudi3": {
+      "throughput": 74.8904496532218
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[state-spaces/mamba-130m-hf-1536-False-False]": {
     "gaudi2": {
+      "throughput": 5385.511100161605
+    },
+    "gaudi3": {
       "throughput": 5385.511100161605
     }
   },
@@ -266,6 +389,9 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[tiiuae/falcon-40b-1-True-False]": {
     "gaudi2": {
       "throughput": 25.202450111088346
+    },
+    "gaudi3": {
+      "throughput": 25.202450111088346
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[tiiuae/falcon-7b-1-True-False]": {
@@ -276,6 +402,9 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[tiiuae/falcon-mamba-7b-1-False-False]": {
     "gaudi2": {
       "throughput": 47.1464839567739
+    },
+    "gaudi3": {
+      "throughput": 47.1464839567739
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_contrastive_search[gpt2-xl-1-False]": {
@@ -284,10 +413,16 @@
     },
     "gaudi2": {
       "throughput": 51.61471298016438
+    },
+    "gaudi3": {
+      "throughput": 51.61471298016438
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[Qwen/Qwen2.5-72B-2-1]": {
     "gaudi2": {
+      "throughput": 26
+    },
+    "gaudi3": {
       "throughput": 26
     }
   },
@@ -299,145 +434,232 @@
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[bigscience/bloomz-8-1]": {
     "gaudi2": {
       "throughput": 36.77314954096159
+    },
+    "gaudi3": {
+      "throughput": 36.77314954096159
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[facebook/opt-66b-2-1]": {
     "gaudi2": {
+      "throughput": 28.48069266504111
+    },
+    "gaudi3": {
       "throughput": 28.48069266504111
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[google/gemma-2-27b-8-1]": {
     "gaudi2": {
       "throughput": 87.578709544111
+    },
+    "gaudi3": {
+      "throughput": 87.578709544111
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[google/gemma-2-9b-8-1]": {
     "gaudi2": {
+      "throughput": 110.12610917383735
+    },
+    "gaudi3": {
       "throughput": 110.12610917383735
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[meta-llama/Llama-2-70b-hf-8-1]": {
     "gaudi2": {
       "throughput": 64.10514998902435
+    },
+    "gaudi3": {
+      "throughput": 64.10514998902435
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[meta-llama/Meta-Llama-3-70B-Instruct-8-1]": {
     "gaudi2": {
+      "throughput": 64
+    },
+    "gaudi3": {
       "throughput": 64
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_distributed_tp[meta-llama/Llama-2-7b-hf]": {
     "gaudi2": {
       "throughput": 1345.2369318328463
+    },
+    "gaudi3": {
+      "throughput": 1345.2369318328463
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-70b-hf-4-207-False-2048-128]": {
     "gaudi2": {
+      "throughput": 568.5
+    },
+    "gaudi3": {
       "throughput": 568.5
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-70b-hf-4-3042-False-128-128]": {
     "gaudi2": {
       "throughput": 5374.6
+    },
+    "gaudi3": {
+      "throughput": 5374.6
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-70b-hf-4-750-False-128-2048]": {
     "gaudi2": {
+      "throughput": 7422.4
+    },
+    "gaudi3": {
       "throughput": 7422.4
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-70b-hf-8-172-False-2048-2048]": {
     "gaudi2": {
       "throughput": 4656.2
+    },
+    "gaudi3": {
+      "throughput": 4656.2
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-7b-hf-1-1230-False-128-128]": {
     "gaudi2": {
+      "throughput": 13152.7
+    },
+    "gaudi3": {
       "throughput": 13152.7
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-7b-hf-1-163-False-128-2048]": {
     "gaudi2": {
       "throughput": 4774.7
+    },
+    "gaudi3": {
+      "throughput": 4774.7
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-7b-hf-1-81-False-2048-2048]": {
     "gaudi2": {
+      "throughput": 1942.9
+    },
+    "gaudi3": {
       "throughput": 1942.9
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-7b-hf-1-94-False-2048-128]": {
     "gaudi2": {
       "throughput": 1293.3
+    },
+    "gaudi3": {
+      "throughput": 1293.3
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[microsoft/phi-2-1-1-True-128-128]": {
     "gaudi2": {
+      "throughput": 254.08932787178165
+    },
+    "gaudi3": {
       "throughput": 254.08932787178165
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mistral-7B-Instruct-v0.2-1-120-True-128-2048]": {
     "gaudi2": {
       "throughput": 6979.225194247115
+    },
+    "gaudi3": {
+      "throughput": 6979.225194247115
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mistral-7B-Instruct-v0.2-1-120-True-2048-128]": {
     "gaudi2": {
+      "throughput": 1681.4401450088983
+    },
+    "gaudi3": {
       "throughput": 1681.4401450088983
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mistral-7B-Instruct-v0.2-1-44-True-2048-2048]": {
     "gaudi2": {
       "throughput": 3393.149396451692
+    },
+    "gaudi3": {
+      "throughput": 3393.149396451692
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mistral-7B-Instruct-v0.2-1-896-True-128-128]": {
     "gaudi2": {
+      "throughput": 17068.965283763682
+    },
+    "gaudi3": {
       "throughput": 17068.965283763682
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mixtral-8x7B-v0.1-1-1-True-128-128]": {
     "gaudi2": {
       "throughput": 40.94
+    },
+    "gaudi3": {
+      "throughput": 40.94
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mixtral-8x7B-v0.1-2-48-True-2048-2048]": {
     "gaudi2": {
+      "throughput": 1147.5
+    },
+    "gaudi3": {
       "throughput": 1147.5
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mixtral-8x7B-v0.1-2-768-True-128-128]": {
     "gaudi2": {
       "throughput": 3428.65
+    },
+    "gaudi3": {
+      "throughput": 3428.65
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mixtral-8x7B-v0.1-2-96-True-128-2048]": {
     "gaudi2": {
+      "throughput": 2570.34
+    },
+    "gaudi3": {
       "throughput": 2570.34
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[mistralai/Mixtral-8x7B-v0.1-2-96-True-2048-128]": {
     "gaudi2": {
       "throughput": 379.03
+    },
+    "gaudi3": {
+      "throughput": 379.03
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[tiiuae/falcon-180B-4-950-True-128-128]": {
     "gaudi2": {
+      "throughput": 2506.68
+    },
+    "gaudi3": {
       "throughput": 2506.68
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_gptq[TheBloke/Llama-2-7b-Chat-GPTQ-1-10-False-128-2048]": {
     "gaudi2": {
       "throughput": 456.7
+    },
+    "gaudi3": {
+      "throughput": 456.7
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_torch_compile[meta-llama/Llama-2-7b-hf]": {
     "gaudi2": {
       "throughput": 102.27823420713148
+    },
+    "gaudi3": {
+      "throughput": 102.27823420713148
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_torch_compile_distributed[meta-llama/Llama-2-7b-hf]": {
     "gaudi2": {
+      "throughput": 39.72973199515235
+    },
+    "gaudi3": {
       "throughput": 39.72973199515235
     }
   }

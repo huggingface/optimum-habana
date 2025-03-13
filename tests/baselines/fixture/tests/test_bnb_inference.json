@@ -1,0 +1,5 @@
+{
+  "tests/test_bnb_inference.py::test_nf4_quantization_inference": {
+    "output": "Hello my name is Marlene and I am 36 years old. I am a very happy person, I love to"
+  }
+}

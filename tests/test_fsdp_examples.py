@@ -11,33 +11,28 @@ from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
 
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            (
-                "bert-base-uncased",
-                "Habana/bert-base-uncased",
-                "question-answering",
-                24,
-                8,
-                "run_qa.py",
-                "full_shard",
-            ),
-            (
-                "meta-llama/Llama-2-7b-hf",
-                "",
-                "language-modeling",
-                8,
-                8,
-                "run_lora_clm.py",
-                "auto_wrap",
-            ),
-        ],
-    }
-else:
-    # FSDP is not supported on Gaudi1
-    MODELS_TO_TEST = {"bf16": []}
+MODELS_TO_TEST = {
+    "bf16": [
+        (
+            "bert-base-uncased",
+            "Habana/bert-base-uncased",
+            "question-answering",
+            24,
+            8,
+            "run_qa.py",
+            "full_shard",
+        ),
+        (
+            "meta-llama/Llama-2-7b-hf",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+            "auto_wrap",
+        ),
+    ],
+}
 
 
 def _test_fsdp(
@@ -166,6 +161,7 @@ def _test_fsdp(
             )
 
 
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FSDP is not supported on Gaudi1")
 @pytest.mark.parametrize("model_name, gaudi_config, task, bs_train, bs_eval, script, policy", MODELS_TO_TEST["bf16"])
 def test_fsdp_bf16(
     model_name: str,
