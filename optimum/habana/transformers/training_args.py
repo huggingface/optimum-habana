@@ -20,7 +20,7 @@ from typing import Optional, Union
 from transformers.file_utils import cached_property, is_torch_available
 from transformers.training_args import OptimizerNames, TrainingArguments
 
-from optimum.utils import logging
+from optimum.utils import is_accelerate_available, logging
 
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
@@ -353,6 +353,19 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive for correct throughput calculation.")
 
+        # Disable average tokens when using single device
+        if self.average_tokens_across_devices:
+            try:
+                if self.world_size == 1:
+                    logger.warning(
+                        "average_tokens_across_devices is set to True but it is invalid when world size is"
+                        "1. Turn it to False automatically."
+                    )
+                    self.average_tokens_across_devices = False
+            except ImportError as e:
+                logger.warning(f"Can not specify world size due to {e}. Turn average_tokens_across_devices to False.")
+                self.average_tokens_across_devices = False
+
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
             self.torch_compile = True
@@ -371,6 +384,19 @@ class GaudiTrainingArguments(TrainingArguments):
                 raise ValueError(f"`--{arg}` is not supported by optimum-habana.")
 
         super().__post_init__()
+
+        if self.data_seed is not None:
+            if not is_accelerate_available("1.1.0"):
+                raise NotImplementedError(
+                    "data_seed requires Accelerate version `accelerate` >= 1.1.0. "
+                    "This is not supported and we recommend you to update your version."
+                )
+
+        if self.include_inputs_for_metrics:
+            logger.warning(
+                "Using `include_inputs_for_metrics` is deprecated and will be removed in version 5 of 🤗 Transformers. Please use `include_for_metrics` list argument instead."
+            )
+            self.include_for_metrics.append("inputs")
 
     def __str__(self):
         self_as_dict = asdict(self)

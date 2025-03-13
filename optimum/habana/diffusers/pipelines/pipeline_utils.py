@@ -381,10 +381,23 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         # Import htcore here to support model quantization
         import habana_frameworks.torch.core as htcore  # noqa: F401
 
-        return super().from_pretrained(
+        # Normally we just need to return super().from_pretrained.  However this is a
+        # workaround for Transformers 4.49.0 issue (sub_model torch_dtype option ignored).
+        # Note this issue is already fixed in 4.50.0dev working branch..
+        model = super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
         )
+        if bf16_full_eval:
+            # Get the component names
+            component_names = [name for name in model.__dict__ if not name.startswith("_")]
+            # Iterate through the component names and fix dtype
+            for name in component_names:
+                component = getattr(model, name, None)
+                if component is not None and hasattr(component, "dtype"):
+                    component.to(torch.bfloat16)
+
+        return model
 
     @classmethod
     def save_lora_weights(
