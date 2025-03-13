@@ -327,6 +327,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
     transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2SdpaAttention = GaudiWav2Vec2SdpaAttention
+    transformers.models.wav2vec2.modeling_wav2vec2.WAV2VEC2_ATTENTION_CLASSES.update(
+        {"sdpa": GaudiWav2Vec2SdpaAttention}
+    )
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
@@ -369,6 +372,7 @@ def adapt_transformers_to_gaudi():
         GaudiGenerationMixin._prepare_cache_for_generation
     )
     transformers.generation.GenerationConfig = GaudiGenerationConfig
+    transformers.GenerationConfig = GaudiGenerationConfig
     transformers.generation.configuration_utils.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call

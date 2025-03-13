@@ -130,8 +130,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_min_version("4.45.0")
+    check_optimum_habana_min_version("1.17.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -439,12 +439,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
-    keep_module_on_host = False
-    if "Llama-3.1-405B" in args.model_name_or_path:
-        keep_module_on_host = True
-
-    load_to_meta = False if keep_module_on_host else model_on_meta(config)
+    load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -499,7 +494,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
-    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)

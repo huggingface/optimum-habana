@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import time
 from unittest import TestCase
 
@@ -25,15 +24,11 @@ from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 adapt_transformers_to_gaudi()
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.6812
-else:
-    # Gaudi1 CI baselines
-    LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.7987
 MODEL_NAME = "Supabase/gte-small"
 
 INPUT_TEXTS = [
@@ -93,6 +88,13 @@ class GaudiFeatureExtractionTester(TestCase):
     Tests for Supabase/gte-small feature extraction on Gaudi
     """
 
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
     def test_inference_default(self):
         """
         Tests for equivalent CPU and HPU outputs
@@ -134,4 +136,8 @@ class GaudiFeatureExtractionTester(TestCase):
         torch.hpu.synchronize()
         end_time = time.time()
         time_per_iter = (end_time - start_time) * 1000 / test_iters  # time in ms
-        self.assertLess(time_per_iter, 1.05 * LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual < (1.05 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            time_per_iter=time_per_iter,
+        )
