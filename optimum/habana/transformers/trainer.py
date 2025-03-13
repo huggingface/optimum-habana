@@ -953,6 +953,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
+                #using get_batch_samples() from upstream transformer
                 batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
@@ -2581,26 +2582,3 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_batch_samples(self, epoch_iterator, num_batches):
-        batch_samples = []
-        num_items_in_batch = None
-        for _ in range(num_batches):
-            try:
-                batch_samples += [next(epoch_iterator)]
-            except StopIteration:
-                break
-
-        if len(batch_samples) > 0 and "labels" in batch_samples[0]:
-            # For now we don't support object detection
-            try:
-                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
-            except (TypeError, AttributeError):
-                pass
-
-        if self.args.average_tokens_across_devices and num_items_in_batch is not None:
-            num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
-
-        if torch.is_tensor(num_items_in_batch):
-            num_items_in_batch = num_items_in_batch.item()
-
-        return batch_samples, num_items_in_batch
