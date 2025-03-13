@@ -54,8 +54,8 @@ jobs:
       - name: Install Transformers with Accelerate & DeepSpeed
         run: |
           pip install -e .[testing] "numpy<2.0.0" scipy scikit-learn \
-            git+https://github.com/huggingface/accelerate.git \
-            git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+            git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0 \
+            git+https://github.com/huggingface/accelerate.git
 
       - name: Run Trainer tests
         run: |
@@ -121,8 +121,8 @@ jobs:
       - name: Install Accelerate with Transformers & DeepSpeed
         run: |
           pip install -e .[testing] \
-            git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0 \
-            git+https://github.com/huggingface/transformers.git
+            git+https://github.com/huggingface/transformers.git \
+            git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 
       - name: Run CLI tests
         run: |
