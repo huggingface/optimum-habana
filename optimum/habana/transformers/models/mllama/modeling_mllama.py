@@ -122,7 +122,7 @@ class GaudiMllamaVisionSdpaAttention(MllamaVisionAttention):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = None,
         use_flash_attention: Optional[bool] = False,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
         """
         Copied from MllamaVisionSdpaAttention::forward:https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L283
@@ -865,7 +865,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -906,8 +906,9 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
         hidden_states = outputs[0]
 
-        if token_idx is None and num_logits_to_keep != 0:
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+        if token_idx is None and logits_to_keep != 0:
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
         else:
             logits = self.lm_head(hidden_states).float()
 
@@ -952,7 +953,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -1037,7 +1038,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             output_attentions=output_attentions,
             return_dict=return_dict,
             cache_position=cache_position,
-            num_logits_to_keep=num_logits_to_keep,
+            logits_to_keep=logits_to_keep,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
@@ -1058,7 +1059,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         past_key_values=None,
         use_cache=False,
         cache_position=None,
-        num_logits_to_keep=None,
+        logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -1105,8 +1106,8 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             # The clone here is for the same reason as for `position_ids`.
             model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
-        if num_logits_to_keep is not None:
-            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+        if logits_to_keep is not None:
+            model_inputs["logits_to_keep"] = logits_to_keep
 
         # keep cache_position implementation as None for HPU
         cache_position = None
@@ -1193,7 +1194,9 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         aspect_ratio_ids = aspect_ratio_ids.reshape(batch_size * num_concurrent_media, -1)
 
         # Patch embedding
-        patch_embeds = self.patch_embedding(pixel_values.to(self.dtype).to(self.device))
+        target_dtype = self.patch_embedding.weight.dtype
+        target_device = self.patch_embedding.weight.device
+        patch_embeds = self.patch_embedding(pixel_values.to(target_device, target_dtype))
         hidden_state = patch_embeds.flatten(2).transpose(1, 2)
 
         # Tile embeddings

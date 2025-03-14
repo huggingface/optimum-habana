@@ -41,6 +41,10 @@ class GaudiOPTLearnedPositionalEmbedding(OPTLearnedPositionalEmbedding):
             return torch.nn.Embedding.forward(self, token_idx + self.offset)
 
 
+def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int) -> torch.Tensor:
+    return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+
+
 def gaudi_opt_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -74,12 +78,12 @@ def gaudi_opt_attention_forward(
         value_states = past_key_value[1]
     elif is_cross_attention:
         # cross_attentions
-        key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
-        value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+        key_states = _shape(self, self.k_proj(key_value_states), -1, bsz)
+        value_states = _shape(self, self.v_proj(key_value_states), -1, bsz)
     elif past_key_value is not None:
         # reuse k, v, self_attention
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        key_states = _shape(self, self.k_proj(hidden_states), -1, bsz)
+        value_states = _shape(self, self.v_proj(hidden_states), -1, bsz)
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_states)
             past_key_value[1].index_copy_(2, token_idx - 1, value_states)
@@ -90,21 +94,13 @@ def gaudi_opt_attention_forward(
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
     else:
         # self_attention
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        key_states = _shape(self, self.k_proj(hidden_states), -1, bsz)
+        value_states = _shape(self, self.v_proj(hidden_states), -1, bsz)
 
-    if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-        # Further calls to cross_attention layer can then reuse all cross-attention
-        # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-        # all previous decoder key/value_states. Further calls to uni-directional self-attention
-        # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-        # if encoder bi-directional self-attention `past_key_value` is always `None`
-        past_key_value = (key_states, value_states)
+    past_key_value = (key_states, value_states)
 
     proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-    query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
+    query_states = _shape(self, query_states, tgt_len, bsz).view(*proj_shape)
     key_states = key_states.view(*proj_shape)
     value_states = value_states.view(*proj_shape)
 
@@ -171,14 +167,14 @@ def gaudi_opt_attention_forward(
 
 
 class GaudiOPTDecoderLayer(torch.nn.Module):
-    def __init__(self, config: OPTConfig):
+    def __init__(self, config: OPTConfig, layer_idx: int = None):
         """
         Attention implementation is set to "eager" (default in Transformers is "sdpa").
         """
         super().__init__()
         self.embed_dim = config.hidden_size
 
-        self.self_attn = OPT_ATTENTION_CLASSES["eager"](config=config, is_decoder=True)
+        self.self_attn = OPT_ATTENTION_CLASSES["eager"](config=config, layer_idx=layer_idx)
 
         self.do_layer_norm_before = config.do_layer_norm_before
         self.dropout = config.dropout

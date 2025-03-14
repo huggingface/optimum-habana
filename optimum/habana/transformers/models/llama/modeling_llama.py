@@ -1146,7 +1146,7 @@ class GaudiLlamaModel(LlamaModel):
         layers = []
         for layer_idx in range(config.num_hidden_layers):
             layer = GaudiLlamaDecoderLayer(config, layer_idx)
-            if config.parallel_strategy is not None:
+            if hasattr(config, "paralle_strategy") and config.parallel_strategy is not None:
                 layer = config.parallel_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
@@ -1445,7 +1445,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
@@ -1506,7 +1506,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 hidden_states = hidden_states[:, -1, :]
 
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
 
         loss = None
         if labels is not None:

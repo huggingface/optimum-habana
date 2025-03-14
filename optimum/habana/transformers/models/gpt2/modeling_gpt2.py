@@ -297,7 +297,7 @@ def gaudi_gpt2_forward(
     if inputs_embeds is None:
         inputs_embeds = self.wte(input_ids)
     position_embeds = self.wpe(position_ids)
-    hidden_states = inputs_embeds + position_embeds
+    hidden_states = inputs_embeds + position_embeds.to(inputs_embeds.device)
 
     # GPT2Attention mask.
     attention_mask = attention_mask.view(batch_size, -1) if attention_mask is not None else None

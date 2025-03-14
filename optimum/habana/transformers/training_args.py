@@ -409,6 +409,14 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
+        # Set default output_dir if not provided
+        if self.output_dir is None:
+            self.output_dir = "trainer_output"
+            logger.info(
+                "No output directory specified, defaulting to 'trainer_output'. "
+                "To change this behavior, specify --output_dir when creating TrainingArguments."
+            )
+
         # Parse in args that could be `dict` sent in from the CLI as a string
         for field in _VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
