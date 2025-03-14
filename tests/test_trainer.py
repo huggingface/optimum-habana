@@ -28,13 +28,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
+from huggingface_hub import HfFolder, ModelCard, create_branch, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
-from requests.exceptions import HTTPError
 from transformers import (
+    AutoFeatureExtractor,
+    AutoImageProcessor,
     AutoModelForCausalLM,
+    AutoProcessor,
     AutoTokenizer,
+    DataCollatorForLanguageModeling,
     GPT2LMHeadModel,
     IntervalStrategy,
     LineByLineTextDataset,
@@ -50,6 +53,7 @@ from transformers.testing_utils import (
     USER,
     CaptureLogger,
     LoggingLevel,
+    TemporaryHubRepo,
     TestCasePlus,
     get_gpu_count,
     get_tests_dir,
@@ -62,6 +66,7 @@ from transformers.testing_utils import (
     require_tensorboard,
     require_tokenizers,
     require_torch,
+    require_vision,
 )
 from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
@@ -78,6 +83,7 @@ from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.accelerate import GaudiAccelerator, GaudiAcceleratorState
+from optimum.habana.utils import set_seed
 from optimum.utils import logging
 
 
@@ -108,6 +114,19 @@ PATH_SAMPLE_TEXT = f"{get_tests_dir()}/resource/sample_text.txt"
 adapt_transformers_to_gaudi()
 
 
+class StoreLossCallback(TrainerCallback):
+    """
+    Simple callback to store the loss.
+    """
+
+    def __init__(self):
+        self.losses = []
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if "loss" in logs:
+            self.losses.append(logs["loss"])
+
+
 class MockOOMCallback(TrainerCallback):
     """
     Simple callback to simulate CUDA OOM error if
@@ -121,6 +140,26 @@ class MockOOMCallback(TrainerCallback):
         # simulate OOM on the first step
         if state.train_batch_size >= self.batch_size_limit:
             raise RuntimeError("Out of memory.")
+
+
+def ForCausalLMLoss(logits, labels, vocab_size, num_items_in_batch, disable_num_items_in_batch=False):
+    # Upcast to float if we need to compute the loss to avoid potential precision issues
+    logits = logits.float()
+    # Shift so that tokens < n predict n
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+
+    # Flatten the tokens
+    shift_logits = shift_logits.view(-1, vocab_size)
+    shift_labels = shift_labels.view(-1)
+    # Enable model parallelism
+    shift_labels = shift_labels.to(shift_logits.device)
+    if num_items_in_batch is None or disable_num_items_in_batch:
+        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction="mean")
+    else:
+        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction="sum")
+        loss = loss / num_items_in_batch
+    return loss
 
 
 class RegressionDataset:
@@ -410,7 +449,15 @@ if is_torch_available():
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
     def get_regression_trainer(
-        a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
+        a=0,
+        b=0,
+        double_output=False,
+        train_len=64,
+        eval_len=64,
+        pretrained=True,
+        keep_report_to=False,
+        output_dir=None,
+        **kwargs,
     ):
         label_names = kwargs.get("label_names", None)
         gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
@@ -438,8 +485,8 @@ if is_torch_available():
         compute_metrics = kwargs.pop("compute_metrics", None)
         data_collator = kwargs.pop("data_collator", None)
         optimizers = kwargs.pop("optimizers", (None, None))
-        output_dir = kwargs.pop("output_dir", "./regression")
         preprocess_logits_for_metrics = kwargs.pop("preprocess_logits_for_metrics", None)
+        assert output_dir is not None, "output_dir should be specified for testing"
 
         args = RegressionGaudiTrainingArguments(
             output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs
@@ -458,14 +505,44 @@ if is_torch_available():
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
 
+    def get_language_model_trainer(**kwargs):
+        import datasets
+
+        dataset = datasets.load_dataset("fka/awesome-chatgpt-prompts")
+        model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2")
+        tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2")
+        tokenizer.pad_token = tokenizer.eos_token
+
+        def _tokenize_function(examples):
+            model_inputs = tokenizer(examples["prompt"], padding="max_length", truncation=True)
+            model_inputs["labels"] = np.array(model_inputs["input_ids"]).astype(np.int64)
+            return model_inputs
+
+        tokenized_datasets = dataset.map(_tokenize_function, batched=True)
+        training_args = GaudiTrainingArguments(use_habana=True, use_lazy_mode=True, **kwargs)
+        gaudi_config = get_gaudi_config()
+
+        trainer = GaudiTrainer(
+            model=model,
+            gaudi_config=gaudi_config,
+            args=training_args,
+            train_dataset=tokenized_datasets["train"],
+        )
+
+        return trainer
+
 
 class GaudiTrainerIntegrationCommon:
-    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=True):
+    def check_saved_checkpoints(
+        self, output_dir, freq, total, is_pretrained=True, safe_weights=True, use_scaler=False
+    ):
         weights_file = WEIGHTS_NAME if not safe_weights else SAFE_WEIGHTS_NAME
         file_list = [weights_file, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
         if is_pretrained:
             file_list.append("config.json")
             file_list.append("gaudi_config.json")
+        if use_scaler:
+            file_list.append("scaler.pt")
         for step in range(freq, total, freq):
             checkpoint = os.path.join(output_dir, f"checkpoint-{step}")
             self.assertTrue(os.path.isdir(checkpoint))
@@ -493,8 +570,8 @@ class GaudiTrainerIntegrationCommon:
                 state_dict = safetensors.torch.load_file(os.path.join(checkpoint, SAFE_WEIGHTS_NAME))
             best_model.load_state_dict(state_dict)
             best_model.to(trainer.args.device)
-        self.assertTrue(torch.allclose(best_model.a, trainer.model.a))
-        self.assertTrue(torch.allclose(best_model.b, trainer.model.b))
+        torch.testing.assert_close(best_model.a, trainer.model.a)
+        torch.testing.assert_close(best_model.b, trainer.model.b)
 
         metrics = trainer.evaluate()
         self.assertEqual(metrics[metric], best_value)
@@ -582,8 +659,8 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         # Checks a training seeded with learning_rate = 0.1
         (a, b) = self.alternate_trained_model if alternate_seed else self.default_trained_model
         if not bf16:
-            self.assertTrue(torch.allclose(model.a, a))
-            self.assertTrue(torch.allclose(model.b, b))
+            torch.testing.assert_close(model.a, a)
+            torch.testing.assert_close(model.b, b)
         else:
             self.assertTrue(torch.allclose(model.a, a, atol=1e-03, rtol=0))
             self.assertTrue(torch.allclose(model.b, b, atol=1e-03, rtol=0))
@@ -657,9 +734,229 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             trainer.train()
             self.check_trained_model(trainer.model, alternate_seed=True)
 
+    def test_gradient_accumulation_loss_alignment_with_model_loss(self):
+        set_seed(42)
+        import datasets
+
+        model_name = "nickypro/tinyllama-15M"
+        dataset_name = "wikitext"
+        dataset_config = "wikitext-2-raw-v1"
+        dataset = datasets.load_dataset(dataset_name, dataset_config, split="train[:40]")
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        tokenizer.pad_token = tokenizer.eos_token
+
+        def tokenize_function(examples):
+            return tokenizer(examples["text"], max_length=16, padding="max_length", truncation=True)
+
+        tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=dataset.column_names)
+
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        state_dict = model.state_dict()
+
+        base_loss_callback = StoreLossCallback()
+
+        args_kwargs = {
+            "report_to": "none",
+            "logging_steps": 1,
+            "max_steps": 5,
+            "learning_rate": 3e-4,
+            "disable_tqdm": True,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = GaudiTrainingArguments(
+                tmp_dir,
+                use_habana=True,
+                use_lazy_mode=True,
+                **args_kwargs,
+            )
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[base_loss_callback],
+                data_collator=data_collator,
+            )
+            assert trainer.model_accepts_loss_kwargs
+            trainer.train()
+
+        grad_accum_loss_callback = StoreLossCallback()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = GaudiTrainingArguments(
+                tmp_dir,
+                **args_kwargs,
+                gradient_accumulation_steps=2,
+                per_device_train_batch_size=4,
+                use_habana=True,
+                use_lazy_mode=True,
+            )
+            set_seed(42)
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[grad_accum_loss_callback],
+                data_collator=data_collator,
+            )
+            trainer.train()
+
+            set_seed(42)
+            model.load_state_dict(state_dict)
+            broken_loss_callback = StoreLossCallback()
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[broken_loss_callback],
+                data_collator=data_collator,
+            )
+            # disable model_accepts_loss_kwargs
+            trainer.model_accepts_loss_kwargs = False
+            trainer.train()
+
+            # Calculate the difference between the base loss and the grad_accum loss
+            diff_truth = [
+                abs(base - grad) for base, grad in zip(base_loss_callback.losses, grad_accum_loss_callback.losses)
+            ]
+            diff_broken = [
+                abs(base - grad) for base, grad in zip(base_loss_callback.losses, broken_loss_callback.losses)
+            ]
+
+            # all diff truth should be quite close
+            self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")
+
+            # max diff broken should be very off
+            # updated target value compared original implementation https://github.com/huggingface/transformers/blob/v4.49.0/tests/trainer/test_trainer.py#L888
+            self.assertGreater(max(diff_broken), 1.2, f"Difference {max(diff_broken)} is not greater than 1.2")
+
+            loss_base = sum(base_loss_callback.losses)
+            loss_broken = sum(broken_loss_callback.losses)
+
+            # mean/sum loss should not vary too much.
+            relative_diff = abs(loss_base - loss_broken) / max(loss_base, loss_broken)
+            self.assertLess(relative_diff, 0.2, f"Relative difference {relative_diff} is not within 0.2")
+
+    def test_gradient_accumulation_loss_alignment_with_loss_func(self):
+        set_seed(42)
+        import datasets
+
+        model_name = "roneneldan/TinyStories-33M"
+        dataset_name = "wikitext"
+        dataset_config = "wikitext-2-raw-v1"
+        dataset = datasets.load_dataset(dataset_name, dataset_config, split="train[:40]")
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        tokenizer.pad_token = tokenizer.eos_token
+
+        def tokenize_function(examples):
+            return tokenizer(examples["text"], max_length=16, padding="max_length", truncation=True)
+
+        tokenized_dataset = dataset.map(tokenize_function, batched=True)
+
+        tokenizer.pad_token = tokenizer.eos_token
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+
+        def compute_loss(logits, labels, vocab_size, num_items_in_batch, disable_num_items_in_batch=False):
+            return ForCausalLMLoss(
+                logits["logits"], labels, vocab_size, num_items_in_batch, disable_num_items_in_batch
+            )
+
+        loss_fn = partial(compute_loss, vocab_size=model.config.vocab_size, disable_num_items_in_batch=False)
+
+        base_loss_callback = StoreLossCallback()
+
+        args_kwargs = {
+            "report_to": "none",
+            "logging_steps": 1,
+            "max_steps": 5,
+            "learning_rate": 3e-4,
+            "disable_tqdm": True,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = GaudiTrainingArguments(
+                tmp_dir,
+                use_habana=True,
+                use_lazy_mode=True,
+                **args_kwargs,
+            )
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[base_loss_callback],
+                compute_loss_func=loss_fn,
+                data_collator=data_collator,
+            )
+            trainer.train()
+
+        grad_accum_loss_callback = StoreLossCallback()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = GaudiTrainingArguments(
+                tmp_dir,
+                **args_kwargs,
+                gradient_accumulation_steps=2,
+                per_device_train_batch_size=4,
+                use_habana=True,
+                use_lazy_mode=True,
+            )
+            set_seed(42)
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[grad_accum_loss_callback],
+                compute_loss_func=loss_fn,
+                data_collator=data_collator,
+            )
+            trainer.train()
+
+            set_seed(42)
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+            broken_loss_callback = StoreLossCallback()
+            loss_fn = partial(compute_loss, vocab_size=model.config.vocab_size, disable_num_items_in_batch=True)
+            trainer = GaudiTrainer(
+                model,
+                gaudi_config,
+                args,
+                train_dataset=tokenized_dataset,
+                callbacks=[broken_loss_callback],
+                compute_loss_func=loss_fn,
+                data_collator=data_collator,
+            )
+            trainer.train()
+
+            # Calculate the difference between the base loss and the grad_accum loss
+            diff_truth = [
+                abs(base - grad) for base, grad in zip(base_loss_callback.losses, grad_accum_loss_callback.losses)
+            ]
+            diff_broken = [
+                abs(base - grad) for base, grad in zip(base_loss_callback.losses, broken_loss_callback.losses)
+            ]
+
+            # all diff truth should be quite close
+            self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")
+
+            # max diff broken should be very off
+            self.assertGreater(max(diff_broken), 3, f"Difference {max(diff_broken)} is not greater than 3")
+
     def test_gradient_accumulation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Training with half the batch size but accumulation steps as 2 should give the same results.
+            # Training with half the batch size but accumulation steps as 2 should give the same training losses.
             trainer = get_regression_trainer(
                 output_dir=tmpdir, gradient_accumulation_steps=2, per_device_train_batch_size=4, learning_rate=0.1
             )
@@ -957,57 +1254,79 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         eval_dataset = RegressionDataset()
         model = RegressionDictModel()
         gaudi_config = get_gaudi_config()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            args = GaudiTrainingArguments(tmpdir, use_habana=True, use_lazy_mode=True, report_to="none")
-            trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
-            trainer.train()
-            _ = trainer.evaluate()
-            _ = trainer.predict(eval_dataset)
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+        _ = trainer.evaluate()
+        _ = trainer.predict(eval_dataset)
 
     def test_evaluation_with_keys_to_drop(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-            tiny_gpt2 = GaudiGPT2LMHeadModel(config)
-            x = torch.randint(0, 100, (128,))
-            eval_dataset = RepeatDataset(x)
-            args = GaudiTrainingArguments(tmpdir, use_habana=True, use_lazy_mode=True, report_to="none")
-            gaudi_config = get_gaudi_config()
-            trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, eval_dataset=eval_dataset)
-            # By default the past_key_values are removed
-            result = trainer.predict(eval_dataset)
-            self.assertTrue(isinstance(result.predictions, np.ndarray))
-            # We can still get them by setting ignore_keys to []
-            result = trainer.predict(eval_dataset, ignore_keys=[])
-            self.assertTrue(isinstance(result.predictions, tuple))
-            self.assertEqual(len(result.predictions), 2)
+        config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
+        x = torch.randint(0, 100, (128,))
+        eval_dataset = RepeatDataset(x)
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, eval_dataset=eval_dataset)
+        # By default the past_key_values are removed
+        result = trainer.predict(eval_dataset)
+        self.assertTrue(isinstance(result.predictions, np.ndarray))
+        # We can still get them by setting ignore_keys to []
+        result = trainer.predict(eval_dataset, ignore_keys=[])
+        self.assertTrue(isinstance(result.predictions, tuple))
+        self.assertEqual(len(result.predictions), 2)
 
     def test_training_arguments_are_left_untouched(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(output_dir=tmpdir)
-            trainer.train()
-            args = GaudiTrainingArguments(tmpdir, use_habana=True, use_lazy_mode=True, report_to=[])
-            dict1, dict2 = args.to_dict(), trainer.args.to_dict()
-            for key in dict1.keys():
-                # Logging dir can be slightly different as they default to something with the time.
-                if key != "logging_dir":
-                    self.assertEqual(dict1[key], dict2[key])
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir)
+        trainer.train()
+        args = GaudiTrainingArguments(tmp_dir, use_habana=True, use_lazy_mode=True, report_to=[])
+        dict1, dict2 = args.to_dict(), trainer.args.to_dict()
+        for key in dict1.keys():
+            # Logging dir can be slightly different as they default to something with the time.
+            if key != "logging_dir":
+                self.assertEqual(dict1[key], dict2[key])
 
     def test_number_of_steps_in_training(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Regular training has n_epochs * len(train_dl) steps
-            trainer = get_regression_trainer(output_dir=tmpdir, learning_rate=0.1)
-            train_output = trainer.train()
-            self.assertEqual(train_output.global_step, self.n_epochs * 64 / self.batch_size)
+        # Regular training has n_epochs * len(train_dl) steps
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir, learning_rate=0.1)
+        train_output = trainer.train()
+        self.assertEqual(train_output.global_step, self.n_epochs * 64 / self.batch_size)
 
-            # Check passing num_train_epochs works (and a float version too):
-            trainer = get_regression_trainer(output_dir=tmpdir, learning_rate=0.1, num_train_epochs=1.5)
-            train_output = trainer.train()
-            self.assertEqual(train_output.global_step, int(1.5 * 64 / self.batch_size))
+        # Check passing num_train_epochs works (and a float version too):
+        trainer = get_regression_trainer(output_dir=tmp_dir, learning_rate=0.1, num_train_epochs=1.5)
+        train_output = trainer.train()
+        self.assertEqual(train_output.global_step, int(1.5 * 64 / self.batch_size))
 
-            # If we pass a max_steps, num_train_epochs is ignored
-            trainer = get_regression_trainer(output_dir=tmpdir, learning_rate=0.1, max_steps=10)
-            train_output = trainer.train()
-            self.assertEqual(train_output.global_step, 10)
+        # If we pass a max_steps, num_train_epochs is ignored
+        trainer = get_regression_trainer(output_dir=tmp_dir, learning_rate=0.1, max_steps=10)
+        train_output = trainer.train()
+        self.assertEqual(train_output.global_step, 10)
+
+    # TODO: enable this test when torch.compile becomes the default on Gaudi
+    # def test_torch_compile_loss_func_compatibility(self):
+    #     config = LlamaConfig(vocab_size=100, hidden_size=32, num_hidden_layers=3, num_attention_heads=4)
+    #     tiny_llama = LlamaForCausalLM(config)
+
+    #     x = torch.randint(0, 100, (128,))
+    #     train_dataset = RepeatDataset(x)
+
+    #     args = GaudiTrainingArguments(
+    #         self.get_auto_remove_tmp_dir(),
+    #         per_device_train_batch_size=2,
+    #         torch_compile=True,
+    #         max_steps=1,  # compile happens on the first step
+    #         use_habana=True,
+    #         use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(model=tiny_llama, gaudi_config=gaudi_config, args=args, train_dataset=train_dataset)  # noqa
+    #     trainer.train()
 
     @require_peft
     def test_multiple_peft_adapters(self):
@@ -1039,34 +1358,34 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         tokenizer.pad_token = tokenizer.eos_token
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            args = GaudiTrainingArguments(
-                tmpdir,
-                per_device_train_batch_size=1,
-                learning_rate=1e-9,
-                save_steps=5,
-                logging_steps=5,
-                max_steps=10,
-                use_habana=True,
-                use_lazy_mode=True,
-            )
-            gaudi_config = get_gaudi_config()
-            trainer = GaudiTrainer(tiny_model, gaudi_config, args, tokenizer=tokenizer, train_dataset=train_dataset)
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        args = GaudiTrainingArguments(
+            tmp_dir,
+            per_device_train_batch_size=1,
+            learning_rate=1e-9,
+            save_steps=5,
+            logging_steps=5,
+            max_steps=10,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset)
 
-            trainer.train()
-            parameters = dict(tiny_model.named_parameters())
-            state = dataclasses.asdict(trainer.state)
+        trainer.train()
+        parameters = dict(tiny_model.named_parameters())
+        state = dataclasses.asdict(trainer.state)
 
-            # Reinitialize trainer
-            trainer = GaudiTrainer(tiny_model, gaudi_config, args, tokenizer=tokenizer, train_dataset=train_dataset)
+        # Reinitialize trainer
+        trainer = GaudiTrainer(tiny_model, gaudi_config, args, processing_class=tokenizer, train_dataset=train_dataset)
 
-            checkpoint = os.path.join(tmpdir, "checkpoint-5")
+        checkpoint = os.path.join(tmp_dir, "checkpoint-5")
 
-            trainer.train(resume_from_checkpoint=checkpoint)
-            parameters1 = dict(tiny_model.named_parameters())
-            state1 = dataclasses.asdict(trainer.state)
-            self.assertEqual(parameters, parameters1)
-            self.check_trainer_state_are_the_same(state, state1)
+        trainer.train(resume_from_checkpoint=checkpoint)
+        parameters1 = dict(tiny_model.named_parameters())
+        state1 = dataclasses.asdict(trainer.state)
+        self.assertEqual(parameters, parameters1)
+        self.check_trainer_state_are_the_same(state, state1)
 
     # TODO: investigate why this test fails
     # def test_neftune(self):
@@ -1120,201 +1439,195 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         x = torch.randint(0, 100, (128,))
         train_dataset = RepeatDataset(x)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # GaudiTrainer without inf/nan filter
-            gaudi_config = get_gaudi_config()
-            args = GaudiTrainingArguments(
-                tmpdir,
-                learning_rate=1e9,
-                logging_steps=5,
-                logging_nan_inf_filter=False,
-                use_habana=True,
-                use_lazy_mode=True,
-                report_to="none",
-            )
-            trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
-            trainer.train()
-            log_history_no_filter = trainer.state.log_history
+        # GaudiTrainer without inf/nan filter
+        gaudi_config = get_gaudi_config()
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(),
+            learning_rate=1e9,
+            logging_steps=5,
+            logging_nan_inf_filter=False,
+            use_habana=True,
+            use_lazy_mode=True,
+            report_to="none",
+        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer.train()
+        log_history_no_filter = trainer.state.log_history
 
-            # GaudiTrainer with inf/nan filter
-            args = GaudiTrainingArguments(
-                tmpdir,
-                learning_rate=1e9,
-                logging_steps=5,
-                logging_nan_inf_filter=True,
-                use_habana=True,
-                use_lazy_mode=True,
-                report_to="none",
-            )
-            trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
-            trainer.train()
-            log_history_filter = trainer.state.log_history
+        # GaudiTrainer with inf/nan filter
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(),
+            learning_rate=1e9,
+            logging_steps=5,
+            logging_nan_inf_filter=True,
+            use_habana=True,
+            use_lazy_mode=True,
+            report_to="none",
+        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer.train()
+        log_history_filter = trainer.state.log_history
 
-            def is_any_loss_nan_or_inf(log_history):
-                losses = [l["loss"] for l in log_history[:-1]]
-                return any(math.isnan(x) for x in losses) or any(math.isinf(x) for x in losses)
+        def is_any_loss_nan_or_inf(log_history):
+            losses = [l["loss"] for l in log_history[:-1]]
+            return any(math.isnan(x) for x in losses) or any(math.isinf(x) for x in losses)
 
-            self.assertTrue(is_any_loss_nan_or_inf(log_history_no_filter))
-            self.assertFalse(is_any_loss_nan_or_inf(log_history_filter))
+        self.assertTrue(is_any_loss_nan_or_inf(log_history_no_filter))
+        self.assertFalse(is_any_loss_nan_or_inf(log_history_filter))
 
     def test_train_and_eval_dataloaders(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(output_dir=tmpdir, learning_rate=0.1, per_device_train_batch_size=16)
-            self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
-            trainer = get_regression_trainer(output_dir=tmpdir, learning_rate=0.1, per_device_eval_batch_size=16)
-            self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir, learning_rate=0.1, per_device_train_batch_size=16)
+        self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
+        trainer = get_regression_trainer(output_dir=tmp_dir, learning_rate=0.1, per_device_eval_batch_size=16)
+        self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
 
-            # Check drop_last works
-            trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                train_len=66,
-                eval_len=74,
-                learning_rate=0.1,
-                per_device_train_batch_size=16,
-                per_device_eval_batch_size=32,
-            )
-            self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16) + 1)
-            self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32) + 1)
+        # Check drop_last works
+        trainer = get_regression_trainer(
+            output_dir=tmp_dir,
+            train_len=66,
+            eval_len=74,
+            learning_rate=0.1,
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=32,
+        )
+        self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16) + 1)
+        self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32) + 1)
 
-            trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                train_len=66,
-                eval_len=74,
-                learning_rate=0.1,
-                per_device_train_batch_size=16,
-                per_device_eval_batch_size=32,
-                dataloader_drop_last=True,
-            )
-            self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16))
-            self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32))
+        trainer = get_regression_trainer(
+            output_dir=tmp_dir,
+            train_len=66,
+            eval_len=74,
+            learning_rate=0.1,
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=32,
+            dataloader_drop_last=True,
+        )
+        self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16))
+        self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32))
 
-            # Check passing a new dataset for evaluation works
-            new_eval_dataset = RegressionDataset(length=128)
-            self.assertEqual(len(trainer.get_eval_dataloader(new_eval_dataset)), 128 // (32))
+        # Check passing a new dataset for evaluation works
+        new_eval_dataset = RegressionDataset(length=128)
+        self.assertEqual(len(trainer.get_eval_dataloader(new_eval_dataset)), 128 // (32))
 
     # tests that we do not require dataloader to have a .dataset attribute
     def test_dataloader_without_dataset(self):
         train_dataset = RegressionDataset(length=128)
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            args = GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True, report_to="none")
-            trainer = CustomDataloaderTrainer(
-                model=RegressionModel(),
-                gaudi_config=get_gaudi_config(),
-                args=args,
-                train_dataset=train_dataset,
-                eval_dataset=train_dataset,
-            )
-            trainer.train()
-            trainer.evaluate()
+        args = GaudiTrainingArguments(
+            output_dir=self.get_auto_remove_tmp_dir(), use_habana=True, use_lazy_mode=True, report_to="none"
+        )
+        trainer = CustomDataloaderTrainer(
+            model=RegressionModel(),
+            gaudi_config=get_gaudi_config(),
+            args=args,
+            train_dataset=train_dataset,
+            eval_dataset=train_dataset,
+        )
+        trainer.train()
+        trainer.evaluate()
 
     def test_get_eval_dataloader_without_persistent_workers(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            train_dataset = RegressionDataset()
-            config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-            tiny_gpt2 = GPT2LMHeadModel(config)
-            args = GaudiTrainingArguments(
-                tmpdir,
-                report_to="none",
-                dataloader_persistent_workers=False,
-                use_habana=True,
-                use_lazy_mode=True,
-            )
+        train_dataset = RegressionDataset()
+        config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+        tiny_gpt2 = GPT2LMHeadModel(config)
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(),
+            report_to="none",
+            dataloader_persistent_workers=False,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
 
-            # Single evaluation dataset
-            eval_dataset = RegressionDataset()
-            gaudi_config = get_gaudi_config()
-            trainer = GaudiTrainer(
-                tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
-            )
-            # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
-            trainer.accelerator.prepare = lambda x: x
+        # Single evaluation dataset
+        eval_dataset = RegressionDataset()
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
+        trainer.accelerator.prepare = lambda x: x
 
-            default_dataloader = trainer.get_eval_dataloader()
-            dataloader_with_dataset = trainer.get_eval_dataloader(eval_dataset)
+        default_dataloader = trainer.get_eval_dataloader()
+        dataloader_with_dataset = trainer.get_eval_dataloader(eval_dataset)
 
-            self.assertEqual(default_dataloader.dataset, eval_dataset)
-            self.assertEqual(dataloader_with_dataset.dataset, eval_dataset)
-            self.assertNotEqual(default_dataloader, dataloader_with_dataset)
+        self.assertEqual(default_dataloader.dataset, eval_dataset)
+        self.assertEqual(dataloader_with_dataset.dataset, eval_dataset)
+        self.assertNotEqual(default_dataloader, dataloader_with_dataset)
 
-            # Multiple evaluation datasets
-            first_dataset = RegressionDataset()
-            second_dataset = RegressionDataset()
-            trainer = GaudiTrainer(
-                tiny_gpt2,
-                gaudi_config,
-                args,
-                train_dataset=train_dataset,
-                eval_dataset={"first": first_dataset, "second": second_dataset},
-            )
-            # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
-            trainer.accelerator.prepare = lambda x: x
+        # Multiple evaluation datasets
+        first_dataset = RegressionDataset()
+        second_dataset = RegressionDataset()
+        trainer = GaudiTrainer(
+            tiny_gpt2,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+            eval_dataset={"first": first_dataset, "second": second_dataset},
+        )
+        # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
+        trainer.accelerator.prepare = lambda x: x
 
-            first_dataloader = trainer.get_eval_dataloader("first")
-            first_dataloader_repeated = trainer.get_eval_dataloader("first")
-            second_dataloader = trainer.get_eval_dataloader("second")
-            second_dataloader_repeated = trainer.get_eval_dataloader("second")
+        first_dataloader = trainer.get_eval_dataloader("first")
+        first_dataloader_repeated = trainer.get_eval_dataloader("first")
+        second_dataloader = trainer.get_eval_dataloader("second")
+        second_dataloader_repeated = trainer.get_eval_dataloader("second")
 
-            self.assertEqual(first_dataset, first_dataloader.dataset)
-            self.assertEqual(first_dataloader.dataset, first_dataloader_repeated.dataset)
-            self.assertEqual(second_dataset, second_dataloader.dataset)
-            self.assertEqual(second_dataloader.dataset, second_dataloader_repeated.dataset)
-            self.assertNotEqual(first_dataloader, first_dataloader_repeated)
-            self.assertNotEqual(second_dataloader, second_dataloader_repeated)
+        self.assertEqual(first_dataset, first_dataloader.dataset)
+        self.assertEqual(first_dataloader.dataset, first_dataloader_repeated.dataset)
+        self.assertEqual(second_dataset, second_dataloader.dataset)
+        self.assertEqual(second_dataloader.dataset, second_dataloader_repeated.dataset)
+        self.assertNotEqual(first_dataloader, first_dataloader_repeated)
+        self.assertNotEqual(second_dataloader, second_dataloader_repeated)
 
     def test_get_eval_dataloader_with_persistent_workers(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            train_dataset = RegressionDataset()
-            config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-            tiny_gpt2 = GPT2LMHeadModel(config)
-            args = GaudiTrainingArguments(
-                tmpdir,
-                report_to="none",
-                dataloader_persistent_workers=True,
-                dataloader_num_workers=2,
-                use_habana=True,
-                use_lazy_mode=True,
-            )
+        train_dataset = RegressionDataset()
+        config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+        tiny_gpt2 = GPT2LMHeadModel(config)
+        args = GaudiTrainingArguments(
+            self.get_auto_remove_tmp_dir(),
+            report_to="none",
+            dataloader_persistent_workers=True,
+            dataloader_num_workers=2,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
 
-            # Single evaluation dataset
-            eval_dataset = RegressionDataset()
-            gaudi_config = get_gaudi_config()
-            trainer = GaudiTrainer(
-                tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
-            )
-            # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
-            trainer.accelerator.prepare = lambda x: x
+        # Single evaluation dataset
+        eval_dataset = RegressionDataset()
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
+        trainer.accelerator.prepare = lambda x: x
 
-            default_dataloader = trainer.get_eval_dataloader()
-            dataloader_with_dataset = trainer.get_eval_dataloader(eval_dataset)
+        default_dataloader = trainer.get_eval_dataloader()
+        dataloader_with_dataset = trainer.get_eval_dataloader(eval_dataset)
 
-            self.assertEqual(default_dataloader.dataset, eval_dataset)
-            self.assertEqual(dataloader_with_dataset.dataset, eval_dataset)
-            self.assertEqual(default_dataloader, dataloader_with_dataset)
+        self.assertEqual(default_dataloader.dataset, eval_dataset)
+        self.assertEqual(dataloader_with_dataset.dataset, eval_dataset)
+        self.assertEqual(default_dataloader, dataloader_with_dataset)
 
-            # Multiple evaluation datasets
-            first_dataset = RegressionDataset()
-            second_dataset = RegressionDataset()
-            trainer = GaudiTrainer(
-                tiny_gpt2,
-                gaudi_config,
-                args,
-                train_dataset=train_dataset,
-                eval_dataset={"first": first_dataset, "second": second_dataset},
-            )
-            # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
-            trainer.accelerator.prepare = lambda x: x
+        # Multiple evaluation datasets
+        first_dataset = RegressionDataset()
+        second_dataset = RegressionDataset()
+        trainer = GaudiTrainer(
+            tiny_gpt2,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+            eval_dataset={"first": first_dataset, "second": second_dataset},
+        )
+        # Mocking the prepare method to avoid the dataloader changing with each call to get_eval_dataloader
+        trainer.accelerator.prepare = lambda x: x
 
-            first_dataloader = trainer.get_eval_dataloader("first")
-            first_dataloader_repeated = trainer.get_eval_dataloader("first")
-            second_dataloader = trainer.get_eval_dataloader("second")
-            second_dataloader_repeated = trainer.get_eval_dataloader("second")
+        first_dataloader = trainer.get_eval_dataloader("first")
+        first_dataloader_repeated = trainer.get_eval_dataloader("first")
+        second_dataloader = trainer.get_eval_dataloader("second")
+        second_dataloader_repeated = trainer.get_eval_dataloader("second")
 
-            self.assertEqual(first_dataset, first_dataloader.dataset)
-            self.assertEqual(first_dataloader.dataset, first_dataloader_repeated.dataset)
-            self.assertEqual(second_dataset, second_dataloader.dataset)
-            self.assertEqual(second_dataloader.dataset, second_dataloader_repeated.dataset)
-            self.assertEqual(first_dataloader, first_dataloader_repeated)
-            self.assertEqual(second_dataloader, second_dataloader_repeated)
+        self.assertEqual(first_dataset, first_dataloader.dataset)
+        self.assertEqual(first_dataloader.dataset, first_dataloader_repeated.dataset)
+        self.assertEqual(second_dataset, second_dataloader.dataset)
+        self.assertEqual(second_dataloader.dataset, second_dataloader_repeated.dataset)
+        self.assertEqual(first_dataloader, first_dataloader_repeated)
+        self.assertEqual(second_dataloader, second_dataloader_repeated)
 
     def test_data_is_not_parallelized_when_model_is_parallel(self):
         model = RegressionModel()
@@ -1656,189 +1969,188 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 self.assertNotIn(log_info_string, cl.out)
 
     def test_save_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5)
-            trainer.train()
-            self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size))
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir, save_steps=5)
+        trainer.train()
+        self.check_saved_checkpoints(tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size))
 
         # With a regular model that is not a PreTrainedModel
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5, pretrained=False)
-            trainer.train()
-            self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False)
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir, save_steps=5, pretrained=False)
+        trainer.train()
+        self.check_saved_checkpoints(tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), False)
 
     @require_safetensors
     def test_safe_checkpoints(self):
         for save_safetensors in [True, False]:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5, save_safetensors=save_safetensors)
-                trainer.train()
-                self.check_saved_checkpoints(
-                    tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), safe_weights=save_safetensors
-                )
+            tmp_dir = self.get_auto_remove_tmp_dir()
+            trainer = get_regression_trainer(output_dir=tmp_dir, save_steps=5, save_safetensors=save_safetensors)
+            trainer.train()
+            self.check_saved_checkpoints(
+                tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), safe_weights=save_safetensors
+            )
 
             # With a regular model that is not a PreTrainedModel
-            with tempfile.TemporaryDirectory() as tmpdir:
-                trainer = get_regression_trainer(
-                    output_dir=tmpdir, save_steps=5, pretrained=False, save_safetensors=save_safetensors
-                )
-                trainer.train()
-                self.check_saved_checkpoints(
-                    tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False, safe_weights=save_safetensors
-                )
-
-    def test_load_best_model_with_save(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_dir = self.get_auto_remove_tmp_dir()
             trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                save_steps=5,
-                evaluation_strategy="steps",
-                eval_steps=5,
-                max_steps=9,
+                output_dir=tmp_dir, save_steps=5, pretrained=False, save_safetensors=save_safetensors
             )
             trainer.train()
-            # Check that we have the last known step:
-            assert os.path.exists(os.path.join(tmpdir, f"checkpoint-{trainer.state.max_steps}")), (
-                f"Could not find checkpoint-{trainer.state.max_steps}"
+            self.check_saved_checkpoints(
+                tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), False, safe_weights=save_safetensors
             )
-            # And then check the last step
-            assert os.path.exists(os.path.join(tmpdir, "checkpoint-9")), "Could not find checkpoint-9"
+
+    def test_load_best_model_with_save(self):
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(
+            output_dir=tmp_dir,
+            save_steps=5,
+            evaluation_strategy="steps",
+            eval_steps=5,
+            max_steps=9,
+        )
+        trainer.train()
+        # Check that we have the last known step:
+        assert os.path.exists(os.path.join(tmp_dir, f"checkpoint-{trainer.state.max_steps}")), (
+            f"Could not find checkpoint-{trainer.state.max_steps}"
+        )
+        # And then check the last step
+        assert os.path.exists(os.path.join(tmp_dir, "checkpoint-9")), "Could not find checkpoint-9"
 
         # Now test that using a limit works
         # Should result in:
         # - save at step 5 (but is deleted)
         # - save at step 10 (loaded in at the end when `load_best_model=True`)
         # - save at step 11
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                save_steps=5,
-                evaluation_strategy="steps",
-                eval_steps=5,
-                load_best_model_at_end=True,
-                save_total_limit=2,
-                max_steps=11,
-            )
-            trainer.train()
-            # Check that we have the last known step:
-            assert os.path.exists(os.path.join(tmpdir, "checkpoint-11")), "Could not find checkpoint-11"
-            # And then check the last multiple
-            assert os.path.exists(os.path.join(tmpdir, "checkpoint-10")), "Could not find checkpoint-10"
-            # Finally check that we don't have an old one
-            assert not os.path.exists(os.path.join(tmpdir, "checkpoint-5")), "Found checkpoint-5, limit not respected"
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(
+            output_dir=tmp_dir,
+            save_steps=5,
+            evaluation_strategy="steps",
+            eval_steps=5,
+            load_best_model_at_end=True,
+            save_total_limit=2,
+            max_steps=11,
+        )
+        trainer.train()
+        # Check that we have the last known step:
+        assert os.path.exists(os.path.join(tmp_dir, "checkpoint-11")), "Could not find checkpoint-11"
+        # And then check the last multiple
+        assert os.path.exists(os.path.join(tmp_dir, "checkpoint-10")), "Could not find checkpoint-10"
+        # Finally check that we don't have an old one
+        assert not os.path.exists(os.path.join(tmp_dir, "checkpoint-5")), "Found checkpoint-5, limit not respected"
 
-            # Finally check that the right model was loaded in, checkpoint-10
-            # this goes by the last `eval` step check to do so, so it won't be
-            # the last model *saved*
-            model_state = trainer.model.state_dict()
-            final_model_weights = safetensors.torch.load_file(
-                os.path.join(tmpdir, "checkpoint-10", "model.safetensors")
-            )
-            for k, v in model_state.items():
-                assert torch.allclose(v, final_model_weights[k]), f"{k} is not the same"
+        # Finally check that the right model was loaded in, checkpoint-10
+        # this goes by the last `eval` step check to do so, so it won't be
+        # the last model *saved*
+        model_state = trainer.model.state_dict()
+        final_model_weights = safetensors.torch.load_file(os.path.join(tmp_dir, "checkpoint-10", "model.safetensors"))
+        for k, v in model_state.items():
+            assert torch.allclose(v, final_model_weights[k]), f"{k} is not the same"
 
     def test_can_resume_training(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = {
-                "output_dir": tmpdir,
-                "train_len": 128,
-                "save_steps": 5,
-                "learning_rate": 0.1,
-                "logging_steps": 5,
-            }
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
-            trainer.train()
-            (a, b) = trainer.model.a.item(), trainer.model.b.item()
-            state = dataclasses.asdict(trainer.state)
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        kwargs = {
+            "output_dir": tmp_dir,
+            "train_len": 128,
+            "save_steps": 5,
+            "learning_rate": 0.1,
+            "logging_steps": 5,
+        }
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
+        trainer.train()
+        (a, b) = trainer.model.a.item(), trainer.model.b.item()
+        state = dataclasses.asdict(trainer.state)
 
-            checkpoint = os.path.join(tmpdir, "checkpoint-5")
+        checkpoint = os.path.join(tmp_dir, "checkpoint-5")
 
-            # Reinitialize trainer
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
+        # Reinitialize trainer
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
 
-            trainer.train(resume_from_checkpoint=checkpoint)
-            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-            state1 = dataclasses.asdict(trainer.state)
-            self.assertEqual(a, a1)
-            self.assertEqual(b, b1)
-            self.check_trainer_state_are_the_same(state, state1)
+        trainer.train(resume_from_checkpoint=checkpoint)
+        (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+        state1 = dataclasses.asdict(trainer.state)
+        self.assertEqual(a, a1)
+        self.assertEqual(b, b1)
+        self.check_trainer_state_are_the_same(state, state1)
 
-            # Now check with a later checkpoint that it also works when we span over one epoch
-            checkpoint = os.path.join(tmpdir, "checkpoint-15")
+        # Now check with a later checkpoint that it also works when we span over one epoch
+        checkpoint = os.path.join(tmp_dir, "checkpoint-15")
 
-            # Reinitialize trainer and load model
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
+        # Reinitialize trainer and load model
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
 
-            trainer.train(resume_from_checkpoint=checkpoint)
-            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-            state1 = dataclasses.asdict(trainer.state)
-            self.assertEqual(a, a1)
-            self.assertEqual(b, b1)
-            self.check_trainer_state_are_the_same(state, state1)
+        trainer.train(resume_from_checkpoint=checkpoint)
+        (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+        state1 = dataclasses.asdict(trainer.state)
+        self.assertEqual(a, a1)
+        self.assertEqual(b, b1)
+        self.check_trainer_state_are_the_same(state, state1)
 
         # With a regular model that is not a PreTrainedModel
-        with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = {
-                "output_dir": tmpdir,
-                "train_len": 128,
-                "save_steps": 5,
-                "learning_rate": 0.1,
-                "pretrained": False,
-            }
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        kwargs = {
+            "output_dir": tmp_dir,
+            "train_len": 128,
+            "save_steps": 5,
+            "learning_rate": 0.1,
+            "pretrained": False,
+        }
 
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
-            trainer.train()
-            (a, b) = trainer.model.a.item(), trainer.model.b.item()
-            state = dataclasses.asdict(trainer.state)
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
+        trainer.train()
+        (a, b) = trainer.model.a.item(), trainer.model.b.item()
+        state = dataclasses.asdict(trainer.state)
 
-            checkpoint = os.path.join(tmpdir, "checkpoint-5")
+        checkpoint = os.path.join(tmp_dir, "checkpoint-5")
 
-            # Reinitialize trainer and load model
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
+        # Reinitialize trainer and load model
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
 
-            trainer.train(resume_from_checkpoint=checkpoint)
-            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-            state1 = dataclasses.asdict(trainer.state)
-            self.assertEqual(a, a1)
-            self.assertEqual(b, b1)
-            self.check_trainer_state_are_the_same(state, state1)
+        trainer.train(resume_from_checkpoint=checkpoint)
+        (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+        state1 = dataclasses.asdict(trainer.state)
+        self.assertEqual(a, a1)
+        self.assertEqual(b, b1)
+        self.check_trainer_state_are_the_same(state, state1)
 
-            # Now check with a later checkpoint that it also works when we span over one epoch
-            checkpoint = os.path.join(tmpdir, "checkpoint-15")
+        # Now check with a later checkpoint that it also works when we span over one epoch
+        checkpoint = os.path.join(tmp_dir, "checkpoint-15")
 
-            # Reinitialize trainer and load model
-            trainer = get_regression_trainer(**kwargs)
-            # Disable FusedClipNorm because it makes the test fail
-            trainer.gaudi_config.use_fused_clip_norm = False
+        # Reinitialize trainer and load model
+        trainer = get_regression_trainer(**kwargs)
+        # Disable FusedClipNorm because it makes the test fail
+        trainer.gaudi_config.use_fused_clip_norm = False
 
-            trainer.train(resume_from_checkpoint=checkpoint)
-            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-            state1 = dataclasses.asdict(trainer.state)
-            self.assertEqual(a, a1)
-            self.assertEqual(b, b1)
-            self.check_trainer_state_are_the_same(state, state1)
+        trainer.train(resume_from_checkpoint=checkpoint)
+        (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+        state1 = dataclasses.asdict(trainer.state)
+        self.assertEqual(a, a1)
+        self.assertEqual(b, b1)
+        self.check_trainer_state_are_the_same(state, state1)
 
         # Now check failures
 
         # 1. fail to find a bogus checkpoint
-        trainer = get_regression_trainer()
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir)
         with self.assertRaises(Exception) as context:
             trainer.train(resume_from_checkpoint=f"{checkpoint}-bogus")
         self.assertTrue("Can't find a valid checkpoint at" in str(context.exception))
 
         # 2. fail to find any checkpoint - due a fresh output_dir
-        output_dir2 = self.get_auto_remove_tmp_dir()
-        trainer = get_regression_trainer(output_dir=output_dir2)
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        trainer = get_regression_trainer(output_dir=tmp_dir)
         with self.assertRaises(Exception) as context:
             trainer.train(resume_from_checkpoint=True)
         self.assertTrue("No valid checkpoint found in output directory" in str(context.exception))
@@ -2455,9 +2767,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
 
-            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
-
     def test_accelerator_config_from_yaml(self):
         # Checks that accelerator kwargs can be passed through
         # and the accelerator is initialized respectively
@@ -2470,8 +2779,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     "even_batches": False,
                     "use_seedable_sampler": False,
                 }
-                if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                    accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
                 json.dump(accelerator_config, f)
             config = RegressionModelConfig(a=1.5, b=2.5)
             model = RegressionPreTrainedModel(config)
@@ -2485,9 +2792,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
-
-            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
-                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
 
     def test_accelerator_config_from_dataclass(self):
         # Checks that accelerator kwargs can be passed through
@@ -2540,10 +2844,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
             )
             trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 10)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["adjust_scheduler"], False)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_with_dataloader"], False)
-            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+            self.assertEqual(trainer.args.gradient_accumulation_steps, 10)
 
     def test_accelerator_config_from_partial(self):
         # Checks that accelerator kwargs can be passed through
@@ -2754,6 +3055,206 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             _ = trainer.evaluate()
             _ = trainer.predict(eval_dataset)
 
+    def test_trainer_saves_tokenizer(self):
+        MODEL_ID = "google-bert/bert-base-uncased"
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=False)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=tokenizer,
+            )
+            trainer.save_model()
+
+            reloaded_tokenizer = AutoTokenizer.from_pretrained(tmp_dir)
+
+        # For tokenizers, there isn't a direct to_dict method and the properties stored in the configs e.g.
+        # saved tokens change overtime, so we check that two tokenizers are equal by comparing their encoded outputs
+        test_sentence = "This is a test sentence"
+        self.assertListEqual(
+            tokenizer(test_sentence, padding="max_length").input_ids,
+            reloaded_tokenizer(test_sentence, padding="max_length").input_ids,
+        )
+
+    @require_vision
+    def test_trainer_saves_image_processor(self):
+        MODEL_ID = "openai/clip-vit-base-patch32"
+        image_processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=image_processor,
+            )
+            trainer.save_model()
+            reloaded_image_processor = AutoImageProcessor.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(image_processor.to_dict(), reloaded_image_processor.to_dict())
+
+    def test_trainer_saves_feature_extractor(self):
+        MODEL_ID = "facebook/wav2vec2-base-960h"
+        feature_extractor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=feature_extractor,
+            )
+            trainer.save_model()
+
+            reloaded_feature_extractor = AutoFeatureExtractor.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(feature_extractor.to_dict(), reloaded_feature_extractor.to_dict())
+
+    @require_vision
+    def test_trainer_saves_processor(self):
+        MODEL_ID = "openai/clip-vit-base-patch32"
+        image_processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=False)
+        processor = AutoProcessor.from_pretrained(MODEL_ID)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            gaudi_config = get_gaudi_config()
+            trainer = GaudiTrainer(
+                model=RegressionPreTrainedModel(config),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                gaudi_config=gaudi_config,
+                processing_class=processor,
+            )
+            trainer.save_model()
+
+            reloaded_processor = AutoProcessor.from_pretrained(tmp_dir)
+            reloaded_image_processor = AutoImageProcessor.from_pretrained(tmp_dir)
+            reloaded_tokenizer = AutoTokenizer.from_pretrained(tmp_dir)
+
+        self.assertDictEqual(reloaded_processor.to_dict(), processor.to_dict())
+
+        image_processor_dict = image_processor.to_dict()
+        reloaded_image_processor_dict = reloaded_image_processor.to_dict()
+        # When the processor is saved in the trainer, the _processor_class gets set in the reload_image_processor dict
+        image_processor_dict.pop("_processor_class")
+        reloaded_image_processor_dict.pop("_processor_class")
+        self.assertDictEqual(image_processor_dict, reloaded_image_processor_dict)
+
+        # For tokenizers, there isn't a direct to_dict method and the properties stored in the configs e.g.
+        # saved tokens change overtime, so we check that two tokenizers are equal by comparing their encoded outputs
+        test_sentence = "This is a test sentence"
+        self.assertListEqual(
+            tokenizer(test_sentence, padding="max_length").input_ids,
+            reloaded_tokenizer(test_sentence, padding="max_length").input_ids,
+        )
+
+    def test_save_best_checkpoint(self):
+        freq = int(64 / self.batch_size)
+        total = int(self.n_epochs * 64 / self.batch_size)
+
+        # Case 1: args.metric_for_best_model == "accuracy".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="epoch",
+                save_strategy="best",
+                metric_for_best_model="accuracy",
+                compute_metrics=AlmostAccuracy(),
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "accuracy")
+
+            with unittest.mock.patch.object(
+                trainer,
+                "_evaluate",
+                side_effect=[
+                    {"eval_loss": 0.03, "eval_accuracy": 0.60, "epoch": 1.0},
+                    {"eval_loss": 0.02, "eval_accuracy": 0.65, "epoch": 2.0},
+                    {"eval_loss": 0.01, "eval_accuracy": 0.64, "epoch": 3.0},
+                ],
+            ):
+                trainer.train()
+
+                self.assertEqual(len(os.listdir(tmpdir)), 2)
+                self.check_saved_checkpoints(
+                    output_dir=tmpdir,
+                    freq=freq,
+                    total=total,
+                )
+
+        # Case 2: args.metric_for_best_model == "loss".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="epoch",
+                save_strategy="best",
+                metric_for_best_model="loss",
+                compute_metrics=AlmostAccuracy(),
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "loss")
+
+            with unittest.mock.patch.object(
+                trainer,
+                "_evaluate",
+                side_effect=[
+                    {"eval_loss": 0.03, "eval_accuracy": 0.60, "epoch": 1.0},
+                    {"eval_loss": 0.02, "eval_accuracy": 0.65, "epoch": 2.0},
+                    {"eval_loss": 0.03, "eval_accuracy": 0.66, "epoch": 3.0},
+                ],
+            ):
+                trainer.train()
+
+                self.assertEqual(len(os.listdir(tmpdir)), 2)
+                self.check_saved_checkpoints(
+                    output_dir=tmpdir,
+                    freq=freq,
+                    total=total,
+                )
+
+    def test_metric_for_best_model_behavior(self):
+        # Case 1: Metric name not provided when `save_strategy == "best"`.
+        # Should raise ValueError.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                trainer = get_regression_trainer(
+                    a=1.5,
+                    b=2.5,
+                    output_dir=tmpdir,
+                    learning_rate=0.1,
+                    eval_strategy="epoch",
+                    save_strategy="best",
+                    compute_metrics=AlmostAccuracy(),
+                )
+            self.assertIn("`args.metric_for_best_model` must be provided", str(context.exception))
+
+        # Case 2: Metric name not provided when `load_best_model_at_end == True`.
+        # `metric_for_best_model` should be set to `"loss"` by default.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                output_dir=tmpdir,
+                learning_rate=0.1,
+                eval_strategy="steps",
+                save_strategy="steps",
+                load_best_model_at_end=True,
+            )
+            self.assertTrue(trainer.args.metric_for_best_model == "loss")
+
     def test_profiling(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             # 24 total steps and compilation takes place during the 1st three steps
@@ -2769,64 +3270,49 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         cls._token = TOKEN
         HfFolder.save_token(TOKEN)
 
-    @classmethod
-    def tearDownClass(cls):
-        for model in [
-            "test-trainer",
-            "test-trainer-epoch",
-            "test-trainer-step",
-            "test-trainer-tensorboard",
-            "test-trainer-tags",
-        ]:
-            try:
-                delete_repo(token=cls._token, repo_id=model)
-            except HTTPError:
-                pass
-
-        try:
-            delete_repo(token=cls._token, repo_id="valid_org/test-trainer-org")
-        except HTTPError:
-            pass
-
     def test_push_to_hub(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
-            url = trainer.push_to_hub()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            output_dir_name = tmp_repo.repo_name
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
 
-            self.assertEqual(repo_name, f"{USER}/test-trainer")
+            self.assertEqual(repo_name, f"{USER}/{output_dir_name}")
 
             model = RegressionPreTrainedModel.from_pretrained(repo_name)
             self.assertEqual(model.a.item(), trainer.model.a.item())
             self.assertEqual(model.b.item(), trainer.model.b.item())
 
     def test_push_to_hub_in_organization(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(output_dir=tmp_dir)
-            trainer.save_model()
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-org"),
-                push_to_hub=True,
-                hub_model_id="valid_org/test-trainer-org",
-                hub_token=self._token,
-            )
-            url = trainer.push_to_hub()
+        with TemporaryHubRepo(namespace="valid_org", token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                trainer = get_regression_trainer(output_dir=tmp_dir)
+                trainer.save_model()
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_model_id=f"valid_org/{output_dir_name}",
+                    hub_token=self._token,
+                )
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
-            self.assertEqual(repo_name, "valid_org/test-trainer-org")
+            self.assertEqual(repo_name, f"valid_org/{output_dir_name}")
 
-            model = RegressionPreTrainedModel.from_pretrained("valid_org/test-trainer-org")
+            model = RegressionPreTrainedModel.from_pretrained(f"valid_org/{output_dir_name}")
             self.assertEqual(model.a.item(), trainer.model.a.item())
             self.assertEqual(model.b.item(), trainer.model.b.item())
 
@@ -2843,120 +3329,130 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         return [commit.strip() for commit in commits]
 
     def test_push_to_hub_with_saves_each_epoch(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertLogs(level="WARNING") as logs:
-                trainer = get_regression_trainer(
-                    output_dir=os.path.join(tmp_dir, "test-trainer-epoch"),
-                    push_to_hub=True,
-                    hub_token=self._token,
-                    # To avoid any flakiness if the training goes faster than the uploads.
-                    hub_always_push=True,
-                    save_strategy="epoch",
-                )
-                trainer.train()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with self.assertLogs(level="WARNING") as logs:
+                    output_dir_name = tmp_repo.repo_name
+                    trainer = get_regression_trainer(
+                        output_dir=os.path.join(tmp_dir, output_dir_name),
+                        push_to_hub=True,
+                        hub_token=self._token,
+                        # To avoid any flakiness if the training goes faster than the uploads.
+                        hub_always_push=True,
+                        save_strategy="epoch",
+                    )
+                    trainer.train()
 
-        commits = list_repo_commits(f"{USER}/test-trainer-epoch", token=self._token)
-        commits = [c.title for c in commits]
-        self.assertIn("initial commit", commits)
-        self.assertIn("Training in progress, epoch 1", commits)
-        self.assertIn("Training in progress, epoch 2", commits)
-        # Epochs 3 and 4 are not guaranteed to be present (empty commits)
-        self.assertTrue(any("Skipping to prevent empty commit." in record.message for record in logs.records))
+            commits = list_repo_commits(f"{USER}/{output_dir_name}", token=self._token)
+            commits = [c.title for c in commits]
+            self.assertIn("initial commit", commits)
+            self.assertIn("Training in progress, epoch 1", commits)
+            self.assertIn("Training in progress, epoch 2", commits)
+            # Epochs 3 and 4 are not guaranteed to be present (empty commits)
+            self.assertTrue(any("Skipping to prevent empty commit." in record.message for record in logs.records))
 
     def test_push_to_hub_with_saves_each_n_steps(self):
         num_gpus = max(1, get_gpu_count())
         if num_gpus > 2:
             self.skipTest(reason="More than 2 GPUs available")
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertLogs(level="WARNING") as logs:
-                trainer = get_regression_trainer(
-                    output_dir=os.path.join(tmp_dir, "test-trainer-step"),
-                    push_to_hub=True,
-                    hub_token=self._token,
-                    # To avoid any flakiness if the training goes faster than the uploads.
-                    hub_always_push=True,
-                    save_strategy="steps",
-                    save_steps=5,
-                )
-                trainer.train()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with self.assertLogs(level="WARNING") as logs:
+                    output_dir_name = tmp_repo.repo_name
+                    trainer = get_regression_trainer(
+                        output_dir=os.path.join(tmp_dir, output_dir_name),
+                        push_to_hub=True,
+                        hub_token=self._token,
+                        # To avoid any flakiness if the training goes faster than the uploads.
+                        hub_always_push=True,
+                        save_strategy="steps",
+                        save_steps=5,
+                    )
+                    trainer.train()
 
-        commits = list_repo_commits(f"{USER}/test-trainer-step", token=self._token)
-        commits = [c.title for c in commits]
-        self.assertIn("initial commit", commits)
+            commits = list_repo_commits(f"{USER}/{output_dir_name}", token=self._token)
+            commits = [c.title for c in commits]
+            self.assertIn("initial commit", commits)
 
-        # Some commits are skipped if nothing has changed
-        # We expect 1 commit per 5 epochs + 1 commit at the end
-        nb_empty_commits = len(
-            [record for record in logs.records if "Skipping to prevent empty commit." in record.message]
-        )
-        nb_epoch_commits = len([commit for commit in commits if "Training in progress, step" in commit])
+            # Some commits are skipped if nothing has changed
+            # We expect 1 commit per 5 epochs + 1 commit at the end
+            nb_empty_commits = len(
+                [record for record in logs.records if "Skipping to prevent empty commit." in record.message]
+            )
+            nb_epoch_commits = len([commit for commit in commits if "Training in progress, step" in commit])
 
-        # max_steps depend on the number of available GPUs
-        max_steps = math.ceil(trainer.args.num_train_epochs * len(trainer.get_train_dataloader()))
-        nb_expected_commits = len(range(5, max_steps, 5))
+            # max_steps depend on the number of available GPUs
+            max_steps = math.ceil(trainer.args.num_train_epochs * len(trainer.get_train_dataloader()))
+            nb_expected_commits = len(range(5, max_steps, 5))
 
-        # '>=' since final commit might be an empty commit as well (not deterministic)
-        self.assertGreaterEqual(nb_empty_commits + nb_epoch_commits, nb_expected_commits)
+            # '>=' since final commit might be an empty commit as well (not deterministic)
+            self.assertGreaterEqual(nb_empty_commits + nb_epoch_commits, nb_expected_commits)
 
     @require_tensorboard
     def test_push_to_hub_with_tensorboard_logs(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-tensorboard"),
-                hub_token=self._token,
-                save_strategy="epoch",
-                report_to=["tensorboard"],
-                keep_report_to=True,
-            )
-            trainer.train()
-            # Push the runs via `push_to_hub()`
-            trainer.push_to_hub()
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    hub_token=self._token,
+                    save_strategy="epoch",
+                    report_to=["tensorboard"],
+                    keep_report_to=True,
+                )
+                trainer.train()
+                # Push the runs via `push_to_hub()`
+                trainer.push_to_hub()
 
-        files = list_repo_files(f"{USER}/test-trainer-tensorboard", token=self._token)
-        found_log = False
-        for f in files:
-            if len(f.split("runs")) > 1 and "events.out.tfevents" in f:
-                found_log = True
+            files = list_repo_files(f"{USER}/{output_dir_name}", token=self._token)
+            found_log = False
+            for f in files:
+                if len(f.split("runs")) > 1 and "events.out.tfevents" in f:
+                    found_log = True
 
-        assert found_log is True, "No tensorboard log found in repo"
+            assert found_log is True, "No tensorboard log found in repo"
 
     def test_push_to_hub_tags(self):
         # Checks if `trainer.push_to_hub()` works correctly by adding the desired
         # tag without having to pass `tags` in `push_to_hub`
         # see:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-tags"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
 
-            trainer.model.add_model_tags(["test-trainer-tags"])
+                trainer.model.add_model_tags(["test-trainer-tags"])
 
-            url = trainer.push_to_hub()
+                url = trainer.push_to_hub()
 
             # Extract repo_name from the url
             re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
             self.assertTrue(re_search is not None)
             repo_name = re_search.groups()[0]
 
-            self.assertEqual(repo_name, f"{USER}/test-trainer-tags")
+            self.assertEqual(repo_name, f"{USER}/{output_dir_name}")
 
             model_card = ModelCard.load(repo_name)
             self.assertTrue("test-trainer-tags" in model_card.data.tags)
 
     def test_push_to_hub_with_revision(self):
         # Checks if `trainer.push_to_hub()` works correctly by adding revision
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = get_regression_trainer(
-                output_dir=os.path.join(tmp_dir, "test-trainer-revision"),
-                push_to_hub=True,
-                hub_token=self._token,
-            )
-            branch = "v1.0"
-            create_branch(repo_id=trainer.hub_model_id, branch=branch, token=self._token, exist_ok=True)
-            url = trainer.push_to_hub(revision=branch)
+        with TemporaryHubRepo(token=self._token) as tmp_repo:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                output_dir_name = tmp_repo.repo_name
+                trainer = get_regression_trainer(
+                    output_dir=os.path.join(tmp_dir, output_dir_name),
+                    push_to_hub=True,
+                    hub_token=self._token,
+                )
+                branch = "v1.0"
+                create_branch(repo_id=trainer.hub_model_id, branch=branch, token=self._token, exist_ok=True)
+                url = trainer.push_to_hub(revision=branch)
 
             # Extract branch from the url
             re_search = re.search(r"tree/([^/]+)/", url)
