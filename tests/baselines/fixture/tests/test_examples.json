@@ -656,12 +656,6 @@
     }
   },
   "tests/test_examples.py::MultiCardVisionLanguageExampleTester::test_run_clip_clip-roberta_multi_card": {
-    "gaudi3": {
-      "train_runtime": 64.3878,
-      "train_samples_per_second": 19625.412
-    }
-  },
-  "tests/test_examples.py::MultiCardVisionLanguageExampleTester::test_run_clip_clip-roberta_multi_card": {
     "gaudi1": {
       "train_runtime": 314.7726,
       "train_samples_per_second": 2560.999
@@ -671,8 +665,8 @@
       "train_samples_per_second": 14124
     },
     "gaudi3": {
-      "train_runtime": 59.5,
-      "train_samples_per_second": 14124
+      "train_runtime": 64.3878,
+      "train_samples_per_second": 19625.412
     }
   },
   "tests/test_examples.py::QuestionAnsweringExampleTester::test_run_qa_roberta-large_single_card": {
