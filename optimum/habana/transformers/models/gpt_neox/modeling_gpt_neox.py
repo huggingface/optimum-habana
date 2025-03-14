@@ -2,7 +2,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 from transformers.cache_utils import Cache
-from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.configuration_gpt_neox import GPTNeoXConfig
 from transformers.models.gpt_neox.modeling_gpt_neox import (
@@ -270,7 +269,7 @@ def gaudi_gpt_neox_model_forward(
     return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-    **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
+    **kwargs,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from GPTNeoxModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
