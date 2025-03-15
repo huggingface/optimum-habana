@@ -46,7 +46,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[int] = None,
+        vision_feature_layer: Optional[Union[int, List[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -54,10 +54,11 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **lm_kwargs,
     ) -> Union[Tuple, LlavaNextCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
@@ -88,10 +89,11 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 return_dict=return_dict,
                 cache_position=cache_position,
                 # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
-                # num_logits_to_keep=num_logits_to_keep,
+                # logits_to_keep=logits_to_keep,
                 token_idx=token_idx + self.image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
+                **lm_kwargs,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None and self.text_tokens_pos is not None:
@@ -107,7 +109,9 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             if labels is not None:
                 # Shift so that tokens < n predict n
                 if attention_mask is not None:
-                    shift_attention_mask = attention_mask[..., 1:]
+                    # we use the input attention mask to shift the logits and labels, because it is 2D.
+                    # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
+                    shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
                     shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
                     shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
                 else:
@@ -148,7 +152,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 cache_position=cache_position,
-                num_logits_to_keep=num_logits_to_keep,
+                logits_to_keep=logits_to_keep,
+                **lm_kwargs,
             )
 
     # Copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L356
@@ -238,7 +243,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         image_sizes=None,
         attention_mask=None,
         cache_position=None,
-        num_logits_to_keep=None,
+        logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -257,7 +262,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 image_sizes=image_sizes,
                 attention_mask=attention_mask,
                 cache_position=cache_position,
-                num_logits_to_keep=num_logits_to_keep,
+                logits_to_keep=logits_to_keep,
                 **kwargs,
             )
         else:
@@ -416,8 +421,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             else:
                 model_inputs = {"input_ids": input_ids}
 
-            if num_logits_to_keep is not None:
-                model_inputs["num_logits_to_keep"] = num_logits_to_keep
+            if logits_to_keep is not None:
+                model_inputs["logits_to_keep"] = logits_to_keep
 
             model_inputs.update(
                 {

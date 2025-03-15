@@ -15,8 +15,8 @@
       "train_samples_per_second": 85.016
     },
     "gaudi3": {
-      "train_loss": 0.9093,
-      "train_samples_per_second": 85.016
+      "train_loss": 0.9092939383912795,
+      "train_samples_per_second": 119.866
     }
   }
 }

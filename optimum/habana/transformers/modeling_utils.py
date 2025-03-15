@@ -13,12 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import accelerate
 import transformers
 import transformers.utils.fx
 
-from ..accelerate.utils import extract_model_from_parallel
-from ..accelerate.utils.modeling import gaudi_check_device_same
 from ..quantizers.bitsandbytes import (
     gaudi_bitsandbytesconfig_post_init,
     gaudi_create_quantized_param,
@@ -41,7 +38,6 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
-from .modeling_utils_transformers import load_state_dict
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -69,6 +65,7 @@ from .models import (
     GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiCohereAttention,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
     GaudiFalconAttention,
@@ -106,9 +103,7 @@ from .models import (
     GaudiIdefics2VisionEmbeddings,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
@@ -138,6 +133,7 @@ from .models import (
     GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
+    GaudiOPTDecoderLayer,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPaliGemmaForConditionalGeneration,
@@ -158,7 +154,6 @@ from .models import (
     GaudiQwen2MoeForCausalLM,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
-    GaudiQwen2VisionSdpaAttention,
     GaudiQwen2VisionTransformerPretrainedModel,
     GaudiQwen2VLDecoderLayer,
     GaudiQwen2VLForConditionalGeneration,
@@ -173,6 +168,7 @@ from .models import (
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
@@ -215,13 +211,11 @@ from .models import (
     gaudi_check_and_enable_sdpa,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
-    gaudi_cohere_attention_forward,
     gaudi_cohere_model_forward,
     gaudi_conv1d_forward,
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
     gaudi_DetrLoss_forward,
-    gaudi_DetrLoss_get_targets_without_no_objects,
     gaudi_DetrLoss_loss_boxes,
     gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
@@ -248,7 +242,6 @@ from .models import (
     gaudi_mixtral_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
-    gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
     gaudi_owlvitclasspredictionhead_forward,
     gaudi_persimmon_model_forward,
@@ -298,10 +291,6 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
-    accelerate.utils.extract_model_from_parallel = extract_model_from_parallel
-    accelerate.utils.other.extract_model_from_parallel = extract_model_from_parallel
-    accelerate.accelerator.extract_model_from_parallel = extract_model_from_parallel
-    accelerate.utils.modeling.check_device_same = gaudi_check_device_same
 
     transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
     transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
@@ -316,9 +305,6 @@ def adapt_transformers_to_gaudi():
 
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
-
-    # override of load_state_dict for deepseekv3. Delete on upgrade to transformers v4.48
-    transformers.modeling_utils.load_state_dict = load_state_dict
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
@@ -339,6 +325,9 @@ def adapt_transformers_to_gaudi():
     )
 
     # Generation is modified to run faster in lazy mode
+    transformers.generation.GenerationMixin.prepare_inputs_for_generation = (
+        GaudiGenerationMixin._prepare_inputs_for_generation
+    )
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
@@ -454,7 +443,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTDecoder.forward = gaudi_opt_decoder_forward
     transformers.models.opt.modeling_opt.OPTForCausalLM = GaudiOPTForCausalLM
     transformers.models.opt.modeling_opt.OPTModel.forward = gaudi_opt_model_forward
-    transformers.models.opt.modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
+    transformers.models.opt.modeling_opt.OPTDecoderLayer = GaudiOPTDecoderLayer
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
@@ -492,10 +481,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
-    transformers.models.llama.modeling_llama.LlamaLinearScalingRotaryEmbedding = GaudiLlamaLinearScalingRotaryEmbedding
-    transformers.models.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding = (
-        GaudiLlamaDynamicNTKScalingRotaryEmbedding
-    )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
     transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
 
@@ -684,7 +669,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for qwen2-vl Gaudi
-    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiQwen2VisionSdpaAttention
+    transformers.models.qwen2_vl.modeling_qwen2_vl.VisionSdpaAttention = GaudiVisionSdpaAttention
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLVisionBlock = GaudiQwen2VLVisionBlock
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VisionTransformerPretrainedModel = (
         GaudiQwen2VisionTransformerPretrainedModel
@@ -765,7 +750,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
     transformers.models.cohere.modeling_cohere.CohereForCausalLM = GaudiCohereForCausalLM
     transformers.models.cohere.modeling_cohere.CohereModel.forward = gaudi_cohere_model_forward
-    transformers.models.cohere.modeling_cohere.CohereAttention.forward = gaudi_cohere_attention_forward
+    transformers.models.cohere.modeling_cohere.CohereAttention = GaudiCohereAttention
 
     # Optimization for xglm on Gaudi
     transformers.models.xglm.modeling_xglm.XGLMForCausalLM = GaudiXGLMForCausalLM
@@ -806,11 +791,8 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for DETR model on Gaudi
     transformers.models.detr.modeling_detr.DetrConvModel.forward = gaudi_DetrConvModel_forward
-    transformers.models.detr.modeling_detr.DetrHungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
-    transformers.models.detr.modeling_detr.DetrLoss.get_targets_without_no_objects = (
-        gaudi_DetrLoss_get_targets_without_no_objects
-    )
-    transformers.models.detr.modeling_detr.DetrLoss.loss_labels = gaudi_DetrLoss_loss_labels
-    transformers.models.detr.modeling_detr.DetrLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
-    transformers.models.detr.modeling_detr.DetrLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
-    transformers.models.detr.modeling_detr.DetrLoss.forward = gaudi_DetrLoss_forward
+    transformers.loss.loss_for_object_detection.HungarianMatcher.forward = gaudi_DetrHungarianMatcher_forward
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_labels = gaudi_DetrLoss_loss_labels
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
+    transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
+    transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
