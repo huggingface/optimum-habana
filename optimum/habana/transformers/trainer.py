@@ -1585,6 +1585,21 @@ class GaudiTrainer(Trainer):
                 return data.to(**kwargs)
         return data
 
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation.
+        Modified by Habana to enable using `autocast` on Gaudi devices.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
+        else:
+            ctx_manager = contextlib.nullcontext()
+
+        return ctx_manager
+
     def training_step(
         self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
     ) -> torch.Tensor:
@@ -1652,7 +1667,7 @@ class GaudiTrainer(Trainer):
         else:
             self.accelerator.backward(loss, **kwargs)
 
-        return loss.detach() / self.args.gradient_accumulation_steps
+        return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         """
