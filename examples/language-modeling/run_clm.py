@@ -459,7 +459,7 @@ def main():
 
     # Note that chatglm2/3 has float16 dtype from config.json, and on Gaudi we need to use bfloat16.
     if config.model_type == "chatglm":
-        config.dtype = "torch.bfloat16"
+        config.torch_dtype = torch.bfloat16
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -484,6 +484,11 @@ def main():
             if model_args.torch_dtype in ["auto", None]
             else getattr(torch, model_args.torch_dtype)
         )
+        # workaraund for https://github.com/huggingface/transformers/issues/36258
+        # TODO: remove after fix is avalible in a release version of `transformers``
+        if torch_dtype is None:
+            torch_dtype = getattr(config, "torch_dtype", None)
+
         model = AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),

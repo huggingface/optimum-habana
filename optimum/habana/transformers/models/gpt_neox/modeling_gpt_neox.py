@@ -269,6 +269,7 @@ def gaudi_gpt_neox_model_forward(
     return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from GPTNeoxModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py

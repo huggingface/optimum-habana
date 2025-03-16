@@ -935,6 +935,7 @@ class GaudiTrainer(Trainer):
             train_dataloader,
             len_dataloader,
             num_examples,
+            steps_trained_in_current_epoch,
         )
 
         hb_profiler = HabanaProfile(
@@ -1583,7 +1584,6 @@ class GaudiTrainer(Trainer):
             else:
                 return data.to(**kwargs)
         return data
-
 
     # handled by accelerate now (in model preparation)
     # def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
@@ -2643,7 +2643,14 @@ class GaudiTrainer(Trainer):
                 model._zero_grad_kwargs = {}
 
     def get_num_items_in_batches(
-        self, args, epochs_trained, num_train_epochs, train_dataloader, len_dataloader, num_examples
+        self,
+        args,
+        epochs_trained,
+        num_train_epochs,
+        train_dataloader,
+        len_dataloader,
+        num_examples,
+        steps_trained_in_current_epoch,
     ):
         """
         Calculate the number of items in each batch for all epochs during training.
@@ -2659,10 +2666,15 @@ class GaudiTrainer(Trainer):
         total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
         if args.gradient_accumulation_steps == 1:
             total_updates -= 1
+        global_step = 0
 
         num_items_in_batches = []
         for epoch in range(epochs_trained, num_train_epochs):
-            epoch_dataloader = train_dataloader
+            if epoch == epochs_trained and steps_trained_in_current_epoch > 0:
+                epoch_dataloader = skip_first_batches(train_dataloader, steps_trained_in_current_epoch)
+            else:
+                epoch_dataloader = train_dataloader
+
             if hasattr(epoch_dataloader, "set_epoch"):
                 epoch_dataloader.set_epoch(epoch)
 
@@ -2702,6 +2714,11 @@ class GaudiTrainer(Trainer):
                     num_items_in_batch = None
 
                 num_items_in_batches[epoch].append(num_items_in_batch)
+                global_step += 1
+
+            # For iterable datasets, don't do more than max_steps steps
+            if len_dataloader is None and global_step >= args.max_steps:
+                break
 
         return num_items_in_batches
 

@@ -656,6 +656,14 @@
     }
   },
   "tests/test_examples.py::MultiCardVisionLanguageExampleTester::test_run_clip_clip-roberta_multi_card": {
+    "gaudi1": {
+      "train_runtime": 314.7726,
+      "train_samples_per_second": 2560.999
+    },
+    "gaudi2": {
+      "train_runtime": 59.5,
+      "train_samples_per_second": 14124
+    },
     "gaudi3": {
       "train_runtime": 64.3878,
       "train_samples_per_second": 19625.412
