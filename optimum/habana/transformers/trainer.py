@@ -1585,26 +1585,6 @@ class GaudiTrainer(Trainer):
                 return data.to(**kwargs)
         return data
 
-    # handled by accelerate now (in model preparation)
-    # def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
-    #     """
-    #     A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-    #     arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
-    #     """
-    #     if self.use_cpu_amp:
-    #         ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
-    #     elif self.use_hpu_amp:
-    #         ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
-    #     else:
-    #         ctx_manager = contextlib.nullcontext()
-
-    #     # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
-    #     # Currently FP8 is enabled only for training.
-    #     if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
-    #         ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
-
-    #     return ctx_manager
-
     def training_step(
         self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
     ) -> torch.Tensor:
@@ -1659,9 +1639,9 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
-                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
-            )
+            assert not (
+                self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing
+            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)

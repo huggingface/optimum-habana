@@ -47,6 +47,7 @@ from transformers import (
     TrainerCallback,
     get_polynomial_decay_schedule_with_warmup,
     is_torch_available,
+    set_seed,
 )
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
@@ -80,7 +81,6 @@ from transformers.utils import (
     WEIGHTS_NAME,
     is_accelerate_available,
     is_safetensors_available,
-    set_seed,
 )
 from transformers.utils.hp_naming import TrialShortNamer
 
