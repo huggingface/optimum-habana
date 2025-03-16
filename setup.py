@@ -31,8 +31,8 @@ except Exception as error:
 INSTALL_REQUIRES = [
     "torch",
     "optimum",
-    "accelerate@git+https://github.com/huggingface/accelerate.git",
-    "transformers@git+https://github.com/huggingface/transformers.git",
+    "accelerate >= 1.5.0",
+    "transformers >= 4.48.0, < 4.50.0",
     "sentence-transformers == 3.3.1",
     "diffusers >= 0.31.0, < 0.32.0",
     "huggingface_hub >= 0.24.7",

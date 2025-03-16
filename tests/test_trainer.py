@@ -47,7 +47,6 @@ from transformers import (
     TrainerCallback,
     get_polynomial_decay_schedule_with_warmup,
     is_torch_available,
-    set_seed,
 )
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
@@ -85,6 +84,7 @@ from transformers.utils import (
 from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from optimum.utils import logging
 
 

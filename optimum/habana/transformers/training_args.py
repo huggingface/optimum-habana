@@ -22,6 +22,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from accelerate.state import AcceleratorState, PartialState
+from accelerate.utils import DistributedType
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
@@ -52,8 +54,6 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from accelerate.state import AcceleratorState, PartialState
-from accelerate.utils import DistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -331,15 +331,6 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
-        },
-    )
-
-    # Overriding ddp_backend to replace all possible backends by hccl
-    ddp_backend: Optional[str] = field(
-        default="hccl",
-        metadata={
-            "help": "The backend to be used for distributed training.",
-            "choices": ["hccl"],
         },
     )
 
