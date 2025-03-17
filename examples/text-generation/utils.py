@@ -466,7 +466,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-        with deepspeed.OnDevice(dtype=config.torch_dtype, device="meta"):
+        with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
                 hasattr(config, "rope_scaling")
                 and config.rope_scaling
