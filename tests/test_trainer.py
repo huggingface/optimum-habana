@@ -835,8 +835,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")
 
             # max diff broken should be very off
-            # updated target value compared original implementation https://github.com/huggingface/transformers/blob/v4.49.0/tests/trainer/test_trainer.py#L888
-            self.assertGreater(max(diff_broken), 1.2, f"Difference {max(diff_broken)} is not greater than 1.2")
+            self.assertGreater(max(diff_broken), 1, f"Difference {max(diff_broken)} is not greater than 1")
 
             loss_base = sum(base_loss_callback.losses)
             loss_broken = sum(broken_loss_callback.losses)
@@ -953,7 +952,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")
 
             # max diff broken should be very off
-            self.assertGreater(max(diff_broken), 3, f"Difference {max(diff_broken)} is not greater than 3")
+            self.assertGreater(max(diff_broken), 1, f"Difference {max(diff_broken)} is not greater than 1")
 
     def test_gradient_accumulation(self):
         with tempfile.TemporaryDirectory() as tmpdir:

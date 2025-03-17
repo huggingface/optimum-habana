@@ -995,12 +995,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.deepspeed:
                 accelerator_state_kwargs["use_deepspeed"] = True
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            # accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
+            # accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
