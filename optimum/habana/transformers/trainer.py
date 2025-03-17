@@ -1321,7 +1321,7 @@ class GaudiTrainer(Trainer):
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
 
-            self.log(logs, start_time)
+            self.log(logs, start_time=start_time)
 
         metrics = None
         if self.control.should_evaluate:
