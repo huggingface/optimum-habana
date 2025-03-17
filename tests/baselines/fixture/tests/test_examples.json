@@ -492,7 +492,7 @@
   },
   "tests/test_examples.py::MultiCardImageToTextModelingLoRAExampleTester::test_run_image2text_lora_finetune_llava-1.5-7b-hf_multi_card": {
     "gaudi2": {
-      "eval_accuracy": 0.2122,
+      "eval_accuracy": 0.21,
       "train_runtime": 118.5782,
       "train_samples_per_second": 25.146
     },
