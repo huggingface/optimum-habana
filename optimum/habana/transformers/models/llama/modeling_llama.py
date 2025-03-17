@@ -532,11 +532,11 @@ class GaudiLlamaAttention(LlamaAttention):
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
 
     def update_sincos_cache(self, seq_len):
-        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.rotary_emb.original_max_seq_len
         # This helps in avoiding creation of these caches during actual model forward pass and
         # reduce memory consumption and improve performance.
-        if seq_len > self.max_position_embeddings:
-            self.max_position_embeddings = seq_len
+        if seq_len > self.rotary_emb.original_max_seq_len:
+            self.rotary_emb.original_max_seq_len = seq_len
             _, _ = self.rotary_emb(self.get_k_proj_weight(), seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
