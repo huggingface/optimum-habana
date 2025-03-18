@@ -8,35 +8,31 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            (
-                "bert-base-uncased",
-                "Habana/bert-base-uncased",
-                "question-answering",
-                24,
-                8,
-                "run_qa.py",
-                "full_shard",
-            ),
-            (
-                "meta-llama/Llama-2-7b-hf",
-                "",
-                "language-modeling",
-                8,
-                8,
-                "run_lora_clm.py",
-                "auto_wrap",
-            ),
-        ],
-    }
-else:
-    # FSDP is not supported on Gaudi1
-    MODELS_TO_TEST = {"bf16": []}
+MODELS_TO_TEST = {
+    "bf16": [
+        (
+            "bert-base-uncased",
+            "Habana/bert-base-uncased",
+            "question-answering",
+            24,
+            8,
+            "run_qa.py",
+            "full_shard",
+        ),
+        (
+            "meta-llama/Llama-2-7b-hf",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+            "auto_wrap",
+        ),
+    ],
+}
 
 
 def _test_fsdp(
@@ -145,28 +141,27 @@ def _test_fsdp(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             train_samples_per_second=results["train_samples_per_second"],
         )
         if model_name == "bert-base-uncased":
             baseline.assertRef(
                 compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 eval_f1=results["eval_f1"],
             )
         else:
             baseline.assertRef(
                 compare=lambda actual, ref: actual <= (2 - ACCURACY_PERF_FACTOR) * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 train_loss=results["train_loss"],
             )
 
 
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FSDP is not supported on Gaudi1")
 @pytest.mark.parametrize("model_name, gaudi_config, task, bs_train, bs_eval, script, policy", MODELS_TO_TEST["bf16"])
 def test_fsdp_bf16(
     model_name: str,

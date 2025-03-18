@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.16.0.dev0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 
@@ -196,6 +196,8 @@ class ModelArguments:
     )
 
     def __post_init__(self):
+        if self.use_flash_attention:
+            os.environ["USE_FLASH_ATTENTION"] = "1"
         if self.flash_attention_recompute:
             assert self.use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
             os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
@@ -389,7 +391,7 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
-        attn_implementation="sdpa" if model_args.use_flash_attention else "eager",
+        attn_implementation=training_args.attn_implementation,
     )
     model = AutoModelForAudioClassification.from_pretrained(
         model_args.model_name_or_path,
