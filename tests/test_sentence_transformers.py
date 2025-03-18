@@ -57,7 +57,7 @@ def _test_sentence_transformers(
             _ = model.encode(sentences, batch_size=32)
             end_time = time.perf_counter()
             diff_time = end_time - start_time
-        easured_throughput0.append(len(sentences) / diff_time)
+        measured_throughput0.append(len(sentences) / diff_time)
     measured_throughput0.sort()
     measured_throughput = sum(measured_throughput0[2:8])/6
 
