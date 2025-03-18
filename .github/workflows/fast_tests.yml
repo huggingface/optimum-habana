@@ -1,12 +1,11 @@
 name: Unit and integration tests
 
-
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ main ]
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -16,50 +15,69 @@ jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
+
+    container:
+      image: docker://vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
+      options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES
+      env:
+        OMPI_MCA_btl_vader_single_copy_mechanism: none
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Pull image
+      - name: HL-SMI (1)
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+
+      - name: Extract HPU visible modules
+        run: |
+          export HABANA_VISIBLE_MODULES=$(hl-smi -Q module_id -f csv,noheader | tr '\n' ',' | sed 's/,$//')
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}" >> $GITHUB_ENV
+
+      - name: HL-SMI (2)
+        run: |
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Run tests
         run: |
-            docker run \
-            --rm \
-            -v $PWD:/root/workspace \
-            -v /scratch-1:/data \
-            --workdir=/root/workspace \
-            --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            -e HF_HOME=/data \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest \
-            /bin/bash tests/ci/fast_tests.sh
+          /bin/bash tests/ci/fast_tests.sh
+
   diffusers:
     name: Run tests for optimum.habana.diffusers
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
+ 
+    container:
+      image: docker://vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
+      options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES
+      env:
+        OMPI_MCA_btl_vader_single_copy_mechanism: none
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Pull image
+      - name: HL-SMI (1)
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+
+      - name: Extract HPU visible modules
+        run: |
+          export HABANA_VISIBLE_MODULES=$(hl-smi -Q module_id -f csv,noheader | tr '\n' ',' | sed 's/,$//')
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}" >> $GITHUB_ENV
+
+      - name: HL-SMI (2)
+        run: |
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Run tests
         run: |
-            docker run \
-            --rm \
-            -v $PWD:/root/workspace \
-            -v /scratch-1:/data \
-            --workdir=/root/workspace \
-            --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=$DOCKER_HABANA_VISIBLE_DEVICES \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            -e HF_HOME=/data \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.20.0/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest \
-            /bin/bash tests/ci/fast_tests_diffusers.sh
+          /bin/bash tests/ci/fast_tests_diffusers.sh
