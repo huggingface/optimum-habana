@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import random
 import subprocess
 import time
@@ -416,37 +415,3 @@ def get_device_count():
         return htexp.hpu.device_count()
     else:
         raise ValueError("No hpu is found avail on this system")
-
-class SetTrueOrFalseOrNone(argparse.Action):
-    """
-    Custom argparse action to handle a flag that can be set to True, False, or None.
-
-    This action allows an argument to be:
-    - Set to True if the flag is present without a value.
-    - Set to a boolean value (True or False) if explicitly provided.
-    - Set to None if the flag is not present.
-
-    The argument accepts the following values (case-insensitive):
-    - True values: 'true', '1', 't', 'y', 'yes'
-    - False values: 'false', '0', 'f', 'n', 'no'
-
-    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
-    """
-    def __call__(self, parser, namespace, values, option_string=None):
-        value_map = {
-            'true': True, '1': True, 't': True, 'y': True, 'yes': True,
-            'false': False, '0': False, 'f': False, 'n': False, 'no': False
-        }
-        if values is None:
-            setattr(namespace, self.dest, True)
-        elif isinstance(values, bool):
-            setattr(namespace, self.dest, values)
-        else:
-            value_lower = values.lower()
-            if value_lower in value_map:
-                setattr(namespace, self.dest, value_map[value_lower])
-            else:
-                raise argparse.ArgumentTypeError(
-                    f"Invalid value for {option_string}: {values}. "
-                    f"Expected one of: {', '.join(value_map.keys())}."
-                )
