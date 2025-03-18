@@ -78,13 +78,6 @@ UNSUPPORTED_ARGUMENTS = [
 ]
 
 
-# List of supported distribution strategies
-SUPPORTED_DISTRIBUTION_STRATEGIES = [
-    "ddp",  # default
-    "fast_ddp",
-]
-
-
 @dataclass
 class GaudiTrainingArguments(TrainingArguments):
     """
@@ -118,8 +111,6 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
             Maximum number of hpu graphs to be cached. Reduce to save device memory.
-        distribution_strategy (`str`, *optional*, defaults to `ddp`):
-            Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
@@ -206,16 +197,6 @@ class GaudiTrainingArguments(TrainingArguments):
     max_hpu_graphs: Optional[int] = field(
         default=None,
         metadata={"help": "Maximum number of HPU graphs to use."},
-    )
-
-    distribution_strategy: Optional[str] = field(
-        default="ddp",
-        metadata={
-            "help": "Determines how distributed data parallel training is achieved. "
-            "Can be either `ddp` (i.e. using `DistributedDataParallel`) or "
-            "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
-            "choices": ["ddp", "fast_ddp"],
-        },
     )
 
     context_parallel_size: Optional[int] = field(
@@ -371,11 +352,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if use_hpu_graphs and (not self.use_lazy_mode and not self.torch_compile_backend):
             raise ValueError(
                 "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
-            )
-
-        if self.distribution_strategy not in SUPPORTED_DISTRIBUTION_STRATEGIES:
-            raise ValueError(
-                f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
             )
 
         if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
@@ -613,8 +589,12 @@ class GaudiTrainingArguments(TrainingArguments):
             assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
+
         if self.torch_compile and self.torch_compile_backend is None:
-            self.torch_compile_backend = "inductor"
+            if self.use_habana:
+                self.torch_compile_backend = "hpu_backend"
+            else:
+                self.torch_compile_backend = "inductor"
 
         # accelerate integration for torch compile
         if self.torch_compile:

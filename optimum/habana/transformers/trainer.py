@@ -39,6 +39,8 @@ from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
     DistributedType,
+    GradientAccumulationPlugin,
+    TorchDynamoPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
     save_fsdp_model,
@@ -885,17 +887,6 @@ class GaudiTrainer(Trainer):
                     f" {steps_trained_in_current_epoch} batches in the first epoch."
                 )
 
-        # In multi-worker training: broadcast model parameters from worker:0 to all the others.
-        # This must be done manually unless DistributedDataParallel is used.
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
-            from ..distributed import all_reduce_gradients
-
-            logger.debug(
-                f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
-            )
-            for param in model.parameters():
-                torch.distributed.broadcast(param.data, src=0)
-
         # Update the references
         self.state.init_training_references(self, train_dataloader, max_steps, num_train_epochs, trial)
 
@@ -1055,15 +1046,6 @@ class GaudiTrainer(Trainer):
                     )
                     with context():
                         tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
-
-                    if (
-                        args.parallel_mode == ParallelMode.DISTRIBUTED
-                        and args.distribution_strategy == "fast_ddp"
-                        and do_sync_step
-                    ):
-                        all_reduce_gradients(
-                            model, use_hpu_graphs=True
-                        )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
 
                     if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                         # if loss is nan or inf simply add the average of previous logged losses
@@ -2506,6 +2488,7 @@ class GaudiTrainer(Trainer):
             else:
                 self.args.gradient_accumulation_steps = grad_acc_kwargs["num_steps"]
 
+        gradient_accumulation_plugin = GradientAccumulationPlugin(**grad_acc_kwargs)
         accelerator_config = self.args.accelerator_config.to_dict()
 
         # Extract dataloader config params from accelerator config
@@ -2525,13 +2508,18 @@ class GaudiTrainer(Trainer):
         # this would have been updated above, no need for it anymore
         accelerator_config.pop("gradient_accumulation_kwargs")
 
+        dynamo_plugin = TorchDynamoPlugin(
+            fullgraph=not self.args.use_regional_compilation,
+            backend=self.args.torch_compile_backend,
+            dynamic=self.args.compile_dynamic,
+            disable=not self.args.torch_compile,
+        )
+
         args = {
             "deepspeed_plugin": self.args.deepspeed_plugin,
-            # "gradient_accumulation_plugin": gradient_accumulation_plugin,
-            # "distribution_strategy": self.args.distribution_strategy,
-            # "dynamic": self.args.compile_dynamic,
+            "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "dataloader_config": dataloader_config,
-            # "use_regional_compilation": self.args.use_regional_compilation,
+            "dynamo_plugin": dynamo_plugin,
         }
 
         # create accelerator object
@@ -2725,3 +2713,17 @@ class GaudiTrainer(Trainer):
             except StopIteration:
                 break
         return batch_samples
+
+
+def compile_regions(self, model):
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            if self.dynamic is not None:
+                module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+            else:
+                module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
+            module.__dict__.pop("_parameters", None)
+            setattr(model, name, module)
+    else:
+        for _, module in model.named_children():
+            self.compile_regions(module)
