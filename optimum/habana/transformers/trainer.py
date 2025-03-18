@@ -40,7 +40,6 @@ from accelerate.utils import (
     DistributedDataParallelKwargs,
     DistributedType,
     GradientAccumulationPlugin,
-    TorchDynamoPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
     save_fsdp_model,
@@ -2508,18 +2507,10 @@ class GaudiTrainer(Trainer):
         # this would have been updated above, no need for it anymore
         accelerator_config.pop("gradient_accumulation_kwargs")
 
-        dynamo_plugin = TorchDynamoPlugin(
-            fullgraph=not self.args.use_regional_compilation,
-            backend=self.args.torch_compile_backend,
-            dynamic=self.args.compile_dynamic,
-            disable=not self.args.torch_compile,
-        )
-
         args = {
             "deepspeed_plugin": self.args.deepspeed_plugin,
             "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "dataloader_config": dataloader_config,
-            "dynamo_plugin": dynamo_plugin,
         }
 
         # create accelerator object
