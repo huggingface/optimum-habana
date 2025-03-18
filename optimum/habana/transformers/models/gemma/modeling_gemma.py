@@ -207,6 +207,7 @@ class GaudiGemmaAttention(GemmaAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.block_size = 4096
+        self.num_key_value_heads = config.num_key_value_heads
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
