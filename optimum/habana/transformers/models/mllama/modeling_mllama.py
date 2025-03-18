@@ -873,6 +873,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        logits_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1871
@@ -910,9 +911,12 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         hidden_states = outputs[0]
 
         if token_idx is None and num_logits_to_keep != 0:
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
         else:
-            logits = self.lm_head(hidden_states).float()
+            logits = self.lm_head(hidden_states)
+
+        if not logits_bf16:
+            logits = logits.float()
 
         loss = None
         if labels is not None:
@@ -970,6 +974,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        logits_bf16: Optional[bool] = False,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
@@ -1057,6 +1062,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            logits_bf16=logits_bf16,
         )
 
         return outputs
@@ -1138,6 +1144,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "token_idx": token_idx,
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "logits_bf16": kwargs.get("logits_bf16"),
             }
         )
 
