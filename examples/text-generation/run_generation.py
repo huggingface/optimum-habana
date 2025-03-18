@@ -348,6 +348,30 @@ def setup_parser(parser):
         default="inc_quantized_model",
         help="A path to save quantized checkpoint.",
     )
+<<<<<<< HEAD
+=======
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
+        "--pt2e_save",
+        action="store_true",
+        help="run pt2e calibration and save. If this argument is not used, but pt2e_path argument is used, load and inference with pt2e quantization will run.",
+    )
+    parser.add_argument(
+        "--pt2e_path",
+        default=None,
+        type=str,
+        help="specify the path where pt2e quantization related information will be saved, or loaded from",
+    )
+    parser.add_argument(
+        "--pt2e_quant_dtype",
+        type=str,
+        choices=["int8", "fp8_143", "fp8_152"],
+        default="fp8_143",
+        help="Set pt2e quantization data type. Available options: int8, fp8_143 [default], fp8_152",
+    )
+>>>>>>> 20e33163 ([SW-217601] pt2e quant changes into the main script (#191))
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
@@ -409,6 +433,19 @@ def setup_parser(parser):
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
+<<<<<<< HEAD
+=======
+
+    if args.use_mark_dynamic:
+        assert args.max_input_tokens == -1, (
+            "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
+        )
+
+    if args.pt2e_path:
+        assert not args.torch_compile, "Expected --torch.compile to be False when using pt2e_path!"
+        assert not args.use_hpu_graphs, "Expected --use_hpu_graphs to be False when using pt2e_path!"
+
+>>>>>>> 20e33163 ([SW-217601] pt2e quant changes into the main script (#191))
     return args
 
 
@@ -430,7 +467,7 @@ def main():
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile:
+    if args.torch_compile or args.pt2e_path:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
@@ -818,6 +855,10 @@ def main():
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

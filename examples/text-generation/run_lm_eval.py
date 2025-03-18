@@ -281,6 +281,10 @@ def main():
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
