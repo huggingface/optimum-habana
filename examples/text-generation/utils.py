@@ -158,7 +158,12 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
+        if (
+            args.quant_config
+            or args.load_quantized_model_with_inc
+            or args.local_quantized_inc_model_path
+            or args.pt2e_path
+        ):
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -339,6 +344,12 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
@@ -531,6 +542,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
