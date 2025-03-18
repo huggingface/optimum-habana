@@ -44,7 +44,6 @@ from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -582,8 +581,10 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 lora_scale=lora_scale,
             )
 
-            # Pad the prompt embeddings ( text prompt feature space ) to the nearest multiple of 128 to be compatible with softmax_hf8 kernels
-            pad_size = (ceil(prompt_embeds.shape[1] / 128) * 128) - prompt_embeds.shape[1]
+            # Pad the prompt embeddings ( text prompt feature space ) to the nearest multiple of the alignment size, the value which is compatible with softmax_hf8 kernels
+            kernel_input_alignment_size = int(256/prompt_embeds.element_size())
+
+            pad_size = (ceil(prompt_embeds.shape[1] / kernel_input_alignment_size) * kernel_input_alignment_size) - prompt_embeds.shape[1]
             prompt_embeds = torch.nn.functional.pad(prompt_embeds, (0, 0, 0, pad_size))
             negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
 
