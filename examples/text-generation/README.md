@@ -297,7 +297,7 @@ PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py  --world_s
 --bucket_size=128  \
 --use_flash_attention \
 --flash_attention_recompute \
---batch_size 246 \
+--batch_size 220 \
 --max_input_tokens 2048 \
 --max_new_tokens 2048 \
 --torch_compile \
