@@ -484,7 +484,7 @@
       "throughput": 1345.2369318328463
     },
     "gaudi3": {
-      "throughput": 4660.026752215663
+      "throughput": 5057.520303949097
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-70b-hf-4-207-False-2048-128]": {
