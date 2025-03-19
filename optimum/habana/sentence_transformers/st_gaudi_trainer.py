@@ -290,7 +290,7 @@ class SentenceTransformerGaudiTrainer(GaudiTrainer):
         if not training:
             return model
 
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
             kwargs = {}
 
             kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters

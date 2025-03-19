@@ -466,7 +466,7 @@ class GaudiTrainer(Trainer):
         if not training:
             return model
 
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
             kwargs = {}
 
             if self.args.ddp_find_unused_parameters is not None:
@@ -2606,7 +2606,7 @@ class GaudiTrainer(Trainer):
             # Optimization based on setting gradients to None (instead of zeroing them out) may only be used when gradients are not recorded using HPU graphs.
             # HPU graphs rely on fixed tensors - setting gradients to None will enforce their re-allocation during the backward pass each step.
             set_to_none = (
-                self.args.parallel_mode != ParallelMode.DISTRIBUTED or self.args.distribution_strategy == "ddp"
+                self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ) and not self.args.use_hpu_graphs_for_training
 
             try:
