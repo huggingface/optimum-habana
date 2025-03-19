@@ -344,6 +344,16 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 create_pr=create_pr,
             )
 
+    def to(self, *args, **kwargs):
+        """
+        Intercept to() method and disable gpu-hpu migration before sending to diffusers
+        """
+        kwargs["hpu_migration"] = False
+        return super().to(
+            *args,
+            **kwargs,
+        )
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         """
