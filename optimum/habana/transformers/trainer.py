@@ -2601,10 +2601,10 @@ class GaudiTrainer(Trainer):
             except StopIteration:
                 break
 
-            if count_num_items_in_batch:
+            if count_num_items_in_batch and "labels" in batch:
                 try:
                     if num_items_in_batch is None:
-                        num_items_in_batch = torch.tensor(0, device=batch["labels"].device)
+                        num_items_in_batch = 0
                     num_items_in_batch += (batch["labels"].ne(-100)).sum()
                 except (TypeError, AttributeError):
                     count_num_items_in_batch = False
