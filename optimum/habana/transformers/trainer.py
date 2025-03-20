@@ -1618,9 +1618,9 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
-                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
-            )
+            assert not (
+                self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing
+            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
@@ -2584,33 +2584,34 @@ class GaudiTrainer(Trainer):
     def get_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
         num_items_in_batch = None
-        count_num_items_in_batch = (
-            # num_items_in_batch is passed to model forward
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
-            self.model_accepts_loss_kwargs
-            # num_items_in_batch is passed to compute_loss_func
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
-            or self.compute_loss_func is not None
-            # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
-        )
 
         for _ in range(num_batches):
             try:
-                batch = next(epoch_iterator)
+                batch_samples.append(next(epoch_iterator))
             except StopIteration:
                 break
 
-            if count_num_items_in_batch and "labels" in batch:
-                try:
-                    if num_items_in_batch is None:
-                        num_items_in_batch = 0
-                    num_items_in_batch += (batch["labels"].ne(-100)).sum()
-                except (TypeError, AttributeError):
-                    count_num_items_in_batch = False
-                    num_items_in_batch = None
+        count_num_items_in_batch = (
+            len(batch_samples) > 0
+            and "labels" in batch_samples[0]
+            and (
+                # num_items_in_batch is passed to model forward
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
+                self.model_accepts_loss_kwargs
+                # num_items_in_batch is passed to compute_loss_func
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
+                or self.compute_loss_func is not None
+                # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
+            )
+        )
 
-            batch_samples.append(batch)
+        if count_num_items_in_batch:
+            # For now we don't support object detection
+            try:
+                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+            except (TypeError, AttributeError):
+                pass
 
         if self.args.average_tokens_across_devices and num_items_in_batch is not None:
             num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
