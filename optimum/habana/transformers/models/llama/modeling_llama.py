@@ -1146,7 +1146,7 @@ class GaudiLlamaModel(LlamaModel):
         layers = []
         for layer_idx in range(config.num_hidden_layers):
             layer = GaudiLlamaDecoderLayer(config, layer_idx)
-            if hasattr(config, "paralle_strategy") and config.parallel_strategy is not None:
+            if hasattr(config, "parallel_strategy") and config.parallel_strategy is not None:
                 layer = config.parallel_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
