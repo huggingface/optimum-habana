@@ -514,12 +514,12 @@ def test_text_generation_torch_compile_distributed(model_name: str, baseline, to
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
-    batch_size=64
-    max_input_tokens=128
+    batch_size = 64
+    max_input_tokens = 128
     if "llama-2-7b-hf" in model_name.lower():
-        #match the params from examples/readme
-        batch_size=220
-        max_input_tokens=2048
+        # match the params from examples/readme
+        batch_size = 220
+        max_input_tokens = 2048
 
     _test_text_generation(
         model_name,
