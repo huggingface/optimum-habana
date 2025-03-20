@@ -2616,7 +2616,6 @@ class GaudiTrainer(Trainer):
         if num_items_in_batch is not None:
             if self.args.average_tokens_across_devices:
                 num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
-            if torch.is_tensor(num_items_in_batch):
-                num_items_in_batch = num_items_in_batch.to(device)
+            num_items_in_batch = num_items_in_batch.to(device)
 
         return batch_samples, num_items_in_batch
