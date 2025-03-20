@@ -490,6 +490,9 @@ def test_text_generation_awq(
 
 @pytest.mark.parametrize("model_name, world_size, batch_size", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, world_size: int, batch_size: int, baseline, token):
+    if model_name == "Qwen/Qwen1.5-72B":
+        world_size = 4
+        os.environ["HABANA_VISIBLE_MODULES"] = "1,3,5,6"    
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
