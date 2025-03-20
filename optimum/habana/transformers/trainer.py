@@ -2598,22 +2598,19 @@ class GaudiTrainer(Trainer):
         for _ in range(num_batches):
             try:
                 batch = next(epoch_iterator)
-
-                if count_num_items_in_batch:
-                    try:
-                        if num_items_in_batch is None:
-                            num_items_in_batch = 0
-                        if torch.is_tensor(batch["labels"]):
-                            num_items_in_batch += (batch["labels"].ne(-100)).sum()
-                        else:
-                            num_items_in_batch += sum((label_id != -100 for label_id in batch["labels"]))
-                    except (TypeError, AttributeError):
-                        count_num_items_in_batch = False
-                        num_items_in_batch = None
-
-                batch_samples.append(batch)
             except StopIteration:
                 break
+
+            if count_num_items_in_batch:
+                try:
+                    if num_items_in_batch is None:
+                        num_items_in_batch = torch.tensor(0, device=batch["labels"].device)
+                    num_items_in_batch += (batch["labels"].ne(-100)).sum()
+                except (TypeError, AttributeError):
+                    count_num_items_in_batch = False
+                    num_items_in_batch = None
+
+            batch_samples.append(batch)
 
         if self.args.average_tokens_across_devices and num_items_in_batch is not None:
             num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
