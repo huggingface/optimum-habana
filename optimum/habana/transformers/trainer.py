@@ -953,7 +953,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
+                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches, args.device)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1618,9 +1618,9 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (
-                self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing
-            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
+            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
+            )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
@@ -2581,7 +2581,7 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_batch_samples(self, epoch_iterator, num_batches):
+    def get_batch_samples(self, epoch_iterator, num_batches, device):
         batch_samples = []
         num_items_in_batch = None
 
@@ -2617,6 +2617,6 @@ class GaudiTrainer(Trainer):
             num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
 
         if torch.is_tensor(num_items_in_batch):
-            num_items_in_batch = num_items_in_batch.item()
+            num_items_in_batch = num_items_in_batch.to(device)
 
         return batch_samples, num_items_in_batch
