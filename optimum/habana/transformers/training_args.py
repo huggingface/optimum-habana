@@ -808,7 +808,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.use_cpu:
             self.dataloader_pin_memory = False
 
-        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+        if self.dataloader_num_workers < 1 and self.dataloader_prefetch_factor is not None:
             raise ValueError(
                 "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
                 " when --dataloader_num_workers > 1."

@@ -917,17 +917,6 @@ class GaudiTrainer(Trainer):
         else:
             self.log_evaluate_save_time = None
 
-        # Calculate the number of items in each batch for all epochs
-        num_items_in_batches = self.get_num_items_in_batches(
-            args,
-            epochs_trained,
-            num_train_epochs,
-            train_dataloader,
-            len_dataloader,
-            num_examples,
-            steps_trained_in_current_epoch,
-        )
-
         hb_profiler = HabanaProfile(
             warmup=self.args.profiling_warmup_steps,
             active=self.args.profiling_steps,
@@ -981,8 +970,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples = self.get_iterator_batch_samples(epoch_iterator, num_batches)
-                num_items_in_batch = num_items_in_batches[epoch][update_step]
+                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1635,9 +1623,9 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
-                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
-            )
+            assert not (
+                self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing
+            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
@@ -2616,105 +2604,44 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_num_items_in_batches(
-        self,
-        args,
-        epochs_trained,
-        num_train_epochs,
-        train_dataloader,
-        len_dataloader,
-        num_examples,
-        steps_trained_in_current_epoch,
-    ):
-        """
-        Calculate the number of items in each batch for all epochs during training.
-        """
-        steps_in_epoch = (
-            len_dataloader if len_dataloader is not None else args.max_steps * args.gradient_accumulation_steps
+    def get_batch_samples(self, epoch_iterator, num_batches):
+        batch_samples = []
+        num_items_in_batch = None
+        count_num_items_in_batch = (
+            # num_items_in_batch is passed to model forward
+            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
+            self.model_accepts_loss_kwargs
+            # num_items_in_batch is passed to compute_loss_func
+            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
+            or self.compute_loss_func is not None
+            # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
+            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
         )
 
-        remainder = num_examples % args.gradient_accumulation_steps
-        if remainder == 0:
-            remainder = args.gradient_accumulation_steps
-
-        total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
-        if args.gradient_accumulation_steps == 1:
-            total_updates -= 1
-        global_step = 0
-
-        num_items_in_batches = []
-        for epoch in range(epochs_trained, num_train_epochs):
-            if epoch == epochs_trained and steps_trained_in_current_epoch > 0:
-                epoch_dataloader = skip_first_batches(train_dataloader, steps_trained_in_current_epoch)
-            else:
-                epoch_dataloader = train_dataloader
-
-            if hasattr(epoch_dataloader, "set_epoch"):
-                epoch_dataloader.set_epoch(epoch)
-
-            epoch_iterator = iter(epoch_dataloader)
-            try:
-                first_batch = next(epoch_iterator)
-            except StopIteration:
-                break
-            # Check if the batch contains "labels" (once per epoch)
-            if "labels" not in first_batch:
-                num_items_in_batches.append([None] * total_updates)
-                continue
-
-            device = first_batch["labels"].device
-
-            # Reset the iterator
-            epoch_iterator = iter(epoch_dataloader)
-
-            num_items_in_batches.append([])
-            for update_step in range(total_updates):
-                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-
-                num_items_in_batch = 0
-                for _ in range(num_batches):
-                    try:
-                        batch = next(epoch_iterator)
-                        num_items_in_batch += (batch["labels"].ne(-100)).sum().item()
-                    except StopIteration:
-                        break
-
-                if self.args.average_tokens_across_devices and num_items_in_batch > 0:
-                    num_items_in_batch = torch.tensor(num_items_in_batch, device=device)
-                    num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
-
-                # Set to None if no items in batch
-                if num_items_in_batch == 0:
-                    num_items_in_batch = None
-
-                num_items_in_batches[epoch].append(num_items_in_batch)
-                global_step += 1
-
-            # For iterable datasets, don't do more than max_steps steps
-            if len_dataloader is None and global_step >= args.max_steps:
-                break
-
-        return num_items_in_batches
-
-    def get_iterator_batch_samples(self, epoch_iterator, num_batches):
-        batch_samples = []
         for _ in range(num_batches):
             try:
-                batch_samples += [next(epoch_iterator)]
+                batch = next(epoch_iterator)
+
+                if count_num_items_in_batch:
+                    try:
+                        if num_items_in_batch is None:
+                            num_items_in_batch = 0
+                        if torch.is_tensor(batch["labels"]):
+                            num_items_in_batch += (batch["labels"].ne(-100)).sum()
+                        else:
+                            num_items_in_batch += sum((label_id != -100 for label_id in batch["labels"]))
+                    except (TypeError, AttributeError):
+                        count_num_items_in_batch = False
+                        num_items_in_batch = None
+
+                batch_samples.append(batch)
             except StopIteration:
                 break
-        return batch_samples
 
+        if self.args.average_tokens_across_devices and num_items_in_batch is not None:
+            num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
 
-def compile_regions(self, model):
-    if isinstance(model, torch.nn.ModuleList):
-        for name, module in model.named_children():
-            if self.dynamic is not None:
-                module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
-            else:
-                module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
-            module.__dict__.pop("_parameters", None)
-            setattr(model, name, module)
-    else:
-        for _, module in model.named_children():
-            self.compile_regions(module)
+        if torch.is_tensor(num_items_in_batch):
+            num_items_in_batch = num_items_in_batch.item()
+
+        return batch_samples, num_items_in_batch
