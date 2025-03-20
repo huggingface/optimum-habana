@@ -180,7 +180,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspe
 
 To run Moonlight-16B-A3B (a DeepSeek-V3 like model) inference on a Gaudi2 card use the following command:
 ```bash
-PT_HPU_LAZY_MODE=1 python3 ./run_generation.py \
+python3 ./run_generation.py \
 --model_name_or_path moonshotai/Moonlight-16B-A3B \
 --bf16 \
 --trim_logits \
