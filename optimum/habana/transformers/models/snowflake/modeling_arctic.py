@@ -38,6 +38,7 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache
+from transformers.generation import GenerationMixin
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -399,11 +400,7 @@ class ArcticAttention(nn.Module):
         Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
         """
         if self.config.rope_scaling is None:
-            self.rotary_emb = GaudiLlamaRotaryEmbedding(
-                self.head_dim,
-                max_position_embeddings=self.max_position_embeddings,
-                base=self.rope_theta,
-            )
+            self.rotary_emb = GaudiLlamaRotaryEmbedding(config=self.config)
         else:
             scaling_type = self.config.rope_scaling["type"]
             scaling_factor = self.config.rope_scaling["factor"]
@@ -1175,7 +1172,7 @@ class ArcticModel(ArcticPreTrainedModel):
         )
 
 
-class ArcticForCausalLM(ArcticPreTrainedModel):
+class ArcticForCausalLM(ArcticPreTrainedModel, GenerationMixin):
     # TODO(jeffra): update _keys_to_ignore_on_load_unexpected with expert keys not relevant for this rank
     _keys_to_ignore_on_load_unexpected = [
         r"model\.layers\.\d+\.block_sparse_moe\.experts\.\d+\.w\d+\.weight"
