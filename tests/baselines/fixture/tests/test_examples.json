@@ -485,7 +485,7 @@
       "train_samples_per_second": 11.8
     },
     "gaudi3": {
-      "eval_accuracy": 0.6910165783279163,
+      "eval_accuracy": 0.6,
       "train_runtime": 273.7778,
       "train_samples_per_second": 17.93
     }
