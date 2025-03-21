@@ -22,6 +22,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from accelerate.state import AcceleratorState, PartialState
+from accelerate.utils import DistributedType
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
@@ -52,8 +54,6 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -75,13 +75,6 @@ UNSUPPORTED_ARGUMENTS = [
     "tf32",
     "tpu_metrics_debug",
     "tpu_num_cores",
-]
-
-
-# List of supported distribution strategies
-SUPPORTED_DISTRIBUTION_STRATEGIES = [
-    "ddp",  # default
-    "fast_ddp",
 ]
 
 
@@ -118,8 +111,6 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
             Maximum number of hpu graphs to be cached. Reduce to save device memory.
-        distribution_strategy (`str`, *optional*, defaults to `ddp`):
-            Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
@@ -206,16 +197,6 @@ class GaudiTrainingArguments(TrainingArguments):
     max_hpu_graphs: Optional[int] = field(
         default=None,
         metadata={"help": "Maximum number of HPU graphs to use."},
-    )
-
-    distribution_strategy: Optional[str] = field(
-        default="ddp",
-        metadata={
-            "help": "Determines how distributed data parallel training is achieved. "
-            "Can be either `ddp` (i.e. using `DistributedDataParallel`) or "
-            "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
-            "choices": ["ddp", "fast_ddp"],
-        },
     )
 
     context_parallel_size: Optional[int] = field(
@@ -334,15 +315,6 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    # Overriding ddp_backend to replace all possible backends by hccl
-    ddp_backend: Optional[str] = field(
-        default="hccl",
-        metadata={
-            "help": "The backend to be used for distributed training.",
-            "choices": ["hccl"],
-        },
-    )
-
     # Use this to override default attn_implementation in transformers
     attn_implementation: Optional[str] = field(
         default="eager",
@@ -380,11 +352,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if use_hpu_graphs and (not self.use_lazy_mode and not self.torch_compile_backend):
             raise ValueError(
                 "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
-            )
-
-        if self.distribution_strategy not in SUPPORTED_DISTRIBUTION_STRATEGIES:
-            raise ValueError(
-                f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
             )
 
         if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
@@ -622,8 +589,12 @@ class GaudiTrainingArguments(TrainingArguments):
             assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
+
         if self.torch_compile and self.torch_compile_backend is None:
-            self.torch_compile_backend = "inductor"
+            if self.use_habana:
+                self.torch_compile_backend = "hpu_backend"
+            else:
+                self.torch_compile_backend = "inductor"
 
         # accelerate integration for torch compile
         if self.torch_compile:
@@ -632,6 +603,10 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[prefix + "BACKEND"] = self.torch_compile_backend
             if self.torch_compile_mode is not None:
                 os.environ[prefix + "MODE"] = self.torch_compile_mode
+            if self.compile_dynamic is not None:
+                os.environ[prefix + "USE_DYNAMIC"] = strtobool(self.compile_dynamic)
+            if self.use_regional_compilation:
+                os.environ[prefix + "USE_FULLGRAPH"] = "false"  # default is true
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
@@ -833,7 +808,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.use_cpu:
             self.dataloader_pin_memory = False
 
-        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+        if self.dataloader_num_workers < 1 and self.dataloader_prefetch_factor is not None:
             raise ValueError(
                 "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
                 " when --dataloader_num_workers > 1."
@@ -955,22 +930,22 @@ class GaudiTrainingArguments(TrainingArguments):
                 "use_configured_state", False
             )
         if accelerator_state_kwargs["use_configured_state"]:
-            if GaudiPartialState._shared_state == {}:
+            if PartialState._shared_state == {}:
                 raise ValueError(
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
-            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
-            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
+            self.distributed_state = PartialState(cpu=self.use_cpu)
+            if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
                     "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
-            GaudiPartialState._reset_state()
+            AcceleratorState._reset_state()
+            PartialState._reset_state()
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
@@ -1004,12 +979,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.deepspeed:
                 accelerator_state_kwargs["use_deepspeed"] = True
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
             else:
                 accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            # accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
+            # accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
@@ -1023,7 +998,7 @@ class GaudiTrainingArguments(TrainingArguments):
             use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
             if use_deepspeed:
                 os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
+            self.distributed_state = PartialState(**accelerator_state_kwargs)
             if use_deepspeed:
                 del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
@@ -1039,7 +1014,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
             )
 
-        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
+        if self.distributed_state.distributed_type == DistributedType.NO:
             self._n_gpu = 0
 
         return device

@@ -105,13 +105,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         self._test_gaudi_trainer_distributed()
 
     def test_gaudi_trainer_distributed_hpu_graphs(self):
-        self._test_gaudi_trainer_distributed(
-            {
-                "use_hpu_graphs_for_training": "",
-                "use_hpu_graphs_for_inference": "",
-                "distribution_strategy": "fast_ddp",
-            }
-        )
+        self._test_gaudi_trainer_distributed({"use_hpu_graphs_for_training": "", "use_hpu_graphs_for_inference": ""})
 
 
 if __name__ == "__main__":

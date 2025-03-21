@@ -89,22 +89,12 @@ To cope with such host-bound workloads, you may want to try enabling the _HPU Gr
 To do so, specify `--use_hpu_graphs_for_training True`.
 This option will wrap the model in [`habana_frameworks.torch.hpu.ModuleCacher`](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/HPU_Graphs_Training.html#training-loop-with-modulecacher), which automatically records _HPU Graphs_ on the model's usage.
 
-For multi-worker distributed training, you also need to specify `--distribution_strategy fast_ddp`.
-This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
-
 <Tip warning={true}>
 
 Use with caution: currently using HPU Graphs for training may not support all the possible cases.
 However, the potential performance gain could be dramatic!
 
 </Tip>
-
-
-## Fast DDP
-
-For distributed training on several devices, you can also specify `--distribution_strategy fast_ddp`.
-This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
-
 
 ## Pipelining Forward and Backward Passes
 

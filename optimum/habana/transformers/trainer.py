@@ -34,10 +34,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Ty
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-from accelerate import skip_first_batches
+from accelerate import Accelerator, skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
+    DistributedType,
+    GradientAccumulationPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
     save_fsdp_model,
@@ -87,7 +89,7 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
+from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.utils import (
     ADAPTER_CONFIG_NAME,
     ADAPTER_SAFE_WEIGHTS_NAME,
@@ -107,8 +109,7 @@ from transformers.utils.deprecation import deprecate_kwarg
 
 from optimum.utils import logging
 
-from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
+from ..distributed import parallel_state
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -219,7 +220,7 @@ class GaudiTrainer(Trainer):
         self,
         model: Union[PreTrainedModel, torch.nn.Module] = None,
         gaudi_config: GaudiConfig = None,
-        args: TrainingArguments = None,
+        args: GaudiTrainingArguments = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Union[Dataset, IterableDataset, "datasets.Dataset"]] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset], "datasets.Dataset"]] = None,
@@ -308,6 +309,7 @@ class GaudiTrainer(Trainer):
                 except ImportError as error:
                     error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
                     raise error
+
                 if self.gaudi_config.use_dynamic_shapes:
                     hthpu.enable_dynamic_shape()
                 else:
@@ -464,7 +466,7 @@ class GaudiTrainer(Trainer):
         if not training:
             return model
 
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
             kwargs = {}
 
             if self.args.ddp_find_unused_parameters is not None:
@@ -736,9 +738,34 @@ class GaudiTrainer(Trainer):
 
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
+            # Is this necessary ? why is it not in acceleate ?
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.is_fp8_enabled:
-                FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
+            if self.accelerator.state.mixed_precision == "fp8":
+                import intel_transformer_engine as te
+
+                def _gradient_checkpointing_wrap(func, *args, **kwargs):
+                    """
+                    `_gradient_checkpointing_func` always takes the function to be recomputed as the first argument. The function
+                    below wraps this first argument with `transformer_engine`'s `activation_checkpointing` context.
+                    """
+                    _args = list(args)
+                    _args[0] = te.distributed.activation_checkpointing()(_args[0])
+                    args = tuple(_args)
+
+                    return func(*args, **kwargs)
+
+                if hasattr(self.model, "gradient_checkpointing") and self.model.gradient_checkpointing:
+                    self.model._gradient_checkpointing_func = functools.partial(
+                        _gradient_checkpointing_wrap, self.model._gradient_checkpointing_func
+                    )
+                    return
+
+                for module in self.model.modules():
+                    if hasattr(module, "gradient_checkpointing") and module.gradient_checkpointing:
+                        module._gradient_checkpointing_func = functools.partial(
+                            _gradient_checkpointing_wrap, module._gradient_checkpointing_func
+                        )
+
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
             if hasattr(self.model, "gradient_checkpointing_disable"):
@@ -859,17 +886,6 @@ class GaudiTrainer(Trainer):
                     f" {steps_trained_in_current_epoch} batches in the first epoch."
                 )
 
-        # In multi-worker training: broadcast model parameters from worker:0 to all the others.
-        # This must be done manually unless DistributedDataParallel is used.
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
-            from ..distributed import all_reduce_gradients
-
-            logger.debug(
-                f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
-            )
-            for param in model.parameters():
-                torch.distributed.broadcast(param.data, src=0)
-
         # Update the references
         self.state.init_training_references(self, train_dataloader, max_steps, num_train_epochs, trial)
 
@@ -879,10 +895,11 @@ class GaudiTrainer(Trainer):
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
+
         grad_norm: Optional[float] = None
 
         # Gradient clipping
-        _should_compute_grad_norm: bool = self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED and (
+        _should_compute_grad_norm: bool = self.accelerator.distributed_type != DistributedType.DEEPSPEED and (
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
 
@@ -899,17 +916,6 @@ class GaudiTrainer(Trainer):
             self.log_evaluate_save_time = 0
         else:
             self.log_evaluate_save_time = None
-
-        # Calculate the number of items in each batch for all epochs
-        num_items_in_batches = self.get_num_items_in_batches(
-            args,
-            epochs_trained,
-            num_train_epochs,
-            train_dataloader,
-            len_dataloader,
-            num_examples,
-            steps_trained_in_current_epoch,
-        )
 
         hb_profiler = HabanaProfile(
             warmup=self.args.profiling_warmup_steps,
@@ -964,8 +970,7 @@ class GaudiTrainer(Trainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples = self.get_iterator_batch_samples(epoch_iterator, num_batches)
-                num_items_in_batch = num_items_in_batches[epoch][update_step]
+                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
                 for i, inputs in enumerate(batch_samples):
                     step += 1
 
@@ -1018,25 +1023,15 @@ class GaudiTrainer(Trainer):
                     if _should_update_inputs:
                         inputs.update(_inputs_update)
 
-                    # TODO: keep syncs for fast DDP?
                     # We explicitly want to avoid relying on `accelerator.accumulate` for generation training
                     context = (
                         functools.partial(self.accelerator.no_sync, model=model)
                         if i != len(batch_samples) - 1
-                        and self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED
+                        and self.accelerator.distributed_type != DistributedType.DEEPSPEED
                         else contextlib.nullcontext
                     )
                     with context():
                         tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
-
-                    if (
-                        args.parallel_mode == ParallelMode.DISTRIBUTED
-                        and args.distribution_strategy == "fast_ddp"
-                        and do_sync_step
-                    ):
-                        all_reduce_gradients(
-                            model, use_hpu_graphs=True
-                        )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
 
                     if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                         # if loss is nan or inf simply add the average of previous logged losses
@@ -1176,6 +1171,7 @@ class GaudiTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
+    # why is this rewritten ?
     def _load_best_model(self):
         logger.info(f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).")
         best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
@@ -1298,7 +1294,7 @@ class GaudiTrainer(Trainer):
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
@@ -1306,7 +1302,7 @@ class GaudiTrainer(Trainer):
             else:
                 if (
                     _grad_norm is not None
-                    and self.accelerator.distributed_type != GaudiDistributedType.FSDP
+                    and self.accelerator.distributed_type != DistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
                     grad_norm = _grad_norm.detach().item()
@@ -1338,6 +1334,7 @@ class GaudiTrainer(Trainer):
         if self.args.adjust_throughput:
             self.log_evaluate_save_time += time.perf_counter() - save_start
 
+    # we should do this in transformers directly
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
         if checkpoint is None:
@@ -1378,6 +1375,7 @@ class GaudiTrainer(Trainer):
                         "\nThis won't yield the same results as if the training had not been interrupted."
                     )
 
+    # in transformers directly
     def _save_rng_state(self, output_dir):
         # Save RNG state in non-distributed training
         rng_states = {
@@ -1559,7 +1557,6 @@ class GaudiTrainer(Trainer):
         """
         A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
         arguments, depending on the situation.
-
         Modified by Habana to enable using `autocast` on Gaudi devices.
         """
         if self.use_cpu_amp:
@@ -1568,11 +1565,6 @@ class GaudiTrainer(Trainer):
             ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
         else:
             ctx_manager = contextlib.nullcontext()
-
-        # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
-        # Currently FP8 is enabled only for training.
-        if self.accelerator.state.is_fp8_enabled and self.model.training:
-            ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
 
         return ctx_manager
 
@@ -1626,11 +1618,11 @@ class GaudiTrainer(Trainer):
 
         # Turning off loss scaling w.r.t. gradient accumulation when DeepSpeed is enabled
         # https://github.com/huggingface/transformers/pull/35808
-        if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+        if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
@@ -1641,15 +1633,8 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
-                # The precision used in backward pass should be same as the one used in forward pass.
-                # However when training with gradient_checkpointing and FP8 precision, recompute forward
-                # in backward does not automatically run with FP8 precision. In order to handle this,
-                # the backward is run in `fp8_autocast` context
-                with FP8ContextWrapper.create_fp8_context(self.accelerator.fp8_recipe_handler):
-                    self.accelerator.backward(loss, **kwargs)
-            else:
-                self.accelerator.backward(loss, **kwargs)
+            self.accelerator.backward(loss, **kwargs)
+
         return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
@@ -2489,6 +2474,7 @@ class GaudiTrainer(Trainer):
             else:
                 self.args.gradient_accumulation_steps = grad_acc_kwargs["num_steps"]
 
+        gradient_accumulation_plugin = GradientAccumulationPlugin(**grad_acc_kwargs)
         accelerator_config = self.args.accelerator_config.to_dict()
 
         # Extract dataloader config params from accelerator config
@@ -2510,14 +2496,38 @@ class GaudiTrainer(Trainer):
 
         args = {
             "deepspeed_plugin": self.args.deepspeed_plugin,
-            "distribution_strategy": self.args.distribution_strategy,
-            "dynamic": self.args.compile_dynamic,
+            "gradient_accumulation_plugin": gradient_accumulation_plugin,
             "dataloader_config": dataloader_config,
-            "use_regional_compilation": self.args.use_regional_compilation,
         }
 
         # create accelerator object
-        self.accelerator = GaudiAccelerator(**args)
+        self.accelerator = Accelerator(**args)
+
+        # we patch accelerator with the mpu here as it used to be interwined with the custom accelerator implementation
+        # should this be somewhere else ?
+        self.accelerator.mpu = parallel_state
+
+        context_parallel_size = self.args.context_parallel_size
+        if not is_deepspeed_available():
+            context_parallel_size = 1
+
+        if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not self.args.use_cpu:
+            context_parallel_size = self.args.context_parallel_size
+            if not is_deepspeed_available():
+                context_parallel_size = 1
+
+            if self.accelerator.mpu.is_unitialized():
+                self.accelerator.mpu.initialize_model_parallel(
+                    sequence_parallel_size=context_parallel_size, use_fp8=False
+                )
+            else:
+                if self.accelerator.mpu.get_sequence_parallel_world_size() != context_parallel_size:
+                    raise ValueError(
+                        "The initialized sequence parallel world size does not match the context parallel size."
+                    )
+                if self.accelerator.mpu.amax_reduction_is_initialized():
+                    logger.info("FP8 amax reduction group is already initialized.")
+
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 
@@ -2583,7 +2593,7 @@ class GaudiTrainer(Trainer):
             # Optimization based on setting gradients to None (instead of zeroing them out) may only be used when gradients are not recorded using HPU graphs.
             # HPU graphs rely on fixed tensors - setting gradients to None will enforce their re-allocation during the backward pass each step.
             set_to_none = (
-                self.args.parallel_mode != ParallelMode.DISTRIBUTED or self.args.distribution_strategy == "ddp"
+                self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ) and not self.args.use_hpu_graphs_for_training
 
             try:
@@ -2593,91 +2603,42 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_num_items_in_batches(
-        self,
-        args,
-        epochs_trained,
-        num_train_epochs,
-        train_dataloader,
-        len_dataloader,
-        num_examples,
-        steps_trained_in_current_epoch,
-    ):
-        """
-        Calculate the number of items in each batch for all epochs during training.
-        """
-        steps_in_epoch = (
-            len_dataloader if len_dataloader is not None else args.max_steps * args.gradient_accumulation_steps
-        )
-
-        remainder = num_examples % args.gradient_accumulation_steps
-        if remainder == 0:
-            remainder = args.gradient_accumulation_steps
-
-        total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
-        if args.gradient_accumulation_steps == 1:
-            total_updates -= 1
-        global_step = 0
-
-        num_items_in_batches = []
-        for epoch in range(epochs_trained, num_train_epochs):
-            if epoch == epochs_trained and steps_trained_in_current_epoch > 0:
-                epoch_dataloader = skip_first_batches(train_dataloader, steps_trained_in_current_epoch)
-            else:
-                epoch_dataloader = train_dataloader
-
-            if hasattr(epoch_dataloader, "set_epoch"):
-                epoch_dataloader.set_epoch(epoch)
-
-            epoch_iterator = iter(epoch_dataloader)
-            try:
-                first_batch = next(epoch_iterator)
-            except StopIteration:
-                break
-            # Check if the batch contains "labels" (once per epoch)
-            if "labels" not in first_batch:
-                num_items_in_batches.append([None] * total_updates)
-                continue
-
-            device = first_batch["labels"].device
-
-            # Reset the iterator
-            epoch_iterator = iter(epoch_dataloader)
-
-            num_items_in_batches.append([])
-            for update_step in range(total_updates):
-                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-
-                num_items_in_batch = 0
-                for _ in range(num_batches):
-                    try:
-                        batch = next(epoch_iterator)
-                        num_items_in_batch += (batch["labels"].ne(-100)).sum().item()
-                    except StopIteration:
-                        break
-
-                if self.args.average_tokens_across_devices and num_items_in_batch > 0:
-                    num_items_in_batch = torch.tensor(num_items_in_batch, device=device)
-                    num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
-
-                # Set to None if no items in batch
-                if num_items_in_batch == 0:
-                    num_items_in_batch = None
-
-                num_items_in_batches[epoch].append(num_items_in_batch)
-                global_step += 1
-
-            # For iterable datasets, don't do more than max_steps steps
-            if len_dataloader is None and global_step >= args.max_steps:
-                break
-
-        return num_items_in_batches
-
-    def get_iterator_batch_samples(self, epoch_iterator, num_batches):
+    def get_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
+        num_items_in_batch = None
+
         for _ in range(num_batches):
             try:
-                batch_samples += [next(epoch_iterator)]
+                batch_samples.append(next(epoch_iterator))
             except StopIteration:
                 break
-        return batch_samples
+
+        count_num_items_in_batch = (
+            len(batch_samples) > 0
+            and "labels" in batch_samples[0]
+            and (
+                # num_items_in_batch is passed to model forward
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
+                self.model_accepts_loss_kwargs
+                # num_items_in_batch is passed to compute_loss_func
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
+                or self.compute_loss_func is not None
+                # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
+            )
+        )
+
+        if count_num_items_in_batch:
+            try:
+                # For now we don't support object detection
+                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+            except (TypeError, AttributeError):
+                pass
+
+        if self.args.average_tokens_across_devices and num_items_in_batch is not None:
+            num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
+
+        if torch.is_tensor(num_items_in_batch):
+            num_items_in_batch = num_items_in_batch.to(self.accelerator.device)
+
+        return batch_samples, num_items_in_batch
