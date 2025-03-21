@@ -409,8 +409,7 @@ def main():
 
     stats = ""
     stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
-    if True:
-        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+    stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
     separator = "-" * len(stats)
     print()
     print("Stats:")
