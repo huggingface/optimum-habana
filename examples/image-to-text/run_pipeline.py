@@ -200,8 +200,29 @@ def main():
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        help="Allow PyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Run pipeline using Torch Compile mode",
+    )
+    parser.add_argument(
+        "--logits_bf16",
+        action="store_true",
+        help="Compute logits in bf16",
+    )
 
     args = parser.parse_args()
+
+    use_lazy_mode = True
+
+    if args.torch_compile:
+        args.use_hpu_graphs = False
+        use_lazy_mode = False
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
@@ -329,7 +350,7 @@ def main():
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
     generate_kwargs = {
-        "lazy_mode": True,
+        "lazy_mode": use_lazy_mode,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
