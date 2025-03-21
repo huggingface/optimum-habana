@@ -50,7 +50,7 @@ def _test_sentence_transformers(
 
     sentences = list(sentences)
 
-    measured_throughput0 =[]
+    measured_throughput0 = []
     for j in range(10):
         for i in range(2):
             start_time = time.perf_counter()
@@ -59,7 +59,7 @@ def _test_sentence_transformers(
             diff_time = end_time - start_time
         measured_throughput0.append(len(sentences) / diff_time)
     measured_throughput0.sort()
-    measured_throughput = sum(measured_throughput0[2:8])/6
+    measured_throughput = sum(measured_throughput0[2:8]) / 6
 
     # Only assert the last measured throughtput as the first iteration is used as a warmup
     baseline.assertRef(
