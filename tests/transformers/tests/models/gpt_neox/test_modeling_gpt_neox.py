@@ -38,11 +38,7 @@ if is_torch_available():
         GPTNeoXForTokenClassification,
         GPTNeoXModel,
     )
-    from transformers.models.gpt_neox.modeling_gpt_neox import (
-        GPTNeoXDynamicNTKScalingRotaryEmbedding,
-        GPTNeoXLinearScalingRotaryEmbedding,
-        GPTNeoXRotaryEmbedding,
-    )
+    from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXRotaryEmbedding
 
 
 class GPTNeoXModelTester:
@@ -213,6 +209,9 @@ class GPTNeoXModelTester:
         model.to(torch_device)
         model.eval()
         # We want this for SDPA, eager works with a `None` attention mask
+        # TODO: Starting v4.49, gpt_neox _attn_implementation is set to eager: https://github.com/huggingface/optimum-habana/blob/transformers_4_49/optimum/habana/transformers/models/modeling_all_models.py
+        # here we manually set it back to sdpa for testing
+        model.config._attn_implementation = "sdpa"
         assert model.config._attn_implementation == "sdpa", (
             "This test assumes the model to have the SDPA implementation for its attention calculations."
         )
@@ -351,32 +350,21 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     # Copied from tests.models.falcon.test_modeling_falcon.FalconModelTest.test_model_rope_scaling with Falcon->GPTNeoX, rope_theta->rotary_emb_base
     def test_model_rope_scaling(self):
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
-        hidden_size = config.hidden_size
-        num_heads = config.num_attention_heads
-        head_dim = hidden_size // num_heads
         scaling_factor = 10
         short_input_length = 10
         long_input_length = int(config.max_position_embeddings * 1.5)
         # Inputs
         x = torch.randn(1, dtype=torch.float32, device=torch_device)  # used exlusively to get the dtype and the device
         # Sanity check original RoPE
-        original_rope = GPTNeoXRotaryEmbedding(
-            head_dim,
-            max_position_embeddings=config.max_position_embeddings,
-            base=config.rotary_emb_base,
-        ).to(torch_device)
+        original_rope = GPTNeoXRotaryEmbedding(config).to(torch_device)
         original_cos_short, original_sin_short = original_rope(x, short_input_length)
         original_cos_long, original_sin_long = original_rope(x, long_input_length)
         torch.testing.assert_close(original_cos_short, original_cos_long[:short_input_length, :])
         torch.testing.assert_close(original_sin_short, original_sin_long[:short_input_length, :])
         # Sanity check linear RoPE scaling
         # New position "x" should match original position with index "x/scaling_factor"
-        linear_scaling_rope = GPTNeoXLinearScalingRotaryEmbedding(
-            head_dim,
-            max_position_embeddings=config.max_position_embeddings,
-            base=config.rotary_emb_base,
-            scaling_factor=scaling_factor,
-        ).to(torch_device)
+        config.rope_scaling = {"type": "linear", "factor": scaling_factor}
+        linear_scaling_rope = GPTNeoXRotaryEmbedding(config).to(torch_device)
         linear_cos_short, linear_sin_short = linear_scaling_rope(x, short_input_length)
         linear_cos_long, linear_sin_long = linear_scaling_rope(x, long_input_length)
         torch.testing.assert_close(linear_cos_short, linear_cos_long[:short_input_length, :])
@@ -388,12 +376,8 @@ class GPTNeoXModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
         # Sanity check Dynamic NTK RoPE scaling
         # Scaling should only be observed after a long input is fed. We can observe that the frequencies increase
         # with scaling_factor (or that `inv_freq` decreases)
-        ntk_scaling_rope = GPTNeoXDynamicNTKScalingRotaryEmbedding(
-            head_dim,
-            max_position_embeddings=config.max_position_embeddings,
-            base=config.rotary_emb_base,
-            scaling_factor=scaling_factor,
-        ).to(torch_device)
+        config.rope_scaling = {"type": "dynamic", "factor": scaling_factor}
+        ntk_scaling_rope = GPTNeoXRotaryEmbedding(config).to(torch_device)
         ntk_cos_short, ntk_sin_short = ntk_scaling_rope(x, short_input_length)
         ntk_cos_long, ntk_sin_long = ntk_scaling_rope(x, long_input_length)
         torch.testing.assert_close(ntk_cos_short, original_cos_short)
