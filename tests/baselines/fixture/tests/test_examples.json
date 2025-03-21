@@ -25,7 +25,7 @@
     "gaudi3": {
       "perplexity": 3.843924462719278,
       "train_runtime": 148.7151,
-      "train_samples_per_second": 32.357
+      "train_samples_per_second": 29.824
     }
   },
   "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_LlamaGuard-7b_deepspeed": {
@@ -160,8 +160,8 @@
     },
     "gaudi3": {
       "eval_accuracy": 0.9849333333333333,
-      "train_runtime": 73.8308,
-      "train_samples_per_second": 1155.964
+      "train_runtime": 86.4819,
+      "train_samples_per_second": 1043.6
     }
   },
   "tests/test_examples.py::ImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_single_card": {
@@ -177,8 +177,8 @@
     },
     "gaudi3": {
       "eval_accuracy": 0.9690666666666666,
-      "train_runtime": 47.9419,
-      "train_samples_per_second": 1164.009
+      "train_runtime": 51.3575,
+      "train_samples_per_second": 1100.39
     }
   },
   "tests/test_examples.py::MultiCardAudioClassificationExampleTester::test_run_audio_classification_ast-finetuned-speech-commands-v2_multi_card": {
@@ -428,8 +428,8 @@
       "train_samples_per_second": 13.499
     },
     "gaudi3": {
-      "train_runtime": 194.4848,
-      "train_samples_per_second": 16.454
+      "train_runtime": 211.3438,
+      "train_samples_per_second": 15.141
     }
   },
   "tests/test_examples.py::MultiCardImageClassificationExampleTester::test_run_image_classification_swin-base-patch4-window7-224-in22k_multi_card": {
@@ -445,8 +445,8 @@
     },
     "gaudi3": {
       "eval_accuracy": 0.9817333333333333,
-      "train_runtime": 74.7483,
-      "train_samples_per_second": 8253.709
+      "train_runtime": 106.7478,
+      "train_samples_per_second": 7042.508
     }
   },
   "tests/test_examples.py::MultiCardImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_multi_card": {
@@ -462,7 +462,7 @@
     },
     "gaudi3": {
       "eval_accuracy": 0.9677333333333333,
-      "train_runtime": 33.4011,
+      "train_runtime": 38.7232,
       "train_samples_per_second": 6636.054
     }
   },
@@ -515,8 +515,8 @@
     },
     "gaudi3": {
       "perplexity": 2.8534683742096933,
-      "train_runtime": 53.0805,
-      "train_samples_per_second": 1335.957
+      "train_runtime": 109.6454,
+      "train_samples_per_second": 994.854
     }
   },
   "tests/test_examples.py::MultiCardPPOExampleTester::test_ppo_llama-7b_multi_card": {
@@ -554,7 +554,7 @@
     },
     "gaudi3": {
       "eval_f1": 94.33668918864852,
-      "train_runtime": 153.0279,
+      "train_runtime": 184.2499,
       "train_samples_per_second": 3146.332
     }
   },
@@ -650,8 +650,8 @@
       "train_samples_per_second": 2845.068
     },
     "gaudi3": {
-      "eval_f1": 0.89198606271777,
-      "train_runtime": 61.3444,
+      "eval_f1": 0.8809523809523809,
+      "train_runtime": 88.3481,
       "train_samples_per_second": 1826.566
     }
   },
@@ -665,7 +665,7 @@
       "train_samples_per_second": 14124
     },
     "gaudi3": {
-      "train_runtime": 64.3878,
+      "train_runtime": 71.4956,
       "train_samples_per_second": 19625.412
     }
   },
@@ -698,9 +698,9 @@
       "train_samples_per_second": 1100.598
     },
     "gaudi3": {
-      "eval_f1": 0.8826446280991735,
-      "train_runtime": 74.0631,
-      "train_samples_per_second": 1652.436
+      "eval_f1": 0.8954,
+      "train_runtime": 78.5458,
+      "train_samples_per_second": 1674.509
     }
   }
 }
