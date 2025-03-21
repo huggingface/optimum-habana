@@ -201,19 +201,9 @@ def main():
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
     parser.add_argument(
-        "--sdp_on_bf16",
-        action="store_true",
-        help="Allow PyTorch to use reduced precision in the SDPA math backend",
-    )
-    parser.add_argument(
         "--torch_compile",
         action="store_true",
         help="Run pipeline using Torch Compile mode",
-    )
-    parser.add_argument(
-        "--logits_bf16",
-        action="store_true",
-        help="Compute logits in bf16",
     )
 
     args = parser.parse_args()
