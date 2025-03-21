@@ -1023,7 +1023,6 @@ class GaudiTrainer(Trainer):
                     if _should_update_inputs:
                         inputs.update(_inputs_update)
 
-                    # TODO: keep syncs for fast DDP?
                     # We explicitly want to avoid relying on `accelerator.accumulate` for generation training
                     context = (
                         functools.partial(self.accelerator.no_sync, model=model)
@@ -2607,41 +2606,39 @@ class GaudiTrainer(Trainer):
     def get_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
         num_items_in_batch = None
-        count_num_items_in_batch = (
-            # num_items_in_batch is passed to model forward
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
-            self.model_accepts_loss_kwargs
-            # num_items_in_batch is passed to compute_loss_func
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
-            or self.compute_loss_func is not None
-            # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
-            # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
-        )
 
         for _ in range(num_batches):
             try:
-                batch = next(epoch_iterator)
-
-                if count_num_items_in_batch:
-                    try:
-                        if num_items_in_batch is None:
-                            num_items_in_batch = 0
-                        if torch.is_tensor(batch["labels"]):
-                            num_items_in_batch += (batch["labels"].ne(-100)).sum()
-                        else:
-                            num_items_in_batch += sum((label_id != -100 for label_id in batch["labels"]))
-                    except (TypeError, AttributeError):
-                        count_num_items_in_batch = False
-                        num_items_in_batch = None
-
-                batch_samples.append(batch)
+                batch_samples.append(next(epoch_iterator))
             except StopIteration:
                 break
+
+        count_num_items_in_batch = (
+            len(batch_samples) > 0
+            and "labels" in batch_samples[0]
+            and (
+                # num_items_in_batch is passed to model forward
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3757
+                self.model_accepts_loss_kwargs
+                # num_items_in_batch is passed to compute_loss_func
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3773
+                or self.compute_loss_func is not None
+                # num_items_in_batch is also verified if (self.model_accepts_loss_kwargs or self.compute_loss_func)
+                # https://github.com/huggingface/transformers/blob/v4.49.0/src/transformers/trainer.py#L3790
+            )
+        )
+
+        if count_num_items_in_batch:
+            try:
+                # For now we don't support object detection
+                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+            except (TypeError, AttributeError):
+                pass
 
         if self.args.average_tokens_across_devices and num_items_in_batch is not None:
             num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum()
 
         if torch.is_tensor(num_items_in_batch):
-            num_items_in_batch = num_items_in_batch.item()
+            num_items_in_batch = num_items_in_batch.to(self.accelerator.device)
 
         return batch_samples, num_items_in_batch
