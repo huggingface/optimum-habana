@@ -47,6 +47,8 @@ from accelerate.utils import (
 )
 from huggingface_hub import upload_folder
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
+
+from optimum.utils import logging
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
@@ -103,8 +105,6 @@ from transformers.utils import (
     is_peft_available,
     is_safetensors_available,
 )
-
-from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
@@ -747,7 +747,7 @@ class GaudiTrainer(Trainer):
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.is_fp8_enabled:
+            if self.accelerator.state.mixed_precision == "fp8":
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
@@ -1540,7 +1540,7 @@ class GaudiTrainer(Trainer):
 
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
-        if self.accelerator.state.is_fp8_enabled and self.model.training:
+        if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
             ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
 
         return ctx_manager
@@ -1586,7 +1586,7 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
@@ -1597,7 +1597,7 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
+            if self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing:
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -2458,11 +2458,11 @@ class GaudiTrainer(Trainer):
         accelerator_config.pop("gradient_accumulation_kwargs")
 
         args = {
-            "deepspeed_plugin": self.args.deepspeed_plugin,
-            "gradient_accumulation_plugin": gradient_accumulation_plugin,
-            "distribution_strategy": self.args.distribution_strategy,
-            "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
+            "deepspeed_plugins": self.args.deepspeed_plugin,
+            "gradient_accumulation_plugin": gradient_accumulation_plugin,
+            # OH specific
+            "distribution_strategy": self.args.distribution_strategy,
             "use_regional_compilation": self.args.use_regional_compilation,
         }
 
