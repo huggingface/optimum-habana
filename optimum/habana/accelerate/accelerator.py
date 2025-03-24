@@ -33,21 +33,25 @@ from accelerate.scheduler import AcceleratedScheduler
 from accelerate.state import GradientState
 from accelerate.tracking import GeneralTracker, filter_trackers
 from accelerate.utils import (
+    AORecipeKwargs,
     AutocastKwargs,
     DataLoaderConfiguration,
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
+    FP8RecipeKwargs,
     GradientAccumulationPlugin,
     GradScalerKwargs,
     InitProcessGroupKwargs,
     KwargsHandler,
     LoggerType,
     MegatronLMPlugin,
+    MSAMPRecipeKwargs,
     PrecisionType,
     ProfileKwargs,
     ProjectConfiguration,
     RNGType,
+    TERecipeKwargs,
     check_os_kernel,
     convert_outputs_to_fp32,
     is_deepspeed_available,
@@ -195,42 +199,33 @@ class GaudiAccelerator(Accelerator):
         self.autocast_handler = None
         self.profile_handler = None
         self.has_lomo_optimizer = False
+        self.has_fp8_handler = False
 
+        found_handlers = set()
+        handler_class_to_attr = {
+            DistributedDataParallelKwargs: "ddp_handler",
+            GradScalerKwargs: "scaler_handler",
+            InitProcessGroupKwargs: "init_handler",
+            FP8RecipeKwargs: "fp8_recipe_handler",
+            AutocastKwargs: "autocast_handler",
+            ProfileKwargs: "profile_handler",
+            AORecipeKwargs: "ao_recipe_handler",
+            TERecipeKwargs: "te_recipe_handler",
+            MSAMPRecipeKwargs: "msamp_recipe_handler",
+        }
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
                 assert isinstance(handler, KwargsHandler), (
                     f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
                 )
-                if isinstance(handler, DistributedDataParallelKwargs):
-                    if self.ddp_handler is not None:
-                        raise ValueError("You can only pass one `DistributedDataParallelKwargs` in `kwargs_handler`.")
-                    else:
-                        self.ddp_handler = handler
-                elif isinstance(handler, GradScalerKwargs):
-                    if self.scaler_handler is not None:
-                        raise ValueError("You can only pass one `GradScalerKwargs` in `kwargs_handler`.")
-                    else:
-                        self.scaler_handler = handler
-                elif isinstance(handler, InitProcessGroupKwargs):
-                    if self.init_handler is not None:
-                        raise ValueError("You can only pass one `InitProcessGroupKwargs` in `kwargs_handler`.")
-                    else:
-                        self.init_handler = handler
-                elif isinstance(handler, GaudiFP8RecipeKwargs):
-                    if self.fp8_recipe_handler is not None:
-                        raise ValueError("You can only pass one `GaudiFP8RecipeKwargs` in `kwargs_handler`.")
-                    else:
-                        self.fp8_recipe_handler = handler
-                elif isinstance(handler, AutocastKwargs):
-                    if self.autocast_handler is not None:
-                        raise ValueError("You can only pass one `AutocastKwargs` in `kwargs_handler`.")
-                    else:
-                        self.autocast_handler = handler
-                elif isinstance(handler, ProfileKwargs):
-                    if self.profile_handler is not None:
-                        raise ValueError("You can only pass one `ProfileKwargs` in `kwargs_handler`.")
-                    else:
-                        self.profile_handler = handler
+                # Add the handler class to the set of found handlers
+                if handler.__class__ in found_handlers:
+                    raise ValueError(f"You can only pass one {handler.__class__} in `kwargs_handlers`.")
+                found_handlers.add(handler.__class__)
+                handler_attr = handler_class_to_attr[handler.__class__]
+                setattr(self, handler_attr, handler)
+                if "recipe_handler" in handler_attr and not self.has_fp8_handler:
+                    self.has_fp8_handler = True
 
         kwargs = self.init_handler.to_kwargs() if self.init_handler is not None else {}
         self.state = GaudiAcceleratorState(

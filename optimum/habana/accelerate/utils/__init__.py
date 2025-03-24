@@ -5,7 +5,6 @@ from .dataclasses import (
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
 )
-from .other import extract_model_from_parallel
 from .transformer_engine import (
     FP8ContextWrapper,
     convert_model,
