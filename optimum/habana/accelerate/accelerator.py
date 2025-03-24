@@ -61,7 +61,7 @@ if is_deepspeed_available():
 
 from ..distributed import parallel_state
 from .state import GaudiPartialState
-from .utils import GaudiDistributedType, GaudiDynamoBackend, convert_model
+from .utils import convert_model
 
 
 logger = get_logger(__name__)
@@ -162,7 +162,7 @@ class GaudiAccelerator(Accelerator):
         """
         if device_placement is None:
             device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
-            if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if not evaluation_mode and self.distributed_type == DistributedType.MULTI_HPU:
                 device_placement = None
         self._models.append(model)
 
@@ -223,13 +223,15 @@ class GaudiAccelerator(Accelerator):
         elif device_placement and not self.verify_device_map(model):
             model = model.to(self.device)
         if not evaluation_mode:
-            if self.distributed_type == GaudiDistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
+            ###############################################################################################################
+            if self.distributed_type == DistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
                     if self.ddp_handler is not None:
                         self.ddp_handler.register_comm_hook(model)
-            elif self.distributed_type == GaudiDistributedType.FSDP:
+            ###############################################################################################################
+            elif self.distributed_type == DistributedType.FSDP:
                 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 
                 # Check if the model is already a FSDP model due to `Manual Wrapping` and if so,
@@ -353,7 +355,7 @@ class GaudiAccelerator(Accelerator):
                     del self._models[-2]
                 self._models[-1] = model
         # torch.compile should be called last and only if the model isn't already compiled.
-        if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
+        if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
@@ -567,7 +569,7 @@ class GaudiAccelerator(Accelerator):
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
-            if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
+            if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:

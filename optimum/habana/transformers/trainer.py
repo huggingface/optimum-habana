@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-from accelerate import skip_first_batches
+from accelerate import DistributedType, skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
@@ -47,8 +47,6 @@ from accelerate.utils import (
 )
 from huggingface_hub import upload_folder
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
-
-from optimum.utils import logging
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
@@ -106,8 +104,10 @@ from transformers.utils import (
     is_safetensors_available,
 )
 
+from optimum.utils import logging
+
 from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
+from ..accelerate.utils import FP8ContextWrapper
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -903,7 +903,7 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
         _grad_norm: Optional[float] = None
-        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED and (
+        _should_compute_grad_norm: bool = not self.accelerator.distributed_type == DistributedType.DEEPSPEED and (
             # Gradient clipping
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
@@ -1280,7 +1280,7 @@ class GaudiTrainer(Trainer):
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
@@ -1288,7 +1288,7 @@ class GaudiTrainer(Trainer):
             else:
                 if (
                     _grad_norm is not None
-                    and self.accelerator.distributed_type != GaudiDistributedType.FSDP
+                    and self.accelerator.distributed_type != DistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
                     grad_norm = _grad_norm.detach().item()

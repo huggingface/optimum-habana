@@ -17,19 +17,20 @@ import os
 
 import accelerate
 import torch
+from accelerate import DistributedType
 from accelerate.state import PartialState
 from accelerate.utils import is_deepspeed_available, parse_flag_from_env
 
 from optimum.utils import logging
 
 from ..distributed import parallel_state
-from .utils import GaudiDistributedType
 
 
 logger = logging.get_logger()
 
 
-# TODO: Remove when minimize_memory is supported in upstream accelerate and sequence parallelism is managed in GaudiTrainer
+# TODO: Remove when minimize_memory is supported in upstream accelerate
+# and sequence/context parallelism is managed in GaudiTrainer or supported in upstream accelerate
 class GaudiPartialState(PartialState):
     """
     Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/state.py#L96
@@ -61,7 +62,7 @@ class GaudiPartialState(PartialState):
                             "DeepSpeed is not available, install it with: `pip install"
                             " git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0`."
                         )
-                    self.distributed_type = GaudiDistributedType.DEEPSPEED
+                    self.distributed_type = DistributedType.DEEPSPEED
                     import deepspeed
 
                     if world_size > 1:
@@ -74,12 +75,12 @@ class GaudiPartialState(PartialState):
                     logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
                 elif os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
-                    self.distributed_type = GaudiDistributedType.FSDP
+                    self.distributed_type = DistributedType.FSDP
                     if not torch.distributed.is_initialized():
                         torch.distributed.init_process_group(backend=self.backend, rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
                 else:
-                    self.distributed_type = GaudiDistributedType.MULTI_HPU
+                    self.distributed_type = DistributedType.MULTI_HPU
                     if not torch.distributed.is_initialized():
                         torch.distributed.init_process_group(backend=self.backend, rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
@@ -104,9 +105,9 @@ class GaudiPartialState(PartialState):
                         logger.info("FP8 amax reduction group is already initialized.")
             else:
                 self.distributed_type = (
-                    GaudiDistributedType.NO
+                    DistributedType.NO
                     if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "false"
-                    else GaudiDistributedType.DEEPSPEED
+                    else DistributedType.DEEPSPEED
                 )
                 self.num_processes = 1
                 self.process_index = self.local_process_index = 0
