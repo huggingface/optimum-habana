@@ -17,7 +17,7 @@ import os
 
 import accelerate
 import torch
-from accelerate.state import AcceleratorState, PartialState
+from accelerate.state import PartialState
 from accelerate.utils import is_deepspeed_available, parse_flag_from_env
 
 from optimum.utils import logging
@@ -120,4 +120,3 @@ class GaudiPartialState(PartialState):
 
 # monkey patching
 accelerate.PartialState = GaudiPartialState
-GaudiAcceleratorState = AcceleratorState

@@ -22,6 +22,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from accelerate.state import AcceleratorState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
@@ -45,7 +46,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
+from ..accelerate.state import GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
@@ -928,7 +929,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
+            AcceleratorState._reset_state()
             GaudiPartialState._reset_state()
             self.distributed_state = None
 
