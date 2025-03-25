@@ -224,7 +224,7 @@ class GaudiAccelerator(Accelerator):
             model = model.to(self.device)
         if not evaluation_mode:
             ###############################################################################################################
-            if self.distributed_type == DistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
+            if self.distributed_type == DistributedType.MULTI_HPU and self.distribution_strategy != "fast_ddp":
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
