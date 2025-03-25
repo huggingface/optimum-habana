@@ -50,6 +50,14 @@ from .clip import (
     GaudiCLIPVisionModel,
     GaudiCLIPVisionTransformer,
 )
+from .siglip import (
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
+)
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
@@ -165,6 +173,7 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
 from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
