@@ -589,8 +589,14 @@ class GaudiAccelerator(Accelerator):
                 else:
                     module.compile(**self.state.dynamo_plugin.to_kwargs())
         else:
-            for _, module in model.named_children():
-                self.compile_regions(module)
+            if model._modules:
+                for _, module in model.named_children():
+                    self.compile_regions(module)
+            else:
+                if self.dynamic is not None:
+                    model.compile(dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+                else:
+                    model.compile(**self.state.dynamo_plugin.to_kwargs())
 
     def _prepare_deepspeed(self, *args):
         import deepspeed
