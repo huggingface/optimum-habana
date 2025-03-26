@@ -210,25 +210,3 @@ PT_HPU_LAZY_MODE=1 python run_summarization.py \
     --bf16_full_eval
 ```
 
-<<<<<<< HEAD
-=======
-You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
-```bash
-PT_HPU_LAZY_MODE=1 python run_summarization.py \
-    --model_name_or_path facebook/bart-large-cnn \
-    --do_predict \
-    --dataset_name cnn_dailymail \
-    --dataset_config "3.0.0" \
-    --output_dir /tmp/tst-summarization \
-    --per_device_eval_batch_size 2 \
-    --overwrite_output_dir \
-    --predict_with_generate \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/bart \
-    --ignore_pad_token_for_loss False \
-    --pad_to_max_length \
-    --num_beams 1
-```
->>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))

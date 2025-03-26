@@ -37,19 +37,7 @@ The requirements for `run_openclip_vqa.py` can be installed with `openclip_requi
 pip install -r openclip_requirements.txt
 ```
 
-<<<<<<< HEAD
 By default, the script runs the sample outlined in [BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 notebook](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb). One can also can also run other OpenCLIP models by specifying model, classifier labels and image URL(s) like so:
-=======
-By default, the script runs the sample outlined in [BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 notebook](https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb) which can be run as follows:
-
-```bash
-PT_HPU_LAZY_MODE=1 python run_openclip_vqa.py \
-    --use_hpu_graphs \
-    --bf16
-```
-
-One can also run other OpenCLIP models by specifying model, classifier labels and image URL(s) like so:
->>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 
 ```bash
 PT_HPU_LAZY_MODE=1 python run_openclip_vqa.py \

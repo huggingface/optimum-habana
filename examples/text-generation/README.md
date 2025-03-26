@@ -645,14 +645,9 @@ After quantizing the model, we can save it to a local path.
 
 Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
 ```bash
-<<<<<<< HEAD
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 2 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-70B \
-=======
-QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json PT_HPU_LAZY_MODE=1 python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
->>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -702,30 +697,7 @@ You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc
 
 Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
 ```bash
-<<<<<<< HEAD
-python ../gaudi_spawn.py \
-=======
-PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8 \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
-
-Below is an example to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on 2 cards.
-
-```bash
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
->>>>>>> b56bafaf ([SW-218526] Updated Readme files for explicite lazy mode part2 (#177))
 --use_deepspeed --world_size 2 run_lm_eval.py \
 -o acc_load_fp8_model.txt \
 --model_name_or_path neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8 \
