@@ -147,12 +147,8 @@ python text_to_image_generation.py \
 Here is how to generate images and depth maps with two prompts on two HPUs:
 
 ```bash
-<<<<<<< HEAD
-python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
-=======
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
->>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 10 \
@@ -224,12 +220,8 @@ python text_to_image_generation.py \
 SDXL also supports distributed inferencing with Intel Gaudi accelerators. Below is an example of generating SDXL images in a distributed manner using two prompts on two HPUs:
 
 ```bash
-<<<<<<< HEAD
-python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
-=======
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
->>>>>>> c6d15a26 ([SW-218526] Updated Readme files for explicite lazy mode (#174))
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
     --prompts_2 "Red tone" "Blue tone" \
