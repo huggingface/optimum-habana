@@ -348,12 +348,8 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
-<<<<<<< HEAD
-=======
         "bucket_internal": args.bucket_internal,
         "bucket_size": args.bucket_size,
-        "do_sample": args.do_sample,
->>>>>>> ada07fc1 ([Llama-Vision] Add support for bucketing (#160))
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
     }
