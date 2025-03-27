@@ -917,6 +917,8 @@ class GaudiTrainer(Trainer):
             epoch_dataloader = train_dataloader
             if hasattr(epoch_dataloader, "set_epoch"):
                 epoch_dataloader.set_epoch(epoch)
+                epoch_iterator = iter(epoch_dataloader)
+                next(epoch_iterator)
 
             # Reset the past mems state at the beginning of each epoch if necessary.
             if args.past_index >= 0:
