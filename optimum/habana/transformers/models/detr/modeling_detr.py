@@ -1,7 +1,7 @@
 import torch
 from scipy.optimize import linear_sum_assignment
 from torch import nn
-from transformers.models.detr.modeling_detr import center_to_corners_format, generalized_box_iou
+from transformers.loss.loss_deformable_detr import center_to_corners_format, generalized_box_iou
 from transformers.utils import is_accelerate_available
 
 
@@ -138,6 +138,7 @@ def gaudi_DetrLoss_loss_boxes(self, outputs, targets, indices, num_boxes):
 
     losses = {}
     losses["loss_bbox"] = loss_bbox.sum() / num_boxes
+
     loss_giou = 1 - torch.diag(
         generalized_box_iou(center_to_corners_format(source_boxes), center_to_corners_format(target_boxes))
     )
@@ -153,7 +154,6 @@ def gaudi_DetrLoss_loss_cardinality(self, outputs, targets, indices, num_boxes):
     """
     logits = outputs["logits"]
     target_lengths = torch.as_tensor([len(v) for v in targets], device="cpu")
-
     # Count the number of predictions that are NOT "no-object" (which is the last class)
     card_pred = (logits.argmax(-1) != logits.shape[-1] - 1).sum(1)
     card_err = nn.functional.l1_loss(card_pred.to("cpu").float(), target_lengths.float())
@@ -175,7 +175,7 @@ def gaudi_DetrLoss_forward(self, outputs, targets):
 
     # Retrieve the matching between the outputs of the last layer and the targets
     device = outputs["logits"].device
-    target_copy = self.get_targets_without_no_objects(targets)
+    target_copy = self.gaudi_DetrLoss_get_targets_without_no_objects(targets)
     indices = self.matcher(outputs_without_aux, target_copy)
 
     # Compute the average number of target boxes across all nodes, for normalization purposes

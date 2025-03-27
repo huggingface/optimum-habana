@@ -15,7 +15,9 @@
 import inspect
 import warnings
 from collections import defaultdict
-from typing import Callable, Dict, List, Literal, Optional, Tuple, Union
+from contextlib import nullcontext
+from functools import partial
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -668,3 +670,51 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, nll_loss, outputs.aux_loss)
 
         return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, nll_loss)
+
+    def log(self, logs: Dict[str, float], **kwargs) -> None:
+        """
+        Changes:
+        - add `**kwargs` to the method arguments to make sure it's compatible with Transformers
+        """
+        # logs either has 'loss' or 'eval_loss'
+        train_eval = "train" if "loss" in logs else "eval"
+        # Add averaged stored metrics to logs
+        for key, metrics in self._stored_metrics[train_eval].items():
+            logs[key] = torch.tensor(metrics).mean().item()
+        del self._stored_metrics[train_eval]
+        return super().log(logs)
+
+    def compute_loss(
+        self,
+        model: Union[PreTrainedModel, nn.Module],
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        return_outputs=False,
+        num_items_in_batch=None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
+        """
+        Copied from DPOTrainer.compute_loss: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/dpo_trainer.py#L1393
+        - add num_items_in_batch to work with transformers 4.48
+        - use hpu autocast
+        """
+        if not self.use_dpo_data_collator:
+            warnings.warn(
+                "compute_loss is only implemented for DPODataCollatorWithPadding, and you passed a datacollator that is different than "
+                "DPODataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
+            )
+        compute_loss_context_manager = (
+            partial(torch.autocast, device_type="hpu", dtype=torch.bfloat16)
+            if self._peft_has_been_casted_to_bf16
+            else nullcontext
+        )
+
+        with compute_loss_context_manager():
+            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval="train")
+
+        # Make sure to move the loss to the device the original accumulating loss is at back in the `Trainer` class:
+        loss = loss.to(self.args.device)
+        # force log the metrics
+        self.store_metrics(metrics, train_eval="train")
+
+        if return_outputs:
+            return (loss, metrics)
+        return loss
