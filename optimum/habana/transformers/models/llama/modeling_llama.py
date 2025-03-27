@@ -1600,6 +1600,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         if num_logits_to_keep is not None:
             model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
+        if bucket_internal and reuse_cache is not True:
+            # update input with kv cache len to capture padding changes during internal bucketing without cache reuse
+            model_inputs["kv_cache_len"] = kwargs.get("kv_cache_len")
+
         model_inputs.update(
             {
                 "position_ids": position_ids,
