@@ -120,7 +120,7 @@ slow_tests_text_generation_example_1x: test_installs
 
 # Run subset of text-generation non-regression tests that require 2 Gaudi cards
 slow_tests_text_generation_example_2x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 	python -m pytest tests/test_text_generation_example.py -m x2 -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 4 Gaudi cards
