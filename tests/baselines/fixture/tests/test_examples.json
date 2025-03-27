@@ -30,8 +30,8 @@
   },
   "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_LlamaGuard-7b_deepspeed": {
     "gaudi2": {
-      "eval_f1": 0.8873483535528596,
-      "train_runtime": 62.4539,
+      "eval_f1": 0.8811,
+      "train_runtime": 68.1838,
       "train_samples_per_second": 342.169
     },
     "gaudi3": {
@@ -101,9 +101,9 @@
       "train_samples_per_second": 16.464
     },
     "gaudi2": {
-      "perplexity": 13.237754028004865,
-      "train_runtime": 206.5775,
-      "train_samples_per_second": 95.539
+      "perplexity": 13.1786,
+      "train_runtime": 191.6778,
+      "train_samples_per_second": 96.789
     },
     "gaudi3": {
       "perplexity": 13.155277331993139,
@@ -125,9 +125,9 @@
   },
   "tests/test_examples.py::DeepspeedSummarizationExampleTester::test_run_summarization_flan-t5-xxl_deepspeed": {
     "gaudi2": {
-      "eval_rougeLsum": 29.308,
-      "train_runtime": 155.86,
-      "train_samples_per_second": 28.387
+      "eval_rougeLsum": 27.9095,
+      "train_runtime": 141.557,
+      "train_samples_per_second": 32.239
     },
     "gaudi3": {
       "eval_rougeLsum": 28.0738,
@@ -154,9 +154,9 @@
       "train_samples_per_second": 212.722
     },
     "gaudi2": {
-      "eval_accuracy": 0.9850666666666666,
-      "train_runtime": 77.8934,
-      "train_samples_per_second": 826.766
+      "eval_accuracy": 0.9871,
+      "train_runtime": 74.7251,
+      "train_samples_per_second": 831.235
     },
     "gaudi3": {
       "eval_accuracy": 0.9849333333333333,
@@ -171,9 +171,9 @@
       "train_samples_per_second": 359.584
     },
     "gaudi2": {
-      "eval_accuracy": 0.9690666666666666,
-      "train_runtime": 54.9734,
-      "train_samples_per_second": 870.272
+      "eval_accuracy": 0.9696,
+      "train_runtime": 54.0092,
+      "train_samples_per_second": 886.623
     },
     "gaudi3": {
       "eval_accuracy": 0.9690666666666666,
@@ -412,9 +412,9 @@
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingVeraExampleTester::test_run_lora_clm_llama-7b_multi_card": {
     "gaudi2": {
-      "perplexity": 9.064502567217577,
-      "train_runtime": 312.9258,
-      "train_samples_per_second": 127.305
+      "perplexity": 2.6174,
+      "train_runtime": 312.3,
+      "train_samples_per_second": 125.798
     },
     "gaudi3": {
       "perplexity": 8.65669958765362,

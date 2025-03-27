@@ -584,7 +584,7 @@
             "eval_batch_size": 4,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 0.01,
+                    "learning_rate": 0.03,
                     "train_batch_size": 8,
                     "metrics": [
                         "perplexity",
@@ -593,7 +593,6 @@
                     ],
                     "extra_arguments": [
                         "--bf16",
-                        "--gradient_accumulation_steps 1",
                         "--eval_strategy no",
                         "--save_strategy no",
                         "--warmup_ratio  0.03",

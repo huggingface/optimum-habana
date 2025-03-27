@@ -2611,8 +2611,8 @@ class GaudiTrainer(Trainer):
         if count_num_items_in_batch:
             # For now we don't support object detection
             try:
-                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
-            except (TypeError, AttributeError):
+                num_items_in_batch = torch.cat(batch_samples).ne(-100).sum()
+            except (TypeError, AttributeError, RuntimeError):
                 pass
 
         if num_items_in_batch is not None:
