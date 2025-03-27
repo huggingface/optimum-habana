@@ -783,6 +783,7 @@ class GaudiQwen2Model(Qwen2Model):
                     use_cache,
                     cache_position,
                     None,
+                    None,
                     attn_softmax_bf16,
                     False,
                     use_flash_attention,
