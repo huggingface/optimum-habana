@@ -107,6 +107,7 @@ class HabanaModelAdapter(HFLM):
         backend: Literal["default", "causal", "seq2seq"] = "default",
         logits_cache: bool = True,
         add_bos_token: Optional[bool] = True,
+        prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
         **kwargs,
     ) -> None:
@@ -122,6 +123,7 @@ class HabanaModelAdapter(HFLM):
         self.pretrained = model
         self.peft = args.peft_model
         self.delta = delta
+        self.custom_prefix_token_id = prefix_token_id
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.logits_cache = logits_cache
