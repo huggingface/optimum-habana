@@ -18,5 +18,15 @@
       "train_loss": 0.9093,
       "train_samples_per_second": 85.016
     }
+  },
+  "tests/test_fsdp_examples.py::test_fsdp_bf16[ibm-granite/granite-3.1-8b-instruct--language-modeling-8-8-run_lora_clm.py-auto_wrap]": {
+    "gaudi2": {
+      "train_loss": 0.957,
+      "train_samples_per_second": 37.848
+    },
+    "gaudi3": {
+      "train_loss": 0.957,
+      "train_samples_per_second": 37.848
+    }
   }
 }
