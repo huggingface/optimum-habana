@@ -925,7 +925,7 @@ def main():
                 target_modules=finetune_args.ln_target_modules,
                 task_type=TaskType.CAUSAL_LM,
             )
-        if training_args.gradient_checkpointing:
+        if training_args.gradient_checkpointing or training_args.use_zero3_leaf_promotion:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16 and finetune_args.peft_type != "ia3":
@@ -934,6 +934,13 @@ def main():
         gaudi_config = GaudiConfig()
         gaudi_config.use_fused_adam = True
         gaudi_config.use_fused_clip_norm = True
+
+        if training_args.use_zero3_leaf_promotion and model.config.model_type == "llama":
+            from deepspeed.utils import set_z3_leaf_modules
+
+            from optimum.habana.transformers.models.llama.modeling_llama import GaudiLlamaDecoderLayer
+
+            set_z3_leaf_modules(lora_model, [GaudiLlamaDecoderLayer])
 
         # Initialize our Trainer
         trainer = GaudiTrainer(
