@@ -589,9 +589,14 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 image_embeds = self.visual(
                     pixel_values, grid_thw=image_grid_thw, use_flash_attention=use_flash_attention
                 )
-                image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+                # G3 WA (masked_scatter has perf issue, flatten for hpu graphs)
+                image_mask = (input_ids == self.config.image_token_id)
+                mbatch, mtokens = image_mask.size()
+                image_mask = image_mask.flatten(0, -1)
+                inputs_embeds = inputs_embeds.flatten(0,-2)
+                inputs_embeds[image_mask] = image_embeds
+                inputs_embeds = inputs_embeds.unflatten(0, [mbatch, mtokens])
 
             if pixel_values_videos is not None:
                 pixel_values_videos = pixel_values_videos.type(self.visual.get_dtype())
