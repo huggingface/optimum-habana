@@ -2,6 +2,8 @@
 DeepSeekV3 model configuration. Copied from https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/configuration_deepseek.py
 """
 
+import os
+
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
@@ -171,7 +173,7 @@ class DeepseekV3Config(PretrainedConfig):
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.moe_intermediate_size = moe_intermediate_size
-        self.num_hidden_layers = num_hidden_layers
+        self.num_hidden_layers = int(os.getenv("NUM_HIDDEN_LAYERS", num_hidden_layers))
         self.num_nextn_predict_layers = num_nextn_predict_layers
         self.num_attention_heads = num_attention_heads
         self.n_shared_experts = n_shared_experts
