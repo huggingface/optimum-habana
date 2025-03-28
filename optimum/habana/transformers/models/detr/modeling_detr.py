@@ -40,7 +40,7 @@ def gaudi_DetrLoss_get_targets_without_no_objects(self, targets):
             if x != self.num_classes:
                 entries.append(x)
         y = next(tcopy_iter)
-        y["class_labels"] = torch.as_tensor(entries)
+        y["class_labels"] = torch.as_tensor(entries, dtype=torch.int64)
         y["boxes"] = v["boxes"].to("cpu")[0 : len(y["class_labels"])]
     return target_copy
 
