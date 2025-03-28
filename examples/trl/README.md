@@ -7,6 +7,37 @@ First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```
+
+## GRPO Training
+
+Installing DeepSpeed
+
+```sh
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+```
+
+Runnig training
+
+```sh
+python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
+    --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+    --bf16 True \
+    --do_train \
+    --max_steps=500 \
+    --logging_steps=10 \
+    --save_steps=100 \
+    --per_device_train_batch_size=2 \
+    --per_device_eval_batch_size=1 \
+    --gradient_accumulation_steps=2 \
+    --learning_rate=1e-4 \
+    --lr_scheduler_type="cosine" \
+    --warmup_steps=10 \
+    --optim="paged_adamw_32bit" \
+    --use_habana \
+    --use_lazy_mode
+```
+
+
 ## Supervised Finetuning
 
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
