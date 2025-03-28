@@ -31,12 +31,13 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
     TrainerCallback,
     is_wandb_available,
+    Trainer
 )
+from optimum.habana.transformers.generation import GaudiGenerationConfig
 from transformers.utils import is_peft_available
 
 from trl.extras.profiling import profiling_context, profiling_decorator
@@ -410,7 +411,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # synchronize all processes after vLLM has been fully initialized.
             self.accelerator.wait_for_everyone()
         else:
-            self.generation_config = GenerationConfig(
+            self.generation_config = GaudiGenerationConfig(
                 max_new_tokens=self.max_completion_length,
                 do_sample=True,
                 pad_token_id=processing_class.pad_token_id,
@@ -605,7 +606,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         prompt_inputs = self.processing_class(
             text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
         )
-        prompt_inputs = super()._prepare_inputs(prompt_inputs)
+        prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
         if self.max_prompt_length is not None:

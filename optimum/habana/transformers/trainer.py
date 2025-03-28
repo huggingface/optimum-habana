@@ -1015,8 +1015,11 @@ class GaudiTrainer(Trainer):
 
                     # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
                     # lazy_mode for llama, qwen2, starcoder2 and mistral
+
+                    # FIXME: This is a temporary solution to avoid breaking the training loop
                     if _should_update_inputs:
-                        inputs.update(_inputs_update)
+                        for input in inputs:
+                            input.update(_inputs_update)
 
                     # TODO: keep syncs for fast DDP?
                     # We explicitly want to avoid relying on `accelerator.accumulate` for generation training
