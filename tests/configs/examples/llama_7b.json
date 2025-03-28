@@ -1201,7 +1201,7 @@
             "eval_batch_size": 4,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 0.01,
+                    "learning_rate": 0.03,
                     "train_batch_size": 8,
                     "metrics": [
                         "perplexity",
