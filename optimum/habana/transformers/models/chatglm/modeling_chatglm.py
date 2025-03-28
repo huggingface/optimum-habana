@@ -1292,7 +1292,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         rotary_pos_emb = rotary_pos_emb.transpose(0, 1).contiguous()
 
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, past_seen_tokens), dtype=torch.bool, device=inputs_embeds.device)
+            mask_len = past_seen_tokens if past_seen_tokens else seq_length
+            attention_mask = torch.ones((batch_size, mask_len), dtype=torch.bool, device=inputs_embeds.device)
 
         prefix_encoders = None
         if self.pre_seq_len > 0:
