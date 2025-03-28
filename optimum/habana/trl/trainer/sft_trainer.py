@@ -36,12 +36,12 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
-from trl.import_utils import is_peft_available
+from transformers.utils import is_peft_available
 from trl.trainer.utils import (
     ConstantLengthDataset,
-    DataCollatorForCompletionOnlyLM,
-    RichProgressCallback,
+    DataCollatorForCompletionOnlyLM
 )
+from trl.trainer.callbacks import RichProgressCallback
 
 
 if is_peft_available():
