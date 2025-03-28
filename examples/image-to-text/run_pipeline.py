@@ -234,8 +234,13 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
+    elif args.image_path is None and model_type == "llava_onevision":
+        args.image_path = [
+            "http://images.cocodataset.org/val2017/000000039769.jpg"
+        ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl", "llava_onevision"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -243,7 +248,7 @@ def main():
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "What is shown in this image?"},
+                            {"type": "text", "text": "Describe what is shown in this image?"},
                             {"type": "image"},
                         ],
                     }
@@ -356,7 +361,7 @@ def main():
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
 
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next", "llava_onevision"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -372,7 +377,7 @@ def main():
 
     # warm up
     for i in range(args.warmup):
-        generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+                generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
     if args.quant_config:
         finalize_quantization(generator.model)
