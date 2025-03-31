@@ -27,6 +27,9 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+> [!NOTE]
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for release 1.20 only.
+
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.

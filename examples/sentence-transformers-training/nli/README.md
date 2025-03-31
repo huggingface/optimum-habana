@@ -46,6 +46,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```bash
 python training_nli.py bert-base-uncased
 ```
+If you want to save the checkpoints for the model you need using `--saving_model_checkpoints` in the command and same for all examples below.
 
 ## Multi-card Training
 
@@ -66,16 +67,16 @@ Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 1
 python training_nli.py intfloat/e5-mistral-7b-instruct --peft --lora_target_module "q_proj" "k_proj" "v_proj" --learning_rate 1e-5
 ```
 
-## Multi-card Training with Deepspeed Zero2/3
+## Multi-card Training with Deepspeed Zero3
 
-Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can use the Zero2/Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we will use the Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
 
-Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero2.
+Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero3.
 
 ```bash
 python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_nli.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
 ```
-In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. To further reduce memory usage, change the stage to 3 (DeepSpeed Zero3) in the `ds_config.json` file.
+In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. 
 
 # Dataset
 

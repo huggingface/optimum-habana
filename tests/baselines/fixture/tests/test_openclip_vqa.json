@@ -5,6 +5,9 @@
     },
     "gaudi2": {
       "throughput": 1472
+    },
+    "gaudi3": {
+      "throughput": 1472
     }
   },
   "tests/test_openclip_vqa.py::test_openclip_vqa_bf16[microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224]": {
@@ -12,6 +15,9 @@
       "throughput": 1200
     },
     "gaudi2": {
+      "throughput": 1816
+    },
+    "gaudi3": {
       "throughput": 1816
     }
   }

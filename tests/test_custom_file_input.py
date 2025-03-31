@@ -8,10 +8,14 @@ from tempfile import TemporaryDirectory
 import pytest
 from transformers.testing_utils import slow
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 PATH_TO_RESOURCES = Path(__file__).resolve().parent.parent / "tests/resource"
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # gaudi2+
     MODEL_FILE_OPTIONS_TO_TEST = {
         "bf16": [
             (
