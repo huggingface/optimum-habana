@@ -183,7 +183,7 @@ class GaudiAcceleratorState(AcceleratorState):
         self.__dict__.update(GaudiPartialState._shared_state)
         self._check_initialized(mixed_precision, cpu)
         if not self.initialized:
-            self.deepspeed_plugin = None
+            self.deepspeed_plugins = None
             self.use_ipex = None
             mixed_precision = (
                 parse_choice_from_env("ACCELERATE_MIXED_PRECISION", "no")
@@ -197,7 +197,7 @@ class GaudiAcceleratorState(AcceleratorState):
                 "no" if self.distributed_type == GaudiDistributedType.DEEPSPEED else mixed_precision
             )
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
-                self.deepspeed_plugin = deepspeed_plugin
+                self.deepspeed_plugins = deepspeed_plugin
             if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" and not cpu:
                 if self._mixed_precision != "no":
                     fsdp_plugin.set_mixed_precision(self._mixed_precision)
