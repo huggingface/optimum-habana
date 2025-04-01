@@ -34,7 +34,7 @@ style: clean
 # Run unit and integration tests
 fast_tests:
 	python -m pip install .[tests]
-	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 # TODO enable when CI has more servers
 #	python -m pytest test_functional_text_generation_example.py
 
@@ -42,7 +42,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	python -m pytest tests/test_diffusers.py
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
@@ -93,12 +93,12 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
+	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion"
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"
@@ -107,8 +107,9 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
+	python -m pip install -r examples/text-generation/requirements_awq.txt
 	BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests
@@ -119,6 +120,11 @@ slow_tests_image_to_text_example: test_installs
 slow_tests_openclip_vqa_example: test_installs
 	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
 	python -m pytest tests/test_openclip_vqa.py
+
+# Run video comprehension tests
+slow_tests_video_llava_example: test_installs
+	python -m pip install -r examples/video-comprehension/requirements.txt
+	python -m pytest tests/test_video_llava.py
 
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)

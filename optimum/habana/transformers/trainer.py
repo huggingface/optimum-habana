@@ -158,7 +158,7 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple
     inputs_update: Dict = {}
 
     should_update_inputs = (getattr(model, "generation_config", None) is not None) and (
-        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan", "chatglm")
+        model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan", "chatglm", "deepseek_v2")
     )
     if should_update_inputs:
         if model.generation_config.attn_softmax_bf16:
@@ -1090,6 +1090,7 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
+
                     self._zero_model_grad(model)
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
@@ -1923,6 +1924,7 @@ class GaudiTrainer(Trainer):
             ):
                 self.start_time_after_warmup = time.time()
                 self.compilation_time = self.start_time_after_warmup - start_time_eval
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:

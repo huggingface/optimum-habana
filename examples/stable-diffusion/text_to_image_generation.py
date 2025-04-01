@@ -42,7 +42,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.15.0")
+check_optimum_habana_min_version("1.16.0")
 
 
 logger = logging.getLogger(__name__)
@@ -305,6 +305,12 @@ def main():
         default=None,
         help="The file with prompts (for large number of images generation).",
     )
+    parser.add_argument(
+        "--lora_scale",
+        type=float,
+        default=None,
+        help="A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.",
+    )
     args = parser.parse_args()
 
     if args.optimize and not args.use_habana:
@@ -380,6 +386,9 @@ def main():
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
+    if args.lora_scale is not None:
+        kwargs_call["lora_scale"] = args.lora_scale
+
     negative_prompts = args.negative_prompts
     if args.distributed:
         distributed_state = PartialState()
@@ -440,11 +449,8 @@ def main():
 
     kwargs_call["quant_mode"] = args.quant_mode
 
-    if args.quant_mode != "disable":
-        # Import htcore here to support model quantization
-        import habana_frameworks.torch.core as htcore  # noqa: F401
-
     # Instantiate a Stable Diffusion pipeline class
+    quant_config_path = os.getenv("QUANT_CONFIG")
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -475,7 +481,6 @@ def main():
             pipeline.unet.set_default_attn_processor(pipeline.unet)
             pipeline.to(torch.device("hpu"))
 
-            quant_config_path = os.getenv("QUANT_CONFIG")
             if quant_config_path:
                 import habana_frameworks.torch.core as htcore
                 from neural_compressor.torch.quantization import FP8Config, convert, prepare
@@ -503,9 +508,6 @@ def main():
                 **kwargs,
             )
 
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
-
     elif sd3:
         # SD3 pipelines
         if controlnet:
@@ -524,6 +526,7 @@ def main():
                 args.model_name_or_path,
                 **kwargs,
             )
+
     elif flux:
         # Flux pipelines
         if controlnet:
@@ -554,8 +557,6 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
         elif inpainting:
             # SD Inpainting pipeline
@@ -598,6 +599,10 @@ def main():
                     args.model_name_or_path,
                     **kwargs,
                 )
+
+    # Load LoRA weights if provided
+    if args.lora_id:
+        pipeline.load_lora_weights(args.lora_id)
 
     # Setup logging
     logging.basicConfig(

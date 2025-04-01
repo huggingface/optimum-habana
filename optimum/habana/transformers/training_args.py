@@ -103,12 +103,12 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to torch.compile from the second training iteration.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
+        use_regional_compilation (`bool`, *optional*, defaults to `False`):
+            Whether to use regional compile with deepspeed
+        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
+            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config. Currently, disabling this parameter improves the performance of the ALBERT model.
         cache_size_limit(`int`, *optional*, defaults to 'None'):
             Set value of 'cache_size_limit' parameter for torch._dynamo.config
-        use_regional_compilation (`bool`, *optional*, defaults to `False`):
-            Whether to use regional compilation with deepspeed
-        inline_inbuilt_nn_modules (`bool`, *optional*, defaults to `None`):
-            Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.
         allow_unspec_int_on_nn_module (`bool`, *optional*, defaults to `None`):
             Set value of 'allow_unspec_int_on_nn_module' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
@@ -917,14 +917,17 @@ class GaudiTrainingArguments(TrainingArguments):
             ):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
+        if self.sdp_on_bf16:
+            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
         if self.inline_inbuilt_nn_modules is not None:
             torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
 
         if self.allow_unspec_int_on_nn_module is not None:
             torch._dynamo.config.allow_unspec_int_on_nn_module = self.allow_unspec_int_on_nn_module
 
-        if self.sdp_on_bf16:
-            torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+        if self.torch_compile and self.cache_size_limit is not None:
+            torch._dynamo.config.cache_size_limit = self.cache_size_limit
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():

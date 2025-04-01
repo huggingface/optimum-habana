@@ -17,8 +17,13 @@ import copy
 import os
 
 import torch
+from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+from optimum.habana.transformers import modeling_utils
+
+
+modeling_utils.adapt_transformers_to_gaudi()
 
 assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
 
@@ -40,11 +45,6 @@ def get_model(token: str):
 
 
 def test_nf4_quantization_inference(token: str):
-    os.environ["PT_HPU_LAZY_MODE"] = "0"
-    from optimum.habana.transformers import modeling_utils
-
-    modeling_utils.adapt_transformers_to_gaudi()
-
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
 
     model = get_model(token)
@@ -54,12 +54,13 @@ def test_nf4_quantization_inference(token: str):
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
 
-    model.model = torch.compile(model.model, backend="hpu_backend")
+    model = wrap_in_hpu_graph(model)
 
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
 
     torch.manual_seed(42)
-    outputs = model.generate(**inputs, generation_config=generation_config, lazy_mode=False)
+    outputs = model.generate(**inputs, generation_config=generation_config, hpu_graphs=True, lazy_mode=True)
     decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
     assert decoded_output == "Hello my name is Marlene and I am 36 years old. I am a very happy person, I love to"

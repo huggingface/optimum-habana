@@ -360,6 +360,9 @@ def setup_parser(parser):
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--save_quantized_model_with_inc",
         action="store_true",
         help="Save quantized Huggingface checkpoint using INC.",
@@ -367,11 +370,8 @@ def setup_parser(parser):
     parser.add_argument(
         "--saved_model_path",
         type=str,
-        default="saved_results",
+        default="inc_quantized_model",
         help="A path to save quantized checkpoint.",
-    )
-    parser.add_argument(
-        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
     )
     parser.add_argument(
         "--pt2e_save",
@@ -399,6 +399,11 @@ def setup_parser(parser):
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
     )
     quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+    )
+    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
@@ -406,7 +411,7 @@ def setup_parser(parser):
     quant_parser_group.add_argument(
         "--load_quantized_model_with_inc",
         action="store_true",
-        help="Load a Huggingface quantized checkpoint using INC.",
+        help="Load a quantized Huggingface checkpoint using INC.",
     )
     quant_parser_group.add_argument(
         "--local_quantized_inc_model_path",
@@ -414,7 +419,7 @@ def setup_parser(parser):
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
-    quant_parser_group.add_argument(
+    parser.add_argument(
         "--attn_batch_split",
         default=1,
         type=int,
@@ -460,6 +465,8 @@ def setup_parser(parser):
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
@@ -899,7 +906,7 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name)
+        raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
@@ -1068,8 +1075,7 @@ def main():
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        if prompt_length > 0:
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
         finalize_quantization(model)

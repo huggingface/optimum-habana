@@ -75,7 +75,15 @@ from .deepseek_v3 import (
     DeepseekV3Config,
     DeepseekV3ForCausalLM,
 )
-from .detr import gaudi_DetrConvModel_forward
+from .detr import (
+    gaudi_DetrConvModel_forward,
+    gaudi_DetrHungarianMatcher_forward,
+    gaudi_DetrLoss_forward,
+    gaudi_DetrLoss_get_targets_without_no_objects,
+    gaudi_DetrLoss_loss_boxes,
+    gaudi_DetrLoss_loss_cardinality,
+    gaudi_DetrLoss_loss_labels,
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
@@ -251,6 +259,15 @@ from .qwen2_moe import (
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
 )
+from .qwen2_vl import (
+    GaudiQwen2VisionSdpaAttention,
+    GaudiQwen2VisionTransformerPretrainedModel,
+    GaudiQwen2VLDecoderLayer,
+    GaudiQwen2VLForConditionalGeneration,
+    GaudiQwen2VLModel,
+    GaudiQwen2VLSdpaAttention,
+    GaudiQwen2VLVisionBlock,
+)
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
     gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
@@ -291,6 +308,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
@@ -320,3 +338,4 @@ from .xglm import (
     gaudi_xglm_decoder_layer_forward,
     gaudi_xglm_model_forward,
 )
+from .xlm_roberta import gaudi_XLMRoberta_Sdpa_SelfAttention_forward

@@ -177,11 +177,8 @@ def gaudi_mixtral_repeat_kv(
 
 
 class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
-    def __init__(self, config):
-        super().__init__(config)
-
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        _, _, hidden_dim = hidden_states.shape
         original_shape = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
@@ -230,7 +227,7 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             permuted_weights=True,
             activation="silu",
             experts_min=0,
-            experts_max=7,
+            experts_max=len(self.experts) - 1,
         )
 
 
@@ -534,9 +531,6 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
 
 
 class GaudiMixtralModel(MixtralModel):
-    def __init__(self, config: MixtralConfig):
-        super().__init__(config)
-
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)

@@ -49,7 +49,7 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _min
     """
     Recursively converts the linear layer of a model to their `transformers_engine` counterpart.
     """
-    from optimum.habana.transformers.models.llama.modeling_llama import ModuleFusedSDPA
+    from ...transformers.models.llama.modeling_llama import ModuleFusedSDPA
 
     if not is_fp8_available():
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")

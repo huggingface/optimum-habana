@@ -502,6 +502,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         attn_output = attn_output.transpose(1, 2).contiguous()
 
         attn_output = attn_output.reshape(bsz, q_len, -1)
+
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -985,6 +986,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
 
             if output_router_logits:
                 all_router_logits += (layer_outputs[-1],)
+
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer

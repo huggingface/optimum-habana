@@ -113,11 +113,13 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "paligemma",
     "idefics2",
     "mllama",
+    "video_llava",
     "minicpm3",
     "baichuan",
     "deepseek_v2",
     "deepseek_v3",
     "chatglm",
+    "qwen2_vl",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -975,6 +977,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.GenerateEncoderDecoderOutput`],
                     - [`transformers.generation.GenerateBeamEncoderDecoderOutput`]
         """
+
         if iteration_times is not None:
             hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
             hb_gen_time.start()
@@ -1093,9 +1096,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "baichuan",
                 "chatglm",
+                "deepseek_v2",
                 "deepseek_v3",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan and chatglm at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1210,6 +1214,7 @@ class GaudiGenerationMixin(GenerationMixin):
         input_ids_length = input_ids.shape[1]
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         has_default_min_length = kwargs.get("min_length") is None and generation_config.min_length is not None
+
         generation_config = self._prepare_generated_length(
             generation_config=generation_config,
             has_default_max_length=has_default_max_length,
@@ -1311,6 +1316,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "gemma2",
                 "qwen2_moe",
                 "baichuan",
+                "deepseek_v2",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
@@ -2533,9 +2539,9 @@ class GaudiGenerationMixin(GenerationMixin):
                             output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
                         else:
                             output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2).float()
                     else:
-                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2).float()
                     next_token_scores = logits_processor(input_ids, next_token_logits)
             else:
                 # .float() is needed to retain precision for later logits manipulations
@@ -2569,7 +2575,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # token selection
             if do_sample:
-                probs = torch.nn.functional.softmax(next_token_scores, dim=-1)
+                # Workaround on HPU for output quality issues with torch.multinomial for lower precision models
+                # Distribution sampled by torch.multinomial may be affected by next_token_logits upcast to float
+                probs = torch.nn.functional.softmax(next_token_scores, dim=-1).to(outputs.logits.dtype)
                 # TODO (joao): this OP throws "skipping cudagraphs due to ['incompatible ops']", find solution
                 next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
             else:
@@ -3167,6 +3175,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs,
                 is_encoder_decoder=self.config.is_encoder_decoder,
             )
+
             if model_kwargs.get("past_key_values", None) is not None:
                 if model_kwargs["reuse_cache"]:
                     model_kwargs["past_key_values"] = unwrap_deepspeed_model(self).reorder_kv_cache(beam_idx)

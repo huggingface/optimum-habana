@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.19.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 ```
 
 
@@ -133,7 +133,7 @@ Here are a few settings you may be interested in:
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--use_mark_dynamic` Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.
-- `--attn_batch_split` specifies the number of smaller batches to split the attention and MLP processing into for better parallelization.By default, no splitting is performed (value is 1). Splitting is enabled only for prompt.
+- `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing. This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -191,7 +191,8 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_g
 
 To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
 --max_new_tokens 2048 \
 --bf16 \
@@ -203,16 +204,17 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_g
 --flash_attention_causal_mask
 ```
 
+
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
 ```bash
-python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \ 
---world_size 16 ./run_generation.py \ 
---model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \ 
---bf16 \ 
+python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
+--world_size 16 ./run_generation.py \
+--model_name_or_path opensourcerelease/DeepSeek-R1-bf16 \
+--bf16 \
 --trim_logits \
---batch_size 1 \ 
---use_hpu_graphs \ 
---use_kv_cache  \ 
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache  \
 --parallel_strategy "ep" \
 --prompt "DeepSpeed is a machine learning framework"
 ```
@@ -252,7 +254,8 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
 --bf16 \
---sdp_on_bf16
+--sdp_on_bf16 \
+--trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
@@ -615,7 +618,7 @@ Some models can fit on HPU DRAM but can't fit on the CPU RAM.
 When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in INC. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
 Here is an example of using disk_offload in quantize command.
-Please follow the "Running FP8 models on single device" section first before running the cmd below.
+Please follow the [Running FP8 models on single device](#running-fp8-models-on-single-device) section first before running the cmd below.
 
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json TQDM_DISABLE=1 PT_HPU_LAZY_MODE=1 \
@@ -638,13 +641,16 @@ python run_generation.py \
 ```
 
 ### Saving FP8 Checkpoints in Hugging Face format
-After quantizing model, we can save the quantized model into local path.
-Please follow the "Running FP8 models" section to measure model first before running the cmd below.
+After quantizing the model, we can save it to a local path.
 
-Here is an example to quantize and save LLama2-7b on 1 card:
+> [!NOTE]
+> Before executing the command below, please refer to the [Running with FP8](#running-with-fp8) section to measure the model quantization statistics.
+
+Here is an example of how to quantize and save the LLama3.1-70B model on two cards:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json PT_HPU_LAZY_MODE=1 python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+--use_deepspeed --world_size 2 run_generation.py \
+--model_name_or_path meta-llama/Llama-3.1-70B \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -661,53 +667,13 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_const_scales.json PT_HPU_LAZY_MO
 --saved_model_path <model_path_on_local_disk>
 ```
 
-### Loading FP8 Checkpoints saved in Hugging Face format
-
-You can load pre-quantized FP8 models with the argument `--load_quantized_model_with_inc`. The `model_name_or_path` is the model path saved on local disk with upper command.
-
-Below is an example to load a model with FP8 checkpoints on 1 card.
-Please note that model name is denoted as `<model_path_on_local_disk>`
-```bash
-PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path <model_path_on_local_disk> \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
+> [!NOTE]
+> For multi-card usage, the number of cards loaded and used needs to be kept consistent with that when saving.
 
 ### Loading FP8 Checkpoints from Hugging Face
-You can load pre-quantized FP8 models with the argument `--load_quantized_model_with_inc`. The `model_name_or_path` is a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127).
-For models from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127), you can use any number of cards to load.
+You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127) or a path to FP8 Checkpoints saved in Hugging Face format.
 
-Below is an example to load `neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8` on 1 cards.
-```bash
-PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8 \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
-
-Below is an example to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on 2 cards.
-
+Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
 ```bash
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 --use_deepspeed --world_size 2 run_lm_eval.py \
@@ -833,6 +799,36 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 --load_quantized_model_with_autogptq
 ```
 
+### Running with UINT4 weight quantization using AutoAWQ
+
+Llama2-7b supports UINT4 weight-only quantization through [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), which offers quantization capabilities in PyTorch.
+Currently, this support is limited to UINT4 inference of pre-quantized models only.
+
+Please run the following command to install AutoAWQ:
+```bash
+pip install -r requirements_awq.txt
+```
+
+You can run a *UINT4 weight quantized* model using AutoAWQ by including the argument `--load_quantized_model_with_autoawq`.
+
+Here is an example of how to run a quantized model <quantized_awq_model>:
+```bash
+python run_generation.py \
+--attn_softmax_bf16 \
+--model_name_or_path <quantized_awq_model> \
+--use_hpu_graphs \
+--limit_hpu_graphs \
+--use_kv_cache \
+--bucket_size 128 \
+--bucket_internal \
+--trim_logits \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--load_quantized_model_with_autoawq
+```
+
+
 ## Language Model Evaluation Harness
 
 The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
@@ -852,6 +848,12 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
+> Please add the flags for following models to improve accuracy when using lm_eval on gaudi2. Please note this is a workaround for 1.20 release only.
+> 
+> ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for llama-2-70b-hf[PTQ fp8]
+>
+> COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
+>
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
 ### Examples

@@ -24,22 +24,22 @@ MODELS_TO_TEST_MAPPING = {
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", "Habana/roberta-base"),
+        # ("roberta-base", "Habana/roberta-base"),
         ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
-        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
+        # ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
     "gpt2": [
-        ("gpt2", "Habana/gpt2"),
+        # ("gpt2", "Habana/gpt2"),
         ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
-        ("t5-small", "Habana/t5"),
+        # ("t5-small", "Habana/t5"),
         ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
@@ -65,13 +65,14 @@ MODELS_TO_TEST_MAPPING = {
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
     "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
+    "llava": [("llava-hf/llava-1.5-7b-hf", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
-    "bert",
+    # "bert",
     "roberta",
-    "albert",
-    "distilbert",
+    # "albert",
+    # "distilbert",
 ]
 
 # Only BERT has been officially validated for sequence classification

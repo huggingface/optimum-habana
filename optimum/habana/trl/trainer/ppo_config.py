@@ -70,7 +70,7 @@ class GaudiPPOConfig(PPOConfig):
                 )
 
         if self.use_habana:
-            from optimum.habana.transformers.modeling_utils import (
+            from ...transformers.modeling_utils import (
                 adapt_transformers_to_gaudi,
             )
 

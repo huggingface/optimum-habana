@@ -393,6 +393,9 @@ def parse_args():
         help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
     )
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--throughput_warmup_steps",
         type=int,
         default=0,
@@ -623,6 +626,7 @@ def main():
         use_habana=True,
         use_hpu_graphs=True,
         gaudi_config=args.gaudi_config_name,
+        sdp_on_bf16=args.sdp_on_bf16,
     )
     text_encoder_1 = pipeline.text_encoder.to(accelerator.device)
     text_encoder_2 = pipeline.text_encoder_2.to(accelerator.device)
@@ -918,9 +922,9 @@ def main():
                 htcore.mark_step()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool)
+                index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool, device=accelerator.device)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
-                index_no_updates_2 = torch.ones((len(tokenizer_2),), dtype=torch.bool)
+                index_no_updates_2 = torch.ones((len(tokenizer_2),), dtype=torch.bool, device=accelerator.device)
                 index_no_updates_2[min(placeholder_token_ids_2) : max(placeholder_token_ids_2) + 1] = False
 
                 with torch.no_grad():

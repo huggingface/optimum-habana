@@ -1,5 +1,5 @@
 {
     "method": "HOOKS",
     "mode": "MEASURE",
-    "dump_stats_path": "quantization/flux/measure_all/fp8"
+    "dump_stats_path": "quantization/flux/measure/fp8"
 }

@@ -198,6 +198,11 @@ def main():
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        help="Allow PyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--max_input_tokens",
         type=int,
         default=None,
@@ -213,11 +218,6 @@ def main():
         default=27,
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
-    )
-    parser.add_argument(
-        "--sdp_on_bf16",
-        action="store_true",
-        help="Allow PyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument(
         "--torch_compile",
@@ -259,7 +259,8 @@ def main():
 
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama"]:
+
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -270,11 +271,8 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma"]:
-        if model_type == "mllama":
-            processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
-        else:
-            processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+        processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
                 conversation = [
@@ -352,6 +350,9 @@ def main():
         generator = pipeline(
             "image-to-text",
             model=args.model_name_or_path,
+            config=args.model_name_or_path,
+            tokenizer=args.model_name_or_path,
+            image_processor=args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -370,11 +371,11 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "limit_hpu_graphs": args.limit_hpu_graphs,
+        "do_sample": args.do_sample,
+        "logits_bf16": args.logits_bf16,
         "bucket_internal": args.bucket_internal,
         "bucket_size": args.bucket_size,
-        "do_sample": args.do_sample,
-        "limit_hpu_graphs": args.limit_hpu_graphs,
-        "logits_bf16": args.logits_bf16,
     }
 
     if args.sdp_on_bf16:
@@ -383,12 +384,18 @@ def main():
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
+    if model_type == "qwen2_vl":
+        generate_kwargs["use_cache"] = True
+        generate_kwargs["cache_implementation"] = "static"
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
 
     # delete once pipeline integrate AutoProcessor as preprocess engine
-    if model_type in ["idefics2", "mllama", "paligemma"]:
+    # could use "image-text-to-text" pipeline in transformers 4.47
+
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -422,7 +429,12 @@ def main():
     n_output_tokens = 0
     for sequence in result:
         # We have to subtract the number of input tokens as they are part of the returned sequence
-        n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+        # TODO this is not accurate, args.prompt contains flag like <|im_start|>, <|im_end|>, while generated_text does not contain it
+        # if it's text+image prompt, should use "image-text-to-text" pipeline after transformers 4.47
+        if not args.ignore_eos:
+            n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+        else:
+            n_output_tokens += args.max_new_tokens
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration

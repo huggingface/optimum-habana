@@ -409,7 +409,6 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
     @parameterized.expand([("linear",), ("dynamic",)])
     # Copied from tests.models.llama.test_modeling_llama.LlamaModelTest.test_model_rope_scaling_from_config with Llama->Falcon
     def test_model_rope_scaling_from_config(self, scaling_type):
-        self.skipTest("Skip untill SW-209093 is fixed")
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
         short_input = ids_tensor([1, 10], config.vocab_size)
         long_input = ids_tensor([1, int(config.max_position_embeddings * 1.5)], config.vocab_size)
@@ -436,7 +435,6 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
         self.assertFalse(torch.allclose(original_long_output, scaled_long_output, atol=1e-5))
 
     def test_model_rope_scaling(self):
-        self.skipTest("Skip untill SW-209093 is fixed")
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
         hidden_size = config.hidden_size
         num_heads = config.num_attention_heads

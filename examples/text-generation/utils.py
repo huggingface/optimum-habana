@@ -131,7 +131,7 @@ def setup_const_serialization(const_serialization_path):
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_optimum_habana_min_version("1.16.0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -283,7 +283,20 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
+        # TODO: This will be removed in v1.20 Synapse release
+        # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+        import neural_compressor.torch.algorithms.fp8_quant.save_load as nc_sl
+
+        nc_sl.split_rank_state_dict = local_split_rank_state_dict
+
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -340,7 +353,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.torch_compile:
         model = get_torch_compiled_model(model, logger, args)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
-            "please set PT_HPU_LAZY_MODE=0 on command line when using --use_torch_compile"
+            "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
@@ -658,6 +671,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
+
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -822,3 +841,33 @@ def get_mark_dynamic_min_max(args):
         "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
         "dim_1": {"min": min_val, "max": max_val},
     }
+
+
+# TODO: This will be removed in v1.20 Synapse release
+# Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+def local_split_rank_state_dict(model, gathered_state_dict):
+    """split state_dict for current local_rank."""
+    from neural_compressor.torch.algorithms.fp8_quant.save_load import (
+        cur_accelerator,
+        local_rank,
+        split_weights,
+        world_size,
+    )
+
+    rank_state_dict = {}
+    for name, param in model.named_parameters():
+        if name in gathered_state_dict:
+            full_weight = gathered_state_dict[name]
+            if len(param.shape) != 0 and full_weight.shape != param.shape:
+                if full_weight.shape[0] != param.shape[0]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+                elif full_weight.shape[1] != param.shape[1]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=1).clone()
+                else:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+            else:
+                split_weight = full_weight
+            rank_state_dict[name] = split_weight
+        cur_accelerator.synchronize()
+
+    return rank_state_dict

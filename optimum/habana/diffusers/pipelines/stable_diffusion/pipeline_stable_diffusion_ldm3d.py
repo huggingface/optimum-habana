@@ -84,6 +84,8 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         bf16_full_eval (bool, defaults to `False`):
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -101,6 +103,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -108,6 +111,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
+            sdp_on_bf16,
         )
 
         # Workaround for Synapse 1.11 for full bf16

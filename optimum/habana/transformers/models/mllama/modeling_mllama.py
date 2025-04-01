@@ -143,9 +143,16 @@ def _prepare_cross_attention_mask(
         cross_attention_mask *= full_text_row_masked_out_mask
 
     # reshape so it can be used by attn module
-    batch_size, text_total_length, *_ = cross_attention_mask.shape
-    cross_attention_mask = cross_attention_mask.repeat_interleave(num_vision_tokens, dim=3)
+    cross_attention_mask = cross_attention_mask.to(dtype)
+    dtype_size = (
+        torch.finfo(dtype).bits if torch.is_floating_point(torch.tensor(0, dtype=dtype)) else torch.iinfo(dtype).bits
+    )
+    alignment = int(256 / (dtype_size / 8))
+    aligned_num_vision_tokens = math.ceil(num_vision_tokens / alignment) * alignment
+    batch_size, text_total_length, _, original_dim = cross_attention_mask.shape
+    cross_attention_mask = cross_attention_mask.repeat_interleave(aligned_num_vision_tokens, dim=3)
     cross_attention_mask = cross_attention_mask.view(batch_size, text_total_length, -1)
+    cross_attention_mask = cross_attention_mask[:, :, : num_vision_tokens * original_dim]
     cross_attention_mask = cross_attention_mask.unsqueeze(1)
 
     return cross_attention_mask, full_text_row_masked_out_mask

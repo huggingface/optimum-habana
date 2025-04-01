@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Union
 
 import torch
 
-from optimum.habana.utils import to_device_dtype
+from ..utils import to_device_dtype
 
 
 def st_gaudi_transformer_save(self, output_path: str, safe_serialization: bool = True) -> None:

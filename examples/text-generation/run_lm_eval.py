@@ -14,7 +14,7 @@
 # limitations under the License.
 
 ###############################################################################
-# Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
+# Copyright (C) 2020-2025 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
 import argparse
@@ -27,6 +27,7 @@ from typing import Literal, Optional
 import psutil
 import torch
 import torch.nn.functional as F
+import transformers
 from lm_eval import evaluator, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
 
@@ -36,6 +37,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
+from optimum.habana.transformers.generation import GaudiGenerationConfig
 from optimum.habana.utils import get_hpu_memory_stats
 
 
@@ -84,13 +86,13 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
-    parser.add_argument("--limit_iters", type=float, help="limit examples to run that many iterations", default=None)
     parser.add_argument(
         "--show_config",
         action="store_true",
         default=True,
         help="If True, shows the the full config of all tasks at the end of the evaluation.",
     )
+    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
@@ -147,8 +149,18 @@ class HabanaModelAdapter(HFLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2", "gemma", "baichuan"]:
-            if self.model.config.model_type != "falcon":
+
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "qwen2",
+            "falcon",
+            "starcoder2",
+            "gemma",
+            "baichuan",
+            "gpt_bigcode",
+        ]:
+            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -161,6 +173,8 @@ class HabanaModelAdapter(HFLM):
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
             )
+            if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
+                self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
         if args.warmup:
             self.warm_up()
 
@@ -242,6 +256,7 @@ class HabanaModelAdapter(HFLM):
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
+    transformers.GenerationConfig = GaudiGenerationConfig
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     with torch.no_grad():
@@ -268,8 +283,8 @@ def main() -> None:
         json_str = json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
         with open(args.output_file, "w", encoding="utf-8") as f:
             f.write(json_str)
-        # if args.show_config: #noqa temporarily disable to pass CI, we then need to adjust the tests to set this value
-        print(json_str)
+        if args.show_config:
+            print(json_str)
 
     if args.quant_config:
         finalize_quantization(model)

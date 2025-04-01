@@ -5,6 +5,13 @@ Semantic Textual Similarity (STS) assigns a score on the similarity of two texts
 - **[training_stsbenchmark.py](training_stsbenchmark.py)** - This example shows how to create a SentenceTransformer model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
 - **[training_stsbenchmark_continue_training.py](training_stsbenchmark_continue_training.py)** - This example shows how to continue training on STS data for a previously created & trained SentenceTransformer model (e.g. [`all-mpnet-base-v2`](https://huggingface.co/sentence-transformers/all-mpnet-base-v2)).
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 # General Models
 
 ## Single-card Training
@@ -26,6 +33,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```bash
 python training_stsbenchmark.py bert-base-uncased
 ```
+If you want to save the checkpoints for training model you need using `--saving_model_checkpoints` in the command and same for all examples below.
 
 ## Multi-card Training
 
@@ -46,17 +54,17 @@ Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 1
 python training_stsbenchmark.py intfloat/e5-mistral-7b-instruct --peft --lora_target_modules "q_proj" "k_proj" "v_proj"
 ```
 
-## Multi-card Training with Deepspeed Zero2/3
+## Multi-card Training with Deepspeed Zero3
 
-Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can use the Zero2/Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
+Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we will use the Zero3 stages of DeepSpeed (model parallelism) to reduce the memory requirements.
 
-Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero2.
+Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero3.
 
 ```bash
 python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_stsbenchmark.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
 ```
 
-In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. To further reduce memory usage, change the stage to 3 (DeepSpeed Zero3) in the `ds_config.json` file.
+In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. 
 
 # Training data
 
