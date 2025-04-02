@@ -233,8 +233,8 @@
     },
     "gaudi3": {
       "perplexity": 2.592915682175543,
-      "train_runtime": 818.9693,
-      "train_samples_per_second": 85.059
+      "train_runtime": 1026.9536,
+      "train_samples_per_second": 71.308
     }
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_multi_card": {
@@ -257,8 +257,8 @@
     },
     "gaudi3": {
       "perplexity": 3.291398111098924,
-      "train_runtime": 390.7556,
-      "train_samples_per_second": 256.027
+      "train_runtime": 485.2917,
+      "train_samples_per_second": 233.759
     }
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester2::test_run_lora_clm_falcon-40b_multi_card": {
