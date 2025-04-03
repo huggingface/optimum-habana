@@ -443,7 +443,7 @@ class ExampleTestMeta(type):
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                if os.environ.get("DATA_CACHE", None) is None:
+                if os.environ.get("DATA_CACHE", "") == "":
                     from .clip_coco_utils import COCO_URLS, download_files
 
                     download_files(COCO_URLS)
@@ -512,7 +512,7 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
-            if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
+            if os.environ.get("DATA_CACHE", "") != "" and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
 
             if torch_compile and (
@@ -854,7 +854,7 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-    DATASET_NAME = os.environ.get("DATA_CACHE", None)
+    DATASET_NAME = os.environ.get("DATA_CACHE")
 
 
 class MultiCardSummarizationExampleTester(
