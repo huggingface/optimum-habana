@@ -32,7 +32,7 @@ import torch
 from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
 
 
 logging.basicConfig(
@@ -164,6 +164,11 @@ def setup_parser(parser):
         "--profiling_record_shapes",
         action="store_true",
         help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
+        "--profile_whole_sequences",
+        action="store_true",
+        help="When set, profiling step means generation of one whole sequence (not one token).",
     )
     parser.add_argument(
         "--prompt",
@@ -494,6 +499,20 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
+    active_profiler = HabanaProfile(
+        warmup=args.profiling_warmup_steps,
+        active=args.profiling_steps,
+        record_shapes=args.profiling_record_shapes,
+        name="generate",
+    )
+    disabled_profiler = HabanaProfile()
+    if args.profile_whole_sequences:
+        per_sequence_profiler = active_profiler
+        per_token_profiler = disabled_profiler
+    else:
+        per_sequence_profiler = disabled_profiler
+        per_token_profiler = active_profiler
+
     if args.dataset_name == "openorca":
         # Benchmark over the prompts below
         def get_ds(args):
@@ -524,7 +543,7 @@ def main():
 
         def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
-            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
@@ -542,8 +561,7 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
+                profiler=profiler,
             ).cpu()
             outputs = outputs.tolist()
             for i in range(len(outputs)):
@@ -591,6 +609,7 @@ def main():
         timer.step()
         # Benchmark over n_iterations iterations
         N = len(input_sentences)
+        per_sequence_profiler.start()
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
                 results = []
@@ -600,6 +619,7 @@ def main():
                     results.extend(generated)
                     print(f"Generatig batch {b}/{N}")
                     b += 1
+                per_sequence_profiler.step()
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
@@ -609,6 +629,7 @@ def main():
                 for sentence in input_sentences:
                     generated = generate(sentence, prompt_len, args.reduce_recompile)
                     results.extend(generated)
+                per_sequence_profiler.step()
         timer.step()
         duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
@@ -715,7 +736,7 @@ def main():
 
         def generate(size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
-            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
@@ -778,11 +799,9 @@ def main():
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
-                profiling_record_shapes=args.profiling_record_shapes,
+                profiler=profiler,
             ).cpu()
             outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             timer.step()
@@ -829,15 +848,18 @@ def main():
         logger.info("Running generate...")
         timer.step()
         # Benchmark over n_iterations iterations
+        per_sequence_profiler.start()
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
                 generated = generate(None, args.reduce_recompile)
+                per_sequence_profiler.step()
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
                 generated = generate(prompt_len, args.reduce_recompile)
+                per_sequence_profiler.step()
         timer.step()
         duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
@@ -962,7 +984,7 @@ def main():
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
 
         def generate_dataset(batch, disable_profiling=False):
-            profiling_steps = 0 if disable_profiling else args.profiling_warmup_steps
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
 
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Move inputs to target device(s)
@@ -975,10 +997,8 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
-                profiling_record_shapes=args.profiling_record_shapes,
+                profiler=profiler,
             ).cpu()
             return prompt, outputs
 
@@ -1033,6 +1053,7 @@ def main():
         logger.info("Running generate dataset...")
         timer = HabanaGenerationTime()
         timer.start()
+        per_sequence_profiler.start()
         for i, batch in enumerate(dataloader):
             with HabanaGenerationTime() as timer:
                 prompt, outputs = generate_dataset(batch)
@@ -1047,6 +1068,8 @@ def main():
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
                 break
+            per_sequence_profiler.step()
+        per_sequence_profiler.stop()
         timer.step()
 
         throughput = total_new_tokens_generated / duration
