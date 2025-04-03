@@ -35,7 +35,7 @@ from transformers import (
     PreTrainedTokenizerBase,
     TrainerCallback,
     is_wandb_available,
-    Trainer
+    Trainer,
 )
 from optimum.habana.transformers.generation import GaudiGenerationConfig
 from transformers.utils import is_peft_available
@@ -312,9 +312,9 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 reward_processing_classes[i] = reward_processing_class
         self.reward_processing_classes = reward_processing_classes
 
-        # Data collator
-        def data_collator(features):  # No data collation is needed in GRPO
-            return features
+        def data_collator(features):
+            batch = {key: [f[key] for f in features] for key in features[0]}
+            return batch
 
         # Training arguments
         self.max_prompt_length = args.max_prompt_length
@@ -601,8 +601,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         self, inputs: dict[str, Union[torch.Tensor, Any]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        prompts = [x["prompt"] for x in inputs]
-        prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
+        prompts = inputs["prompt"]
+        prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
         prompt_inputs = self.processing_class(
             text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
         )
@@ -704,7 +704,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Decode the generated completions
         completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-        if is_conversational(inputs[0]):
+        if is_conversational(inputs):
             completions = []
             for prompt, completion in zip(prompts, completions_text):
                 bootstrap = prompt.pop()["content"] if prompt[-1]["role"] == "assistant" else ""
@@ -724,7 +724,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 if isinstance(
                     reward_func, nn.Module
                 ):  # Module instead of PretrainedModel for compat with compiled models
-                    if is_conversational(inputs[0]):
+                    if is_conversational(inputs):
                         messages = [{"messages": p + c} for p, c in zip(prompts, completions)]
                         texts = [apply_chat_template(x, reward_processing_class)["text"] for x in messages]
                     else:
@@ -732,13 +732,13 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     reward_inputs = reward_processing_class(
                         text=texts, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
                     )
-                    reward_inputs = super()._prepare_inputs(reward_inputs)
+                    reward_inputs = Trainer._prepare_inputs(self, reward_inputs)
                     with torch.inference_mode():
                         rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
                 else:
                     # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                    keys = [key for key in inputs[0] if key not in ["prompt", "completion"]]
-                    reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
+                    keys = [key for key in inputs if key not in ["prompt", "completion"]]
+                    reward_kwargs = {key: inputs[key] for key in keys}
                     output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                     # Convert None values to NaN
                     output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
