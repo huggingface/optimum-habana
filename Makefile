@@ -89,7 +89,7 @@ slow_tests_1x: test_installs
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
-	python -m pytest tests/test_examples.py -v -s -k "multi_card"
+	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
