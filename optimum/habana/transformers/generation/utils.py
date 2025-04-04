@@ -62,7 +62,7 @@ from transformers.utils import ModelOutput, is_hqq_available, is_quanto_availabl
 
 from optimum.utils import logging
 
-from ...utils import HabanaGenerationtime, HabanaProfile
+from ...utils import HabanaGenerationTime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
@@ -978,7 +978,7 @@ class GaudiGenerationMixin(GenerationMixin):
         """
 
         if iteration_times is not None:
-            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time = HabanaGenerationTime(iteration_times=iteration_times)
             hb_gen_time.start()
         else:
             hb_gen_time = None
@@ -1733,7 +1733,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
@@ -2329,7 +2329,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
@@ -2689,7 +2689,7 @@ class GaudiGenerationMixin(GenerationMixin):
         lazy_mode: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
@@ -3269,7 +3269,7 @@ class GaudiGenerationMixin(GenerationMixin):
         lazy_mode: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ):
@@ -3326,7 +3326,7 @@ class GaudiGenerationMixin(GenerationMixin):
         lazy_mode: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
@@ -3629,7 +3629,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        hb_gen_time: Optional[HabanaGenerationTime] = None,
         profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:

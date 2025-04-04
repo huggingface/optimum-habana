@@ -23,24 +23,14 @@ import json
 import logging
 import math
 import os
-<<<<<<< HEAD
-import time
-=======
 import struct
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 from itertools import cycle
 from pathlib import Path
 
+import pandas as pd
 import torch
 from transformers import BatchEncoding
-from utils import (
-    SetTrueOrFalseOrNone,
-    adjust_batch,
-    count_hpu_graphs,
-    finalize_quantization,
-    initialize_model,
-    save_model,
-)
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
@@ -54,6 +44,21 @@ logger = logging.getLogger(__name__)
 
 
 def setup_parser(parser):
+    class StoreTrueFalseAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            if isinstance(values, bool) or values is None:
+                # Flag passed without any value -> set to True
+                setattr(namespace, self.dest, True)
+            else:
+                # Flag passed with value -> pattern match and set accordingly
+                value_str = values.lower()
+                if value_str in ("true", "1", "yes"):
+                    setattr(namespace, self.dest, True)
+                elif value_str in ("false", "0", "no"):
+                    setattr(namespace, self.dest, False)
+                else:
+                    raise ValueError(f"Invalid value for {option_string}: {values}")
+
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
     parser.add_argument(
@@ -96,6 +101,12 @@ def setup_parser(parser):
         default=None,
         type=str,
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+    )
+    parser.add_argument(
+        "--dataset",
+        default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
+        type=str,
+        help="path of the dataset to run rouge evaluation and measurement for rouge",
     )
     parser.add_argument(
         "--column_name",
@@ -272,24 +283,33 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--use_flash_attention",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
         nargs="?",
-        const=None,
-        action=SetTrueOrFalseOrNone,
+        const=None,  # Default value handled post-parsing
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
@@ -339,9 +359,6 @@ def setup_parser(parser):
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
     parser.add_argument(
-        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
-    )
-    parser.add_argument(
         "--save_quantized_model_with_inc",
         action="store_true",
         help="Save quantized Huggingface checkpoint using INC.",
@@ -349,8 +366,34 @@ def setup_parser(parser):
     parser.add_argument(
         "--saved_model_path",
         type=str,
-        default="inc_quantized_model",
+        default="saved_results",
         help="A path to save quantized checkpoint.",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
+        "--pt2e_quant",
+        action="store_true",
+        help="Whether to use pt2e kind of quant flow or not.",
+    )
+    parser.add_argument(
+        "--quant_dtype",
+        default="fp8_143",
+        type=str,
+        help="Set pt2e quantization data type. Available options: int8, fp8_143 [default], fp8_152",
+    )
+    parser.add_argument(
+        "--pt2e_load",
+        default=None,
+        type=str,
+        help="Set pt2e load path i.e. deserialize quantized model using torch.export.load from given path",
+    )
+    parser.add_argument(
+        "--pt2e_save",
+        default=None,
+        type=str,
+        help="Set pt2e save path i.e. serialize quantized model using torch.export.save at given path",
     )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
@@ -360,11 +403,6 @@ def setup_parser(parser):
         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
     )
     quant_parser_group.add_argument(
-        "--load_quantized_model_with_autoawq",
-        action="store_true",
-        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
-    )
-    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
@@ -372,7 +410,7 @@ def setup_parser(parser):
     quant_parser_group.add_argument(
         "--load_quantized_model_with_inc",
         action="store_true",
-        help="Load a quantized Huggingface checkpoint using INC.",
+        help="Load a Huggingface quantized checkpoint using INC.",
     )
     quant_parser_group.add_argument(
         "--local_quantized_inc_model_path",
@@ -380,11 +418,17 @@ def setup_parser(parser):
         default=None,
         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
     )
-    parser.add_argument(
+    quant_parser_group.add_argument(
         "--attn_batch_split",
         default=1,
         type=int,
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
+    )
+
+    parser.add_argument(
+        "--use_mark_dynamic",
+        action="store_true",
+        help="Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.",
     )
 
     args = parser.parse_args()
@@ -395,24 +439,32 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.use_flash_attention and args.flash_attention_fast_softmax is None:
-        logger.warning(
-            "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
-        )
+    if args.use_flash_attention and not args.flash_attention_fast_softmax:
         args.flash_attention_fast_softmax = True
-    else:
-        args.flash_attention_fast_softmax = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
-    if args.quant_config and args.load_quantized_model_with_autoawq:
-        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
+
+    if args.use_mark_dynamic:
+        assert args.max_input_tokens == -1, (
+            "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
+        )
+
+    if args.pt2e_quant:
+        args.torch_compile = False
+        args.use_hpu_graphs = False
+        if args.quant_dtype not in ["int8", "fp8_143", "fp8_152"]:
+            logger.info("[pt2e_quant] Unsupported quantization data type! Using fp8_143 by default.")
+            args.quant_dtype = "fp8_143"
+        if args.pt2e_load and args.pt2e_save:
+            raise RuntimeError("[pt2e_quant] Either pt2e_load or pt2e_save path should be given!")
+
     return args
 
 
@@ -434,7 +486,7 @@ def main():
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile:
+    if args.torch_compile or args.pt2e_quant:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
@@ -442,9 +494,6 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
-<<<<<<< HEAD
-    if args.dataset_name is None:
-=======
     if args.dataset_name == "openorca":
         # Benchmark over the prompts below
         def get_ds(args):
@@ -475,7 +524,6 @@ def main():
 
         def generate(input_tokens, size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
             timer = HabanaGenerationTime()
             timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
@@ -500,7 +548,7 @@ def main():
             for i in range(len(outputs)):
                 outputs[i] = outputs[i][args.max_input_tokens :]
             timer.step()
-            duration = timer.last_duration
+            duration = timer.total_time()
             print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
             return outputs
 
@@ -606,7 +654,6 @@ def main():
         print(separator)
         print()
     elif args.dataset_name is None:
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
@@ -671,13 +718,9 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-<<<<<<< HEAD
-            encode_t0 = time.perf_counter()
-=======
             timer = HabanaGenerationTime()
             timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
             # Tokenization
             if args.max_input_tokens > 0:
                 if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
@@ -731,7 +774,7 @@ def main():
                 input_data.update(input_tokens)
 
             iteration_times = []
-            outputs = model.generate(
+            output_tokens = model.generate(
                 **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
@@ -743,15 +786,13 @@ def main():
                 iteration_times=iteration_times,
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
-<<<<<<< HEAD
-=======
             outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             timer.step()
             duration = timer.total_time()
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
             first_token_time = iteration_times[0] + encode_duration
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
+            return outputs
 
         from optimum.habana.utils import HabanaProfile
 
@@ -857,7 +898,7 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
+        raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
@@ -945,6 +986,27 @@ def main():
             ).cpu()
             return prompt, outputs
 
+        def mark_tensor_dynamic(generation_config, batch):
+            if generation_config.use_mark_dynamic:
+                for t in batch:
+                    if torch.is_tensor(batch[t]):
+                        if generation_config.mark_dyn_dim_0_min and generation_config.mark_dyn_dim_0_max:
+                            # batch dimension as dynamic
+                            torch._dynamo.mark_dynamic(
+                                batch[t],
+                                0,
+                                min=generation_config.mark_dyn_dim_0_min,
+                                max=generation_config.mark_dyn_dim_0_max,
+                            )
+
+                        if generation_config.mark_dyn_dim_1_min and generation_config.mark_dyn_dim_1_max:
+                            torch._dynamo.mark_dynamic(
+                                batch[t],
+                                1,
+                                min=generation_config.mark_dyn_dim_1_min,
+                                max=generation_config.mark_dyn_dim_1_max,
+                            )
+
         # warmup
         from optimum.habana.utils import HabanaProfile
 
@@ -955,27 +1017,24 @@ def main():
         timer = HabanaGenerationTime()
         timer.start()
         for i, batch in enumerate(dataloader):
-<<<<<<< HEAD
-            generate_dataset(batch)
-=======
             if i == 0:
                 mark_tensor_dynamic(generation_config, batch)
             print("Warming up", flush=True)
-            timer.step()
+
+            timer = HabanaGenerationTime()
+            timer.start()
             print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             generate_dataset(batch)
             if generation_config.use_mark_dynamic:
                 generation_config.use_mark_dynamic = False
             timer.step()
-            duration = timer.last_duration
-            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
+            print(f"Total E2E time of this iteration is {timer.total_time():.3f}s", flush=True)
             # The first three iterations take longer because of graph compilation
             if (i + 1) == 3:
                 break
         torch_hpu.synchronize()
         timer.step()
-        compilation_duration = timer.last_duration
+        compilation_duration = timer.total_time()
         HabanaProfile.enable()
 
         total_new_tokens_generated = 0
@@ -985,9 +1044,8 @@ def main():
         timer = HabanaGenerationTime()
         timer.start()
         for i, batch in enumerate(dataloader):
-            timer.step()
-            prompt, outputs = generate_dataset(batch)
-            timer.step()
+            with HabanaGenerationTime() as timer:
+                prompt, outputs = generate_dataset(batch)
             duration += timer.last_duration
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
@@ -1010,12 +1068,24 @@ def main():
         print("Stats:")
         print(separator)
         print(stats)
-        print("Total runtime for dataset:", timer.total_time())
+        print("Total runtime for dataset:", timer.last_duration)
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        print(f"Graph compilation duration          = {compilation_duration} seconds")
+        if prompt_length > 0:
+            print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
+
+    if args.pt2e_quant:
+        from utils import PT2EQTestManager
+
+        repeat = PT2EQTestManager.update_state(model)
+        if repeat:
+            main()
+            return
+        if PT2EQTestManager.ready_to_save():
+            PT2EQTestManager.save_model()
+
     if args.quant_config:
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:

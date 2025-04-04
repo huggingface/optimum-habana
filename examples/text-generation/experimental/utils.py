@@ -17,7 +17,6 @@
 # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
-import argparse
 import copy
 import glob
 import os
@@ -131,8 +130,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.45.0")
-    check_optimum_habana_min_version("1.17.0.dev0")
+    check_min_version("4.34.0")
+    check_optimum_habana_min_version("1.9.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -154,12 +153,21 @@ def setup_env(args):
 
     adapt_transformers_to_gaudi()
 
+    if args.pt2e_quant:
+        os.environ.setdefault("USE_FX_GRAPH_PATTERN_MATCHING", "0")
+        os.environ.setdefault("PT_HPU_USE_FX_GRAPH_FREEZING", "1")
+
 
 def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
+        if (
+            args.quant_config
+            or args.load_quantized_model_with_inc
+            or args.local_quantized_inc_model_path
+            or args.pt2e_quant
+        ):
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -224,6 +232,107 @@ def finalize_quantization(model):
     finalize_calibration(model)
 
 
+class PT2EQTestManager:
+    """
+    PT2EQ Test Control Flow Manager Class
+    """
+
+    qdtype_dict = {"int8": torch.int8, "fp8_143": torch.float8_e4m3fn, "fp8_152": torch.float8_e5m2}
+    model_state = ["None", "Prepared", "Calibrated", "Quantized"]
+    state_count = 3
+    state_index = 0
+    pt2eq_model = None
+    test_qdtype = None
+    save_path = ""
+    load_path = ""
+    logger = None
+    initialized = False
+
+    @classmethod
+    def initialize(cls, qdtype_key, save_path, load_path, logger):
+        if not cls.initialized:
+            cls.test_qdtype = cls.qdtype_dict[qdtype_key]
+            cls.save_path = save_path
+            cls.load_path = load_path
+            cls.logger = logger
+            cls.initialized = True
+
+    @classmethod
+    def update_state(cls, model):
+        cls.pt2eq_model = model.model
+        cls.logger.info(f"[pt2e_quant] old state {cls.model_state[cls.state_index]}")
+        cls.state_index = min(cls.state_index + 1, cls.state_count)
+        cls.logger.info(f"[pt2e_quant] new state {cls.model_state[cls.state_index]}")
+        return cls.state_index < cls.state_count
+
+    @classmethod
+    def ready_to_save(cls):
+        return cls.model_state[cls.state_index] == "Quantized"
+
+    @classmethod
+    def save_model(cls):
+        """
+        Save pt2e-quant model information.
+        """
+        if cls.save_path:
+            save_path = cls.save_path + "pt2e_quant_model.pt2" if os.path.isdir(cls.save_path) else cls.save_path
+            cls.logger.info(f"[pt2e_quant] Using PT2 Export Save at {save_path}")
+            with torch.no_grad():
+                torch.export.save(cls.pt2eq_model, save_path)
+                cls.logger.info("[pt2e_quant] Saving Done!")
+
+    @classmethod
+    def ready_model(cls, model):
+        """
+        Make the model ready for next run with pt2e-quant.
+        If saved model information is already present, load it.
+        """
+        if model.config.model_type != "llama":
+            return model
+
+        import habana_frameworks.torch.core as htcore
+
+        htcore.hpu_inference_initialize(model, mark_non_scales=False)
+
+        from habana_frameworks.torch.core.quantizer import (
+            habana_quant_config_symmetric,
+            habana_quantizer,
+        )
+        from torch._export import capture_pre_autograd_graph
+        from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
+
+        if cls.model_state[cls.state_index] == "None":
+            if not cls.load_path:
+                cls.logger.info("[pt2e_quant] Using PT2 Export like flow for measurement / quantization.")
+                quantizer = habana_quantizer()
+                quant_config = habana_quant_config_symmetric(cls.test_qdtype)
+                quantizer.set_global(quant_config)
+                # export
+                exported_model = capture_pre_autograd_graph(model.model)
+                # prepare
+                cls.logger.info("[pt2e_quant] Inserting observers for measurement.")
+                model.model = prepare_pt2e(exported_model, quantizer)
+                cls.update_state(model)  # None --> Prepared
+                return model
+            else:
+                load_path = cls.load_path + "pt2e_quant_model.pt2" if os.path.isdir(cls.load_path) else cls.load_path
+                cls.logger.info(f"[pt2e_quant] Using PT2 Export Load from {load_path}")
+                del model.model
+                model.model = torch.export.load(load_path).module()
+                cls.logger.info("[pt2e_quant] Loading Done!")
+                # Update the state, as we are already done with them in past
+                cls.update_state(model)  # None --> Prepared
+                cls.update_state(model)  # Prepared --> Calibrated
+                cls.update_state(model)  # Calibrated --> Quantized
+                return model
+
+        if cls.model_state[cls.state_index] == "Calibrated":
+            cls.logger.info("[pt2e_quant] Converting model after calibration.")
+            model.model = convert_pt2e(cls.pt2eq_model)
+            cls.update_state(model)  # Calibrated --> Quantized
+            return model
+
+
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
     if args.assistant_model is None:
@@ -253,20 +362,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
-    elif args.load_quantized_model_with_autoawq:
-        from transformers import AwqConfig
-
-        quantization_config = AwqConfig(bits=4, version="hpu")
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
-        )
     elif args.load_quantized_model_with_inc:
-        # TODO: This will be removed in v1.20 Synapse release
-        # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
-        import neural_compressor.torch.algorithms.fp8_quant.save_load as nc_sl
-
-        nc_sl.split_rank_state_dict = local_split_rank_state_dict
-
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -323,10 +419,15 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.torch_compile:
         model = get_torch_compiled_model(model, logger)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
-            "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
+            "please set PT_HPU_LAZY_MODE=0 on command line when using --use_torch_compile"
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_quant:
+        PT2EQTestManager.initialize(args.quant_dtype, args.pt2e_save, args.pt2e_load, logger)
+        model = PT2EQTestManager.ready_model(model)
+
     return model, assistant_model
 
 
@@ -439,8 +540,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-    load_to_meta = model_on_meta(config)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+
+    keep_module_on_host = False
+    if "Llama-3.1-405B" in args.model_name_or_path:
+        keep_module_on_host = True
+
+    load_to_meta = False if keep_module_on_host else model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -449,7 +555,10 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-        with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+
+        deepspeed_device = "cpu" if keep_module_on_host else "meta"
+
+        with deepspeed.OnDevice(dtype=config.torch_dtype, device=deepspeed_device):
             if (
                 hasattr(config, "rope_scaling")
                 and config.rope_scaling
@@ -479,12 +588,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         )
     else:
         # TODO: revisit placement on CPU when auto-injection is possible
-        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+        with deepspeed.OnDevice(dtype=config.torch_dtype, device="cpu"):
             if args.peft_model is not None:
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                    args.model_name_or_path, torch_dtype=config.torch_dtype, **model_kwargs
                 )
     model.eval()
 
@@ -494,7 +603,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         ).eval()
 
     # Initialize the model
-    ds_inference_kwargs = {"dtype": model_dtype}
+    ds_inference_kwargs = {"dtype": config.torch_dtype}
+    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -513,6 +623,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = get_torch_compiled_model(model, logger)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_quant:
+        PT2EQTestManager.initialize(args.quant_dtype, args.pt2e_save, args.pt2e_load, logger)
+        model = PT2EQTestManager.ready_model(model)
+
     return model, assistant_model
 
 
@@ -628,12 +743,6 @@ def setup_tokenizer(args, model, assistant_model, logger):
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
 
-    if model.config.model_type == "mpt":
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        if model.generation_config.pad_token_id is None:
-            model.generation_config.pad_token_id = tokenizer.eos_token_id
-
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -682,7 +791,17 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
+    generation_config.use_mark_dynamic = args.use_mark_dynamic
     generation_config.attn_batch_split = args.attn_batch_split
+    if generation_config.use_mark_dynamic:
+        mark_dynamic_config = get_mark_dynamic_min_max(args)
+        if mark_dynamic_config.get("dim_0") is not None:
+            generation_config.mark_dyn_dim_0_min = mark_dynamic_config["dim_0"]["min"]
+            generation_config.mark_dyn_dim_0_max = mark_dynamic_config["dim_0"]["max"]
+
+        if mark_dynamic_config.get("dim_1") is not None:
+            generation_config.mark_dyn_dim_1_min = mark_dynamic_config["dim_1"]["min"]
+            generation_config.mark_dyn_dim_1_max = mark_dynamic_config["dim_1"]["max"]
 
     return generation_config
 
@@ -770,74 +889,22 @@ def save_model(model, tokenizer, save_path):
     tokenizer.save_pretrained(save_path)
 
 
-# TODO: This will be removed in v1.20 Synapse release
-# Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
-def local_split_rank_state_dict(model, gathered_state_dict):
-    """split state_dict for current local_rank."""
-    from neural_compressor.torch.algorithms.fp8_quant.save_load import (
-        cur_accelerator,
-        local_rank,
-        split_weights,
-        world_size,
-    )
-
-    rank_state_dict = {}
-    for name, param in model.named_parameters():
-        if name in gathered_state_dict:
-            full_weight = gathered_state_dict[name]
-            if len(param.shape) != 0 and full_weight.shape != param.shape:
-                if full_weight.shape[0] != param.shape[0]:
-                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
-                elif full_weight.shape[1] != param.shape[1]:
-                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=1).clone()
-                else:
-                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
-            else:
-                split_weight = full_weight
-            rank_state_dict[name] = split_weight
-        cur_accelerator.synchronize()
-
-    return rank_state_dict
-
-
-class SetTrueOrFalseOrNone(argparse.Action):
+def get_mark_dynamic_min_max(args):
     """
-    Custom argparse action to handle a flag that can be set to True, False, or None.
-
-    This action allows an argument to be:
-    - Set to True if the flag is present without a value.
-    - Set to a boolean value (True or False) if explicitly provided.
-    - Set to None if the flag is not present.
-
-    The argument accepts the following values (case-insensitive):
-    - True values: 'true', '1', 't', 'y', 'yes'
-    - False values: 'false', '0', 'f', 'n', 'no'
-
-    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
+    min and max should be determined based on the dataset's min and max seq length.
     """
+    assert args.max_input_tokens == -1, "get_mark_dynamic_min_max() should be called only for dynamic mode execution."
 
-    def __call__(self, parser, namespace, values, option_string=None):
-        value_map = {
-            "true": True,
-            "1": True,
-            "t": True,
-            "y": True,
-            "yes": True,
-            "false": False,
-            "0": False,
-            "f": False,
-            "n": False,
-            "no": False,
-        }
-        if values is None:
-            setattr(namespace, self.dest, True)
-        elif isinstance(values, bool):
-            setattr(namespace, self.dest, values)
-        else:
-            value_lower = values.lower()
-            if value_lower in value_map:
-                setattr(namespace, self.dest, value_map[value_lower])
-            else:
-                raise argparse.ArgumentTypeError(
-                    f"Invalid value for {option_string}: {values}. Expected one of: {', '.join(value_map.keys())}."
-                )
+    # default values
+    min_val = 128
+    max_val = min_val + 128
+
+    if args.dataset_name == "tatsu-lab/alpaca":
+        # have a single bucket of dynamic compilation
+        min_val = args.max_new_tokens
+        max_val = 128 + args.max_new_tokens  # derived from compilation stats
+
+    return {
+        "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
+        "dim_1": {"min": min_val, "max": max_val},
+    }

@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+<<<<<<< HEAD
 import time
+=======
+import os
+>>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -23,6 +27,7 @@ import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 from .utils import OH_DEVICE_CONTEXT
 
@@ -128,6 +133,7 @@ class GaudiFeatureExtractionTester(TestCase):
             for _ in range(warm_up_iters):
                 self.model_hpu_graph(**batch_dict)
         torch.hpu.synchronize()
+<<<<<<< HEAD
         start_time = time.time()
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16), torch.no_grad():
             for _ in range(test_iters):
@@ -141,3 +147,14 @@ class GaudiFeatureExtractionTester(TestCase):
             context=[OH_DEVICE_CONTEXT],
             time_per_iter=time_per_iter,
         )
+=======
+
+        with HabanaGenerationTime() as elapsed_time:
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16), torch.no_grad():
+                for _ in range(test_iters):
+                    outputs = self.model_hpu_graph(**batch_dict)
+                    embeddings(outputs, batch_dict)
+            torch.hpu.synchronize()
+        time_per_iter = elapsed_time.last_duration * 1000 / test_iters  # time in ms
+        self.assertLess(time_per_iter, 1.05 * LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE)
+>>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
