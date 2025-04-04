@@ -20,6 +20,11 @@ REWARD_MODEL_NAME = "trl-internal-testing/tiny-Qwen2ForSequenceClassification-2.
 DATASET_NAME = "trl-lib/tldr"
 
 
+# Dummy reward function: count the number of unique characters in the completions
+def reward_num_unique_chars(completions, **kwargs):
+    return [len(set(c)) for c in completions]
+
+
 @dataclass
 class ScriptArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-0.5B-Instruct", metadata={"help": "the model name"})
@@ -61,11 +66,13 @@ if __name__ == "__main__":
         torch_dtype=torch.bfloat16,
     )
 
-    reward_model = AutoModelForSequenceClassification.from_pretrained(
-        script_args.reward_model_name_or_path,
-        trust_remote_code=True,
-        num_labels=1
-    )
+    reward_funcs = reward_num_unique_chars
+    if script_args.reward_model_name_or_path:
+        reward_funcs = AutoModelForSequenceClassification.from_pretrained(
+            script_args.reward_model_name_or_path,
+            trust_remote_code=True,
+            num_labels=1
+        )
 
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
@@ -77,7 +84,7 @@ if __name__ == "__main__":
 
     trainer = GaudiGRPOTrainer(
         model=model,
-        reward_funcs=reward_model,
+        reward_funcs=reward_funcs,
         args=training_args,
         train_dataset=dataset[script_args.dataset_train_split],
         eval_dataset=dataset[script_args.dataset_test_split] if training_args.eval_strategy != "no" else None,
