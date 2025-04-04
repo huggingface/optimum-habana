@@ -279,6 +279,7 @@ from .seamless_m4t import (
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_SeamlessM4TTextToUnitModel_forward,
 )
+from .snowflake import ArcticConfig, ArcticForCausalLM, ArcticTokenizer
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
