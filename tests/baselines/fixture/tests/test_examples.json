@@ -106,9 +106,9 @@
       "train_samples_per_second": 96.789
     },
     "gaudi3": {
-      "perplexity": 13.155277331993139,
-      "train_runtime": 175.0512,
-      "train_samples_per_second": 150.538
+      "perplexity": 13.143,
+      "train_runtime": 198.1031,
+      "train_samples_per_second": 147.801
     }
   },
   "tests/test_examples.py::DeepspeedSFTExampleTester::test_sft_Qwen2-72B_deepspeed": {
