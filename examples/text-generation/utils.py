@@ -435,7 +435,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -456,6 +455,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
