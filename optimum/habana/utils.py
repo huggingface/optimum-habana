@@ -395,9 +395,7 @@ def get_device_name():
 
     device_type = htexp._get_device_type()
 
-    if device_type == htexp.synDeviceType.synDeviceGaudi:
-        return "gaudi"
-    elif device_type == htexp.synDeviceType.synDeviceGaudi2:
+    if device_type == htexp.synDeviceType.synDeviceGaudi2:
         return "gaudi2"
     elif device_type == htexp.synDeviceType.synDeviceGaudi3:
         return "gaudi3"
