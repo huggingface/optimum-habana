@@ -22,10 +22,7 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.transformers import modeling_utils
 
-
-modeling_utils.adapt_transformers_to_gaudi()
 
 assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
 try:
@@ -87,6 +84,11 @@ def get_model(token: str):
 
 
 def test_nf4_quantization_inference(token: str):
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    from optimum.habana.transformers import modeling_utils
+
+    modeling_utils.adapt_transformers_to_gaudi()
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
@@ -132,6 +134,8 @@ def test_nf4_quantization_inference(token: str):
         use_habana=True,
         use_lazy_mode=True,
         pipelining_fwd_bwd=True,
+        torch_compile=True,
+        torch_compile_backend="hpu_backend",
     )
 
     trainer = GaudiTrainer(
