@@ -1,10 +1,11 @@
 import csv
 import gzip
 import os
-import time
 
 import pytest
 from sentence_transformers import SentenceTransformer, util
+
+from optimum.habana.utils import HabanaGenerationTime
 
 from .test_examples import TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
@@ -51,10 +52,9 @@ def _test_sentence_transformers(
     sentences = list(sentences)
 
     for i in range(2):
-        start_time = time.perf_counter()
-        _ = model.encode(sentences, batch_size=32)
-        end_time = time.perf_counter()
-        diff_time = end_time - start_time
+        with HabanaGenerationTime() as timer:
+            _ = model.encode(sentences, batch_size=32)
+        diff_time = timer.last_duration
         measured_throughput = len(sentences) / diff_time
 
     # Only assert the last measured throughtput as the first iteration is used as a warmup

@@ -17,7 +17,6 @@ import argparse
 import json
 import logging
 import os
-import time
 from pathlib import Path
 
 import PIL.Image
@@ -25,9 +24,7 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.utils import (
-    set_seed,
-)
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 logging.basicConfig(
@@ -377,11 +374,9 @@ def main():
     if args.quant_config:
         finalize_quantization(generator.model)
 
-    start = time.perf_counter()
-    for i in range(args.n_iterations):
-        result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    end = time.perf_counter()
-    duration = end - start
+    with HabanaGenerationTime() as timer:
+        for i in range(args.n_iterations):
+            result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
     # Let's calculate the number of generated tokens
     n_input_tokens = len(generator.tokenizer(args.prompt).input_ids) if args.prompt is not None else 0
@@ -396,10 +391,10 @@ def main():
             n_output_tokens += args.max_new_tokens
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
-    throughput = total_new_tokens_generated / duration
+    throughput = total_new_tokens_generated / timer.last_duration
     logger.info(f"result = {result}")
     logger.info(
-        f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {timer.last_duration * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
 
     # Store results if necessary

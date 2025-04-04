@@ -20,7 +20,6 @@ import math
 import os
 import random
 import shutil
-import time
 from pathlib import Path
 
 import diffusers
@@ -52,7 +51,7 @@ from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import (
     GaudiStableDiffusionXLPipeline,
 )
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 if is_wandb_available():
@@ -846,15 +845,15 @@ def main():
     orig_embeds_params = accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight.data.clone()
     orig_embeds_params_2 = accelerator.unwrap_model(text_encoder_2).get_input_embeddings().weight.data.clone()
 
-    t0 = None
     # pipeline = None
 
+    timer = HabanaGenerationTime()
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder_1.train()
         text_encoder_2.train()
         for step, batch in enumerate(train_dataloader):
-            if t0 is None and global_step == args.throughput_warmup_steps:
-                t0 = time.perf_counter()
+            if not timer.is_running() and global_step == args.throughput_warmup_steps:
+                timer.start()
 
             with accelerator.accumulate([text_encoder_1, text_encoder_2]):
                 # Convert images to latent space
@@ -1004,7 +1003,8 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-    duration = time.perf_counter() - t0
+    timer.step()
+    duration = timer.last_duration
     throughput = args.max_train_steps * total_batch_size / duration
 
     # Create the pipeline using the trained modules and save it.

@@ -20,7 +20,6 @@ import math
 import os
 import random
 import shutil
-import time
 import warnings
 from pathlib import Path
 
@@ -53,7 +52,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 if is_wandb_available():
@@ -838,13 +837,12 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data.clone()
 
-    t0 = None
-
+    timer = HabanaGenerationTime()
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            if t0 is None and global_step == args.throughput_warmup_steps:
-                t0 = time.perf_counter()
+            if not timer.is_running() and global_step == args.throughput_warmup_steps:
+                timer.start()
 
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
@@ -954,7 +952,8 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-    duration = time.perf_counter() - t0
+    timer.step()
+    duration = timer.last_duration
     throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
     # Create the pipeline using the trained modules and save it.

@@ -23,7 +23,6 @@ import glob
 import os
 import shutil
 import tempfile
-import time
 from pathlib import Path
 
 import torch
@@ -38,6 +37,7 @@ from optimum.habana.checkpoint_utils import (
     write_checkpoints_json,
 )
 from optimum.habana.utils import (
+    HabanaGenerationTime,
     check_habana_frameworks_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
@@ -705,7 +705,8 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    init_start = time.perf_counter()
+    timer = HabanaGenerationTime()
+    timer.start()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -754,10 +755,10 @@ def initialize_model(args, logger):
         setup_const_serialization(args.const_serialization_path)
     if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
-    init_end = time.perf_counter()
+    timer.step()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
-    logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
+    logger.info(f"Model initialization took {(timer.last_duration):.3f}s")
     return model, assistant_model, tokenizer, generation_config
 
 
