@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -24,6 +23,7 @@ from PIL import Image
 from transformers import AutoModel, AutoProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 adapt_transformers_to_gaudi()
@@ -109,11 +109,11 @@ class GaudiSAMTester(TestCase):
             total_model_time = 0
             for i in range(iterations):
                 inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
-                model_start_time = time.time()
-                _ = model(**inputs)
-                torch.hpu.synchronize()
-                model_end_time = time.time()
-                total_model_time = total_model_time + (model_end_time - model_start_time)
+                with HabanaGenerationTime() as timer:
+                    _ = model(**inputs)
+                    torch.hpu.synchronize()
+
+                total_model_time += timer.last_duration
 
         latency = total_model_time * 1000 / iterations  # in terms of ms
         self.assertLessEqual(latency, 1.05 * LATENCY_SAM_BF16_GRAPH_BASELINE)

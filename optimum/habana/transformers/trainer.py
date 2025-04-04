@@ -109,6 +109,7 @@ from optimum.utils import logging
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
 from ..utils import (
+    HabanaGenerationTime,
     HabanaProfile,
     get_hpu_memory_stats,
     set_seed,
@@ -1270,8 +1271,10 @@ class GaudiTrainer(Trainer):
             )
 
     def _maybe_log_save_evaluate(self, tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval):
+        timer = HabanaGenerationTime()
+        timer.start()
         if self.args.adjust_throughput:
-            save_start = time.perf_counter()
+            timer.step()
 
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             logs: Dict[str, float] = {}
@@ -1319,7 +1322,8 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
         if self.args.adjust_throughput:
-            self.log_evaluate_save_time += time.perf_counter() - save_start
+            timer.step()
+            self.log_evaluate_save_time += timer.last_duration
 
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`

@@ -21,7 +21,6 @@ import argparse
 import json
 import multiprocessing as mp
 import os
-import time
 from typing import Literal, Optional
 
 import psutil
@@ -38,7 +37,7 @@ from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.transformers.generation import GaudiGenerationConfig
-from optimum.habana.utils import get_hpu_memory_stats
+from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -264,17 +263,16 @@ def main() -> None:
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-    eval_start = time.perf_counter()
-    with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
-    if args.device == "hpu":
-        import habana_frameworks.torch.hpu as torch_hpu
+    with HabanaGenerationTime() as timer:
+        with torch.no_grad():
+            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        if args.device == "hpu":
+            import habana_frameworks.torch.hpu as torch_hpu
 
-        torch_hpu.synchronize()
-    eval_end = time.perf_counter()
+            torch_hpu.synchronize()
 
     results["args"] = vars(args)
-    results["duration"] = eval_end - eval_start
+    results["duration"] = timer.last_duration
 
     if args.local_rank == 0:
         if args.device == "hpu":

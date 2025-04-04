@@ -16,7 +16,6 @@
 # Copied from https://huggingface.co/docs/transformers/main/en/model_doc/clipseg
 
 import argparse
-import time
 
 import habana_frameworks.torch as ht
 import requests
@@ -26,6 +25,7 @@ from torchvision.utils import save_image
 from transformers import AutoProcessor, CLIPSegForImageSegmentation
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 if __name__ == "__main__":
@@ -97,11 +97,10 @@ if __name__ == "__main__":
         total_model_time = 0
         for i in range(args.n_iterations):
             inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
-            model_start_time = time.time()
-            outputs = model(**inputs)
-            torch.hpu.synchronize()
-            model_end_time = time.time()
-            total_model_time = total_model_time + (model_end_time - model_start_time)
+            with HabanaGenerationTime() as timer:
+                outputs = model(**inputs)
+                torch.hpu.synchronize()
+            total_model_time += timer.last_duration
 
             if args.print_result:
                 if i == 0:  # generate/output once only

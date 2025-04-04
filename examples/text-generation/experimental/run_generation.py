@@ -24,7 +24,6 @@ import logging
 import math
 import os
 import struct
-import time
 from itertools import cycle
 from pathlib import Path
 
@@ -33,7 +32,7 @@ import torch
 from transformers import BatchEncoding
 from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
-from optimum.habana.utils import get_hpu_memory_stats
+from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
 
 logging.basicConfig(
@@ -525,9 +524,9 @@ def main():
 
         def generate(input_tokens, size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
-            t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
+            timer = HabanaGenerationTime()
+            timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
 
@@ -548,7 +547,8 @@ def main():
             outputs = outputs.tolist()
             for i in range(len(outputs)):
                 outputs[i] = outputs[i][args.max_input_tokens :]
-            duration = time.perf_counter() - t0
+            timer.step()
+            duration = timer.total_time()
             print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
             return outputs
 
@@ -559,7 +559,8 @@ def main():
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
-        t0 = time.perf_counter()
+        timer = HabanaGenerationTime()
+        timer.start()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for _ in range(args.warmup):
@@ -585,11 +586,12 @@ def main():
                         print("Warming up for shape,", sz - 1, flush=True)
                         generate(input_sentences[0], sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
-        compilation_duration = time.perf_counter() - t0
+        timer.step()
+        compilation_duration = timer.last_duration
         HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
-        t0 = time.perf_counter()
+        timer.step()
         # Benchmark over n_iterations iterations
         N = len(input_sentences)
         if dyn_prompt_lens is None:
@@ -610,7 +612,8 @@ def main():
                 for sentence in input_sentences:
                     generated = generate(sentence, prompt_len, args.reduce_recompile)
                     results.extend(generated)
-        duration = time.perf_counter() - t0
+        timer.step()
+        duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 
@@ -715,9 +718,9 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-            encode_t0 = time.perf_counter()
-            t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
+            timer = HabanaGenerationTime()
+            timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
@@ -747,7 +750,8 @@ def main():
                 input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
-            encode_duration = time.perf_counter() - encode_t0
+            timer.step()
+            encode_duration = timer.last_duration
 
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
@@ -783,7 +787,8 @@ def main():
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
-            duration = time.perf_counter() - t0
+            timer.step()
+            duration = timer.total_time()
             first_token_time = iteration_times[0] + encode_duration
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
             print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
@@ -796,7 +801,8 @@ def main():
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
-        t0 = time.perf_counter()
+        timer = HabanaGenerationTime()
+        timer.start()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for i in range(args.warmup):
@@ -822,11 +828,12 @@ def main():
                         print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
-        compilation_duration = time.perf_counter() - t0
+        timer.step()
+        compilation_duration = timer.last_duration
         HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
-        t0 = time.perf_counter()
+        timer.step()
         # Benchmark over n_iterations iterations
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
@@ -837,7 +844,8 @@ def main():
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
                 generated = generate(prompt_len, args.reduce_recompile)
-        duration = time.perf_counter() - t0
+        timer.step()
+        duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 
@@ -1006,34 +1014,39 @@ def main():
         HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
-        t0 = time.perf_counter()
+        timer = HabanaGenerationTime()
+        timer.start()
         for i, batch in enumerate(dataloader):
             if i == 0:
                 mark_tensor_dynamic(generation_config, batch)
             print("Warming up", flush=True)
-            t0 = time.perf_counter()
-            print(f"Step4+ starting time is {t0 * 1000}", flush=True)
+
+            timer = HabanaGenerationTime()
+            timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             generate_dataset(batch)
             if generation_config.use_mark_dynamic:
                 generation_config.use_mark_dynamic = False
-            duration = time.perf_counter() - t0
-            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
+            timer.step()
+            print(f"Total E2E time of this iteration is {timer.total_time():.3f}s", flush=True)
             # The first three iterations take longer because of graph compilation
             if (i + 1) == 3:
                 break
         torch_hpu.synchronize()
-        compilation_duration = time.perf_counter() - t0
+        timer.step()
+        compilation_duration = timer.total_time()
         HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
         separator = "-" * 50
         logger.info("Running generate dataset...")
-        t_start = time.time()
+        timer = HabanaGenerationTime()
+        timer.start()
         for i, batch in enumerate(dataloader):
-            t0 = time.perf_counter()
-            prompt, outputs = generate_dataset(batch)
-            duration += time.perf_counter() - t0
+            with HabanaGenerationTime() as timer:
+                prompt, outputs = generate_dataset(batch)
+            duration += timer.last_duration
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
             print(f"Batch n°{i + 1}")
@@ -1044,7 +1057,7 @@ def main():
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
                 break
-        t_end = time.time()
+        timer.step()
 
         throughput = total_new_tokens_generated / duration
         # Print Stats
@@ -1055,7 +1068,7 @@ def main():
         print("Stats:")
         print(separator)
         print(stats)
-        print("Total runtime for dataset:", t_end - t_start)
+        print("Total runtime for dataset:", timer.last_duration)
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
