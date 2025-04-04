@@ -39,20 +39,18 @@ Runnig multi-card training
 ```sh
 python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
     --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
-    --bf16 True \
+    --model_name_or_path Qwen/Qwen2-0.5B-Instruct \
+    --dataset_name trl-lib/tldr \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
     --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --bf16 True \
     --max_steps=500 \
     --logging_steps=10 \
-    --save_steps=100 \
-    --per_device_train_batch_size=2 \
-    --per_device_eval_batch_size=1 \
-    --gradient_accumulation_steps=2 \
-    --learning_rate=1e-4 \
-    --lr_scheduler_type="cosine" \
-    --warmup_steps=10 \
-    --optim="paged_adamw_32bit" \
-    --use_habana \
-    --use_lazy_mode
+    --save_steps=100
 ```
 
 
