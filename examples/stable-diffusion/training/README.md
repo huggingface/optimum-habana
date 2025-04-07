@@ -443,7 +443,6 @@ python download_train_datasets.py
 ### Full Model Fine-Tuning
 
 To launch the multi-card Stable Diffusion training, use:
-
 ```bash
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
@@ -477,7 +476,7 @@ generate any additional images needed to meet the `num_class_images` requirement
 
 ### PEFT Model Fine-Tuning
 
-We provide DreamBooth examples demonstrating how to use LoRA, LoKR, LoHA, and OFT adapters to fine-tune the
+We provide DreamBooth examples demonstrating how to use LoRA, LoKR, LoHA, OFT and BOFT adapters to fine-tune the
 UNet or text encoder.
 
 To run the multi-card training, use:
@@ -509,7 +508,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
 > When using PEFT method we can use a much higher learning rate compared to vanilla dreambooth.
 > Here we use `1e-4` instead of the usual `5e-6`
 
-Similar command could be applied with `loha`, `lokr`, or `oft` adapters.
+Similar command could be applied with `loha`, `lokr`, `oft` or `boft` adapters.
 
 You could check each adapter's specific arguments with `--help`, for example:
 
@@ -517,7 +516,7 @@ You could check each adapter's specific arguments with `--help`, for example:
 python3 train_dreambooth.py oft --help
 ```
 > [!NOTE]
-> Currently, the `oft` adapter is not supported in HPU graph mode, as it triggers `torch.inverse`,
+> Currently, the `oft` and `boft` adapter are not supported in HPU graph mode, as it triggers `torch.inverse`  `torch.linalg.solve`,
 > causing a CPU fallback that is incompatible with HPU graph capturing.
 
 After training completes, you can use `text_to_image_generation.py` sample for inference as follows:
@@ -536,6 +535,7 @@ python ../text_to_image_generation.py \
     --sdp_on_bf16 \
     --bf16
 ```
+
 ### DreamBooth LoRA Fine-Tuning with Stable Diffusion XL
 
 We can use the same `dog` dataset for the following examples.
