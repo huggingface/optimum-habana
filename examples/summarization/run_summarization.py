@@ -32,7 +32,6 @@ import numpy as np
 import torch
 import transformers
 from datasets import load_dataset
-from filelock import FileLock
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -65,22 +64,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.43.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_min_version("4.45.0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
-try:
-    nltk.data.find("tokenizers/punkt")
-except (LookupError, OSError):
-    if is_offline_mode():
-        raise LookupError(
-            "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
-        )
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
-
-nltk.download("punkt_tab")  # Needed for version 3.8.2
 
 # A list of all multilingual tokenizer which require lang attribute.
 MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast]
@@ -368,12 +356,30 @@ def main():
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
+    with training_args.main_process_first():
+        try:
+            nltk.data.find("tokenizers/punkt")
+            nltk.data.find("punkt_tab")  # Needed for version 3.8.2
+        except (LookupError, OSError):
+            if is_offline_mode():
+                raise LookupError(
+                    "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
+                )
+            nltk.download("punkt", quiet=True)
+            nltk.download("punkt_tab", quiet=True)
+
     gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         token=model_args.token,
     )
+
+    if training_args.do_train and training_args.use_compiled_autograd:
+        from habana_frameworks.torch.dynamo.compile_backend.experimental import enable_compiled_autograd
+
+        enable_compiled_autograd()
+        torch._C._set_autograd_fallback_mode("nothing")
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
@@ -553,9 +559,9 @@ def main():
         return
 
     if isinstance(tokenizer, tuple(MULTILINGUAL_TOKENIZERS)):
-        assert (
-            data_args.lang is not None
-        ), f"{tokenizer.__class__.__name__} is a multilingual tokenizer which requires --lang argument"
+        assert data_args.lang is not None, (
+            f"{tokenizer.__class__.__name__} is a multilingual tokenizer which requires --lang argument"
+        )
 
         tokenizer.src_lang = data_args.lang
         tokenizer.tgt_lang = data_args.lang

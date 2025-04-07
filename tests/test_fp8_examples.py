@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -8,36 +7,29 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "fp8": [
-            (
-                "mistralai/Mistral-7B-Instruct-v0.2",
-                "tatsu-lab/alpaca",
-                "",
-                12.373,
-                0.7538,
-                "language-modeling",
-                8,
-                8,
-                "run_lora_clm.py",
-            ),
-        ],
-    }
-else:
-    # FP8 is not supported on Gaudi1
-    MODELS_TO_TEST = {"fp8": []}
+MODELS_TO_TEST = {
+    "fp8": [
+        (
+            "mistralai/Mistral-7B-Instruct-v0.2",
+            "tatsu-lab/alpaca",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+        ),
+    ],
+}
 
 
 def _test_fp8_train(
     model_name: str,
     dataset_name: str,
     gaudi_config: str,
-    baseline: float,
-    baseline_acc: float,
+    baseline,
     task: str,
     batch_size_train: int,
     batch_size_eval: int,
@@ -113,26 +105,32 @@ def _test_fp8_train(
             results = json.load(fp)
 
         # Ensure performance requirements (throughput) are met
-        assert results["train_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
-        assert results["eval_accuracy"] >= ACCURACY_PERF_FACTOR * baseline_acc
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[OH_DEVICE_CONTEXT],
+            train_samples_per_second=results["train_samples_per_second"],
+        )
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
+            context=[OH_DEVICE_CONTEXT],
+            eval_accuracy=results["eval_accuracy"],
+        )
 
 
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FP8 is not supported on Gaudi1")
 @pytest.mark.parametrize(
-    "model_name, dataset_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script",
+    "model_name, dataset_name, gaudi_config, task, bs_train, bs_eval, script",
     MODELS_TO_TEST["fp8"],
 )
 def test_fp8_train(
     model_name: str,
     dataset_name: str,
     gaudi_config: str,
-    baseline: float,
-    baseline_acc: float,
     task: str,
     bs_train: int,
     bs_eval: int,
     script: str,
-    token: str,
+    baseline,
+    token,
 ):
-    _test_fp8_train(
-        model_name, dataset_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, token
-    )
+    _test_fp8_train(model_name, dataset_name, gaudi_config, baseline, task, bs_train, bs_eval, script, token)

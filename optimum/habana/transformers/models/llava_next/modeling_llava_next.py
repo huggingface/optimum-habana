@@ -53,6 +53,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -84,12 +86,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                cache_position=cache_position,
+                # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
+                # num_logits_to_keep=num_logits_to_keep,
                 token_idx=token_idx + self.image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
             )
 
-            if inputs_embeds.shape[1] != 1 and pixel_values is not None:
+            if inputs_embeds.shape[1] != 1 and pixel_values is not None and self.text_tokens_pos is not None:
                 batch_size, seq_len = self.text_tokens_pos.shape
                 batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
                 logits = outputs[0][batch_indices, self.text_tokens_pos.reshape(-1), :].reshape(
@@ -142,6 +147,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
             )
 
     # Copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L356
@@ -230,6 +237,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         pixel_values=None,
         image_sizes=None,
         attention_mask=None,
+        cache_position=None,
+        num_logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -247,9 +256,14 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 pixel_values=pixel_values,
                 image_sizes=image_sizes,
                 attention_mask=attention_mask,
+                cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
                 **kwargs,
             )
         else:
+            legacy_processing = (
+                (input_ids == self.config.image_token_index).sum(1).max() < self.config.image_seq_length
+            ) or ((input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1) and pixel_values is not None)
             use_flash_attention = kwargs.get("use_flash_attention", False)
             flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
             position_ids = kwargs.get("position_ids", None)
@@ -326,13 +340,28 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                         image_feature = image_feature[0]
                         image_feature = torch.cat((image_feature, self.image_newline[None]), dim=0)
                     new_image_features.append(image_feature)
-                image_features = torch.stack(new_image_features, dim=0)
-                inputs_embeds, attention_mask, labels, position_ids, self.text_tokens_pos = (
-                    self._merge_input_ids_with_image_features(
-                        image_features, inputs_embeds, input_ids, attention_mask, labels
+                if legacy_processing:
+                    image_features = torch.stack(new_image_features, dim=0)
+                    inputs_embeds, attention_mask, labels, position_ids, self.text_tokens_pos = (
+                        self._merge_input_ids_with_image_features(
+                            image_features, inputs_embeds, input_ids, attention_mask, labels
+                        )
                     )
-                )
-                self.image_offset = image_features.shape[1] - 1  # image_token has occupied 1 token position.
+                    self.image_offset = image_features.shape[1] - 1  # image_token has occupied 1 token position.
+                else:
+                    image_features = torch.cat(new_image_features, dim=0)
+                    n_image_tokens = (input_ids == self.config.image_token_index).sum().item()
+                    n_image_features = image_features.shape[0]
+                    if n_image_tokens != n_image_features:
+                        raise ValueError(
+                            f"Image features and image tokens do not match: tokens: {n_image_tokens}, features {n_image_features}"
+                        )
+                    image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+                    batch_indices, image_indices = torch.where(input_ids == self.config.image_token_index)
+                    inputs_embeds[batch_indices, image_indices] = image_features.contiguous()
+                    self.image_offset = 0
+                    self.text_tokens_pos = None
+
                 if labels is None:
                     labels = torch.full_like(attention_mask, self.config.ignore_index).to(torch.long)
 
@@ -342,33 +371,34 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 seq_len = input_ids.shape[1]
                 pad_len = seq_len - token_idx
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
-                # Retrieve the first layer to inspect the logits and mask out the hidden states
-                # that are set to 0
-                first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
+                if legacy_processing:
+                    # Retrieve the first layer to inspect the logits and mask out the hidden states
+                    # that are set to 0
+                    first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
 
-                # Sum all dimensions of head_dim (-2) to avoid random errors such as: https://github.com/huggingface/transformers/pull/28032#issuecomment-1863691941
-                batch_index, non_attended_tokens = torch.where(first_layer_past_key_value.float().sum(-2) == 0)
+                    # Sum all dimensions of head_dim (-2) to avoid random errors such as: https://github.com/huggingface/transformers/pull/28032#issuecomment-1863691941
+                    batch_index, non_attended_tokens = torch.where(first_layer_past_key_value.float().sum(-2) == 0)
 
-                # Get the target length
-                past_length = first_layer_past_key_value.shape[-1]
+                    # Get the target length
+                    past_length = first_layer_past_key_value.shape[-1]
 
-                extended_attention_mask = torch.ones(
-                    (attention_mask.shape[0], past_length),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
-                )
-                # Filter out only the tokens that can be un-attended, this can happen
-                # if one uses Llava + Fused modules where the cache on the
-                # first iteration is already big enough, or if one passes custom cache
-                valid_indices = non_attended_tokens < extended_attention_mask.size(-1)
-                new_batch_index = batch_index[valid_indices]
-                new_non_attended_tokens = non_attended_tokens[valid_indices]
+                    extended_attention_mask = torch.ones(
+                        (attention_mask.shape[0], past_length),
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    )
+                    # Filter out only the tokens that can be un-attended, this can happen
+                    # if one uses Llava + Fused modules where the cache on the
+                    # first iteration is already big enough, or if one passes custom cache
+                    valid_indices = non_attended_tokens < extended_attention_mask.size(-1)
+                    new_batch_index = batch_index[valid_indices]
+                    new_non_attended_tokens = non_attended_tokens[valid_indices]
 
-                # Zero-out the places where we don't need to attend
-                extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
+                    # Zero-out the places where we don't need to attend
+                    extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
 
-                attention_mask = extended_attention_mask
-                attention_mask[:, -pad_len:] = 0
+                    attention_mask = extended_attention_mask
+                    attention_mask[:, -pad_len:] = 0
 
             if attention_mask is not None and position_ids is None:
                 # create position_ids on the fly for batch generation
@@ -385,6 +415,9 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 model_inputs = {"inputs_embeds": inputs_embeds}
             else:
                 model_inputs = {"input_ids": input_ids}
+
+            if num_logits_to_keep is not None:
+                model_inputs["num_logits_to_keep"] = num_logits_to_keep
 
             model_inputs.update(
                 {

@@ -28,7 +28,15 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
+from transformers import BatchEncoding
+from utils import (
+    SetTrueOrFalseOrNone,
+    adjust_batch,
+    count_hpu_graphs,
+    finalize_quantization,
+    initialize_model,
+    save_model,
+)
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -139,8 +147,7 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--profiling_record_shapes",
-        default=False,
-        type=bool,
+        action="store_true",
         help="Record shapes when enabling profiling.",
     )
     parser.add_argument(
@@ -227,6 +234,16 @@ def setup_parser(parser):
         help="Skip HPU Graph usage for first token to save memory",
     )
     parser.add_argument(
+        "--clear_hpu_graphs_cache",
+        action="store_true",
+        help="Clear HPU graphs cache",
+    )
+    parser.add_argument(
+        "--show_graphs_count",
+        action="store_true",
+        help="Show statistics of HPU graph compilation.",
+    )
+    parser.add_argument(
         "--reuse_cache",
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
@@ -244,7 +261,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--use_chat_template",
+        action="store_true",
+        help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+    )
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -262,7 +283,9 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
-        action="store_true",
+        nargs="?",
+        const=None,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
@@ -290,26 +313,74 @@ def setup_parser(parser):
         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
     )
     parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
-        "--load_quantized_model",
-        action="store_true",
-        help="Whether to load model from hugging face checkpoint.",
-    )
-    parser.add_argument(
         "--parallel_strategy",
         type=str,
-        choices=["tp", "none"],  # Add other strategies as needed
+        choices=["tp", "ep", "none"],  # Add other strategies as needed
         default="none",
-        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+        help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
+    )
+    parser.add_argument(
+        "--input_embeds",
+        action="store_true",
+        help="Whether to enable inputs_embeds or not.",
+    )
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
+    parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
+        "--save_quantized_model_with_inc",
+        action="store_true",
+        help="Save quantized Huggingface checkpoint using INC.",
+    )
+    parser.add_argument(
+        "--saved_model_path",
+        type=str,
+        default="inc_quantized_model",
+        help="A path to save quantized checkpoint.",
+    )
+
+    quant_parser_group = parser.add_mutually_exclusive_group()
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autogptq",
+        action="store_true",
+        help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_autoawq",
+        action="store_true",
+        help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+    )
+    quant_parser_group.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_inc",
+        action="store_true",
+        help="Load a quantized Huggingface checkpoint using INC.",
+    )
+    quant_parser_group.add_argument(
+        "--local_quantized_inc_model_path",
+        type=str,
+        default=None,
+        help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
+    )
+    parser.add_argument(
+        "--attn_batch_split",
+        default=1,
+        type=int,
+        help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
 
     args = parser.parse_args()
@@ -320,15 +391,37 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+    if args.use_flash_attention and args.flash_attention_fast_softmax is None:
+        logger.warning(
+            "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
+        )
         args.flash_attention_fast_softmax = True
+    else:
+        args.flash_attention_fast_softmax = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.load_quantized_model_with_autogptq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_autoawq:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
+
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
     return args
+
+
+def prepare_generation_embedding(model, model_name, input_tokens):
+    batch_size = input_tokens["input_ids"].size(0)
+
+    inputs_embeds = model.get_input_embeddings()(input_tokens["input_ids"])
+
+    if inputs_embeds.size(0) != batch_size:
+        inputs_embeds = inputs_embeds.expand(batch_size, -1, -1)
+
+    attention_mask = input_tokens["attention_mask"]
+    return {"inputs_embeds": inputs_embeds, "attention_mask": attention_mask}
 
 
 def main():
@@ -341,6 +434,9 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -410,13 +506,31 @@ def main():
             encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
+                if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+                    return_token_type_ids = True
+                else:
+                    return_token_type_ids = False
+
                 input_tokens = tokenizer.batch_encode_plus(
                     input_sentences,
                     return_tensors="pt",
                     padding="max_length",
                     max_length=args.max_input_tokens,
                     truncation=True,
+                    return_token_type_ids=return_token_type_ids,
                 )
+
+                def compute_valid_sequence_lengths_tensor(input_tokens):
+                    attn_mask = input_tokens["attention_mask"]
+                    return torch.sum(attn_mask, dim=1, dtype=torch.int32)
+
+                valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
+                generation_config.valid_sequence_lengths = valid_sequence_lengths
+            elif args.use_chat_template:
+                input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+                input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+                attention_mask = torch.ones_like(input_ids)
+                input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
             encode_duration = time.perf_counter() - encode_t0
@@ -428,9 +542,22 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
+
+            input_data = {}
+            if args.input_embeds:
+                inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
+                if inputs_embeds is not None:
+                    input_data.update(inputs_embeds)
+                    input_data.update(input_tokens)
+                else:
+                    args.input_embeds = False
+                    input_data.update(input_tokens)
+            else:
+                input_data.update(input_tokens)
+
             iteration_times = []
             outputs = model.generate(
-                **input_tokens,
+                **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
@@ -442,7 +569,7 @@ def main():
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
-            logger.info(f"Time to first token = {first_token_time*1000}ms")
+            logger.info(f"Time to first token = {first_token_time * 1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -457,10 +584,10 @@ def main():
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
-                    print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile)
                 else:
-                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
+                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
@@ -475,7 +602,7 @@ def main():
                 for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
+                        print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -499,12 +626,16 @@ def main():
 
         print()
         print("Input/outputs:")
+        all_inputs = []
+        all_outputs = []
         for i, input_sentence in enumerate(zip(input_sentences)):
-            print(f"input {i+1}: {input_sentence}")
+            print(f"input {i + 1}: {input_sentence}")
+            all_inputs.append(input_sentence)
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {j+1}: {output}")
+                print(f"output {i + 1}.{j + 1}: {output}")
+                all_outputs.append(output)
             print()
 
         # Store results if necessary
@@ -514,13 +645,16 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "output": output,
+                "input": all_inputs,
+                "output": all_outputs,
             }
             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=4)
 
-        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+        stats = "Input embeds" if args.input_embeds else "Input tokens"
+        stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+        if args.show_graphs_count:
+            stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
         print()
         print("Stats:")
@@ -539,7 +673,7 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name)
+        raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
@@ -628,22 +762,21 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
+        from optimum.habana.utils import HabanaProfile
 
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            logger.info("Graph compilation...")
-            t0 = time.perf_counter()
-            for i, batch in enumerate(dataloader):
-                generate_dataset(batch)
-                # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
-                    break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        logger.info("Graph compilation...")
+        t0 = time.perf_counter()
+        for i, batch in enumerate(dataloader):
+            generate_dataset(batch)
+            # The first three iterations take longer because of graph compilation
+            if (i + 1) == 3:
+                break
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
@@ -656,12 +789,14 @@ def main():
             duration += time.perf_counter() - t0
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
             print(separator)
-            print(f"Batch n°{i+1}")
-            print(f"Input: {prompt[:args.batch_size]}")
+            print(f"Batch n°{i + 1}")
+            print(f"Input: {prompt[: args.batch_size]}")
             print(
-                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[: args.batch_size * args.num_return_sequences]}"
             )
             print(separator)
+            if args.run_partial_dataset and args.n_iterations == i + 1:
+                break
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
@@ -677,11 +812,12 @@ def main():
         mem = get_hpu_memory_stats()
         for k, v in mem.items():
             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        if prompt_length > 0:
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

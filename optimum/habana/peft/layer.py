@@ -223,7 +223,6 @@ def GaudiBoftConv2dForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> 
     """
     Copied from Conv2d.forward: https://github.com/huggingface/peft/blob/v0.12.0/src/peft/tuners/boft/layer.py#L899
     The only differences are:
-    - torch.block_diag operate in cpu, or else lazy mode will hang
     - delete fbd_cuda_available logic,
     """
     previous_dtype = x.dtype
@@ -254,7 +253,7 @@ def GaudiBoftConv2dForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> 
             orth_rotate_butterfly = self.cayley_batch(boft_R)
             orth_rotate_butterfly = orth_rotate_butterfly.view(N, D, H, H)
             orth_rotate_butterfly = dropout(orth_rotate_butterfly)
-            orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0).cpu()
+            orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0)
             block_diagonal_butterfly = torch.block_diag(*torch.unbind(orth_rotate_butterfly))
             block_diagonal_butterfly = block_diagonal_butterfly.unsqueeze(0)
 
@@ -300,7 +299,6 @@ def GaudiBoftLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> 
     """
     Copied from Linear.forward: https://github.com/huggingface/peft/blob/v0.12.0/src/peft/tuners/boft/layer.py#L587
     The only differences are:
-    - torch.block_diag operate in cpu, or else lazy mode will hang
     - delete fbd_cuda_available logic,
     """
     previous_dtype = x.dtype
@@ -327,7 +325,7 @@ def GaudiBoftLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> 
             orth_rotate_butterfly = self.cayley_batch(boft_R)
             orth_rotate_butterfly = orth_rotate_butterfly.view(N, D, H, H)
             orth_rotate_butterfly = dropout(orth_rotate_butterfly)
-            orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0).cpu()
+            orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0)
             block_diagonal_butterfly = torch.block_diag(*torch.unbind(orth_rotate_butterfly))
             block_diagonal_butterfly = block_diagonal_butterfly.unsqueeze(0)
 
@@ -363,7 +361,6 @@ def GaudiBoftGetDeltaWeight(self, adapter) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from Linear.get_delta_weight: https://github.com/huggingface/peft/blob/v0.12.0/src/peft/tuners/boft/layer.py#L555
     The only differences are:
-    - torch.block_diag operate in cpu, or else lazy mode will hang
     - delete fbd_cuda_available logic,
     """
 
@@ -374,7 +371,7 @@ def GaudiBoftGetDeltaWeight(self, adapter) -> tuple[torch.Tensor, torch.Tensor]:
     boft_R = boft_R.view(N * D, H, H)
     orth_rotate_butterfly = self.cayley_batch(boft_R)
     orth_rotate_butterfly = orth_rotate_butterfly.view(N, D, H, H)
-    orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0).cpu()
+    orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0)
     block_diagonal_butterfly = torch.block_diag(*torch.unbind(orth_rotate_butterfly))
     block_diagonal_butterfly = block_diagonal_butterfly.unsqueeze(0)
 

@@ -115,12 +115,12 @@ class TensorParallelStrategy(DistributedStrategy):
         self.group = group if group is not None else torch.distributed.GroupMember.WORLD
 
     def distribute_module(self, module: nn.Module, final_layers: bool = False) -> nn.Module:
-        from optimum.habana.distributed import tp_wrapping
+        from . import tp_wrapping
 
         return tp_wrapping.apply_tp(module, self.group)
 
     def distribute_layer(self, block: nn.Module, layer: int) -> nn.Module:
-        from optimum.habana.distributed import tp_wrapping
+        from . import tp_wrapping
 
         return tp_wrapping.apply_tp(block, layer, self.group)
 

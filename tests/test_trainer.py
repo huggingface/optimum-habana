@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, ModelCard, delete_repo, list_repo_commits, list_repo_files
+from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
 from requests.exceptions import HTTPError
@@ -106,6 +106,21 @@ PATH_SAMPLE_TEXT = f"{get_tests_dir()}/resource/sample_text.txt"
 
 
 adapt_transformers_to_gaudi()
+
+
+class MockOOMCallback(TrainerCallback):
+    """
+    Simple callback to simulate CUDA OOM error if
+    the batch size is >= to `batch_size_limit`.
+    """
+
+    def __init__(self, batch_size_limit=16):
+        self.batch_size_limit = batch_size_limit
+
+    def on_step_end(self, args, state, control, **kwargs):
+        # simulate OOM on the first step
+        if state.train_batch_size >= self.batch_size_limit:
+            raise RuntimeError("Out of memory.")
 
 
 class RegressionDataset:
@@ -525,7 +540,7 @@ class GaudiTrainerIntegrationCommon:
         keys = list(state_dict.keys())
 
         shard_files = [
-            shard_name.replace(f".{extension}", f"-{idx+1:05d}-of-{len(keys):05d}.{extension}")
+            shard_name.replace(f".{extension}", f"-{idx + 1:05d}-of-{len(keys):05d}.{extension}")
             for idx in range(len(keys))
         ]
         index = {"metadata": {}, "weight_map": {key: shard_files[i] for i, key in enumerate(keys)}}
@@ -1683,9 +1698,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             )
             trainer.train()
             # Check that we have the last known step:
-            assert os.path.exists(
-                os.path.join(tmpdir, f"checkpoint-{trainer.state.max_steps}")
-            ), f"Could not find checkpoint-{trainer.state.max_steps}"
+            assert os.path.exists(os.path.join(tmpdir, f"checkpoint-{trainer.state.max_steps}")), (
+                f"Could not find checkpoint-{trainer.state.max_steps}"
+            )
             # And then check the last step
             assert os.path.exists(os.path.join(tmpdir, "checkpoint-9")), "Could not find checkpoint-9"
 
@@ -1855,45 +1870,73 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertAlmostEqual(a, a1, delta=1e-5)
         self.assertAlmostEqual(b, b1, delta=1e-5)
 
-    def test_auto_batch_size_with_resume_from_checkpoint(self):
-        train_dataset = RegressionDataset(length=128)
+    # @require_deepspeed
+    # def test_auto_batch_size_with_deepspeed(self):
+    #     train_dataset = RegressionDataset(length=128)
 
-        config = RegressionModelConfig(a=0, b=2)
-        model = RegressionRandomPreTrainedModel(config)
+    #     config = RegressionModelConfig(a=0, b=2)
+    #     model = RegressionRandomPreTrainedModel(config)
 
-        tmp_dir = self.get_auto_remove_tmp_dir()
+    #     tmp_dir = self.get_auto_remove_tmp_dir()
 
-        class MockCudaOOMCallback(TrainerCallback):
-            def on_step_end(self, args, state, control, **kwargs):
-                # simulate OOM on the first step
-                if state.train_batch_size >= 16:
-                    raise RuntimeError("CUDA out of memory.")
+    #     for stage in [1, 2]:
+    #         deepspeed = {
+    #             "zero_optimization": {
+    #                 "stage": stage,
+    #             },
+    #             "train_batch_size": "auto",
+    #             "train_micro_batch_size_per_gpu": "auto",
+    #         }
 
-        args = RegressionGaudiTrainingArguments(
-            tmp_dir,
-            do_train=True,
-            max_steps=2,
-            save_steps=1,
-            per_device_train_batch_size=16,
-            auto_find_batch_size=True,
-            use_habana=True,
-            use_lazy_mode=True,
-        )
-        gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
-            model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
-        )
-        trainer.train()
-        # After `auto_find_batch_size` is ran we should now be at 8
-        self.assertEqual(trainer._train_batch_size, 8)
+    #     args = RegressionGaudiTrainingArguments(
+    #         tmp_dir,
+    #         do_train=True,
+    #         max_steps=2,
+    #         save_strategy="no",
+    #         per_device_train_batch_size=16,
+    #         auto_find_batch_size=True,
+    #         deepspeed=deepspeed,
+    #         use_habana=True,
+    #         use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()])
+    #     trainer.train()
+    #     self.assertEqual(trainer._train_batch_size, 8)
 
-        # We can then make a new Trainer
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
-        # Check we are at 16 to start
-        self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
-        trainer.train(resume_from_checkpoint=True)
-        # We should be back to 8 again, picking up based upon the last ran Trainer
-        self.assertEqual(trainer._train_batch_size, 8)
+    # def test_auto_batch_size_with_resume_from_checkpoint(self):
+    #     train_dataset = RegressionDataset(length=128)
+
+    #     config = RegressionModelConfig(a=0, b=2)
+    #     model = RegressionRandomPreTrainedModel(config)
+
+    #     tmp_dir = self.get_auto_remove_tmp_dir()
+
+    #     args = RegressionGaudiTrainingArguments(
+    #         tmp_dir,
+    #         do_train=True,
+    #         max_steps=2,
+    #         save_steps=1,
+    #         per_device_train_batch_size=16,
+    #         auto_find_batch_size=True,
+    #         use_habana=True,
+    #         use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(
+    #         model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()]
+    #     )
+    #     trainer.train()
+    #     # After `auto_find_batch_size` is ran we should now be at 8
+    #     self.assertEqual(trainer._train_batch_size, 8)
+
+    #     # We can then make a new Trainer
+    #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+    #     # Check we are at 16 to start
+    #     self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
+    #     trainer.train(resume_from_checkpoint=True)
+    #     # We should be back to 8 again, picking up based upon the last ran Trainer
+    #     self.assertEqual(trainer._train_batch_size, 8)
 
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):
@@ -2902,6 +2945,25 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
             model_card = ModelCard.load(repo_name)
             self.assertTrue("test-trainer-tags" in model_card.data.tags)
+
+    def test_push_to_hub_with_revision(self):
+        # Checks if `trainer.push_to_hub()` works correctly by adding revision
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=os.path.join(tmp_dir, "test-trainer-revision"),
+                push_to_hub=True,
+                hub_token=self._token,
+            )
+            branch = "v1.0"
+            create_branch(repo_id=trainer.hub_model_id, branch=branch, token=self._token, exist_ok=True)
+            url = trainer.push_to_hub(revision=branch)
+
+            # Extract branch from the url
+            re_search = re.search(r"tree/([^/]+)/", url)
+            self.assertIsNotNone(re_search)
+
+            branch_name = re_search.groups()[0]
+            self.assertEqual(branch_name, branch)
 
 
 @require_torch

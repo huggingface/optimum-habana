@@ -19,9 +19,13 @@ import sys
 from pathlib import Path
 
 import torch
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import export_to_gif, export_to_video, load_image
 
-from optimum.habana.diffusers import GaudiEulerDiscreteScheduler
+from optimum.habana.diffusers import (
+    GaudiEulerDiscreteScheduler,
+    GaudiI2VGenXLPipeline,
+    GaudiStableVideoDiffusionPipeline,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -34,7 +38,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -49,14 +53,41 @@ def main():
         type=str,
         help="Path to pre-trained model",
     )
+    parser.add_argument(
+        "--controlnet_model_name_or_path",
+        default="CiaraRowles/temporal-controlnet-depth-svd-v1",
+        type=str,
+        help="Path to pre-trained controlnet model.",
+    )
 
     # Pipeline arguments
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        nargs="*",
+        default="Papers were floating in the air on a table in the library",
+        help="The prompt or prompts to guide the image generation.",
+    )
+    parser.add_argument(
+        "--negative_prompts",
+        type=str,
+        nargs="*",
+        default="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+        help="The prompt or prompts not to guide the image generation.",
+    )
     parser.add_argument(
         "--image_path",
         type=str,
         default=None,
         nargs="*",
         help="Path to input image(s) to guide video generation",
+    )
+    parser.add_argument(
+        "--control_image_path",
+        type=str,
+        default=None,
+        nargs="*",
+        help="Path to controlnet input image(s) to guide video generation.",
     )
     parser.add_argument(
         "--num_videos_per_prompt", type=int, default=1, help="The number of videos to generate per prompt image."
@@ -164,10 +195,33 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
-
+    parser.add_argument("--gif", action="store_true", help="Whether to generate the video in gif format.")
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
     args = parser.parse_args()
-
-    from optimum.habana.diffusers import GaudiStableVideoDiffusionPipeline
 
     # Setup logging
     logging.basicConfig(
@@ -177,24 +231,8 @@ def main():
     )
     logger.setLevel(logging.INFO)
 
-    # Initialize the scheduler and the generation pipeline
-    scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
-    kwargs = {
-        "scheduler": scheduler,
-        "use_habana": args.use_habana,
-        "use_hpu_graphs": args.use_hpu_graphs,
-        "gaudi_config": args.gaudi_config_name,
-    }
-    if args.bf16:
-        kwargs["torch_dtype"] = torch.bfloat16
-
-    pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
-        args.model_name_or_path,
-        **kwargs,
-    )
-
-    # Set seed before running the model
-    set_seed(args.seed)
+    i2v_models = ["i2vgen-xl"]
+    is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
 
     # Load input image(s)
     input = []
@@ -203,26 +241,117 @@ def main():
         args.image_path = [args.image_path]
     for image_path in args.image_path:
         image = load_image(image_path)
-        image = image.resize((args.height, args.width))
+        if is_i2v_model:
+            image = image.convert("RGB")
+        else:
+            image = image.resize((args.height, args.width))
         input.append(image)
         logger.info(image_path)
 
-    # Generate images
-    outputs = pipeline(
-        image=input,
-        num_videos_per_prompt=args.num_videos_per_prompt,
-        batch_size=args.batch_size,
-        height=args.height,
-        width=args.width,
-        num_inference_steps=args.num_inference_steps,
-        min_guidance_scale=args.min_guidance_scale,
-        max_guidance_scale=args.max_guidance_scale,
-        fps=args.fps,
-        motion_bucket_id=args.motion_bucket_id,
-        noise_aug_strength=args.noise_aug_strength,
-        decode_chunk_size=args.decode_chunk_size,
-        output_type=args.output_type,
-    )
+    # Load control input image
+    control_input = []
+    if args.control_image_path is not None:
+        logger.info("Input control image(s):")
+        if isinstance(args.control_image_path, str):
+            args.control_image_path = [args.control_image_path]
+        for control_image in args.control_image_path:
+            image = load_image(control_image)
+            image = image.resize((args.height, args.width))
+            control_input.append(image)
+            logger.info(control_image)
+
+    # Initialize the scheduler and the generation pipeline
+    scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    kwargs = {
+        "scheduler": scheduler,
+        "use_habana": args.use_habana,
+        "use_hpu_graphs": args.use_hpu_graphs,
+        "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
+    }
+
+    set_seed(args.seed)
+    if args.bf16:
+        kwargs["torch_dtype"] = torch.bfloat16
+
+    if args.control_image_path is not None:
+        from optimum.habana.diffusers import GaudiStableVideoDiffusionControlNetPipeline
+        from optimum.habana.diffusers.models import ControlNetSDVModel, UNetSpatioTemporalConditionControlNetModel
+
+        controlnet = ControlNetSDVModel.from_pretrained(
+            args.controlnet_model_name_or_path, subfolder="controlnet", **kwargs
+        )
+        unet = UNetSpatioTemporalConditionControlNetModel.from_pretrained(
+            args.model_name_or_path, subfolder="unet", **kwargs
+        )
+        pipeline = GaudiStableVideoDiffusionControlNetPipeline.from_pretrained(
+            args.model_name_or_path, controlnet=controlnet, unet=unet, **kwargs
+        )
+
+        # Generate images
+        outputs = pipeline(
+            image=input,
+            controlnet_condition=control_input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            height=args.height,
+            width=args.width,
+            num_inference_steps=args.num_inference_steps,
+            min_guidance_scale=args.min_guidance_scale,
+            max_guidance_scale=args.max_guidance_scale,
+            fps=args.fps,
+            motion_bucket_id=args.motion_bucket_id,
+            noise_aug_strength=args.noise_aug_strength,
+            decode_chunk_size=args.decode_chunk_size,
+            output_type=args.output_type,
+            num_frames=args.num_frames,
+        )
+    elif is_i2v_model:
+        del kwargs["scheduler"]
+        pipeline = GaudiI2VGenXLPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        generator = torch.manual_seed(args.seed)
+        outputs = pipeline(
+            prompt=args.prompts,
+            image=input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            num_frames=args.num_frames,
+            num_inference_steps=args.num_inference_steps,
+            negative_prompt=args.negative_prompts,
+            guidance_scale=9.0,
+            generator=generator,
+        )
+    else:
+        pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        kwargs_call = {}
+        if args.throughput_warmup_steps is not None:
+            kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
+
+        # Generate images
+        outputs = pipeline(
+            image=input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            height=args.height,
+            width=args.width,
+            num_inference_steps=args.num_inference_steps,
+            min_guidance_scale=args.min_guidance_scale,
+            max_guidance_scale=args.max_guidance_scale,
+            fps=args.fps,
+            motion_bucket_id=args.motion_bucket_id,
+            noise_aug_strength=args.noise_aug_strength,
+            decode_chunk_size=args.decode_chunk_size,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
+        )
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
@@ -235,7 +364,11 @@ def main():
             video_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
             for i, frames in enumerate(outputs.frames):
-                export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+                if args.gif:
+                    export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
+                else:
+                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+
                 if args.save_frames_as_images:
                     for j, frame in enumerate(frames):
                         frame.save(

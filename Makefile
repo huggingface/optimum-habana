@@ -35,10 +35,13 @@ style: clean
 fast_tests:
 	python -m pip install .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
+# TODO enable when CI has more servers
+#	python -m pytest test_functional_text_generation_example.py
 
 # Run unit and integration tests related to Diffusers
 fast_tests_diffusers:
 	python -m pip install .[tests]
+	python -m pip install -r examples/stable-diffusion/requirements.txt
 	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
@@ -90,37 +93,72 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
-	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
-	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
+	python -m pip install -r examples/stable-diffusion/requirements.txt
+	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion"
 	python -m pip install peft==0.12.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation"
+	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
-# Run text-generation non-regression tests
+# Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
+	python -m pip install -r examples/text-generation/requirements_awq.txt
+	BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
+
+# Run subset of text-generation non-regression tests that require 1 Gaudi card
+slow_tests_text_generation_example_1x: test_installs
+	python -m pip install -r examples/text-generation/requirements_awq.txt
+	BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
+	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -m "(not x2) and (not x4) and (not x8)" -v -s --token $(TOKEN)
+
+# Run subset of text-generation non-regression tests that require 2 Gaudi cards
+slow_tests_text_generation_example_2x: test_installs
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pytest tests/test_text_generation_example.py -m x2 -v -s --token $(TOKEN)
+
+# Run subset of text-generation non-regression tests that require 4 Gaudi cards
+slow_tests_text_generation_example_4x: test_installs
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pytest tests/test_text_generation_example.py -m x4 -v -s --token $(TOKEN)
+
+# Run subset of text-generation non-regression tests that require 8 Gaudi cards
+slow_tests_text_generation_example_8x: test_installs
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pytest tests/test_text_generation_example.py -m x8 -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests
 slow_tests_image_to_text_example: test_installs
 	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
+
+slow_tests_image_to_text_example_1x: test_installs
+	python -m pytest tests/test_image_to_text_example.py -m "not x8" -v -s --token $(TOKEN)
+
+slow_tests_image_to_text_example_8x: test_installs
+	python -m pytest tests/test_image_to_text_example.py -m x8 -v -s --token $(TOKEN)
 
 # Run visual question answering tests
 slow_tests_openclip_vqa_example: test_installs
 	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
 	python -m pytest tests/test_openclip_vqa.py
 
+# Run video comprehension tests
+slow_tests_video_llava_example: test_installs
+	python -m pip install -r examples/video-comprehension/requirements.txt
+	python -m pytest tests/test_video_llava.py
+
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 slow_tests_trl: test_installs
-	python -m pip install trl==0.8.6
-	python -m pip install peft==0.7.0
+	python -m pip install trl==0.9.6
+	python -m pip install peft==0.12.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
 slow_tests_object_segmentation: test_installs

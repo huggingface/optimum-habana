@@ -22,6 +22,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 from transformers.cache_utils import Cache
 from transformers.models.llava.modeling_llava import LlavaCausalLMOutputWithPast, LlavaForConditionalGeneration
 from transformers.utils import logging
@@ -120,6 +121,8 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         image_offset: Optional[int] = None,
         tokens_pos: Optional[torch.LongTensor] = None,
@@ -127,56 +130,65 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
         """
-        Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
+        Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/llava/modeling_llava.py#L362
         The only differences are:
         - add new args token_idx
         - add new args image_offset
         - add new args tokens_pos
         """
 
-        if token_idx is not None:
-            output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-            output_hidden_states = (
-                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-            )
-            return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-            vision_feature_layer = (
-                vision_feature_layer if vision_feature_layer is not None else self.config.vision_feature_layer
-            )
-            vision_feature_select_strategy = (
-                vision_feature_select_strategy
-                if vision_feature_select_strategy is not None
-                else self.config.vision_feature_select_strategy
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        vision_feature_layer = (
+            vision_feature_layer if vision_feature_layer is not None else self.config.vision_feature_layer
+        )
+        vision_feature_select_strategy = (
+            vision_feature_select_strategy
+            if vision_feature_select_strategy is not None
+            else self.config.vision_feature_select_strategy
+        )
+
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
 
-            # 1. Extra the input embeddings
+        if pixel_values is not None and inputs_embeds is not None:
+            raise ValueError(
+                "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
+            )
+
+        if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
-            # 2. Merge text and images
-            if pixel_values is not None and input_ids.shape[1] != 1:
-                image_outputs = self.vision_tower(
-                    pixel_values,
-                    output_hidden_states=True,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                )
-                # this is not memory efficient at all (output_hidden_states=True) will save all the hidden stated.
-                selected_image_feature = image_outputs.hidden_states[vision_feature_layer]
+        image_features = None
+        # 2. Merge text and images
+        if pixel_values is not None and input_ids.shape[1] != 1:
+            image_outputs = self.vision_tower(
+                pixel_values,
+                output_hidden_states=True,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+            )
+            # this is not memory efficient at all (output_hidden_states=True) will save all the hidden stated.
+            selected_image_feature = image_outputs.hidden_states[vision_feature_layer]
 
-                if vision_feature_select_strategy == "default":
-                    selected_image_feature = selected_image_feature[:, 1:]
-                elif vision_feature_select_strategy == "full":
-                    selected_image_feature = selected_image_feature
-                else:
-                    raise ValueError(
-                        f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}"
-                    )
+            if vision_feature_select_strategy == "default":
+                selected_image_feature = selected_image_feature[:, 1:]
+            elif vision_feature_select_strategy == "full":
+                selected_image_feature = selected_image_feature
+            else:
+                raise ValueError(f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}")
 
-                image_features = self.multi_modal_projector(selected_image_feature)
-                inputs_embeds = _merge_input_ids_with_image_features(
-                    image_features, inputs_embeds, input_ids, self.config.image_token_index
-                )
+            image_features = self.multi_modal_projector(selected_image_feature)
+            inputs_embeds = _merge_input_ids_with_image_features(
+                image_features, inputs_embeds, input_ids, self.config.image_token_index
+            )
 
+        if token_idx is not None:
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -186,12 +198,14 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
                 token_idx=token_idx + image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
             )
 
-            if input_ids.shape[1] != 1 and pixel_values is not None:
+            if input_ids.shape[1] != 1 and pixel_values is not None and tokens_pos is not None:
                 batch_size, seq_len = tokens_pos.shape
                 batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
                 logits = outputs[0][batch_indices, tokens_pos.reshape(-1), :].reshape(batch_size, seq_len, -1)
@@ -210,27 +224,66 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 past_key_values=outputs.past_key_values,
                 hidden_states=outputs.hidden_states,
                 attentions=outputs.attentions,
+                image_hidden_states=image_features if pixel_values is not None else None,
             )
 
         else:
-            return super().forward(
-                input_ids=input_ids,
-                pixel_values=pixel_values,
+            outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_values=past_key_values,
                 inputs_embeds=inputs_embeds,
-                vision_feature_layer=vision_feature_layer,
-                vision_feature_select_strategy=vision_feature_select_strategy,
-                labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                cache_position=cache_position,
+                num_logits_to_keep=num_logits_to_keep,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+            )
+
+            logits = outputs[0]
+
+            loss = None
+            if labels is not None:
+                # Shift so that tokens < n predict n
+                if attention_mask is not None:
+                    shift_attention_mask = attention_mask[..., 1:]
+                    shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
+                    shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
+                else:
+                    shift_logits = logits[..., :-1, :].contiguous()
+                    shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = nn.CrossEntropyLoss()
+                loss = loss_fct(
+                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
+                )
+
+            if not return_dict:
+                output = (logits,) + outputs[1:]
+                return (loss,) + output if loss is not None else output
+
+            return LlavaCausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+                image_hidden_states=image_features if pixel_values is not None else None,
             )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, pixel_values=None, attention_mask=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        inputs_embeds=None,
+        pixel_values=None,
+        attention_mask=None,
+        cache_position=None,
+        num_logits_to_keep=None,
+        **kwargs,
     ):
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
@@ -244,7 +297,10 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         token_idx = kwargs.get("token_idx", None)
         image_offset = 0
         tokens_pos = None
-        if token_idx is not None and pixel_values is not None:
+        legacy_processing = (
+            (input_ids == self.config.image_token_index).sum(1).max() < self.config.image_seq_length
+        ) or ((input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1) and pixel_values is not None)
+        if token_idx is not None and pixel_values is not None and legacy_processing:
             input_ids, attention_mask, image_offset, tokens_pos = _pad_inputs(
                 input_ids,
                 attention_mask,
@@ -301,6 +357,10 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             model_inputs = {"input_ids": input_ids}
         use_flash_attention = kwargs.get("use_flash_attention", False)
         flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
+
+        if num_logits_to_keep is not None:
+            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+
         model_inputs.update(
             {
                 "position_ids": position_ids,

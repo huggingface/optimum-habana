@@ -69,7 +69,7 @@ def gaudi_T5Attention_forward(
     if past_key_value is not None:
         if len(past_key_value) != 2:
             raise ValueError(
-                f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+                f"past_key_value should have 2 past states: keys and values. Got {len(past_key_value)} past states"
             )
         if token_idx is None:
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
@@ -406,7 +406,7 @@ def gaudi_T5Stack_forward(
 
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
-                layer_module.forward,
+                layer_module.__call__,
                 hidden_states,
                 extended_attention_mask,
                 position_bias,
@@ -609,7 +609,8 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     # cut decoder_input_ids if past_key_values is used
     if past_key_values is not None:
         if token_idx is not None:
-            input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+            input_ids = torch.index_select(input_ids, 1, idx)
         else:
             past_length = past_key_values[0][0].shape[2]
 

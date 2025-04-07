@@ -4,6 +4,7 @@ import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gptj.configuration_gptj import GPTJConfig
 from transformers.models.gptj.modeling_gptj import (
@@ -37,9 +38,9 @@ class KVCache(torch.nn.Module):
             self.inp_seq_len = inp_seq_len
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
         else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            assert self.inp_seq_len == inp_seq_len, (
+                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            )
             self.cache.fill_(0)
 
     def update(self, prev, cur, dim, idx, inp_seq_len):
@@ -68,10 +69,18 @@ class KVCache(torch.nn.Module):
 
 
 class GaudiGPTJAttention(GPTJAttention):
-    def __init__(self, config: GPTJConfig):
+    def __init__(self, config: GPTJConfig, layer_idx=None):
         super().__init__(config)
         self.config = config
 
+        max_positions = config.max_position_embeddings
+        self.register_buffer(
+            "bias",
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.bool)).view(
+                1, 1, max_positions, max_positions
+            ),
+            persistent=False,
+        )
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -155,12 +164,13 @@ class GaudiGPTJAttention(GPTJAttention):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         sin: Optional[torch.Tensor] = None,
         cos: Optional[torch.Tensor] = None,
@@ -265,11 +275,11 @@ class GaudiGPTJBlock(GPTJBlock):
     Inherits from GPTJBlock: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/gptj/modeling_gptj.py#291
     """
 
-    def __init__(self, config: GPTJConfig):
-        super().__init__(config)
+    def __init__(self, config: GPTJConfig, layer_idx=None):
+        super().__init__(config, layer_idx=None)
         inner_dim = config.n_inner if config.n_inner is not None else 4 * config.n_embd
         self.ln_1 = torch.nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
-        self.attn = GaudiGPTJAttention(config)
+        self.attn = GaudiGPTJAttention(config, layer_idx)
         self.mlp = GPTJMLP(inner_dim, config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -284,12 +294,13 @@ class GaudiGPTJBlock(GPTJBlock):
     def forward(
         self,
         hidden_states: Optional[torch.FloatTensor],
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        layer_past: Optional[Cache] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         sin: Optional[torch.Tensor] = None,
         cos: Optional[torch.Tensor] = None,
@@ -312,6 +323,7 @@ class GaudiGPTJBlock(GPTJBlock):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -351,7 +363,7 @@ class GaudiGPTJModel(GPTJModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -361,6 +373,7 @@ class GaudiGPTJModel(GPTJModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -489,6 +502,7 @@ class GaudiGPTJModel(GPTJModel):
                     head_mask[i],
                     use_cache,
                     output_attentions,
+                    cache_position,
                     None,
                     sin,
                     cos,
@@ -502,6 +516,7 @@ class GaudiGPTJModel(GPTJModel):
                     head_mask=head_mask[i],
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    cache_position=cache_position,
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
@@ -555,15 +570,24 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         self.transformer.update_sincos_cache(seq_len)
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
+        self,
+        input_ids,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        cache_position=None,
+        use_cache=True,
+        token_idx=None,
+        **kwargs,
     ):
         reuse_cache = kwargs.get("reuse_cache")
-        token_type_ids = kwargs.get("token_type_ids", None)
-        attention_mask = kwargs.get("attention_mask", None)
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]
 
@@ -586,8 +610,6 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
-        position_ids = kwargs.get("position_ids", None)
-
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -597,18 +619,21 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids}
+            model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format)}
 
         model_inputs.update(
             {
-                "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
                 "position_ids": position_ids,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "use_cache": use_cache,
                 "attention_mask": attention_mask,
                 "token_type_ids": token_type_ids,
                 "token_idx": token_idx,
@@ -622,7 +647,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -633,6 +658,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -657,6 +683,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,

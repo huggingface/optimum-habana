@@ -25,9 +25,11 @@ from diffusers.schedulers import DDIMScheduler, DDPMScheduler
 from diffusers.utils import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.utils import logging
+
+from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import speed_metrics
+from ..pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -57,6 +59,18 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
+        sdp_on_bf16 (bool, defaults to `False`):
+            Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
     def __init__(
@@ -67,8 +81,16 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
+        sdp_on_bf16: bool = False,
     ):
-        GaudiDiffusionPipeline.__init__(self, use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval)
+        GaudiDiffusionPipeline.__init__(
+            self,
+            use_habana,
+            use_hpu_graphs,
+            gaudi_config,
+            bf16_full_eval,
+            sdp_on_bf16,
+        )
 
         DDPMPipeline.__init__(self, unet, scheduler)
 
@@ -149,8 +171,14 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if self.use_habana:
             self.unet = self.unet.to(self._device)
 
+        throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+
         start_time = time.time()
+        time_after_warmup = start_time
         for i in self.progress_bar(num_inference_steps):
+            if i == throughput_warmup_steps:
+                time_after_warmup = time.time()
+
             timestep = timesteps[0]
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
@@ -172,7 +200,16 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-        end_time = time.time()
+
+        speed_metrics_prefix = "generation"
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=start_time,
+            num_samples=batch_size,
+            num_steps=batch_size * len(num_inference_steps),
+            start_time_after_warmup=time_after_warmup,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -180,5 +217,5 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if not return_dict:
             return (image,)
 
-        throughput = (end_time - start_time) / batch_size
+        throughput = speed_measures["generation_samples_per_second"]
         return GaudiDDPMPipelineOutput(images=image, throughput=throughput)

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 ###############################################################################
-# Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
+# Copyright (C) 2020-2025 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
 import argparse
@@ -32,7 +32,7 @@ import torch.nn.functional as F
 
 # Local imports
 from run_generation import setup_parser
-from utils import finalize_quantization, initialize_model
+from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -72,7 +72,7 @@ def setup_lm_eval_parser():
         type=int,
         nargs="+",
         help="Input length buckets to use with static_shapes",
-        default=[16, 32, 64, 128, 189, 284],
+        default=[16, 32, 64, 128, 189, 284, 384],
     )
 
     parser.add_argument(
@@ -86,6 +86,13 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument(
+        "--show_config",
+        action="store_true",
+        default=False,
+        help="If True, shows the the full config of all tasks at the end of the evaluation.",
+    )
+    parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
     return args
@@ -110,14 +117,26 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             "qwen2",
             "gptj",
             "starcoder2",
+            "gemma",
+            "baichuan",
         ]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral", "qwen2", "falcon", "starcoder2"]:
-            if self.model.config.model_type != "falcon":
+
+        if self.model.config.model_type in [
+            "llama",
+            "mistral",
+            "qwen2",
+            "falcon",
+            "starcoder2",
+            "gemma",
+            "baichuan",
+            "gpt_bigcode",
+        ]:
+            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
                 self.model_inputs.update(
                     {
                         "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -130,6 +149,8 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
             )
+            if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
+                self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
         if args.warmup:
             self.warm_up()
 
@@ -189,10 +210,48 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         logits = logits.to(torch.float32)
         return logits
 
+    def get_model_info(self) -> dict:
+        """
+        Patched method to get Hugging Face model information for experiment reproducibility.
+        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L1375
+        Remove from SynapseAI 1.21
+        """
+
+        def get_model_num_params(model) -> int:
+            if hasattr(model, "num_parameters"):
+                return model.num_parameters()
+            elif hasattr(model, "parameters"):
+                return sum(p.numel() for p in model.parameters())
+            else:
+                return -1
+
+        def get_model_dtype(model) -> str:
+            if hasattr(model, "dtype"):
+                return model.dtype
+            elif hasattr(model, "parameters"):
+                return next(model.parameters()).dtype
+            else:
+                return ""
+
+        model_info = {
+            "model_num_parameters": get_model_num_params(self._model),
+            "model_dtype": get_model_dtype(self._model),
+            "model_revision": self.revision,
+        }
+        return model_info
+
 
 def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
+
+    if args.trust_remote_code:
+        # trust_remote_code fix was introduced in lm_eval 0.4.3
+        # https://github.com/EleutherAI/lm-evaluation-harness/pull/1998/files
+        # We need to cherry-pick the fix manually untill we upgrade (SW-190418)
+        import datasets
+
+        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():
@@ -216,9 +275,12 @@ def main():
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
         json.dump(results, open(args.output_file, "w"), indent=2)
-        print(json.dumps(results, indent=2))
+        if args.show_config:
+            print(json.dumps(results, indent=2))
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil

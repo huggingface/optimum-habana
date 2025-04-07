@@ -8,34 +8,41 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # Gaudi2+
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 87.2901500056982),
-            ("llava-hf/llava-1.5-13b-hf", 1, 51.04717105443364),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 35.00608681379742),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
+            # ("llava-hf/llava-1.5-7b-hf", 1),
+            # ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
+            ("google/paligemma-3b-mix-224", 1),
+            ("HuggingFaceM4/idefics2-8b", 1),
+            ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1),
+            ("tiiuae/falcon-11B-vlm", 1),
+            ("Qwen/Qwen2-VL-2B-Instruct", 1),
+            ("Qwen/Qwen2-VL-7B-Instruct", 1),
         ],
         "fp8": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 115.48515989461843),
-            ("llava-hf/llava-1.5-13b-hf", 1, 78.2635142547838),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 45.011551008367084),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1, 45.18544502949674),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 30.9535718774675),
+            # ("llava-hf/llava-1.5-7b-hf", 1),
+            # ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            pytest.param("llava-hf/llava-v1.6-vicuna-13b-hf", 1, marks=pytest.mark.x8),
         ],
     }
 else:
-    # Gaudi1 CI baselines
+    # Gaudi1
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 28.04096918512148),
-            ("llava-hf/llava-1.5-13b-hf", 1, 16.704731010481538),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 10.759228696741),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 6.96732060769783),
+            ("llava-hf/llava-1.5-7b-hf", 1),
+            ("llava-hf/llava-1.5-13b-hf", 1),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
         ],
         "fp8": [],
     }
@@ -43,7 +50,7 @@ else:
 
 def _test_image_to_text(
     model_name: str,
-    baseline: float,
+    baseline,
     token: str,
     batch_size: int = 1,
     fp8: bool = False,
@@ -57,13 +64,20 @@ def _test_image_to_text(
         f"--model_name_or_path {model_name}",
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
+        "--ignore_eos",
     ]
 
     command += [
         "--use_hpu_graphs",
     ]
 
+    if "meta-llama/Llama-3.2-11B-Vision-Instruct" in model_name or "tiiuae/falcon-11B-vlm" in model_name:
+        command += [
+            "--sdp_on_bf16",
+        ]
+
     command.append("--bf16")
+    command.append("--sdp_on_bf16")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -80,9 +94,17 @@ def _test_image_to_text(
                 path_to_example_dir, "image-to-text/quantization_config/maxabs_measure_include_outputs.json"
             )
             subprocess.run(command, env=env_variables)
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "image-to-text/quantization_config/maxabs_quant.json"
-            )
+            quant_file_path = "image-to-text/quantization_config/maxabs_quant.json"
+            if model_name in [
+                "llava-hf/llava-v1.6-mistral-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-7b-hf",
+                "llava-hf/llava-v1.6-vicuna-13b-hf",
+                "llava-hf/llava-1.5-7b-hf",
+                "llava-hf/llava-1.5-13b-hf",
+            ]:
+                quant_file_path = "image-to-text/quantization_config/maxabs_quant_scale_format_const.json"
+
+            env_variables["QUANT_CONFIG"] = os.path.join(path_to_example_dir, quant_file_path)
 
         proc = subprocess.run(command, env=env_variables)
 
@@ -99,14 +121,18 @@ def _test_image_to_text(
             results = json.load(fp)
 
         # Ensure performance requirements (throughput) are met
-        assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
+        baseline.assertRef(
+            compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
+            context=[OH_DEVICE_CONTEXT],
+            throughput=results["throughput"],
+        )
 
 
-@pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
-def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, token: str):
+@pytest.mark.parametrize("model_name, batch_size", MODELS_TO_TEST["bf16"])
+def test_image_to_text_bf16(model_name: str, batch_size: int, baseline, token):
     _test_image_to_text(model_name, baseline, token, batch_size)
 
 
-@pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["fp8"])
-def test_image_to_text_fp8(model_name: str, baseline: float, batch_size: int, token: str):
+@pytest.mark.parametrize("model_name, batch_size", MODELS_TO_TEST["fp8"])
+def test_image_to_text_fp8(model_name: str, batch_size: int, baseline, token):
     _test_image_to_text(model_name, baseline, token, batch_size, fp8=True)

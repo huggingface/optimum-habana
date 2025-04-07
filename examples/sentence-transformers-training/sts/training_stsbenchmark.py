@@ -4,8 +4,8 @@ that can be compared using cosine-similarity to measure the similarity.
 
 """
 
+import argparse
 import logging
-import sys
 from datetime import datetime
 
 from datasets import load_dataset
@@ -25,19 +25,49 @@ def main():
     logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
     # You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
-    model_name = sys.argv[1] if len(sys.argv) > 1 else "distilbert-base-uncased"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model_name", help="model name or path", default="distilbert-base-uncased", nargs="?")
+    parser.add_argument("--saving_model_checkpoints", help="saving checkpoints", action="store_true", default=False)
+    parser.add_argument("--peft", help="use LoRA", action="store_true", default=False)
+    parser.add_argument("--lora_target_modules", nargs="+", default=["q_lin", "k_lin", "v_lin"])
+    parser.add_argument("--bf16", help="use bf16", action="store_true", default=False)
+    parser.add_argument(
+        "--use_hpu_graphs_for_training",
+        help="use hpu graphs for training",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
+    parser.add_argument("--deepspeed", help="deepspeed config file", default=None)
+    args = parser.parse_args()
+
     train_batch_size = 16
     num_epochs = 1
     output_dir = (
         "output/training_stsbenchmark_"
-        + model_name.replace("/", "-")
+        + args.model_name.replace("/", "-")
         + "-"
         + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
 
     # 1. Here we define our SentenceTransformer model. If not already a Sentence Transformer model, it will automatically
     # create one with "mean" pooling.
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(args.model_name)
+
+    if args.peft:
+        from peft import LoraConfig, get_peft_model
+
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=64,
+            lora_dropout=0.05,
+            bias="none",
+            inference_mode=False,
+            target_modules=args.lora_target_modules,
+        )
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     # 2. Load the STSB dataset: https://huggingface.co/datasets/sentence-transformers/stsb
     train_dataset = load_dataset("sentence-transformers/stsb", split="train")
@@ -61,7 +91,7 @@ def main():
     )
 
     # 5. Define the training arguments
-    args = SentenceTransformerGaudiTrainingArguments(
+    stargs = SentenceTransformerGaudiTrainingArguments(
         # Required parameter:
         output_dir=output_dir,
         # Optional training parameters:
@@ -70,11 +100,12 @@ def main():
         per_device_eval_batch_size=train_batch_size,
         warmup_ratio=0.1,
         # fp16=True,  # Set to False if you get an error that your GPU can't run on FP16
-        # bf16=True,  # Set to True if you have a GPU that supports BF16
+        bf16=args.bf16,  # Set to True if you have a GPU that supports BF16
+        # sdp_on_bf16=True, #Set to True for better performance (but this setting can affect accuracy)
         # Optional tracking/debugging parameters:
         evaluation_strategy="steps",
         eval_steps=100,
-        save_strategy="steps",
+        save_strategy="steps" if args.saving_model_checkpoints else "no",
         save_steps=100,
         save_total_limit=2,
         logging_steps=100,
@@ -82,16 +113,18 @@ def main():
         use_habana=True,
         gaudi_config_name="Habana/distilbert-base-uncased",
         use_lazy_mode=True,
-        use_hpu_graphs=True,
+        use_hpu_graphs=args.use_hpu_graphs_for_training,
         use_hpu_graphs_for_inference=False,
-        use_hpu_graphs_for_training=True,
+        use_hpu_graphs_for_training=args.use_hpu_graphs_for_training,
+        learning_rate=args.learning_rate,
+        deepspeed=args.deepspeed,
     )
 
     # 6. Create the trainer & start training
     # trainer = SentenceTransformerTrainer(
     trainer = SentenceTransformerGaudiTrainer(
         model=model,
-        args=args,
+        args=stargs,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         loss=train_loss,
@@ -110,8 +143,14 @@ def main():
     test_evaluator(model)
 
     # 8. Save the trained & evaluated model locally
-    final_output_dir = f"{output_dir}/final"
-    model.save(final_output_dir)
+    if args.saving_model_checkpoints:
+        final_output_dir = f"{output_dir}/final"
+        model.save(final_output_dir)
+
+    if args.saving_model_checkpoints and args.peft:
+        model.eval()
+        model = model.merge_and_unload()
+        model.save_pretrained(f"{output_dir}/merged")
 
 
 if __name__ == "__main__":

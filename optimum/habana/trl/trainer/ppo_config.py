@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -34,12 +35,20 @@ class GaudiPPOConfig(PPOConfig):
     """max input length including padding. Only applicable if pad_for_acceleration is True"""
 
     def __post_init__(self):
+        """
+        Copied from PPOConfig.__post_init__: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_config.py#L152
+        The only differences are:
+        - add adapt_transformers_to_gaudi for habana
+        """
+        if self.forward_batch_size is not None:
+            warnings.warn(
+                "Note that using `forward_batch_size` is deprecated, use `mini_batch_size` instead. By setting it you overwrite `mini_batch_size` which affects both the batch size during forward passes and also the mini batch size for PPO optimization."
+            )
+            self.mini_batch_size = self.forward_batch_size
         self.backward_batch_size = self.mini_batch_size * self.gradient_accumulation_steps
         exact_div(
             self.batch_size,
             self.backward_batch_size,
-            "`batch_size`",
-            "`mini_batch_size * gradient_accumulation_steps`",
             "`batch_size` must be a multiple of `mini_batch_size * gradient_accumulation_steps`",
         )
         self.total_ppo_epochs = int(np.ceil(self.steps / self.batch_size))
@@ -61,7 +70,7 @@ class GaudiPPOConfig(PPOConfig):
                 )
 
         if self.use_habana:
-            from optimum.habana.transformers.modeling_utils import (
+            from ...transformers.modeling_utils import (
                 adapt_transformers_to_gaudi,
             )
 

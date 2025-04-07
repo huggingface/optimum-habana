@@ -44,6 +44,7 @@ from trl.models import (
     SUPPORTED_ARCHITECTURES,
     PreTrainedModelWrapper,
     create_reference_model,
+    unwrap_model_for_generation,
 )
 from trl.trainer import (
     AdaptiveKLController,
@@ -52,8 +53,7 @@ from trl.trainer import (
     RunningMoments,
 )
 
-from optimum.habana.utils import set_seed
-
+from ...utils import set_seed
 from . import GaudiPPOConfig
 
 
@@ -63,18 +63,19 @@ _recorded_graph = None
 class GaudiPPOTrainer(PPOTrainer):
     def __init__(
         self,
-        config: GaudiPPOConfig = None,
-        model: PreTrainedModelWrapper = None,
+        config: Optional[GaudiPPOConfig] = None,
+        model: Optional[PreTrainedModelWrapper] = None,
         ref_model: Optional[PreTrainedModelWrapper] = None,
-        tokenizer: PreTrainedTokenizerBase = None,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
         dataset: Optional[Union[torch.utils.data.Dataset, Dataset]] = None,
         optimizer: Optional[torch.optim.Optimizer] = None,
         data_collator: Optional[typing.Callable] = None,
         num_shared_layers: Optional[int] = None,
         lr_scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+        training_data_collator: Optional[typing.Callable] = None,
     ):
         """
-        Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L145
+        Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L148
         The only differences are:
         - add new args for Gaudi in config
         - use GaudiAccelerator instead of Accelerator
@@ -97,7 +98,7 @@ class GaudiPPOTrainer(PPOTrainer):
             )
         # Step 1: Initialize Accelerator
         if config.use_habana:
-            from optimum.habana.accelerate import GaudiAccelerator as Accelerator
+            from ...accelerate import GaudiAccelerator as Accelerator
         else:
             from accelerate import Accelerator
         self.accelerator = Accelerator(
@@ -180,7 +181,10 @@ class GaudiPPOTrainer(PPOTrainer):
             self.dataloader = None
 
         # Step 3: Initialize optimizer and data collator
-        self.data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
+        if training_data_collator is None:
+            self.data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
+        else:
+            self.data_collator = training_data_collator
         if optimizer is None:
             self.optimizer = Adam(
                 filter(lambda p: p.requires_grad, self.model.parameters()),
@@ -219,6 +223,18 @@ class GaudiPPOTrainer(PPOTrainer):
         is_deepspeed_used = self.accelerator.distributed_type == "DEEPSPEED" and hasattr(
             self.accelerator.state, "deepspeed_plugin"
         )
+
+        if config.gradient_checkpointing:
+            self.model.gradient_checkpointing_enable()
+
+            if hasattr(self.model, "enable_input_require_grads"):
+                self.model.enable_input_require_grads()
+            else:
+                # For backward compatibility with older versions of transformers
+                def make_inputs_require_grad(module, input, output):
+                    output.requires_grad_(True)
+
+                self.model.pretrained_model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
         (
             self.model,
@@ -286,7 +302,7 @@ class GaudiPPOTrainer(PPOTrainer):
         **generation_kwargs,
     ):
         """
-        Copied from PPOTrainer.generate: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L433
+        Copied from PPOTrainer.generate: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L455
         The only differences are:
         - add hpu graph for acceleration
         """
@@ -304,17 +320,16 @@ class GaudiPPOTrainer(PPOTrainer):
                 **generation_kwargs,
             )
             if generate_ref_response:
-                with self.optional_peft_ctx():
-                    if self.config.use_habana:
-                        self.wrap_generation_for_hpu_graph_mode(ref_model)
-                    ref_response = self._generate_batched(
-                        ref_model,
-                        query_tensor,
-                        length_sampler=length_sampler,
-                        batch_size=batch_size,
-                        return_prompt=return_prompt,
-                        **generation_kwargs,
-                    )
+                if self.config.use_habana:
+                    self.wrap_generation_for_hpu_graph_mode(ref_model)
+                ref_response = self._generate_batched(
+                    ref_model,
+                    query_tensor,
+                    length_sampler=length_sampler,
+                    batch_size=batch_size,
+                    return_prompt=return_prompt,
+                    **generation_kwargs,
+                )
 
         else:
             if len(query_tensor.shape) == 2:
@@ -326,14 +341,17 @@ class GaudiPPOTrainer(PPOTrainer):
                 generation_kwargs["max_new_tokens"] = length_sampler()
             if self.config.use_habana:
                 self.wrap_generation_for_hpu_graph_mode(self.model)
-            response = self.accelerator.unwrap_model(self.model).generate(
-                input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs
-            )
+            with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
+                response = unwrapped_model.generate(input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs)
             if generate_ref_response:
-                with self.optional_peft_ctx():
-                    if self.config.use_habana:
-                        self.wrap_generation_for_hpu_graph_mode(ref_model)
-                    ref_response = ref_model.generate(input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs)
+                if self.config.use_habana:
+                    self.wrap_generation_for_hpu_graph_mode(ref_model)
+                with unwrap_model_for_generation(
+                    ref_model, self.accelerator, is_peft_model=self.is_peft_model
+                ) as unwrapped_model:
+                    ref_response = unwrapped_model.generate(
+                        input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs
+                    )
 
             if not return_prompt and not self.is_encoder_decoder:
                 response = response[:, query_tensor.shape[0] :]
@@ -348,15 +366,15 @@ class GaudiPPOTrainer(PPOTrainer):
         self,
         model: PreTrainedModelWrapper,
         query_tensors: List[torch.Tensor],
-        length_sampler: Callable = None,
+        length_sampler: Optional[Callable] = None,
         batch_size: int = 4,
         return_prompt: bool = True,
-        pad_to_multiple_of: int = None,
+        pad_to_multiple_of: Optional[int] = None,
         remove_padding: bool = True,
         **generation_kwargs,
     ):
         """
-        Copied from PPOTrainer._generate_batched: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L509
+        Copied from PPOTrainer._generate_batched: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L535
         The only differences are:
         - pad to pad_max_input_len to get static shape for generation acceleration
         - use lazy mode and hpu_graphs for generation in hpu
@@ -403,7 +421,8 @@ class GaudiPPOTrainer(PPOTrainer):
                 generation_kwargs["lazy_mode"] = True
                 generation_kwargs["hpu_graphs"] = True
 
-            generations = self.accelerator.unwrap_model(model).generate(**padded_inputs, **generation_kwargs)
+            with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
+                generations = unwrapped_model.generate(**padded_inputs, **generation_kwargs)
 
             for generation, mask in zip(generations, padded_inputs["attention_mask"]):
                 if not self.is_encoder_decoder:
@@ -433,7 +452,7 @@ class GaudiPPOTrainer(PPOTrainer):
         response_masks: Optional[List[torch.LongTensor]] = None,
     ):
         """
-        Copied from PPOTrainer.step: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L620
+        Copied from PPOTrainer.step: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L647
         The only differences are:
         - use hpu_graphs for sampling and training
         - remove duplicated padding if padding is done in prepare_model_inputs
@@ -678,7 +697,7 @@ class GaudiPPOTrainer(PPOTrainer):
 
     def prepare_model_inputs(self, queries: torch.Tensor, responses: torch.Tensor):
         """
-        Copied from PPOTrainer.prepare_model_inputs: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L921
+        Copied from PPOTrainer.prepare_model_inputs: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L949
         The only differences are:
         - add padding to model inputs for static shape support in forward
         """
@@ -745,7 +764,7 @@ class GaudiPPOTrainer(PPOTrainer):
         response_masks: Optional[torch.Tensor] = None,
     ):
         """
-        Copied from PPOTrainer.batched_forward_pass: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L943
+        Copied from PPOTrainer.batched_forward_pass: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L971
         The only differences are:
         - input_kwargs/output need to clone() to avoid overidden in hpu
         """
@@ -825,7 +844,7 @@ class GaudiPPOTrainer(PPOTrainer):
         returns: torch.FloatTensor,
     ):
         """
-        Copied from PPOTrainer.batched_forward_pass: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L1034
+        Copied from PPOTrainer.batched_forward_pass: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_trainer.py#L1058
         The only differences are:
         - add htcore.mark_step
         """

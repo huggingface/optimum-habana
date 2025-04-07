@@ -19,8 +19,8 @@ except ImportError:
         return ()
 
 
-check_min_version("4.43.0")
-check_optimum_habana_min_version("1.14.0.dev0")
+check_min_version("4.45.0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 # Setup logging
 logging.basicConfig(
@@ -69,6 +69,12 @@ def main():
         help="Whether to use bf16 precision for classification.",
     )
     parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
+    parser.add_argument(
         "--save_outputs",
         action="store_true",
         help="Whether to save the generated images to jpg.",
@@ -78,6 +84,12 @@ def main():
         type=str,
         default="/tmp/",
         help="Where to save the generated images. The default is DDPMScheduler.",
+    )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=3,
+        help="Number of steps to ignore for throughput calculation.",
     )
 
     args = parser.parse_args()
@@ -98,10 +110,13 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": gaudi_config,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
+    kwargs_call = {"throughput_warmup_steps": args.throughput_warmup_steps}
+
     pipeline = GaudiDDPMPipeline.from_pretrained(model_name, **kwargs)
-    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps)
+    output = pipeline(batch_size=args.batch_size, num_inference_steps=args.num_inference_steps, **kwargs_call)
 
     if args.output_dir:
         logger.info(f"Generating outputs to {args.output_dir}")

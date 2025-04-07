@@ -27,6 +27,9 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+> [!NOTE]
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for release 1.20 only.
+
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
@@ -56,8 +59,10 @@ python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
-    --trust_remote_code True
+    --trust_remote_code True \
+    --attn_implementation sdpa
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -70,7 +75,7 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
@@ -90,13 +95,15 @@ python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --seed 0 \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference \
+    --use_lazy_mode False\
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
+    --sdp_on_bf16 \
     --bf16 \
-    --trust_remote_code True
+    --trust_remote_code True \
+    --torch_compile \
+    --torch_compile_backend hpu_backend \
+    --attn_implementation sdpa
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
@@ -104,53 +111,6 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
 > If you get an error reporting unused parameters in the model, you can specify `--ddp_find_unused_parameters True`. Using this parameter might affect the training speed.
-
-
-## DeepSpeed
-
-> You need to install DeepSpeed with:
-> ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.17.0
-> ```
-
-DeepSpeed can be used with almost the same command as for a multi-card run:
-- `use_mpi` should be replaced by `use_deepspeed`,
-- an additional `--deepspeed path_to_my_deepspeed config` argument should be provided, for instance `--deepspeed ../../tests/configs/deepspeed_zero_2.json`.
-
-For example:
-```bash
-python ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_audio_classification.py \
-    --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name common_language \
-    --audio_column_name audio \
-    --label_column_name language \
-    --output_dir /tmp/wav2vec2-base-lang-id \
-    --overwrite_output_dir \
-    --remove_unused_columns False \
-    --do_train \
-    --do_eval \
-    --learning_rate 3e-4 \
-    --max_length_seconds 8 \
-    --attention_mask False \
-    --warmup_ratio 0.1 \
-    --num_train_epochs 10 \
-    --per_device_train_batch_size 16 \
-    --per_device_eval_batch_size 32 \
-    --seed 0 \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3 \
-    --deepspeed ../../tests/configs/deepspeed_zero_2.json \
-    --trust_remote_code True
-```
-
-[The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
-
-> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
-
 
 ## Inference
 
@@ -165,6 +125,7 @@ python run_audio_classification.py \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
+    --bf16 \
     --do_eval \
     --max_length_seconds 1 \
     --attention_mask False \
@@ -173,9 +134,9 @@ python run_audio_classification.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
     --gaudi_config_name Habana/wav2vec2 \
-    --bf16 \
-    --trust_remote_code True
+    --trust_remote_code
 ```
 
 

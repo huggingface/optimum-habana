@@ -124,8 +124,7 @@ def gaudi_opt_attention_forward(
     if layer_head_mask is not None:
         if layer_head_mask.size() != (self.num_heads,):
             raise ValueError(
-                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-                f" {layer_head_mask.size()}"
+                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is {layer_head_mask.size()}"
             )
         attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
@@ -507,7 +506,8 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
     ):
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 past_length = past_key_values[0][0].shape[2]
 

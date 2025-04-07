@@ -15,17 +15,20 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 from accelerate import PartialState
+from compel import Compel, ReturnedEmbeddingsType
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiFlowMatchEulerDiscreteScheduler,
 )
 from optimum.habana.utils import set_seed
 
@@ -39,7 +42,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.14.0.dev0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +68,7 @@ def main():
     parser.add_argument(
         "--scheduler",
         default="ddim",
-        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim"],
+        choices=["default", "euler_discrete", "euler_ancestral_discrete", "ddim", "flow_match_euler_discrete"],
         type=str,
         help="Name of scheduler",
     )
@@ -226,6 +229,9 @@ def main():
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
     parser.add_argument(
+        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+    )
+    parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
@@ -270,22 +276,69 @@ def main():
         action="store_true",
         help="Enable deterministic generation using CPU Generator",
     )
+    parser.add_argument(
+        "--use_compel",
+        action="store_true",
+        help="Use compel for prompt weighting",
+    )
+    parser.add_argument(
+        "--use_freeu",
+        action="store_true",
+        help="Use freeu for improving generation quality",
+    )
+    parser.add_argument(
+        "--use_zero_snr",
+        action="store_true",
+        help="Use rescale_betas_zero_snr for controlling image brightness",
+    )
+    parser.add_argument("--optimize", action="store_true", help="Use optimized pipeline.")
+    parser.add_argument(
+        "--quant_mode",
+        default="disable",
+        choices=["measure", "quantize", "quantize-mixed", "disable"],
+        type=str,
+        help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
+    )
+    parser.add_argument(
+        "--prompts_file",
+        type=str,
+        default=None,
+        help="The file with prompts (for large number of images generation).",
+    )
+    parser.add_argument(
+        "--lora_scale",
+        type=float,
+        default=None,
+        help="A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.",
+    )
     args = parser.parse_args()
+
+    if args.optimize and not args.use_habana:
+        raise ValueError("--optimize can only be used with --use-habana.")
 
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3"]
+    flux_models = ["FLUX.1"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
+    flux = True if any(model in args.model_name_or_path for model in flux_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
     # Set the scheduler
-    kwargs = {"timestep_spacing": args.timestep_spacing}
-    if args.scheduler == "euler_discrete":
+    kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
+
+    if flux or args.scheduler == "flow_match_euler_discrete":
+        scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
+        if args.optimize:
+            scheduler.hpu_opt = True
     elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
@@ -300,6 +353,7 @@ def main():
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
+        "sdp_on_bf16": args.sdp_on_bf16,
     }
 
     if scheduler is not None:
@@ -332,6 +386,9 @@ def main():
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
+    if args.lora_scale is not None:
+        kwargs_call["lora_scale"] = args.lora_scale
+
     negative_prompts = args.negative_prompts
     if args.distributed:
         distributed_state = PartialState()
@@ -340,16 +397,18 @@ def main():
                 negative_prompts = negative_prompt
     kwargs_call["negative_prompt"] = negative_prompts
 
-    if sdxl or sd3:
+    if sdxl or sd3 or flux:
         prompts_2 = args.prompts_2
-        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.prompts_2 is not None:
             with distributed_state.split_between_processes(args.prompts_2) as prompt_2:
                 prompts_2 = prompt_2
+        kwargs_call["prompt_2"] = prompts_2
+
+    if sdxl or sd3:
+        negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.negative_prompts_2 is not None:
             with distributed_state.split_between_processes(args.negative_prompts_2) as negative_prompt_2:
                 negative_prompts_2 = negative_prompt_2
-        kwargs_call["prompt_2"] = prompts_2
         kwargs_call["negative_prompt_2"] = negative_prompts_2
 
     if sd3:
@@ -388,7 +447,10 @@ def main():
             control_image = Image.fromarray(image)
         kwargs_call["image"] = control_image
 
+    kwargs_call["quant_mode"] = args.quant_mode
+
     # Instantiate a Stable Diffusion pipeline class
+    quant_config_path = os.getenv("QUANT_CONFIG")
     if sdxl:
         # SDXL pipelines
         if controlnet:
@@ -401,16 +463,50 @@ def main():
 
             pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
 
-        else:
+        elif args.optimize:
             # Import SDXL pipeline
+            # set PATCH_SDPA to enable fp8 varient of softmax in sdpa
+            os.environ["PATCH_SDPA"] = "1"
+            import habana_frameworks.torch.hpu as torch_hpu
+
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
+
+            pipeline = StableDiffusionXLPipeline_HPU.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+
+            pipeline.unet.set_default_attn_processor(pipeline.unet)
+            pipeline.to(torch.device("hpu"))
+
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
+
+                htcore.hpu_set_env()
+
+                config = FP8Config.from_json_file(quant_config_path)
+
+                if config.measure:
+                    logger.info("Running measurements")
+                    pipeline.unet = prepare(pipeline.unet, config)
+                elif config.quantize:
+                    logger.info("Running quantization")
+                    pipeline.unet = convert(pipeline.unet, config)
+                htcore.hpu_initialize(pipeline.unet, mark_only_scales_as_const=True)
+
+            if args.use_hpu_graphs:
+                pipeline.unet = torch_hpu.wrap_in_hpu_graph(pipeline.unet)
+
+        else:
             from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
             pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
     elif sd3:
         # SD3 pipelines
@@ -420,11 +516,28 @@ def main():
         elif inpainting:
             # Import SD3 Inpainting pipeline
             raise ValueError("SD3 Inpainting pipeline is not currenly supported")
+        elif args.use_compel:
+            raise ValueError("SD3 pipeline + Compel is not currenly supported")
         else:
             # Import SD3 pipeline
             from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
 
             pipeline = GaudiStableDiffusion3Pipeline.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+
+    elif flux:
+        # Flux pipelines
+        if controlnet:
+            raise ValueError("Flux+ControlNet pipeline is not currenly supported")
+        elif inpainting:
+            raise ValueError("Flux Inpainting pipeline is not currenly supported")
+        else:
+            # Import Flux pipeline
+            from optimum.habana.diffusers import GaudiFluxPipeline
+
+            pipeline = GaudiFluxPipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )
@@ -444,8 +557,6 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
         elif inpainting:
             # SD Inpainting pipeline
@@ -462,6 +573,7 @@ def main():
                     args.model_name_or_path,
                     **kwargs,
                 )
+                pipeline.unet.set_default_attn_processor(pipeline.unet)
 
                 if args.unet_adapter_name_or_path is not None:
                     from peft import PeftModel, tuners
@@ -519,6 +631,10 @@ def main():
                     **kwargs,
                 )
 
+    # Load LoRA weights if provided
+    if args.lora_id:
+        pipeline.load_lora_weights(args.lora_id)
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -529,13 +645,65 @@ def main():
 
     # Set RNG seed
     set_seed(args.seed)
+    if args.use_compel:
+        tokenizer = [pipeline.tokenizer]
+        text_encoder = [pipeline.text_encoder]
+        if sdxl:
+            tokenizer.append(pipeline.tokenizer_2)
+            text_encoder.append(pipeline.text_encoder_2)
+            compel = Compel(
+                tokenizer=tokenizer,
+                text_encoder=text_encoder,
+                returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+                requires_pooled=[False, True],
+                device=torch.device("cpu"),
+            )
+        else:
+            compel = Compel(tokenizer=tokenizer, text_encoder=text_encoder, device=torch.device("cpu"))
+
+    if args.use_freeu:
+        if args.use_hpu_graphs:
+            raise ValueError("Freeu cannot support the HPU graph model, please disable it.")
+
+        pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
+
+    # If prompts file is specified override prompts from the file
+    if args.prompts_file is not None:
+        lines = []
+        with open(args.prompts_file, "r") as file:
+            lines = file.readlines()
+        lines = [line.strip() for line in lines]
+        args.prompts = lines
 
     # Generate Images using a Stable Diffusion pipeline
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
-            outputs = pipeline(prompt=prompt, **kwargs_call)
+            if args.use_compel:
+                if sdxl:
+                    conditioning, pooled = compel(prompt)
+                    outputs = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, **kwargs_call)
+                else:
+                    prompt_embeds = compel(prompt)
+                    outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
+            else:
+                outputs = pipeline(prompt=prompt, **kwargs_call)
+
     else:
-        outputs = pipeline(prompt=args.prompts, **kwargs_call)
+        if args.use_compel:
+            if sdxl:
+                conditioning, pooled = compel(args.prompts)
+                outputs = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, **kwargs_call)
+            else:
+                prompt_embeds = compel(args.prompts)
+                outputs = pipeline(prompt_embeds=prompt_embeds, **kwargs_call)
+        else:
+            outputs = pipeline(prompt=args.prompts, **kwargs_call)
+
+    if args.optimize and quant_config_path and config.measure:
+        from neural_compressor.torch.quantization import finalize_calibration
+
+        logger.info("Finalizing calibration...")
+        finalize_calibration(pipeline.unet)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
@@ -555,12 +723,12 @@ def main():
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i+1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}.png")
             else:
                 for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i+1}.png")
+                    image.save(image_save_dir / f"image_{i + 1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
