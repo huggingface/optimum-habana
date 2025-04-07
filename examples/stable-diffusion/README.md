@@ -103,9 +103,13 @@ python text_to_image_generation.py \
 > The access to SD3 requires agreeing to its terms and conditions at [HuggingFace model page](https://huggingface.co/stabilityai/stable-diffusion-3-medium),
 > and then authenticating using your HF token via `huggingface-cli login`.
 
-This model can also be quantized with some ops running in FP8 precision. Before quantization, run stats collection using measure mode by setting
+This model can also be quantized with some ops running in FP8 precision. Before quantization, run stats collection once using measure mode by setting
 runtime variable `QUANT_CONFIG=quantization/stable-diffusion-3/measure_config.json` and `--quant_mode measure`. After stats collection, you can run
 SD3 in quantization mode by setting runtime variable `QUANT_CONFIG=quantization/stable-diffusion-3/quantize_config.json` and `--quant_mode quantize`.
+
+> [!NOTE]
+> If you are running SD3 Gaudi pipeline as a service, run quantization mode only once and pipeline in memory will be quantized to use FP8 precision.
+> Running quantization mode multiple times on the same pipeline object may cause errors.
 
 To run Stable Diffusion 3.5 Large, use `--model_name_or_path stabilityai/stable-diffusion-3.5-large` in the input.
 
@@ -135,9 +139,13 @@ python text_to_image_generation.py \
 > The access to FLUX.1-dev model requires agreeing to its terms and conditions at [HuggingFace model page](https://huggingface.co/black-forest-labs/FLUX.1-dev),
 > and then authenticating using your HF token via `huggingface-cli login`.
 
-This model can also be quantized with some ops running in FP8 precision. Before quantization, run stats collection using measure mode by setting
+This model can also be quantized with some ops running in FP8 precision. Before quantization, run stats collection once using measure mode by setting
 runtime variable `QUANT_CONFIG=quantization/flux/measure_config.json` and `--quant_mode measure`. After stats collection, you can run
 FLUX in quantization mode by setting runtime variable `QUANT_CONFIG=quantization/flux/quantize_config.json` and `--quant_mode quantize`.
+
+> [!NOTE]
+> If you are running Flux Gaudi pipeline as a service, run quantization mode only once and pipeline in memory will be quantized to use FP8 precision.
+> Running quantization mode multiple times on the same pipeline object may cause errors.
 
 To run with FLUX.1-schnell model, a distilled version of FLUX.1 (which is not gated), use `--model_name_or_path black-forest-labs/FLUX.1-schnell`.
 
