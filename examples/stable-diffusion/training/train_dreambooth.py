@@ -510,6 +510,12 @@ def parse_args(input_args=None):
         action="store_true",
         help="Use HPU graphs for inference on HPU.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
 
     # Adapter arguments
     subparsers = parser.add_subparsers(dest="adapter")
@@ -943,6 +949,9 @@ def main(args):
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:

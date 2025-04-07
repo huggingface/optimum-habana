@@ -463,6 +463,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --mixed_precision=bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
+    --sdp_on_bf16 \
     --gaudi_config_name Habana/stable-diffusion \
     full
 ```
@@ -501,6 +502,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --mixed_precision=bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
+    --sdp_on_bf16 \
     --gaudi_config_name Habana/stable-diffusion \
     lora --unet_r 8 --unet_alpha 8
 ```
@@ -561,6 +563,7 @@ python train_dreambooth_lora_sdxl.py \
     --seed=0 \
     --use_hpu_graphs_for_inference \
     --use_hpu_graphs_for_training \
+    --sdp_on_bf16 \
     --gaudi_config_name Habana/stable-diffusion
 ```
 
@@ -585,6 +588,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.
     --seed=0 \
     --use_hpu_graphs_for_inference \
     --use_hpu_graphs_for_training \
+    --sdp_on_bf16 \
     --gaudi_config_name Habana/stable-diffusion
 ```
 > [!NOTE]
