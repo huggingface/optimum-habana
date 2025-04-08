@@ -28,6 +28,7 @@ from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
 from ....distributed.tp import TPModule
+from ....features import import_hpex
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -44,14 +45,6 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-
-    has_fused_rms_norm = True
-except ImportError:
-    has_fused_rms_norm = False
-    print("Not using HPU fused kernel for RMSNorm")
-
-try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
@@ -66,21 +59,24 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    if hidden_states.device.type == "hpu" and has_fused_rms_norm:
-        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
-        if hidden_states.dtype != self.weight.dtype:
-            orig_dtype = hidden_states.dtype
-            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
-            return hidden_states.to(orig_dtype)
+    with import_hpex("habana_frameworks.torch.hpex.normalization", "FusedRMSNorm") as FusedRMSNorm:
+        if hidden_states.device.type == "hpu" and FusedRMSNorm:
+            # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+            if hidden_states.dtype != self.weight.dtype:
+                orig_dtype = hidden_states.dtype
+                hidden_states = FusedRMSNorm.apply(
+                    hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon
+                )
+                return hidden_states.to(orig_dtype)
+            else:
+                hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+                return hidden_states
         else:
-            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-            return hidden_states
-    else:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
+            input_dtype = hidden_states.dtype
+            hidden_states = hidden_states.to(torch.float32)
+            variance = hidden_states.pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+            return self.weight * hidden_states.to(input_dtype)
 
 
 class GaudiLlamaRotaryEmbedding(torch.nn.Module):
@@ -1314,9 +1310,6 @@ class GaudiLlamaModel(LlamaModel):
         if hasattr(self.config, "use_fused_rope") and self.config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
-        if hasattr(self.config, "use_fused_rms_norm") and self.config.use_fused_rms_norm is False:
-            global has_fused_rms_norm
-            has_fused_rms_norm = False
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
