@@ -1349,28 +1349,34 @@ class GaudiLlamaModel(LlamaModel):
                 )
                 hidden_states = layer_outputs[0]
             else:
+                # Calling the layer with positional arguments
+                # This is a workaround for an issue with DeepSpeed where
+                # it cannot handle keyword arguments and throws a RuntimError
                 use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
+                layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
+                layer_hidden_states = hidden_states_split if split_prompt else hidden_states
+                past_key_value = None if past_key_values is None else past_key_values[layer_idx]
                 layer_outputs = decoder_layer(
-                    hidden_states=hidden_states_split if split_prompt else hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    valid_sequence_lengths=valid_sequence_lengths,
-                    cache_idx=cache_idx,
-                    num_virtual_tokens=num_virtual_tokens,
-                    attn_batch_split=attn_batch_split,
-                    prev_layer_residual=prev_layer_residual if use_prev_layer_residual else None,
+                    layer_hidden_states,
+                    causal_mask,
+                    position_ids,
+                    past_key_value,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
+                    position_embeddings,
+                    token_idx,
+                    attn_softmax_bf16,
+                    reuse_cache,
+                    use_flash_attention,
+                    flash_attention_recompute,
+                    flash_attention_causal_mask,
+                    flash_attention_fast_softmax,
+                    valid_sequence_lengths,
+                    cache_idx,
+                    num_virtual_tokens,
+                    attn_batch_split,
+                    layer_prev_layer_residual,
                 )
                 if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)
