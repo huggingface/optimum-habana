@@ -184,6 +184,9 @@ def check_gated_model_access(model):
     Skip test for a gated model if access is not granted; this occurs when an account
     with the required permissions is not logged into the HF Hub.
     """
+    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+        return lambda func: func
+
     try:
         hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
         gated = False
