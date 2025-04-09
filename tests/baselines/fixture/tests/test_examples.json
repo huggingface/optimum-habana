@@ -232,7 +232,7 @@
       "train_samples_per_second": 107
     },
     "gaudi3": {
-      "perplexity": 2.592915682175543,
+      "perplexity": 2.631517742463695,
       "train_runtime": 1026.9536,
       "train_samples_per_second": 71.308
     }
@@ -281,8 +281,8 @@
     },
     "gaudi3": {
       "perplexity": 1.570946503005108,
-      "train_runtime": 342.6741,
-      "train_samples_per_second": 267.801
+      "train_runtime": 418.2808,
+      "train_samples_per_second": 238.235
     }
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingLORAExampleTester::test_run_lora_clm_falcon-40b_multi_card": {

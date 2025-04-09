@@ -788,7 +788,8 @@
                         "--adam_epsilon 1e-08",
                         "--ddp_bucket_cap_mb 50",
                         "--validation_split_percentage 10",
-                        "--attn_softmax_bf16"
+                        "--attn_softmax_bf16",
+                        "--dataloader_drop_last True"
                     ]
                 }
             }

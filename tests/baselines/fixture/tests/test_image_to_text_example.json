@@ -12,7 +12,7 @@
       "throughput": 28.755882208438422
     },
     "gaudi3": {
-      "throughput": 85.53160250422563
+      "throughput": 75.94218824701237
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[Qwen/Qwen2-VL-7B-Instruct-1]": {
