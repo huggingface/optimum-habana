@@ -11,6 +11,7 @@ from transformers.integrations.deepspeed import (
 from dataclasses import dataclass, field
 from typing import List, Optional
 from peft import LoraConfig
+# from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
 ideal_length = 50
@@ -85,6 +86,8 @@ if __name__ == "__main__":
         if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False
 
+    # adapt_transformers_to_gaudi()
+
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
         low_cpu_mem_usage=low_cpu_mem_usage,
@@ -108,7 +111,8 @@ if __name__ == "__main__":
         )
 
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
-    tokenizer.pad_token = tokenizer.eos_token
+    if getattr(tokenizer, "pad_token", None) is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True
