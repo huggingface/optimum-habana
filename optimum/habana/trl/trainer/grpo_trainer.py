@@ -165,25 +165,6 @@ class RepeatRandomSampler(Sampler):
         return self.num_samples * self.mini_repeat_count * self.repeat_count
 
 
-# torch.nanstd doesn't exist, so we define it here
-def nanstd(tensor: torch.Tensor) -> torch.Tensor:
-    """
-    Compute the standard deviation of a tensor, ignoring NaNs. This function only supports 1D tensors.
-
-    Args:
-        tensor (`torch.Tensor`):
-            Input tensor of shape `(N,)`.
-
-    Returns:
-        `torch.Tensor`:
-            Standard deviation of the tensor, ignoring NaNs.
-    """
-    variance = torch.nanmean((tensor - torch.nanmean(tensor, keepdim=True)) ** 2)  # Compute variance ignoring NaNs
-    count = torch.sum(~torch.isnan(tensor))  # Count of non-NaN values
-    variance *= count / (count - 1)  # Bessel's correction
-    return torch.sqrt(variance)
-
-
 class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
     _tag_names = ["trl", "grpo"]
 
@@ -799,10 +780,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 reward_func_name = reward_func.__name__
             # Only calculate mean for samples where this reward function was applied (non-NaN values)
             mean_rewards = torch.nanmean(rewards_per_func[:, i]).item()
-            self._metrics[mode][f"rewards/{reward_func_name}/mean"].append(mean_rewards)
-            std_rewards = nanstd(rewards_per_func[:, i]).item()
-            self._metrics[mode][f"rewards/{reward_func_name}/std"].append(std_rewards)
-        self._metrics[mode]["reward"].append(mean_grouped_rewards.mean().item())
+            self._metrics[mode][f"rewards/{reward_func_name}"].append(mean_rewards)
+        self._metrics[mode]["reward"].append(rewards.mean().item())
         self._metrics[mode]["reward_std"].append(std_grouped_rewards.mean().item())
 
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
@@ -817,7 +796,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         completions_to_log,
                         rewards_to_log,
                         self.state.global_step,
-                        self.num_completions_to_print,
                     )
                 if self.args.report_to and "wandb" in self.args.report_to and wandb.run is not None:
                     import pandas as pd
@@ -884,7 +862,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
             self._metrics[mode]["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        is_clipped = (coef_1 < (1 - self.epsilon_low)) | (coef_1 > (1 + self.epsilon_high))
+        is_clipped = (per_token_loss1 < per_token_loss2).float()
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
         self._metrics[mode]["clip_ratio"].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
         return loss
@@ -912,62 +890,3 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         else:  # transformers<=4.46
             super().log(logs)
         self._metrics[mode].clear()
-
-    # def create_model_card(
-    #     self,
-    #     model_name: Optional[str] = None,
-    #     dataset_name: Optional[str] = None,
-    #     tags: Union[str, list[str], None] = None,
-    # ):
-    #     """
-    #     Creates a draft of a model card using the information available to the `Trainer`.
-
-    #     Args:
-    #         model_name (`str` or `None`, *optional*, defaults to `None`):
-    #             Name of the model.
-    #         dataset_name (`str` or `None`, *optional*, defaults to `None`):
-    #             Name of the dataset used for training.
-    #         tags (`str`, `list[str]` or `None`, *optional*, defaults to `None`):
-    #             Tags to be associated with the model card.
-    #     """
-    #     if not self.is_world_process_zero():
-    #         return
-
-    #     if hasattr(self.model.config, "_name_or_path") and not os.path.isdir(self.model.config._name_or_path):
-    #         base_model = self.model.config._name_or_path
-    #     else:
-    #         base_model = None
-
-    #     tags = tags or []
-    #     if isinstance(tags, str):
-    #         tags = [tags]
-
-    #     if hasattr(self.model.config, "unsloth_version"):
-    #         tags.append("unsloth")
-
-    #     citation = textwrap.dedent(
-    #         """\
-    #         @article{zhihong2024deepseekmath,
-    #             title        = {{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}},
-    #             author       = {Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
-    #             year         = 2024,
-    #             eprint       = {arXiv:2402.03300},
-    #         }
-    #         """
-    #     )
-
-    #     model_card = generate_model_card(
-    #         base_model=base_model,
-    #         model_name=model_name,
-    #         hub_model_id=self.hub_model_id,
-    #         dataset_name=dataset_name,
-    #         tags=tags,
-    #         wandb_url=wandb.run.get_url() if is_wandb_available() and wandb.run is not None else None,
-    #         comet_url=get_comet_experiment_url(),
-    #         trainer_name="GRPO",
-    #         trainer_citation=citation,
-    #         paper_title="DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models",
-    #         paper_id="2402.03300",
-    #     )
-
-    #     model_card.save(os.path.join(self.args.output_dir, "README.md"))
