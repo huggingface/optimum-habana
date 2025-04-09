@@ -17,7 +17,6 @@ import argparse
 import json
 import logging
 import os
-import time
 from pathlib import Path
 
 import PIL.Image
@@ -25,13 +24,10 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-<<<<<<< HEAD
 from optimum.habana.utils import (
+    HabanaGenerationTime,
     set_seed,
 )
-=======
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 
 
 logging.basicConfig(

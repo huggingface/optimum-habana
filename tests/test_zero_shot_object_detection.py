@@ -13,11 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-<<<<<<< HEAD
-import time
-=======
-import os
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 from unittest import TestCase
 
 import habana_frameworks.torch as ht

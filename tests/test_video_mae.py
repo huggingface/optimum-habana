@@ -14,11 +14,6 @@
 # limitations under the License.
 
 
-<<<<<<< HEAD
-import time
-=======
-import os
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -27,11 +22,8 @@ import pytest
 import torch
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
-<<<<<<< HEAD
 from .utils import OH_DEVICE_CONTEXT
-=======
 from optimum.habana.utils import HabanaGenerationTime
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 
 
 MODEL_NAME = "MCG-NJU/videomae-base-finetuned-kinetics"
@@ -136,24 +128,14 @@ class GaudiVideoMAETester(TestCase):
             for _ in range(warm_up_iters):
                 self.model_hpu_graph(**self.inputs_hpu)
         torch.hpu.synchronize()
-<<<<<<< HEAD
-        start_time = time.time()
-        with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16):
-            for _ in range(test_iters):
-                self.model_hpu_graph(**self.inputs_hpu)
-                torch.hpu.synchronize()
-        time_per_iter = (time.time() - start_time) * 1000 / test_iters  # Time in ms
-        self.baseline.assertRef(
-            compare=lambda latency, expect: latency < (1.05 * expect),
-            context=[OH_DEVICE_CONTEXT],
-            latency=time_per_iter,
-        )
-=======
         with HabanaGenerationTime() as timer:
             with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16):
                 for _ in range(test_iters):
                     self.model_hpu_graph(**self.inputs_hpu)
             torch.hpu.synchronize()
         time_per_iter = timer.last_duration * 1000 / test_iters  # Time in ms
-        self.assertLess(time_per_iter, 1.05 * LATENCY_VIDEOMAE_BF16_GRAPH_BASELINE)
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
+        self.baseline.assertRef(
+            compare=lambda latency, expect: latency < (1.05 * expect),
+            context=[OH_DEVICE_CONTEXT],
+            latency=time_per_iter,
+        )

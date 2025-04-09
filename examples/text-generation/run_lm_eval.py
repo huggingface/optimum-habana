@@ -22,11 +22,6 @@ import json
 import logging
 import multiprocessing as mp
 import os
-<<<<<<< HEAD
-import time
-=======
-from typing import Literal, Optional
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 
 import lm_eval.evaluator
 import lm_eval.tasks
@@ -38,12 +33,7 @@ import torch.nn.functional as F
 from run_generation import setup_parser
 from utils import finalize_quantization, initialize_model, save_model
 
-<<<<<<< HEAD
-from optimum.habana.utils import get_hpu_memory_stats
-=======
-from optimum.habana.transformers.generation import GaudiGenerationConfig
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -266,19 +256,11 @@ def main():
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-<<<<<<< HEAD
-    eval_start = time.perf_counter()
-    with torch.no_grad():
-        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-    if args.device == "hpu":
-        import habana_frameworks.torch.hpu as torch_hpu
-=======
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
-            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+            results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
->>>>>>> b43a1771 (Dev/gplutop7/use habana generation time (#199))
 
             torch_hpu.synchronize()
 
