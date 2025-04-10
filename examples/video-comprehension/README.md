@@ -20,7 +20,7 @@ This directory contains example scripts that demonstrate how to perform video co
 ### Video-LLaVA Model
 
 ```bash
-python3 run_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_example.py \
     --model_name_or_path "LanguageBind/Video-LLaVA-7B-hf" \
     --warmup 3 \
     --n_iterations 5 \
