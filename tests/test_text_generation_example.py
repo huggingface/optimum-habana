@@ -63,24 +63,24 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("Qwen/Qwen2.5-7B", 4, False, False),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 4, 950, True, 128, 128),
+            pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, marks=pytest.mark.x4),
             ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128),
             ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048),
             ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128),
             ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048),
-            ("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128),
-            ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048),
-            ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128),
-            ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, marks=pytest.mark.x8),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128),
-            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048),
-            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048),
+            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, marks=pytest.mark.x2),
+            # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, marks=pytest.mark.x2),
+            # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, marks=pytest.mark.x2),
+            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, marks=pytest.mark.x2),
             ("microsoft/phi-2", 1, 1, True, 128, 128),
         ],
         "load_quantized_model_with_autogptq": [
@@ -90,22 +90,22 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 8, 1),
-            # ("meta-llama/Llama-2-70b-hf", 8, 1),
-            ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1),
-            ("facebook/opt-66b", 2, 1),
-            ("google/gemma-2-9b", 8, 1),
-            ("Qwen/Qwen2.5-72B", 2, 1),
-            ("google/gemma-2-27b", 8, 1),
+            pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
+            # pytest.param("meta-llama/Llama-2-70b-hf", 8, 1, marks=pytest.mark.x8),
+            pytest.param("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, marks=pytest.mark.x8),
+            pytest.param("facebook/opt-66b", 2, 1, marks=pytest.mark.x2),
+            pytest.param("google/gemma-2-9b", 8, 1, marks=pytest.mark.x8),
+            pytest.param("Qwen/Qwen2.5-72B", 2, 1, marks=pytest.mark.x2),
+            pytest.param("google/gemma-2-27b", 8, 1, marks=pytest.mark.x8),
         ],
         "torch_compile": [
             "meta-llama/Llama-2-7b-hf",
         ],
         "torch_compile_distributed": [
-            "meta-llama/Llama-2-7b-hf",
+            pytest.param("meta-llama/Llama-2-7b-hf", marks=pytest.mark.x8),
         ],
         "distributed_tp": [
-            "meta-llama/Llama-2-7b-hf",
+            pytest.param("meta-llama/Llama-2-7b-hf", marks=pytest.mark.x8),
         ],
         "contrastive_search": [
             ("gpt2-xl", 1, False),
@@ -514,12 +514,12 @@ def test_text_generation_torch_compile_distributed(model_name: str, baseline, to
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
-    batch_size=64
-    max_input_tokens=128
+    batch_size = 64
+    max_input_tokens = 128
     if "llama-2-7b-hf" in model_name.lower():
-        #match the params from examples/readme
-        batch_size=220
-        max_input_tokens=2048
+        # match the params from examples/readme
+        batch_size = 220
+        max_input_tokens = 2048
 
     _test_text_generation(
         model_name,

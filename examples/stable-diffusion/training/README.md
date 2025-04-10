@@ -23,6 +23,14 @@ This directory contains scripts that showcase how to perform training/fine-tunin
 The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
 such as `stabilityai/stable-diffusion-xl-base-1.0` or `cagliostrolab/animagine-xl-3.1` for example.
 
+For this example we will use a set of cat toy images from the following dataset:
+[https://huggingface.co/datasets/diffusers/cat_toy_example](https://huggingface.co/datasets/diffusers/cat_toy_example).
+
+To download this and other example training datasets locally, run:
+```bash
+python download_train_datasets.py
+```
+
 Assuming the afforemenioned cat toy dataset has been obtained, we can launch textual inversion XL training using:
 
 ```bash
