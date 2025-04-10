@@ -102,7 +102,7 @@
     },
     "gaudi2": {
       "perplexity": 13.1786,
-      "train_runtime": 191.6778,
+      "train_runtime": 224.3465,
       "train_samples_per_second": 96.789
     },
     "gaudi3": {
