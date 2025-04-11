@@ -1,6 +1,6 @@
 {
     "mode": "QUANTIZE",
-    "scale_method": "ACT_MAXABS_PCS_POW2_WEIGHT_MAXABS_PTS_POW2_HW",
+    "scale_method": "maxabs_pow2",
     "scale_format": "CONST",
     "allowlist": {
         "types": [],
