@@ -239,12 +239,12 @@
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_multi_card": {
     "gaudi2": {
-      "perplexity": 26.39,
+      "perplexity": 12.8,
       "train_runtime": 82.6617,
       "train_samples_per_second": 94.524
     },
     "gaudi3": {
-      "perplexity": 26.39,
+      "perplexity": 12.8,
       "train_runtime": 66.2529,
       "train_samples_per_second": 159.47
     }
