@@ -72,12 +72,12 @@
   },
   "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_deepspeed": {
     "gaudi2": {
-      "perplexity": 26.39,
+      "perplexity": 12.8,
       "train_runtime": 80.3429,
       "train_samples_per_second": 76.06
     },
     "gaudi3": {
-      "perplexity": 26.39,
+      "perplexity": 12.8,
       "train_runtime": 57.7676,
       "train_samples_per_second": 135.39
     }
