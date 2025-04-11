@@ -613,20 +613,15 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 image_embeds = self.visual(
                     pixel_values, grid_thw=image_grid_thw, use_flash_attention=use_flash_attention
                 )
-                n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
-                n_image_features = image_embeds.shape[0]
-                if n_image_tokens != n_image_features:
-                    raise ValueError(
-                        f"Image features and image tokens do not match: tokens: {n_image_tokens}, features {n_image_features}"
-                    )
-                image_mask = (
-                    (input_ids == self.config.image_token_id)
-                    .unsqueeze(-1)
-                    .expand_as(inputs_embeds)
-                    .to(inputs_embeds.device)
-                )
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+                # HPU WA (masked_scatter has perf issue, flatten for hpu graphs)
+                # original code: https://github.com/huggingface/transformers/blob/v4.45.0/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L1690-L1694
+                image_mask = input_ids == self.config.image_token_id
+                mbatch, mtokens = image_mask.size()
+                image_mask = image_mask.flatten(0, -1)
+                inputs_embeds = inputs_embeds.flatten(0, -2)
+                inputs_embeds[image_mask] = image_embeds
+                inputs_embeds = inputs_embeds.unflatten(0, [mbatch, mtokens])
 
             if pixel_values_videos is not None:
                 pixel_values_videos = pixel_values_videos.type(self.visual.get_dtype())
