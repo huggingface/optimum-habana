@@ -591,14 +591,18 @@ class GaudiAccelerator(Accelerator):
                 module.__dict__.pop("_parameters", None)
                 setattr(model, name, module)
         else:
-            if model._modules:
-                for _, module in model.named_children():
-                    self.compile_regions(module)
-            else:
+            if model._modules:  # If model has submodules, recurse and reassign
+                for name, module in model.named_children():
+                    compiled_module = self.compile_regions(module)
+                    if compiled_module is not None:  # Only reassign if something is returned
+                        setattr(model, name, compiled_module)
+            else:  # Leaf node
                 if self.dynamic is not None:
-                    model.compile(dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+                    compiled_model = torch.compile(model, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
                 else:
-                    model.compile(**self.state.dynamo_plugin.to_kwargs())
+                    compiled_model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+                compiled_model.__dict__.pop("_parameters", None)
+                return compiled_model  # Return compiled leaf for reassignment
 
     def _prepare_deepspeed(self, *args):
         import deepspeed
