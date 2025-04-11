@@ -437,6 +437,9 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
+    # List of model types that need max position embeddings capped at 8192
+    MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
+
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
@@ -451,9 +454,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                hasattr(config, "rope_scaling")
-                and config.rope_scaling
-                and config.rope_scaling["rope_type"] == "llama3"
+                any(model_type in args.model_name_or_path.lower() for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
