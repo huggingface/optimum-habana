@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.45.0")
-check_optimum_habana_min_version("1.16.0.dev0")
+check_optimum_habana_min_version("1.17.0.dev0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
@@ -152,6 +152,33 @@ class ModelArguments:
             "useful to downsample the output length."
         },
     )
+    use_flash_attention: bool = field(
+        default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning"}
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to enable recompute in Habana flash attention for fine-tuning."
+            " It is applicable only when use_flash_attention is True."
+        },
+    )
+    flash_attention_fast_softmax: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use fast softmax for Habana flash attention."
+            " It is applicable only when use_flash_attention is True."
+        },
+    )
+
+    def __post_init__(self):
+        if self.use_flash_attention:
+            os.environ["USE_FLASH_ATTENTION"] = "1"
+        if self.flash_attention_recompute:
+            assert self.use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
+            os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
+        if self.flash_attention_fast_softmax:
+            assert self.use_flash_attention, "flash_attention_fast_softmax is set, but use_flash_attention is not"
+            os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
 
 
 @dataclass
@@ -535,6 +562,7 @@ def main():
         cache_dir=model_args.cache_dir,
         token=data_args.token,
         trust_remote_code=data_args.trust_remote_code,
+        attn_implementation=training_args.attn_implementation,
     )
 
     # 4. Next, if no tokenizer file is defined,

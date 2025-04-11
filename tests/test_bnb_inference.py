@@ -14,18 +14,19 @@
 # limitations under the License.
 
 import copy
-import os
 
+import pytest
 import torch
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from optimum.habana.transformers import modeling_utils
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 modeling_utils.adapt_transformers_to_gaudi()
 
-assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 
@@ -44,7 +45,8 @@ def get_model(token: str):
     return model
 
 
-def test_nf4_quantization_inference(token: str):
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
+def test_nf4_quantization_inference(token: str, baseline):
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
 
     model = get_model(token)
@@ -63,4 +65,4 @@ def test_nf4_quantization_inference(token: str):
     outputs = model.generate(**inputs, generation_config=generation_config, hpu_graphs=True, lazy_mode=True)
     decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    assert decoded_output == "Hello my name is Marlene and I am 36 years old. I am a very happy person, I love to"
+    baseline.assertEqual(output=decoded_output)

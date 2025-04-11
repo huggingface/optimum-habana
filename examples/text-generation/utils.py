@@ -17,6 +17,7 @@
 # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
+import argparse
 import copy
 import glob
 import os
@@ -130,8 +131,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_min_version("4.45.0")
+    check_optimum_habana_min_version("1.17.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -465,12 +466,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
-    keep_module_on_host = False
-    if "Llama-3.1-405B" in args.model_name_or_path:
-        keep_module_on_host = True
-
-    load_to_meta = False if keep_module_on_host else model_on_meta(config)
+    load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -525,7 +521,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
-    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -828,3 +823,46 @@ def local_split_rank_state_dict(model, gathered_state_dict):
         cur_accelerator.synchronize()
 
     return rank_state_dict
+
+
+class SetTrueOrFalseOrNone(argparse.Action):
+    """
+    Custom argparse action to handle a flag that can be set to True, False, or None.
+
+    This action allows an argument to be:
+    - Set to True if the flag is present without a value.
+    - Set to a boolean value (True or False) if explicitly provided.
+    - Set to None if the flag is not present.
+
+    The argument accepts the following values (case-insensitive):
+    - True values: 'true', '1', 't', 'y', 'yes'
+    - False values: 'false', '0', 'f', 'n', 'no'
+
+    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        value_map = {
+            "true": True,
+            "1": True,
+            "t": True,
+            "y": True,
+            "yes": True,
+            "false": False,
+            "0": False,
+            "f": False,
+            "n": False,
+            "no": False,
+        }
+        if values is None:
+            setattr(namespace, self.dest, True)
+        elif isinstance(values, bool):
+            setattr(namespace, self.dest, values)
+        else:
+            value_lower = values.lower()
+            if value_lower in value_map:
+                setattr(namespace, self.dest, value_map[value_lower])
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid value for {option_string}: {values}. Expected one of: {', '.join(value_map.keys())}."
+                )
