@@ -42,19 +42,9 @@ except ImportError:
 logger = logging.get_logger(__name__)
 
 
-class Softmax(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, dim=None, invAttnHead=None):
-        return torch.nn.functional.softmax(x, dim)
-
-
 class GaudiMptAttention(MptAttention):
     def __init__(self, config: MptConfig):
         super().__init__(config)
-
-        self.softmax = Softmax()
 
     def forward(
         self,
@@ -153,7 +143,7 @@ class GaudiMptAttention(MptAttention):
                 attention_scores = attention_scores.masked_fill(attention_mask, torch.finfo(query_states.dtype).min)
 
             # (batch_size, n_heads, seq_length, key_length)
-            attn_weights = self.softmax(attention_scores.bfloat16(), dim=-1)
+            attn_weights = nn.functional.softmax(attention_scores, dim=-1, dtype=torch.float32).to(value_states.dtype)
             attn_weights = nn.functional.dropout(attn_weights, p=self.attn_dropout_p, training=self.training)
 
             attn_output = torch.matmul(attn_weights, value_states)
