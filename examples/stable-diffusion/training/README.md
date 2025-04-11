@@ -69,7 +69,7 @@ Please make sure to include the `placeholder_token` in your prompt so that textu
 You can use `text_to_image_generation.py` sample to run inference with the fine-tuned model:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path /tmp/textual_inversion_cat \
     --prompts "A <cat-toy> backpack" \
     --num_images_per_prompt 5 \
@@ -142,7 +142,7 @@ The script also supports training of both text encoders of SDXL, so inference ca
 For example, after training you can use `text_to_image_generation.py` sample to run inference with the fine-tuned model as follows:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path /tmp/textual_inversion_cat_sdxl \
     --prompts "A <cat-toy> backpack" \
     --num_images_per_prompt 5 \
@@ -199,7 +199,7 @@ python download_train_datasets.py
 Then proceed to training with command:
 
 ```bash
-python train_controlnet.py \
+PT_HPU_LAZY_MODE=1 python train_controlnet.py \
    --pretrained_model_name_or_path=CompVis/stable-diffusion-v1-4\
    --output_dir=/tmp/stable_diffusion1_4 \
    --dataset_name=fusing/fill50k \
@@ -219,7 +219,7 @@ python train_controlnet.py \
 
 You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
     --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
     --output_dir=/tmp/stable_diffusion1_4 \
     --dataset_name=fusing/fill50k \
@@ -240,7 +240,7 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
 After training completes, you can use `text_to_image_generation.py` sample to run inference with the fine-tuned ControlNet model:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --controlnet_model_name_or_path /tmp/stable_diffusion1_4 \
     --prompts "pale golden rod circle with old lace background" \
@@ -306,7 +306,7 @@ pip install -r requirements.txt
 
 To train Stable Diffusion XL on a single Gaudi card, use:
 ```bash
-python train_text_to_image_sdxl.py \
+PT_HPU_LAZY_MODE=1 python train_text_to_image_sdxl.py \
     --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
     --dataset_name lambdalabs/naruto-blip-captions \
@@ -340,7 +340,7 @@ python train_text_to_image_sdxl.py \
 
 To train Stable Diffusion XL on a multi-card Gaudi system, use:
 ```bash
-PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
+PT_HPU_LAZY_MODE=1 PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
     --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
@@ -375,7 +375,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py
 
 To train Stable Diffusion XL on a single Gaudi1 card, use:
 ```bash
-python train_text_to_image_sdxl.py \
+PT_HPU_LAZY_MODE=1 python train_text_to_image_sdxl.py \
     --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
     --dataset_name lambdalabs/naruto-blip-captions \
@@ -412,7 +412,7 @@ python train_text_to_image_sdxl.py \
 After training is finished, you can run inference using `text_to_image_generation.py` script as follows:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path sdxl_model_output \
     --prompts "a cute naruto creature" \
     --num_images_per_prompt 5 \
@@ -444,7 +444,7 @@ python download_train_datasets.py
 
 To launch the multi-card Stable Diffusion training, use:
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
@@ -481,7 +481,7 @@ UNet or text encoder.
 
 To run the multi-card training, use:
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
@@ -522,7 +522,7 @@ python3 train_dreambooth.py oft --help
 After training completes, you can use `text_to_image_generation.py` sample for inference as follows:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4  \
     --unet_adapter_name_or_path dog_sd/unet \
     --prompts "a sks dog" \
@@ -542,7 +542,7 @@ We can use the same `dog` dataset for the following examples.
 
 To launch Stable Diffusion XL LoRA training on a multi-card Gaudi system, use:"
 ```bash
-python train_dreambooth_lora_sdxl.py \
+PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_sdxl.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"  \
     --instance_data_dir="dog" \
     --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
@@ -566,7 +566,7 @@ python train_dreambooth_lora_sdxl.py \
 
 To launch Stable Diffusion XL LoRA training on a multi-card Gaudi system, use:"
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"  \
     --instance_data_dir="dog" \
     --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
@@ -592,7 +592,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.
 
 After training is completed, you can directly use `text_to_image_generation.py` sample for inference, as shown below:
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0  \
     --lora_id lora-trained-xl \
     --prompts "A picture of a sks dog in a bucket" \
@@ -640,7 +640,7 @@ We can use the same `dog` dataset for the following examples.
 
 To launch FLUX.1-dev LoRA training on a single Gaudi card, use:"
 ```bash
-python train_dreambooth_lora_flux.py \
+PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_flux.py \
     --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
     --dataset="dog" \
     --prompt="a photo of sks dog" \
@@ -667,7 +667,7 @@ python train_dreambooth_lora_flux.py \
 
 To launch FLUX.1-dev LoRA training on a multi-card Gaudi system, use:"
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_flux.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_flux.py \
     --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
     --dataset="dog" \
     --prompt="a photo of sks dog" \
@@ -696,7 +696,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_flux.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path "black-forest-labs/FLUX.1-dev" \
     --lora_id dog_lora_flux \
     --prompts "A picture of a sks dog in a bucket" \

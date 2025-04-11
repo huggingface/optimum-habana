@@ -56,7 +56,7 @@ python run_pipeline.py --help
 If you want to generate a sequence of text from a prompt of your choice, you should use the `--prompt` argument.
 For example:
 ```
-python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -67,7 +67,7 @@ python run_pipeline.py \
 
 If you want to provide several prompts as inputs, here is how to do it:
 ```
-python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -79,7 +79,7 @@ python run_pipeline.py \
 
 If you want to perform generation on default prompts, do not pass the `--prompt` argument.
 ```
-python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -89,7 +89,7 @@ python run_pipeline.py \
 
 If you want to change the temperature and top_p values, make sure to include the `--do_sample` argument. Here is a sample command.
 ```
-python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -105,7 +105,7 @@ python run_pipeline.py \
 
 To run a large model such as Llama-2-70b via DeepSpeed, run the following command.
 ```
-python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --max_new_tokens 100 \
 --bf16 \
@@ -117,7 +117,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 
 To change the temperature and top_p values, run the following command.
 ```
-python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --max_new_tokens 100 \
 --bf16 \
@@ -134,7 +134,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 
 To run a Q&A example with LangChain, use the script `run_pipeline_langchain.py`. It supports a similar syntax to `run_pipeline.py`. For example, you can use following command:
 ```
-python run_pipeline_langchain.py \
+PT_HPU_LAZY_MODE=1 python run_pipeline_langchain.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --bf16 \
     --use_hpu_graphs \
