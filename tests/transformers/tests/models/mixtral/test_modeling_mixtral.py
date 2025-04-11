@@ -299,6 +299,18 @@ class MixtralModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     test_pruning = False
 
     @unittest.skip(reason="This test is not supported for Mixtral")
+    def test_assisted_decoding_sample(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mixtral")
+    def test_generate_from_inputs_embeds_decoder_only(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mixtral")
+    def test_sample_generate(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for Mixtral")
     def test_beam_search_generate(self):
         pass
 
