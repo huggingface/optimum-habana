@@ -12,7 +12,7 @@
       "throughput": 28.755882208438422
     },
     "gaudi3": {
-      "throughput": 75.94218824701237
+      "throughput": 85.45308676024212
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[Qwen/Qwen2-VL-7B-Instruct-1]": {
@@ -20,7 +20,7 @@
       "throughput": 19.32562189532818
     },
     "gaudi3": {
-      "throughput": 17.216165111759725
+      "throughput": 61.22236102130072
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[google/paligemma-3b-mix-224-1]": {
