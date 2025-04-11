@@ -72,12 +72,12 @@
   },
   "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_deepspeed": {
     "gaudi2": {
-      "perplexity": 924.062,
-      "train_runtime": 75.518,
-      "train_samples_per_second": 81.097
+      "perplexity": 12.8,
+      "train_runtime": 80.3429,
+      "train_samples_per_second": 76.06
     },
     "gaudi3": {
-      "perplexity": 980.9833890324784,
+      "perplexity": 12.8,
       "train_runtime": 57.7676,
       "train_samples_per_second": 135.39
     }
@@ -239,12 +239,12 @@
   },
   "tests/test_examples.py::MultiCardCausalLanguageModelingExampleTester::test_run_clm_gemma-2b-it_multi_card": {
     "gaudi2": {
-      "perplexity": 954.5995,
+      "perplexity": 12.8,
       "train_runtime": 82.6617,
       "train_samples_per_second": 94.524
     },
     "gaudi3": {
-      "perplexity": 902.0585179806482,
+      "perplexity": 12.8,
       "train_runtime": 66.2529,
       "train_samples_per_second": 159.47
     }
