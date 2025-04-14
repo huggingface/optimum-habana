@@ -882,7 +882,7 @@ class GaudiTrainer(Trainer):
 
         # Gradient clipping
         grad_norm: Optional[float] = None
-        _should_compute_grad_norm: bool = self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED and (
+        _should_compute_grad_norm: bool = self.accelerator.distributed_type != DistributedType.DEEPSPEED and (
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
 
@@ -1013,7 +1013,7 @@ class GaudiTrainer(Trainer):
                     context = (
                         functools.partial(self.accelerator.no_sync, model=model)
                         if i != len(batch_samples) - 1
-                        and self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED
+                        and self.accelerator.distributed_type != DistributedType.DEEPSPEED
                         else contextlib.nullcontext
                     )
                     with context():
@@ -1616,7 +1616,7 @@ class GaudiTrainer(Trainer):
 
         # Turning off loss scaling w.r.t. gradient accumulation when DeepSpeed is enabled
         # https://github.com/huggingface/transformers/pull/35808
-        if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+        if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
@@ -2501,7 +2501,6 @@ class GaudiTrainer(Trainer):
         args = {
             "dataloader_config": dataloader_config,
             "deepspeed_plugins": self.args.deepspeed_plugin,
-            "gradient_accumulation_plugin": gradient_accumulation_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
             "use_regional_compilation": self.args.use_regional_compilation,
