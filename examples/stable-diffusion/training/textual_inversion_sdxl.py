@@ -52,6 +52,7 @@ from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import (
     GaudiStableDiffusionXLPipeline,
 )
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import set_seed
 
 
@@ -678,6 +679,8 @@ def main():
     placeholder_token_ids_2 = tokenizer_2.convert_tokens_to_ids(placeholder_tokens)
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
+    # TODO: remove the call to `adapt_transformers_to_gaudi` once torch.linalg.eigvals is supported on HPU
+    adapt_transformers_to_gaudi()
     text_encoder_1.resize_token_embeddings(len(tokenizer_1))
     text_encoder_2.resize_token_embeddings(len(tokenizer_2))
 

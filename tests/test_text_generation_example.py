@@ -304,6 +304,10 @@ def _test_text_generation(
         command += [
             f"--parallel_strategy={parallel_strategy}",
         ]
+    if "llama-2-7b-hf" in model_name.lower() and torch_compile and parallel_strategy == "tp":
+        command.insert(-2, "--bucket_size 128")
+        command.insert(-2, "--bucket_internal")
+        command.insert(-2, "--max_input_tokens 2048")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -510,12 +514,19 @@ def test_text_generation_torch_compile_distributed(model_name: str, baseline, to
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
+    batch_size = 64
+    max_input_tokens = 128
+    if "llama-2-7b-hf" in model_name.lower():
+        # match the params from examples/readme
+        batch_size = 220
+        max_input_tokens = 2048
+
     _test_text_generation(
         model_name,
         baseline,
         token,
-        batch_size=64,
-        max_input_tokens=128,
+        batch_size=batch_size,
+        max_input_tokens=max_input_tokens,
         world_size=world_size,
         torch_compile=True,
         parallel_strategy="tp",
