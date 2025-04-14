@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 from accelerate.state import AcceleratorState
-from huggingface_hub import HfFolder, ModelCard, create_branch, delete_repo, list_repo_commits, list_repo_files
+from huggingface_hub import HfFolder, ModelCard, create_branch, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
 from transformers import (
@@ -83,7 +83,7 @@ from transformers.utils import (
 from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.accelerate import GaudiAccelerator, GaudiAcceleratorState
+from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.utils import set_seed
 from optimum.utils import logging
 
