@@ -131,7 +131,7 @@ def setup_const_serialization(const_serialization_path):
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_optimum_habana_min_version("1.16.0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -185,23 +185,49 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model, logger):
+def compile_regions(model, **kwargs):
+    """
+    A standalone function to compile regions of a model.
+
+    Args:
+        model (torch.nn.Module): The model or module to be compiled.
+        kwargs (dict): Additional kwargs for torch.compile.
+    """
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            module = torch.compile(module, **kwargs)
+            setattr(model, name, module)
+    else:
+        for _, module in model.named_children():
+            compile_regions(module, **kwargs)
+    return model
+
+
+def get_torch_compiled_model(model, logger, args):
+    if args.cache_size_limit is not None:
+        torch._dynamo.config.cache_size_limit = args.cache_size_limit
+    compile_fn = torch.compile
+    if args.regional_compile:
+        compile_fn = compile_regions
+
+    compile_kwargs = {
+        "backend": "hpu_backend",
+        "options": {"force_static_compile": args.force_static_compile, "keep_input_mutations": True},
+    }
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
     if hasattr(model, "transformer"):
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = compile_fn(model.transformer, **compile_kwargs)
     # for gpt_neox
     elif hasattr(model, "gpt_neox"):
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.gpt_neox = compile_fn(model.gpt_neox, **compile_kwargs)
     # for llama, mistral, mixtral, qwen2
     elif hasattr(model, "model"):
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = compile_fn(model.model, **compile_kwargs)
     else:
         logger.warning(
             "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
         )
-        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model = compile_fn(model, **compile_kwargs)
     return model
 
 
@@ -362,7 +388,20 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.load_quantized_model_with_autoawq:
+        from transformers import AwqConfig
+
+        quantization_config = AwqConfig(bits=4, version="hpu")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
     elif args.load_quantized_model_with_inc:
+        # TODO: This will be removed in v1.20 Synapse release
+        # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+        import neural_compressor.torch.algorithms.fp8_quant.save_load as nc_sl
+
+        nc_sl.split_rank_state_dict = local_split_rank_state_dict
+
         from neural_compressor.torch.quantization import load
 
         model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
@@ -417,9 +456,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
-            "please set PT_HPU_LAZY_MODE=0 on command line when using --use_torch_compile"
+            "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
@@ -492,7 +531,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -500,7 +539,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -521,6 +559,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -530,7 +570,7 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -538,15 +578,14 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
+    # List of model types that need max position embeddings capped at 8192
+    MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
+
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
 
-    keep_module_on_host = False
-    if "Llama-3.1-405B" in args.model_name_or_path:
-        keep_module_on_host = True
-
-    load_to_meta = False if keep_module_on_host else model_on_meta(config)
+    load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -555,14 +594,9 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-
-        deepspeed_device = "cpu" if keep_module_on_host else "meta"
-
-        with deepspeed.OnDevice(dtype=config.torch_dtype, device=deepspeed_device):
+        with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                hasattr(config, "rope_scaling")
-                and config.rope_scaling
-                and config.rope_scaling["rope_type"] == "llama3"
+                any(model_type in args.model_name_or_path.lower() for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -588,12 +622,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         )
     else:
         # TODO: revisit placement on CPU when auto-injection is possible
-        with deepspeed.OnDevice(dtype=config.torch_dtype, device="cpu"):
+        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
             if args.peft_model is not None:
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path, torch_dtype=config.torch_dtype, **model_kwargs
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
                 )
     model.eval()
 
@@ -603,8 +637,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         ).eval()
 
     # Initialize the model
-    ds_inference_kwargs = {"dtype": config.torch_dtype}
-    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
+    ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -620,7 +653,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
 
@@ -742,6 +775,12 @@ def setup_tokenizer(args, model, assistant_model, logger):
             f"Model type {model.config.model_type} does not support list style EOS token ID in generation config. Only last eos token id will be used."
         )
         model.generation_config.eos_token_id = model.generation_config.eos_token_id[-1]
+
+    if model.config.model_type == "mpt":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.eos_token_id
 
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
@@ -866,6 +905,9 @@ def initialize_model(args, logger):
         if args.parallel_strategy == "tp"
         else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
+    from optimum.habana.environment import set_model_config
+
+    set_model_config(model.config)
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
@@ -908,3 +950,33 @@ def get_mark_dynamic_min_max(args):
         "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
         "dim_1": {"min": min_val, "max": max_val},
     }
+
+
+# TODO: This will be removed in v1.20 Synapse release
+# Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
+def local_split_rank_state_dict(model, gathered_state_dict):
+    """split state_dict for current local_rank."""
+    from neural_compressor.torch.algorithms.fp8_quant.save_load import (
+        cur_accelerator,
+        local_rank,
+        split_weights,
+        world_size,
+    )
+
+    rank_state_dict = {}
+    for name, param in model.named_parameters():
+        if name in gathered_state_dict:
+            full_weight = gathered_state_dict[name]
+            if len(param.shape) != 0 and full_weight.shape != param.shape:
+                if full_weight.shape[0] != param.shape[0]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+                elif full_weight.shape[1] != param.shape[1]:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=1).clone()
+                else:
+                    split_weight = split_weights(full_weight, world_size, local_rank, split_axis=0).clone()
+            else:
+                split_weight = full_weight
+            rank_state_dict[name] = split_weight
+        cur_accelerator.synchronize()
+
+    return rank_state_dict
