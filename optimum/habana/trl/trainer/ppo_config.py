@@ -15,7 +15,8 @@ import warnings
 from dataclasses import dataclass
 
 import numpy as np
-from trl import PPOConfig, is_wandb_available
+from transformers import is_wandb_available
+from trl import PPOConfig
 from trl.trainer.utils import exact_div
 
 

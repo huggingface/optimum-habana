@@ -7,6 +7,53 @@ First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```
+
+## GRPO Training
+
+Installing DeepSpeed
+
+```sh
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+```
+
+Running single card training
+
+```sh
+python3 grpo.py \
+    --model_name_or_path trl-internal-testing/tiny-Qwen2ForCausalLM-2.5 \
+    --reward_model_name_or_path trl-internal-testing/tiny-Qwen2ForSequenceClassification-2.5 \
+    --dataset_name trl-internal-testing/zen \
+    --subset standard_prompt_only \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --bf16 True
+```
+
+
+Runnig multi-card training
+
+```sh
+python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
+    --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+    --model_name_or_path Qwen/Qwen2-0.5B-Instruct \
+    --dataset_name trl-lib/tldr \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --bf16 True \
+    --max_steps=500 \
+    --logging_steps=10 \
+    --save_steps=100
+```
+
+
 ## Supervised Finetuning
 
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
