@@ -962,7 +962,7 @@ def main():
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         if data_args.save_last_ckpt:
-            trainer.save_model()
+            trainer._save_checkpoint(trainer.model, None)
 
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
