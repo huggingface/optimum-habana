@@ -22,6 +22,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from accelerate import DistributedType
+from accelerate.state import AcceleratorState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
@@ -52,8 +54,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType
+from ..accelerate.state import GaudiPartialState
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -962,14 +963,14 @@ class GaudiTrainingArguments(TrainingArguments):
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
             self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
-            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
+            if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
                     "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
+            AcceleratorState._reset_state()
             GaudiPartialState._reset_state()
             self.distributed_state = None
 
@@ -1039,7 +1040,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
             )
 
-        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
+        if self.distributed_state.distributed_type == DistributedType.NO:
             self._n_gpu = 0
 
         return device

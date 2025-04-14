@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Ty
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-from accelerate import skip_first_batches
+from accelerate import DistributedType, skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
@@ -108,7 +108,7 @@ from transformers.utils.deprecation import deprecate_kwarg
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
+from ..accelerate.utils import FP8ContextWrapper
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -737,7 +737,7 @@ class GaudiTrainer(Trainer):
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.is_fp8_enabled:
+            if self.accelerator.state.mixed_precision == "fp8":
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
@@ -879,10 +879,10 @@ class GaudiTrainer(Trainer):
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         self._zero_model_grad(model)
-        grad_norm: Optional[float] = None
 
         # Gradient clipping
-        _should_compute_grad_norm: bool = self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED and (
+        grad_norm: Optional[float] = None
+        _should_compute_grad_norm: bool = self.accelerator.distributed_type != DistributedType.DEEPSPEED and (
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
 
@@ -1013,7 +1013,7 @@ class GaudiTrainer(Trainer):
                     context = (
                         functools.partial(self.accelerator.no_sync, model=model)
                         if i != len(batch_samples) - 1
-                        and self.accelerator.distributed_type != GaudiDistributedType.DEEPSPEED
+                        and self.accelerator.distributed_type != DistributedType.DEEPSPEED
                         else contextlib.nullcontext
                     )
                     with context():
@@ -1288,7 +1288,7 @@ class GaudiTrainer(Trainer):
 
             # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradation.
             # Moving it here so the grad tensor is only copied when it's needed.
-            if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+            if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
                 # In some cases the grad norm may not return a float
                 if hasattr(grad_norm, "item"):
@@ -1296,7 +1296,7 @@ class GaudiTrainer(Trainer):
             else:
                 if (
                     _grad_norm is not None
-                    and self.accelerator.distributed_type != GaudiDistributedType.FSDP
+                    and self.accelerator.distributed_type != DistributedType.FSDP
                     and _grad_norm.size() == torch.Size([1])
                 ):
                     grad_norm = _grad_norm.detach().item()
@@ -1561,7 +1561,7 @@ class GaudiTrainer(Trainer):
 
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
-        if self.accelerator.state.is_fp8_enabled and self.model.training:
+        if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
             ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
 
         return ctx_manager
@@ -1616,11 +1616,11 @@ class GaudiTrainer(Trainer):
 
         # Turning off loss scaling w.r.t. gradient accumulation when DeepSpeed is enabled
         # https://github.com/huggingface/transformers/pull/35808
-        if self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+        if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
@@ -1631,7 +1631,7 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
+            if self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing:
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -2499,10 +2499,10 @@ class GaudiTrainer(Trainer):
         accelerator_config.pop("gradient_accumulation_kwargs")
 
         args = {
-            "deepspeed_plugin": self.args.deepspeed_plugin,
-            "distribution_strategy": self.args.distribution_strategy,
-            "dynamic": self.args.compile_dynamic,
             "dataloader_config": dataloader_config,
+            "deepspeed_plugins": self.args.deepspeed_plugin,
+            # OH specific
+            "distribution_strategy": self.args.distribution_strategy,
             "use_regional_compilation": self.args.use_regional_compilation,
         }
 
