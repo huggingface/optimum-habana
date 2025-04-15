@@ -259,7 +259,7 @@ def main():
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+        results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters, log_samples=False)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
