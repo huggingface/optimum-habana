@@ -19,8 +19,10 @@
 
 from .sft_trainer import GaudiSFTTrainer
 from .dpo_trainer import GaudiDPOTrainer
+from .grpo_config import GaudiGRPOConfig
+from .grpo_trainer import GaudiGRPOTrainer
 from .ppo_config import GaudiPPOConfig
-from .ppo_trainer import GaudiPPOTrainer
+#from .ppo_trainer import GaudiPPOTrainer
 from .reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
 
 from .ddpo_trainer import GaudiDDPOTrainer

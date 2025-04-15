@@ -34,12 +34,13 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPIN
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 from trl import DPOTrainer, create_reference_model
-from trl.import_utils import is_peft_available, is_wandb_available
+from transformers import is_wandb_available
+from transformers.utils import is_peft_available
 from trl.trainer.dpo_config import FDivergenceConstants
+from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.utils import (
     DPODataCollatorWithPadding,
     RunningMoments,
-    SyncRefModelCallback,
     disable_dropout_in_model,
     pad_to_length,
 )
