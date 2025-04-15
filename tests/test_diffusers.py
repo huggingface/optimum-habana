@@ -174,6 +174,14 @@ def check_8xhpu(test_case):
     return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
 
 
+def legacy(test_case):
+    """
+    Decorator used to skip tests for legacy models
+    """
+    skip = os.environ.get("RUN_DIFFUSERS_LEGACY", "0") != "1"
+    return pytest.mark.skipif(skip, reason="This test is for old/legacy model. Skipped starting 1.16.0.")(test_case)
+
+
 class GaudiPipelineUtilsTester(TestCase):
     """
     Tests the features added on top of diffusers/pipeline_utils.py.
@@ -721,6 +729,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -775,6 +784,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_throughput_regression_autocast(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -812,6 +822,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_generation_regression_ldm3d(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -906,6 +917,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2616,6 +2628,7 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         assert images[0].shape == (32, 32, 3)
 
     @slow
+    @legacy
     def test_depth2img_pipeline(self):
         gaudi_config = GaudiConfig(use_torch_autocast=True)
         model_name = "stabilityai/stable-diffusion-2-depth"
@@ -2763,6 +2776,7 @@ class TrainControlNet(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -5216,6 +5230,7 @@ class StableDiffusionInpaintPipelineTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
     @slow
+    @legacy
     def test_stable_diffusion_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
 
@@ -6027,6 +6042,7 @@ class GaudiDDPMPipelineTester(TestCase):
         self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         batch_size = 16  # use batch size 16 as the baseline
         model_name = "google/ddpm-ema-celebahq-256"
