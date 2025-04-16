@@ -200,6 +200,11 @@ def main():
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
+    parser.add_argument(
+        "--logits_bf16",
+        action="store_true",
+        help="Compute logits in bf16",
+    )
 
     args = parser.parse_args()
 
@@ -338,6 +343,7 @@ def main():
         "flash_attention_recompute": args.flash_attention_recompute,
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
+        "logits_bf16": args.logits_bf16,
     }
 
     if args.sdp_on_bf16:
