@@ -1324,7 +1324,6 @@ class GaudiLlamaModel(LlamaModel):
         use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
-
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 if isinstance(past_key_values[0][0], torch.Tensor):
@@ -1357,12 +1356,15 @@ class GaudiLlamaModel(LlamaModel):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                inputs_embeds,
-                past_seen_tokens,
-            )
+            if not use_flash_attention:
+                causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+                    attention_mask,
+                    input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                    inputs_embeds,
+                    past_seen_tokens,
+                )
+            else:
+                causal_mask = None
         else:
             causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
 

@@ -2497,6 +2497,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 continue  # don't waste resources running the code we don't need
 
             token_idx = model_kwargs.get("token_idx", None)
+
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
