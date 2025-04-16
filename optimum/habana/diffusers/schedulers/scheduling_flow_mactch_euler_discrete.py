@@ -1,4 +1,5 @@
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+import torch
 
 
 class GaudiFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
@@ -13,3 +14,7 @@ class GaudiFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         if masked.sum() > 1:
             pos += (tmp == 1).sum().item()
         return pos
+
+    @torch.compiler.disable
+    def step(self, *args, **kwargs):
+        return super().step(*args, **kwargs)
