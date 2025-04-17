@@ -1,2 +1,2 @@
 from .accelerator import GaudiAccelerator
-from .state import GaudiAcceleratorState, GaudiPartialState
+from .state import GaudiPartialState
