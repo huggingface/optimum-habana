@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import glob
 import json
 import logging
 import os
@@ -25,9 +26,7 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.utils import (
-    set_seed,
-)
+from optimum.habana.utils import get_hpu_memory_stats, set_seed
 
 
 logging.basicConfig(
@@ -36,6 +35,10 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def count_hpu_graphs():
+    return len(glob.glob(".graph_dumps/*PreGraph*"))
 
 
 def override_print(enable):
@@ -400,10 +403,12 @@ def main():
 
         generator.__class__.preprocess = preprocess
 
+    t0 = time.perf_counter()
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
+    compilation_duration = time.perf_counter() - t0
     if args.quant_config:
         finalize_quantization(generator.model)
 
@@ -431,6 +436,21 @@ def main():
     logger.info(
         f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
+
+    stats = ""
+    stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+    stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+    separator = "-" * len(stats)
+    print()
+    print("Stats:")
+    print(separator)
+    print(stats)
+    mem = get_hpu_memory_stats()
+    for k, v in mem.items():
+        print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+    print(f"Graph compilation duration          = {compilation_duration} seconds")
+    print(separator)
+    print()
 
     # Store results if necessary
     if args.output_dir is not None:
