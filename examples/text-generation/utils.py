@@ -454,7 +454,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                any(model_type in args.model_name_or_path.lower() for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
+                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
