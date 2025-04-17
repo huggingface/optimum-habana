@@ -399,7 +399,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -420,6 +419,9 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -581,7 +583,7 @@ def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
-        "trust_remote_code": args.trust_remote_code,
+        "trust_remote_code": args.trust_remote_code or args.trust_remote_code_tokenizer,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
