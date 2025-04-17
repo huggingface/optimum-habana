@@ -282,6 +282,18 @@ def main():
                 else:
                     args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
 
+        else:
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{args.prompt}"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+
     image_paths = args.image_path
     image_paths_len = len(image_paths)
 
