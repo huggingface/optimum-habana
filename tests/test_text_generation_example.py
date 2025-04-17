@@ -19,17 +19,18 @@ from .utils import OH_DEVICE_CONTEXT
 prev_quant_model_name = None
 prev_quant_rank = 0
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # Gaudi2+
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
             ("gpt2-xl", 1, False, False),
-            ("EleutherAI/gpt-j-6b", 1, False, False),
+            pytest.param("EleutherAI/gpt-j-6b", 1, False, False, marks=pytest.mark.skip("Deprecated in v1.20")),
             ("EleutherAI/gpt-neox-20b", 1, False, False),
             ("meta-llama/Llama-2-7b-hf", 1, True, True),
             ("tiiuae/falcon-40b", 1, True, False),
             ("bigcode/starcoder", 256, True, True),
-            ("Salesforce/codegen2-1B", 1, False, False),
+            pytest.param("Salesforce/codegen2-1B", 1, False, False, marks=pytest.mark.skip("Deprecated")),
             ("mosaicml/mpt-30b", 1, False, False),
             ("mistralai/Mistral-7B-v0.1", 1, True, True),
             ("mistralai/Mixtral-8x7B-v0.1", 1, False, True),
@@ -45,7 +46,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
             ("google/gemma-7b", 1, False, True),
             ("google/gemma-2-9b", 1, False, True),
             ("google/gemma-2-27b", 1, False, True),
-            ("state-spaces/mamba-130m-hf", 1536, False, False),
+            pytest.param("state-spaces/mamba-130m-hf", 1536, False, False, marks=pytest.mark.skip("Deprecated")),
             # ("Deci/DeciLM-7B", 1, False, False),
             ("Qwen/Qwen2-7B", 256, False, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, False),
@@ -62,24 +63,24 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
             ("Qwen/Qwen2.5-7B", 4, False, False),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 4, 950, True, 128, 128),
+            pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, marks=pytest.mark.x4),
             ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128),
             ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048),
             ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128),
             ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048),
-            ("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128),
-            ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048),
-            ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128),
-            ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, marks=pytest.mark.x4),
+            pytest.param("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, marks=pytest.mark.x8),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128),
-            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048),
-            # ("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128),
-            ("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048),
+            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, marks=pytest.mark.x2),
+            # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, marks=pytest.mark.x2),
+            # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, marks=pytest.mark.x2),
+            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, marks=pytest.mark.x2),
             ("microsoft/phi-2", 1, 1, True, 128, 128),
         ],
         "load_quantized_model_with_autogptq": [
@@ -89,22 +90,22 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
             ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 8, 1),
-            # ("meta-llama/Llama-2-70b-hf", 8, 1),
-            ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1),
-            ("facebook/opt-66b", 2, 1),
-            ("google/gemma-2-9b", 8, 1),
-            ("Qwen/Qwen2.5-72B", 2, 1),
-            ("google/gemma-2-27b", 8, 1),
+            pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
+            # pytest.param("meta-llama/Llama-2-70b-hf", 8, 1, marks=pytest.mark.x8),
+            pytest.param("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, marks=pytest.mark.x8),
+            pytest.param("facebook/opt-66b", 2, 1, marks=pytest.mark.x2),
+            pytest.param("google/gemma-2-9b", 8, 1, marks=pytest.mark.x8),
+            pytest.param("Qwen/Qwen2.5-72B", 2, 1, marks=pytest.mark.x2),
+            pytest.param("google/gemma-2-27b", 8, 1, marks=pytest.mark.x8),
         ],
         "torch_compile": [
             "meta-llama/Llama-2-7b-hf",
         ],
         "torch_compile_distributed": [
-            "meta-llama/Llama-2-7b-hf",
+            pytest.param("meta-llama/Llama-2-7b-hf", marks=pytest.mark.x8),
         ],
         "distributed_tp": [
-            "meta-llama/Llama-2-7b-hf",
+            pytest.param("meta-llama/Llama-2-7b-hf", marks=pytest.mark.x8),
         ],
         "contrastive_search": [
             ("gpt2-xl", 1, False),
@@ -114,7 +115,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
         ],
     }
 else:
-    # Gaudi1 CI
+    # Gaudi1
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
@@ -303,6 +304,10 @@ def _test_text_generation(
         command += [
             f"--parallel_strategy={parallel_strategy}",
         ]
+    if "llama-2-7b-hf" in model_name.lower() and torch_compile and parallel_strategy == "tp":
+        command.insert(-2, "--bucket_size 128")
+        command.insert(-2, "--bucket_internal")
+        command.insert(-2, "--max_input_tokens 2048")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -509,12 +514,19 @@ def test_text_generation_torch_compile_distributed(model_name: str, baseline, to
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
+    batch_size = 64
+    max_input_tokens = 128
+    if "llama-2-7b-hf" in model_name.lower():
+        # match the params from examples/readme
+        batch_size = 220
+        max_input_tokens = 2048
+
     _test_text_generation(
         model_name,
         baseline,
         token,
-        batch_size=64,
-        max_input_tokens=128,
+        batch_size=batch_size,
+        max_input_tokens=max_input_tokens,
         world_size=world_size,
         torch_compile=True,
         parallel_strategy="tp",

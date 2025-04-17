@@ -18,6 +18,7 @@ from unittest import TestCase
 
 import habana_frameworks.torch as ht
 import numpy as np
+import pytest
 import requests
 import torch
 from PIL import Image
@@ -30,18 +31,18 @@ from .utils import OH_DEVICE_CONTEXT
 
 adapt_transformers_to_gaudi()
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
-    # Gaudi2 CI baselines
-    LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 4.2139556878198333
-else:
-    # Gaudi1 CI baselines
-    LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 8.460688591003418
-
 
 class GaudiOWlVITTester(TestCase):
     """
     Tests for Zero Shot Object Detection - OWLVIT
     """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def prepare_model_and_processor(self):
         model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").to("hpu")
@@ -120,5 +121,8 @@ class GaudiOWlVITTester(TestCase):
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
-        latency = total_model_time * 1000 / iterations  # in terms of ms
-        self.assertLessEqual(latency, 1.05 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)
+        self.baseline.assertRef(
+            compare=lambda latency, expect: latency <= (1.05 * expect),
+            context=[OH_DEVICE_CONTEXT],
+            latency=total_model_time * 1000 / iterations,  # in terms of ms
+        )
