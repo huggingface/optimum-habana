@@ -487,7 +487,7 @@ def main():
         # workaraund for https://github.com/huggingface/transformers/issues/36258
         # TODO: remove after fix is avalible in a release version of `transformers``
         if torch_dtype is None:
-            torch_dtype = getattr(config, 'torch_dtype', None)
+            torch_dtype = getattr(config, "torch_dtype", None)
 
         model = AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
