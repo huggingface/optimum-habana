@@ -127,4 +127,5 @@ def import_hpex(module_path, component):
     conditional_components = {"FusedRMSNorm": Not(IsFusedRMSNormDisabledInConfig())}
     if component in conditional_components and not conditional_components[component]:
         yield None
-    yield import_component(module_path, component)
+    else:
+        yield import_component(module_path, component)
