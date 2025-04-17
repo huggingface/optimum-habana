@@ -75,8 +75,15 @@ def compile_regions(model, compile_kwargs):
             module.__dict__.pop("_parameters", None)
             setattr(model, name, module)
     else:
-        for _, module in model.named_children():
-            compile_regions(module, compile_kwargs)
+        if model._modules:  # If model has submodules, recurse and reassign
+            for name, module in model.named_children():
+                compiled_module = compile_regions(module, **compile_kwargs)
+                if compiled_module is not None:  # Only reassign if something is returned
+                    setattr(model, name, compiled_module)
+        else:  # Leaf node
+            model = torch.compile(model, **compile_kwargs)
+            model.__dict__.pop("_parameters", None)
+            return model
 
 
 class GaudiAccelerator(Accelerator):
