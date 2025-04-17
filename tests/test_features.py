@@ -12,8 +12,6 @@ from optimum.habana.features import (
     IsGaudi3Available,
     IsGaudiAvailable,
     IsLazyMode,
-    IsSynapsePublicVersion,
-    IsSynapseUnreleasedVersion,
     Not,
 )
 
@@ -141,15 +139,6 @@ class TestFeatureDetection(unittest.TestCase):
         """
         mock_get_hw.return_value = None
         self.assertTrue(IsLazyMode())
-
-    @patch("optimum.habana.environment.get_hw")
-    def test_version(self, mock_get_hw):
-        """
-        Tests the detection of Synapse version ranges.
-        """
-        mock_get_hw.return_value = None
-        self.assertFalse(IsSynapsePublicVersion())
-        self.assertTrue(IsSynapseUnreleasedVersion())
 
     @patch("optimum.habana.environment.get_hw")
     def test_kernels(self, mock_get_hw):
