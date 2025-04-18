@@ -15,7 +15,6 @@
 
 import argparse
 import logging
-import time
 
 import habana_frameworks.torch as ht
 import torch
@@ -24,6 +23,7 @@ from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 # Adapted from https://huggingface.co/Supabase/gte-small example
@@ -120,15 +120,14 @@ def main():
                 model(**batch_dict)
         torch.hpu.synchronize()
 
-    start_time = time.time()
-    with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16), torch.no_grad():
-        for _ in tqdm(range(args.n_iterations), leave=False):
-            outputs = model(**batch_dict)
-            embeddings = average_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+    with HabanaGenerationTime() as timer:
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16), torch.no_grad():
+            for _ in tqdm(range(args.n_iterations), leave=False):
+                outputs = model(**batch_dict)
+                embeddings = average_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
     torch.hpu.synchronize()
-    end_time = time.time()
-    logger.info(f"Total time: {end_time - start_time:.5f} s")
-    logger.info(f"Average time per iteration: {(end_time - start_time) * 1000 / args.n_iterations:.5f} ms")
+    logger.info(f"Total time: {timer.last_duration:.5f} s")
+    logger.info(f"Average time per iteration: {(timer.last_duration) * 1000 / args.n_iterations:.5f} ms")
     embeddings = F.normalize(embeddings, p=2, dim=1)
     scores = (embeddings[:1] @ embeddings[1:].T) * 100
     logger.info(f"Scores for input texts relating to the source sentence: {scores.tolist()}")

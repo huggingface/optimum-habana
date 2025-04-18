@@ -15,7 +15,6 @@
 
 import argparse
 import logging
-import time
 
 import soundfile as sf
 import torch
@@ -23,7 +22,7 @@ from datasets import load_dataset
 from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 logging.basicConfig(
@@ -118,18 +117,17 @@ def main():
                 set_seed(args.seed)
             generator(text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs)
 
-        start = time.time()
-        for i in range(args.n_iterations):
-            if generator.model.config.model_type == "speecht5":
-                # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
-                # A random dropout may need different lengths of spectrograms to fit probability thresholds,
-                # which violates the HPU static shape, so we have to fix the seed here.
-                set_seed(args.seed)
-            speech = generator(
-                text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs
-            )
-        end = time.time()
-        logger.info(f"speech = {speech} time = {(end - start) * 1000 / args.n_iterations}ms")
+        with HabanaGenerationTime() as timer:
+            for i in range(args.n_iterations):
+                if generator.model.config.model_type == "speecht5":
+                    # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
+                    # A random dropout may need different lengths of spectrograms to fit probability thresholds,
+                    # which violates the HPU static shape, so we have to fix the seed here.
+                    set_seed(args.seed)
+                speech = generator(
+                    text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs
+                )
+        logger.info(f"speech = {speech} time = {(timer.last_duration) * 1000 / args.n_iterations}ms")
         sf.write("speech.wav", speech[0]["audio"].squeeze(), samplerate=speech[0]["sampling_rate"])
 
 

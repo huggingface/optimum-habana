@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-import time
 import typing
 import warnings
 from contextlib import nullcontext
@@ -53,7 +52,7 @@ from trl.trainer import (
     RunningMoments,
 )
 
-from ...utils import set_seed
+from ...utils import HabanaGenerationTime, set_seed
 from . import GaudiPPOConfig
 
 
@@ -490,9 +489,8 @@ class GaudiPPOTrainer(PPOTrainer):
             self.compare_step += 1
 
         timing = {}
-        t0 = time.time()
-
-        t = time.time()
+        timer = HabanaGenerationTime()
+        timer.start()
 
         model_inputs = self.prepare_model_inputs(queries, responses)
 
@@ -549,11 +547,11 @@ class GaudiPPOTrainer(PPOTrainer):
                     model_inputs,
                     return_logits=full_kl_penalty,
                 )
-
-        timing["time/ppo/forward_pass"] = time.time() - t
+        timer.step()
+        timing["time/ppo/forward_pass"] = timer.last_duration
 
         with torch.no_grad():
-            t = time.time()
+            timer.step()
             if full_kl_penalty:
                 active_full_logprobs = logprobs_from_logits(logits_or_none, None, gather=False)
                 ref_full_logprobs = logprobs_from_logits(ref_logits_or_none, None, gather=False)
@@ -563,11 +561,13 @@ class GaudiPPOTrainer(PPOTrainer):
                 )
             else:
                 rewards, non_score_reward, kls = self.compute_rewards(scores, all_logprobs, ref_logprobs, masks)
-            timing["time/ppo/compute_rewards"] = time.time() - t
+            timer.step()
+            timing["time/ppo/compute_rewards"] = timer.last_duration
 
-            t = time.time()
+            timer.step()
             values, advantages, returns = self.compute_advantages(values, rewards, masks)
-            timing["time/ppo/compute_advantages"] = time.time() - t
+            timer.step()
+            timing["time/ppo/compute_advantages"] = timer.last_duration
 
         # upcast to float32 to avoid dataset issues
         batch_dict = {
@@ -581,7 +581,7 @@ class GaudiPPOTrainer(PPOTrainer):
         }
         batch_dict.update(model_inputs)
 
-        t = time.time()
+        timer.step()
         all_stats = []
         early_stop = False
         if self.config.use_habana:
@@ -647,9 +647,10 @@ class GaudiPPOTrainer(PPOTrainer):
                 if early_stop:
                     break
 
-        timing["time/ppo/optimize_step"] = time.time() - t
+        timer.step()
+        timing["time/ppo/optimize_step"] = timer.last_duration
 
-        t = time.time()
+        timer.step()
         train_stats = stack_dicts(all_stats)
 
         # reshape advantages/ratios such that they are not averaged.
@@ -673,7 +674,8 @@ class GaudiPPOTrainer(PPOTrainer):
         if self.is_distributed:
             stats = self.gather_stats(stats)
         stats = stats_to_np(stats)
-        timing["time/ppo/calc_stats"] = time.time() - t
+        timer.step()
+        timing["time/ppo/calc_stats"] = timer.last_duration
         stats["ppo/learning_rate"] = self.optimizer.param_groups[0]["lr"]
 
         # Update the KL control - multiply the batch_size by the number of processes
@@ -683,7 +685,7 @@ class GaudiPPOTrainer(PPOTrainer):
         )
 
         # Log the total ppo time
-        timing["time/ppo/total"] = time.time() - t0
+        timing["time/ppo/total"] = timer.total_time()
         stats.update(timing)
 
         # post-process stats for tensorboard and other loggers

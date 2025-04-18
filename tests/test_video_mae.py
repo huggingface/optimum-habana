@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import time
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -22,6 +20,8 @@ import numpy as np
 import pytest
 import torch
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
+
+from optimum.habana.utils import HabanaGenerationTime
 
 from .utils import OH_DEVICE_CONTEXT
 
@@ -128,14 +128,14 @@ class GaudiVideoMAETester(TestCase):
             for _ in range(warm_up_iters):
                 self.model_hpu_graph(**self.inputs_hpu)
         torch.hpu.synchronize()
-        start_time = time.time()
-        with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16):
-            for _ in range(test_iters):
-                self.model_hpu_graph(**self.inputs_hpu)
-                torch.hpu.synchronize()
-        time_per_iter = (time.time() - start_time) * 1000 / test_iters  # Time in ms
-        self.baseline.assertRef(
-            compare=lambda latency, expect: latency < (1.05 * expect),
-            context=[OH_DEVICE_CONTEXT],
-            latency=time_per_iter,
-        )
+        with HabanaGenerationTime() as timer:
+            with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16):
+                for _ in range(test_iters):
+                    self.model_hpu_graph(**self.inputs_hpu)
+                    torch.hpu.synchronize()
+            time_per_iter = timer.last_duration * 1000 / test_iters  # Time in ms
+            self.baseline.assertRef(
+                compare=lambda latency, expect: latency < (1.05 * expect),
+                context=[OH_DEVICE_CONTEXT],
+                latency=time_per_iter,
+            )

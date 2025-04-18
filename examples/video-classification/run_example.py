@@ -20,7 +20,6 @@ import argparse
 import io
 import logging
 import os
-import time
 
 import decord
 import habana_frameworks.torch as ht
@@ -30,6 +29,7 @@ from tqdm import tqdm
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 adapt_transformers_to_gaudi()
@@ -94,7 +94,8 @@ def run(
 
     bufs = list(get_image_buffers(video_paths))
 
-    start_time = time.time()
+    timer = HabanaGenerationTime()
+    timer.start()
     if warm_up_epcohs:
         logging.info(f"Warming up model with {warm_up_epcohs} epochs")
     for i in tqdm(range(warm_up_epcohs), leave=False):
@@ -103,18 +104,17 @@ def run(
             inputs.to(device)
             infer(model, inputs, cast_bf16)
     if warm_up_epcohs:
-        end_time = time.time()
-        logging.info(f"Completed warm up in {end_time - start_time:.3e} seconds")
+        timer.step()
+        logging.info(f"Completed warm up in {timer.last_duration:.3e} seconds")
 
     for i, buf in enumerate(bufs):
-        start_time = time.time()
-        inputs = processor(buf, return_tensors="pt")
-        inputs.to(device)
-        class_str = infer(model, inputs, cast_bf16)
-        end_time = time.time()
+        with HabanaGenerationTime() as timer:
+            inputs = processor(buf, return_tensors="pt")
+            inputs.to(device)
+            class_str = infer(model, inputs, cast_bf16)
 
         print(
-            f"Predicted class for {video_paths[i].split('/')[-1]} is {class_str} and took {end_time - start_time:.3e} seconds"
+            f"Predicted class for {video_paths[i].split('/')[-1]} is {class_str} and took {timer.last_duration:.3e} seconds"
         )
 
 
