@@ -31,7 +31,6 @@ from optimum.habana.transformers.modeling_utils import (
     adapt_transformers_to_gaudi,
 )
 
-from optimum.habana.diffusers import GaudiCogVideoXPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from diffusers.utils.export_utils import export_to_video
 
@@ -57,35 +56,6 @@ def read_video_pyav(container, indices):
             frames.append(frame)
     return np.stack([x.to_ndarray(format="rgb24") for x in frames])
 
-def cogvideoX_generate(args):
-    gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
-    gaudi_config_kwargs["use_torch_autocast"] = True
-
-    gaudi_config = GaudiConfig(**gaudi_config_kwargs)
-    logger.info(f"Gaudi Config: {gaudi_config}")
-
-    kwargs = {
-        "use_habana": True,
-        "use_hpu_graphs": True,
-        "gaudi_config": gaudi_config,
-    }
-    kwargs["torch_dtype"] = torch.bfloat16
-    pipeline: GaudiCogVideoXPipeline = GaudiCogVideoXPipeline.from_pretrained(args.model_name_or_path, **kwargs)
-    pipeline.vae.enable_tiling()
-    pipeline.vae.enable_slicing()
-    video = pipeline(
-        prompt=args.prompt,
-        num_videos_per_prompt=1,
-        num_inference_steps=50,
-        num_frames=49,
-        guidance_scale=6,
-        generator=torch.Generator(device="cpu").manual_seed(42),
-    ).frames[0]
-    video_save_dir = Path(args.output_dir)
-    video_save_dir.mkdir(parents=True, exist_ok=True)
-    filename = video_save_dir / "cogvideoX_out.mp4"
-    export_to_video(video, str(filename.resolve()), fps=8)
-
 def main():
     parser = argparse.ArgumentParser()
 
@@ -94,13 +64,6 @@ def main():
         default=None,
         type=str,
         help="Path to pre-trained model",
-    )
-    parser.add_argument(
-        "--pipeline_type",
-        type=str,
-        nargs="*",
-        default="sdp",
-        help="pipeline type:sdp or cogvideoX",
     )
     parser.add_argument(
 
@@ -160,10 +123,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    if args.pipeline_type[0] == "cogvideox":
-        cogvideoX_generate(args)
-        return None
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 

@@ -32,11 +32,3 @@ python3 run_example.py \
 Models that have been validated:
   - [LanguageBind/Video-LLaVA-7B-hf ](https://huggingface.co/LanguageBind/Video-LLaVA-7B-hf)
 
-CogvideoX test:
-```bash
-python3 run_example.py \
-    --model_name_or_path THUDM/CogVideoX-2b \
-    --pipeline_type 'cogvideox' \
-    --output_dir 'cogvideo_out' \
-```
-
