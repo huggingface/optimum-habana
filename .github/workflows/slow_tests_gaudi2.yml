@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 23 * * *'  # every Wednesday and Saturday at 1am CET (midnight winter time)
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}
