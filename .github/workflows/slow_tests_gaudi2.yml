@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 23 * * *'  # every Wednesday and Saturday at 1am CET (midnight winter time)
-  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}
@@ -93,10 +92,10 @@ jobs:
             /bin/bash tests/ci/slow_tests_deepspeed.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   fsdp:
     name: Test FSDP models
-    # if: ${{ !cancelled() && (success() || failure()) }}
-    # needs:
-    #   - deepspeed  # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2, fast]
+    if: ${{ !cancelled() && (success() || failure()) }}
+    needs:
+      - deepspeed  # run the job when the previous test job is done
+    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
