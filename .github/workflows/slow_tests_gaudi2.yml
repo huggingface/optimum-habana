@@ -93,9 +93,9 @@ jobs:
   fsdp:
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}
-    needs:
-      - deepspeed  # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
+    # needs:
+    #   - deepspeed  # run the job when the previous test job is done
+    runs-on: [self-hosted, linux, x64, gaudi2, fast]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
