@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import subprocess
 
 import pytest
@@ -21,12 +22,8 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.transformers import modeling_utils
 
 from .utils import OH_DEVICE_CONTEXT
-
-
-modeling_utils.adapt_transformers_to_gaudi()
 
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
@@ -89,6 +86,11 @@ def test_nf4_quantization_inference(token: str, baseline):
     except subprocess.CalledProcessError:
         pytest.fail("Failed to install peft==0.12.0")
 
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    from optimum.habana.transformers import modeling_utils
+
+    modeling_utils.adapt_transformers_to_gaudi()
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
@@ -132,8 +134,10 @@ def test_nf4_quantization_inference(token: str, baseline):
         output_dir="results",
         lr_scheduler_type="linear",
         use_habana=True,
-        use_lazy_mode=True,
+        use_lazy_mode=False,
         pipelining_fwd_bwd=True,
+        torch_compile=True,
+        torch_compile_backend="hpu_backend",
     )
 
     trainer = GaudiTrainer(
