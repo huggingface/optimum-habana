@@ -135,7 +135,7 @@ if is_peft_available():
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
-from accelerate.utils import DataLoaderConfiguration
+from accelerate.utils import DataLoaderConfiguration, is_torch_version
 
 
 def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
@@ -958,6 +958,8 @@ class GaudiTrainer(Trainer):
                 )
                 for i, inputs in enumerate(batch_samples):
                     step += 1
+                    if self.args.compile_from_sec_iteration and is_torch_version(">=", "2.6.0"):
+                        torch.compiler.set_stance("force_eager" if step == 0 else "default")
 
                     if (
                         args.throughput_warmup_steps > 0
