@@ -1,2 +1,4 @@
 lm-eval==0.4.7
 datasets==2.21.0
+tiktoken
+blobfile
