@@ -106,7 +106,8 @@ class HabanaModelAdapter(HFLM):
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
         logits_cache: bool = True,
-        add_bos_token: Optional[bool] = False,
+        add_bos_token: Optional[bool] = True,
+        prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
         **kwargs,
     ) -> None:
@@ -122,6 +123,7 @@ class HabanaModelAdapter(HFLM):
         self.pretrained = model
         self.peft = args.peft_model
         self.delta = delta
+        self.custom_prefix_token_id = prefix_token_id
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.logits_cache = logits_cache
@@ -214,23 +216,54 @@ class HabanaModelAdapter(HFLM):
         logits = logits.to(torch.float32)
         return logits
 
+    def get_model_info(self) -> dict:
+        """
+        Patched method to get Hugging Face model information for experiment reproducibility.
+        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L1375
+        Remove from SynapseAI 1.21
+        """
+
+        def get_model_num_params(model) -> int:
+            if hasattr(model, "num_parameters"):
+                return model.num_parameters()
+            if hasattr(model, "parameters"):
+                return sum(p.numel() for p in model.parameters())
+            else:
+                return -1
+
+        def get_model_dtype(model) -> str:
+            if hasattr(model, "dtype"):
+                return model.dtype
+            else:
+                return ""
+
+        def get_model_sha(pretrained: str, revision: str) -> str:
+            return ""
+
+        model_info = {
+            "model_num_parameters": get_model_num_params(self._model),
+            "model_dtype": get_model_dtype(self._model),
+            "model_revision": self.revision,
+            "model_sha": get_model_sha(self.pretrained, self.revision),
+        }
+        if self.peft:
+            model_info["peft_sha"] = get_model_sha(self.peft, self.revision)
+        if self.delta:
+            model_info["delta_sha"] = get_model_sha(self.delta, self.revision)
+        return model_info
+
 
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
-    if args.trust_remote_code:
-        # trust_remote_code fix was introduced in lm_eval 0.4.3
-        import datasets
-
-        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=False)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 

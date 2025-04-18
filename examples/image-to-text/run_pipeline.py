@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import glob
 import json
 import logging
 import os
@@ -25,9 +26,7 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.utils import (
-    set_seed,
-)
+from optimum.habana.utils import get_hpu_memory_stats, set_seed
 
 
 logging.basicConfig(
@@ -36,6 +35,10 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def count_hpu_graphs():
+    return len(glob.glob(".graph_dumps/*PreGraph*"))
 
 
 def override_print(enable):
@@ -201,12 +204,28 @@ def main():
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
     parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Run pipeline using Torch Compile mode",
+    )
+    parser.add_argument(
+        "--logits_bf16",
+        action="store_true",
+        help="Compute logits in bf16",
+    )
+    parser.add_argument(
         "--trim_logits",
         action="store_true",
         help="Calculate logits only for the last token to save memory in the first step.",
     )
 
     args = parser.parse_args()
+
+    use_lazy_mode = True
+
+    if args.torch_compile:
+        args.use_hpu_graphs = False
+        use_lazy_mode = False
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
@@ -271,6 +290,18 @@ def main():
                 else:
                     args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
 
+        else:
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{args.prompt}"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+
     image_paths = args.image_path
     image_paths_len = len(image_paths)
 
@@ -333,8 +364,9 @@ def main():
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
+        processor.patch_size = config.vision_config.patch_size
     generate_kwargs = {
-        "lazy_mode": True,
+        "lazy_mode": use_lazy_mode,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
@@ -343,6 +375,7 @@ def main():
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
         "trim_logits": args.trim_logits,
+        "logits_bf16": args.logits_bf16,
     }
 
     if args.sdp_on_bf16:
@@ -376,10 +409,12 @@ def main():
 
         generator.__class__.preprocess = preprocess
 
+    t0 = time.perf_counter()
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     torch.hpu.synchronize()
+    compilation_duration = time.perf_counter() - t0
     if args.quant_config:
         finalize_quantization(generator.model)
 
@@ -407,6 +442,21 @@ def main():
     logger.info(
         f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
+
+    stats = ""
+    stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+    stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+    separator = "-" * len(stats)
+    print()
+    print("Stats:")
+    print(separator)
+    print(stats)
+    mem = get_hpu_memory_stats()
+    for k, v in mem.items():
+        print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+    print(f"Graph compilation duration          = {compilation_duration} seconds")
+    print(separator)
+    print()
 
     # Store results if necessary
     if args.output_dir is not None:

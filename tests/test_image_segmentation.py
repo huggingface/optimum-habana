@@ -18,6 +18,7 @@ from unittest import TestCase
 
 import habana_frameworks.torch as ht
 import numpy as np
+import pytest
 import requests
 import torch
 from PIL import Image
@@ -25,18 +26,23 @@ from transformers import AutoModel, AutoProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 adapt_transformers_to_gaudi()
-
-# For Gaudi 2
-LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 3.7109851837158203
-LATENCY_SAM_BF16_GRAPH_BASELINE = 98.92215728759766
 
 
 class GaudiSAMTester(TestCase):
     """
     Tests for Segment Anything Model - SAM
     """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def prepare_model_and_processor(self):
         model = AutoModel.from_pretrained("facebook/sam-vit-huge").to("hpu")
@@ -115,5 +121,8 @@ class GaudiSAMTester(TestCase):
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
-        latency = total_model_time * 1000 / iterations  # in terms of ms
-        self.assertLessEqual(latency, 1.05 * LATENCY_SAM_BF16_GRAPH_BASELINE)
+        self.baseline.assertRef(
+            compare=lambda latency, expect: latency <= (1.05 * expect),
+            context=[OH_DEVICE_CONTEXT],
+            latency=total_model_time * 1000 / iterations,  # in terms of ms
+        )

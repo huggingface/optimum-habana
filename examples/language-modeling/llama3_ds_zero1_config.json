@@ -8,6 +8,13 @@
     },
     "gradient_clipping": 1.0,
     "zero_optimization": {
-        "stage": 1
+        "stage": 1,
+        "contiguous_gradients": false
+    },
+    "timers": {
+        "throughput": {
+           "enabled": true,
+           "synchronized": false
+        }
     }
 }
