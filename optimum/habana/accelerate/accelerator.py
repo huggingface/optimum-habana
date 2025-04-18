@@ -113,8 +113,10 @@ class GaudiAccelerator(Accelerator):
         force_autocast: bool = False,
         distribution_strategy: str = None,
         use_regional_compilation: bool | None = None,
+        compiled_autograd_enable: bool = False,
     ):
         self.use_regional_compilation = use_regional_compilation
+        self.compiled_autograd_enable = compiled_autograd_enable
         self.distribution_strategy = distribution_strategy
         self.force_autocast = force_autocast
         self.mpu = parallel_state
@@ -582,7 +584,11 @@ class GaudiAccelerator(Accelerator):
                 if self.use_regional_compilation:
                     compile_regions(engine.module, compile_kwargs=compile_kwargs)
                 else:
-                    engine.compile(backend=compile_kwargs.pop("backend"), compile_kwargs=compile_kwargs)
+                    engine.compile(
+                        backend=compile_kwargs.pop("backend"),
+                        compile_kwargs=compile_kwargs,
+                        compiled_autograd_enabled=self.compiled_autograd_enable,
+                    )
                 ###############################################################################################################
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
