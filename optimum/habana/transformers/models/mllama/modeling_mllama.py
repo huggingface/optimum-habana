@@ -871,6 +871,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
@@ -909,7 +910,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
-        if seq_len > 1 and not self.training:
+        if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
                 hidden_states = hidden_states.index_select(1, token_idx - 1)
             else:
@@ -974,6 +975,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         **kwargs,
@@ -1061,6 +1063,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             cache_position=cache_position,
             num_logits_to_keep=num_logits_to_keep,
             token_idx=token_idx,
+            trim_logits=trim_logits,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
         )
@@ -1142,6 +1145,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "attention_mask": attention_mask,
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
             }
@@ -1153,7 +1157,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             model_inputs["pixel_values"] = pixel_values
             model_inputs["aspect_ratio_ids"] = aspect_ratio_ids
             model_inputs["aspect_ratio_mask"] = aspect_ratio_mask
-
         return model_inputs
 
     def _update_model_kwargs_for_generation(self, outputs, model_kwargs, is_encoder_decoder, **kwargs):
