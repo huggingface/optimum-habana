@@ -56,7 +56,7 @@ jobs:
             git+https://github.com/huggingface/accelerate.git
 
       - name: Run Trainer tests
-        if: ${{ !cancelled() && (success() || failure()) }}
+        if: ${{ !cancelled() && success() }}
         run: |
           pytest tests/trainer/test_trainer.py -s -vvvv
 
@@ -128,7 +128,7 @@ jobs:
             git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 
       - name: Run CLI tests
-        if: ${{ !cancelled() && (success() || failure()) }}
+        if: ${{ !cancelled() && success() }}
         run: |
           make test_cli
 
