@@ -56,26 +56,32 @@ jobs:
             git+https://github.com/huggingface/accelerate.git
 
       - name: Run Trainer tests
+        if: always()
         run: |
           pytest tests/trainer/test_trainer.py -s -vvvv
 
       - name: Run Trainer Utils tests
+        if: always()
         run: |
           pytest tests/trainer/test_trainer_utils.py -s -vvvv
 
       - name: Run Trainer Seq2Seq tests
+        if: always()
         run: |
           pytest tests/trainer/test_trainer_seq2seq.py -s -vvvv
 
       - name: Run Trainer Distributed tests
+        if: always()
         run: |
           pytest tests/trainer/test_trainer_distributed.py -s -vvvv
 
       - name: Run FSDP Integration tests
+        if: always()
         run: |
           pytest tests/fsdp/test_fsdp.py tests/trainer/test_trainer_fsdp.py -s -vvvv
 
       - name: Run DeepSpeed Integration tests
+        if: always()
         run: |
           pytest tests/deepspeed/test_deepspeed.py -s -vvvv
 
@@ -122,25 +128,31 @@ jobs:
             git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 
       - name: Run CLI tests
+        if: always()
         run: |
           make test_cli
 
       - name: Run Core tests
+        if: always()
         run: |
           make test_core
 
       - name: Run Big Modeling tests
+        if: always()
         run: |
           make test_big_modeling
 
       - name: Run FSDP integration tests
+        if: always()
         run: |
           make test_fsdp
 
       - name: Run DeepSpeed integration tests
+        if: always()
         run: |
           make test_deepspeed
 
       - name: Run Examples tests
+        if: always()
         run: |
           make test_examples
