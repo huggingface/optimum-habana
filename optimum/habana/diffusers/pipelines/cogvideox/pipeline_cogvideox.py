@@ -26,6 +26,8 @@ from diffusers.models.attention import Attention
 from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3d
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
+from diffusers.pipelines.cogvideo.pipeline_output import CogVideoXPipelineOutput
+from diffusers.pipelines.cogvideo.pipeline_cogvideox import retrieve_timesteps
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -81,6 +83,7 @@ def apply_rotary_emb(
 
 class CogVideoXAttnProcessorGaudi:
     r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/attention_processor.py#L1896
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
     """
@@ -164,6 +167,11 @@ def cogvideoXTransformerForwardGaudi(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
 ):
+    r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/transformers/cogvideox_transformer_3d.py#L408
+    add mark_step.
+    """
+
     if attention_kwargs is not None:
         attention_kwargs = attention_kwargs.copy()
         lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -259,6 +267,7 @@ def cogvideoXTransformerForwardGaudi(
 
 def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
     r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/autoencoders/autoencoder_kl_cogvideox.py#L1374
     Decode a batch of images using a tiled decoder.
 
     Args:
@@ -348,6 +357,11 @@ def tiled_decode_gaudi(self, z: torch.Tensor, return_dict: bool = True) -> Union
 def CogVideoXCausalConv3dforwardGaudi(
     self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
+    """
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/autoencoders/autoencoder_kl_cogvideox.py#L129
+    change conv_cache.clone() to conv_cache.copy_().
+    """
+
     # print('run gaudi CogVideoXCausalConv3d forward!')
     inputs = self.fake_context_parallel_forward(inputs, conv_cache)
     # conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
@@ -381,65 +395,6 @@ class GaudiTextToVideoSDPipelineOutput(BaseOutput):
     """
 
     frames: torch.Tensor
-
-
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
-            `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
-            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
-            `num_inference_steps` and `timesteps` must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accept_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
 
 
 class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
@@ -797,7 +752,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         if not return_dict:
             return (video,)
 
-        return GaudiTextToVideoSDPipelineOutput(frames=video)
+        return CogVideoXPipelineOutput(frames=video)
 
     @torch.no_grad()
     def transformer_hpu(self, latent_model_input, prompt_embeds, timestep, image_rotary_emb):
