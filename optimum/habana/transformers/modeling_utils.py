@@ -16,7 +16,9 @@
 import os
 
 import transformers
+import transformers.integrations
 import transformers.utils.fx
+from ..quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 from .generation import (
     GaudiGenerationConfig,
@@ -822,6 +824,10 @@ def adapt_transformers_to_gaudi():
     transformers.models.deepseek_v2.modeling_deepseek_v2.DeepseekV2ForCausalLM = GaudiDeepseekV2ForCausalLM
     transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
     transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
+    transformers.quantizers.quantizer_finegrained_fp8.FineGrainedFP8HfQuantizer = GaudiFineGrainedFP8HfQuantizer
+    transformers.quantizers.auto.AUTO_QUANTIZER_MAPPING["fp8"] = GaudiFineGrainedFP8HfQuantizer
+    # transformers.integrations.FP8Linear = GaudiFP8Linear
+    # transformers.integrations.replace_with_fp8_linear = replace_with_fp8_linear
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
