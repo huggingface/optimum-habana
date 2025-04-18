@@ -31,10 +31,6 @@ from optimum.habana.transformers.modeling_utils import (
     adapt_transformers_to_gaudi,
 )
 
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
-from diffusers.utils.export_utils import export_to_video
-
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -56,6 +52,7 @@ def read_video_pyav(container, indices):
             frames.append(frame)
     return np.stack([x.to_ndarray(format="rgb24") for x in frames])
 
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -66,7 +63,6 @@ def main():
         help="Path to pre-trained model",
     )
     parser.add_argument(
-
         "--video_path",
         default=None,
         type=str,

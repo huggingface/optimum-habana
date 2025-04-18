@@ -31,4 +31,3 @@ python3 run_example.py \
 ```
 Models that have been validated:
   - [LanguageBind/Video-LLaVA-7B-hf ](https://huggingface.co/LanguageBind/Video-LLaVA-7B-hf)
-

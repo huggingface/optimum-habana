@@ -57,7 +57,7 @@ def main():
         type=str,
         nargs="*",
         default="sdp",
-        help="pipeline type:video_llava or cogvideoX",
+        help="pipeline type:sdp or cogvideoX",
     )
     # Pipeline arguments
     parser.add_argument(
