@@ -25,7 +25,7 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.utils import get_hpu_memory_stats, HabanaGenerationTime, set_seed
+from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
 
 
 logging.basicConfig(
@@ -402,12 +402,12 @@ def main():
 
         generator.__class__.preprocess = preprocess
 
-    t0 = time.perf_counter()
     # warm up
-    for i in range(args.warmup):
-        generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    torch.hpu.synchronize()
-    compilation_duration = time.perf_counter() - t0
+    with HabanaGenerationTime() as compilation_timer:
+        for i in range(args.warmup):
+            generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        torch.hpu.synchronize()
+    compilation_duration = compilation_timer.last_duration
     if args.quant_config:
         finalize_quantization(generator.model)
 
