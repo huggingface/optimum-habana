@@ -29,7 +29,14 @@ from pathlib import Path
 
 import torch
 from transformers import BatchEncoding
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
+from utils import (
+    SetTrueOrFalseOrNone,
+    adjust_batch,
+    count_hpu_graphs,
+    finalize_quantization,
+    initialize_model,
+    save_model,
+)
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -276,7 +283,9 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
-        action="store_true",
+        nargs="?",
+        const=None,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
@@ -387,8 +396,13 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+    if args.use_flash_attention and args.flash_attention_fast_softmax is None:
+        logger.warning(
+            "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
+        )
         args.flash_attention_fast_softmax = True
+    else:
+        args.flash_attention_fast_softmax = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
