@@ -1,14 +1,16 @@
-29,30d28
+1a2
+> # coding=utf-8
+28,29d28
 < from datasets import load_dataset
 < 
-31a30
+30a30
 > from datasets import load_dataset
-40,41d38
+39,40d38
 <     Trainer,
 <     TrainingArguments,
-43d39
+42d39
 <     set_seed,
-48a45,54
+47a45,54
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
@@ -19,34 +21,34 @@
 > 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-50,51c56,61
+49,50c56,61
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
+< check_min_version("4.52.0.dev0")
 ---
 > 
 > logger = logging.getLogger(__name__)
 > 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
-67,68d76
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
+66,67d76
 < logger = logging.getLogger(__name__)
 < 
-143a152,155
+142a152,155
 >     problem_type: Optional[str] = field(
 >         default="single_label_classification",
 >         metadata={"help": "Problem type, such as single_label_classification or multi_label_classification"},
 >     )
-213a226,229
+212a226,229
 >     add_pad_token: bool = field(
 >         default=False,
 >         metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
 >     )
-221c237
+220c237
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-250a267,273
+249a267,273
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -54,34 +56,30 @@
 >         token=model_args.token,
 >     )
 > 
-251a275
+250a275
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-253,254c277,279
+252,253c277,279
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-376a402
+375a402
 >         problem_type=data_args.problem_type,
-417a444,448
+416a444,448
 >     if model_args.add_pad_token:
 >         if not model.config.pad_token_id and not tokenizer.pad_token:
 >             tokenizer.pad_token = tokenizer.eos_token
 >             model.config.pad_token_id = tokenizer.eos_token_id
 > 
-528c559
+527c559
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-529a561
+528a561
 >         gaudi_config=gaudi_config,
-534c566
-<         processing_class=tokenizer,
----
->         tokenizer=tokenizer,
-629,633d660
+628,632d660
 < 
 < 
 < def _mp_fn(index):

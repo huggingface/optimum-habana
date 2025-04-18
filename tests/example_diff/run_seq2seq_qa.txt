@@ -1,18 +1,24 @@
-29a30
+1a2
+> # coding=utf-8
+24c25
+< from typing import Optional
+---
+> from typing import List, Optional, Tuple
+28a30
 > import transformers
-32,33d32
+31,32d32
 < 
 < import transformers
-40,41d38
+39,40d38
 <     Seq2SeqTrainingArguments,
 <     set_seed,
-46a44,45
+45a44,45
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-48,49d46
+47,48d46
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-51c48,54
+< check_min_version("4.52.0.dev0")
+50c48,54
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 ---
 > try:
@@ -22,22 +28,22 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-54a58,63
+53a58,63
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 > 
-178c187
+177c187
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
 >                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
-278c287
+277c287
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-307a317,323
+306a317,323
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -45,22 +51,22 @@
 >         token=model_args.token,
 >     )
 > 
-308a325
+307a325
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-310,311c327,329
+309,310c327,329
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-661a680
->         gaudi_config=gaudi_config,
-666c685
-<         processing_class=tokenizer,
+471c490
+<     ) -> tuple[list[str], list[str]]:
 ---
->         tokenizer=tokenizer,
-735,739d753
+>     ) -> Tuple[List[str], List[str]]:
+660a680
+>         gaudi_config=gaudi_config,
+734,738d753
 < 
 < 
 < def _mp_fn(index):

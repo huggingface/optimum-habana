@@ -1,30 +1,33 @@
-3c3
+2c2,3
 < # Copyright 2021 The HuggingFace Team. All rights reserved.
 ---
+> # coding=utf-8
 > # Copyright 2022 The HuggingFace Team. All rights reserved.
-20a21
+19a21
 > import copy
-30a32,33
-> import torch
-> import transformers
-33,34d35
+30,32c32
+< from datasets import load_dataset
+< from filelock import FileLock
 < 
-< import transformers
-45,47c46
+---
+> import torch
+33a34
+> from datasets import load_dataset
+44,46c45
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 <     set_seed,
 ---
 >     default_data_collator,
-48a48
+47a47
 > from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-52a53,54
+51a52,53
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-54,55d55
+53,54d54
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-57c57,63
+< check_min_version("4.52.0.dev0")
+56c56,62
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 ---
 > try:
@@ -34,17 +37,24 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-60a67,72
+60,68c66,71
+< try:
+<     nltk.data.find("tokenizers/punkt")
+< except (LookupError, OSError):
+<     if is_offline_mode():
+<         raise LookupError(
+<             "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
+<         )
+<     with FileLock(".lock") as lock:
+<         nltk.download("punkt", quiet=True)
+---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-70a83,84
-> nltk.download("punkt_tab")  # Needed for version 3.8.2
-> 
-129a144,152
+128a132,140
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -54,17 +64,29 @@
 >             )
 >         },
 >     )
-213c236
+212c224
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-261a285
+260a273
 >     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
-317c341
+316c329
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-346a371,377
+345a359,383
+>     with training_args.main_process_first():
+>         try:
+>             nltk.data.find("tokenizers/punkt")
+>             nltk.data.find("punkt_tab")  # Needed for version 3.8.2
+>         except (LookupError, OSError):
+>             if is_offline_mode():
+>                 raise LookupError(
+>                     "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
+>                 )
+>             nltk.download("punkt", quiet=True)
+>             nltk.download("punkt_tab", quiet=True)
+> 
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -72,25 +94,31 @@
 >         token=model_args.token,
 >     )
 > 
-347a379
+>     if training_args.do_train and training_args.use_compiled_autograd:
+>         from habana_frameworks.torch.dynamo.compile_backend.experimental import enable_compiled_autograd
+> 
+>         enable_compiled_autograd()
+>         torch._C._set_autograd_fallback_mode("nothing")
+> 
+346a385
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-349,350c381,383
+348,349c387,389
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-432a466
+431a472
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-451a486,491
+450a492,497
 >     is_bart = model.config.model_type == "bart"
 >     if is_bart and training_args.do_train:
 >         raise ValueError(
 >             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
 >         )
 > 
-454c494,501
+453c500,507
 <     embedding_size = model.get_input_embeddings().weight.shape[0]
 ---
 >     embeddings = model.get_input_embeddings()
@@ -101,16 +129,16 @@
 >             embedding_size = embeddings.weight.shape[0]
 >     else:
 >         embedding_size = embeddings.weight.shape[0]
-487a535
+486a541
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-558a607,608
+557a613,614
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
-560c610
+559c616
 <         inputs = [prefix + inp for inp in inputs]
 ---
 >         inputs = [prefix + inp + suffix for inp in inputs]
-575a626,665
+574a632,671
 >     def preprocess_bucketing_function(examples):
 >         # remove pairs where at least one record is None
 > 
@@ -151,22 +179,22 @@
 >         model_inputs["labels"] = labels["input_ids"]
 >         return model_inputs
 > 
-590a681,686
+589a687,692
 >     def wrapper_preprocess_function(examples):
 >         if model.config.is_encoder_decoder:
 >             return preprocess_bucketing_function(examples)
 >         else:
 >             return preprocess_function(examples)
 > 
-599c695
+598c701
 <                 preprocess_function,
 ---
 >                 wrapper_preprocess_function,
-615c711
+614c717
 <                 preprocess_function,
 ---
 >                 wrapper_preprocess_function,
-625,630c721,729
+624,629c727,735
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -183,7 +211,7 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-665,672c764,775
+664,671c770,781
 <     training_args.generation_max_length = (
 <         training_args.generation_max_length
 <         if training_args.generation_max_length is not None
@@ -205,17 +233,13 @@
 >         training_args.generation_config.num_beams = data_args.num_beams
 >     elif training_args.generation_num_beams is not None:
 >         training_args.generation_config.num_beams = training_args.generation_num_beams
-675c778
+674c784
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-676a780
+675a786
 >         gaudi_config=gaudi_config,
-680c784
-<         processing_class=tokenizer,
----
->         tokenizer=tokenizer,
-765,769d868
+764,768d874
 < 
 < 
 < def _mp_fn(index):
