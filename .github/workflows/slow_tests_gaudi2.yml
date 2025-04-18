@@ -93,7 +93,7 @@ jobs:
             /bin/bash tests/ci/slow_tests_deepspeed.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   fsdp:
     name: Test FSDP models
-    if: ${{ !cancelled() && (success() || failure()) }}
+    # if: ${{ !cancelled() && (success() || failure()) }}
     # needs:
     #   - deepspeed  # run the job when the previous test job is done
     runs-on: [self-hosted, linux, x64, gaudi2, fast]
