@@ -3740,7 +3740,6 @@ class TrainerHyperParameterOptunaIntegrationTestWithFullEval(unittest.TestCase):
                 output_dir=tmp_dir,
                 disable_tqdm=True,
                 model_init=model_init,
-                fp16_full_eval=True,
             )
             trainer.hyperparameter_search(
                 direction="minimize",
