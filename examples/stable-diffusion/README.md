@@ -345,7 +345,7 @@ CogVideoX is an open-source version of the video generation model originating fr
 
 ```bash
 python text_to_video_generation.py \
-    --model_name_or_path "/mnt/disk2/libo/hf_models/CogVideoX-2b/" \
+    --model_name_or_path "THUDM/CogVideoX-2b" \
     --pipeline_type "cogvideox" \
     --prompts "An astronaut riding a horse" \
     --use_habana \

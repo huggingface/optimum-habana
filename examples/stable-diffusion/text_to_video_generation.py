@@ -55,9 +55,8 @@ def main():
     parser.add_argument(
         "--pipeline_type",
         type=str,
-        nargs="*",
-        default="sdp",
-        help="pipeline type:sdp or cogvideoX",
+        default="stable_diffusion",
+        help="pipeline type:stable_diffusion or cogvideoX",
     )
     # Pipeline arguments
     parser.add_argument(
@@ -184,20 +183,21 @@ def main():
     elif args.dtype == "fp32":
         kwargs["torch_dtype"] = torch.float32
 
+
     # Generate images
-    if args.pipeline_type[0] == "sdp":
+    if args.pipeline_type == "stable_diffusion":
         pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
             args.model_name_or_path, **kwargs
         )
-    elif args.pipeline_type[0] == "cogvideox":
+    elif args.pipeline_type == "cogvideox":
         pipeline: GaudiCogVideoXPipeline = GaudiCogVideoXPipeline.from_pretrained(args.model_name_or_path, **kwargs)
         pipeline.vae.enable_tiling()
         pipeline.vae.enable_slicing()
     else:
-        logger.error(f'unsupported pipeline type {args.pipeline_type[0]}')
+        logger.error(f'unsupported pipeline type {args.pipeline_type}')
         return None
 
-    if args.pipeline_type[0] == "sdp":
+    if args.pipeline_type == "stable_diffusion":
         set_seed(args.seed)
         outputs = pipeline(
             prompt=args.prompts,
@@ -227,7 +227,7 @@ def main():
                     export_to_video(video, str(filename.resolve()))
             else:
                 logger.warning("--output_type should be equal to 'mp4' to save images in --video_save_dir.")
-    elif args.pipeline_type[0] == "cogvideox":
+    elif args.pipeline_type == "cogvideox":
         video = pipeline(
             prompt=args.prompts,
             num_videos_per_prompt=args.num_videos_per_prompt,
