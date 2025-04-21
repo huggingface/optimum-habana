@@ -685,7 +685,7 @@ def main():
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         if data_args.save_last_ckpt:
-            trainer.save_model()  # Saves the tokenizer too for easy upload
+            trainer._save_checkpoint(trainer.model, None)  # Saves the tokenizer too for easy upload
 
         metrics = train_result.metrics
 
