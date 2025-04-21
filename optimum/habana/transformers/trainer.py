@@ -29,7 +29,7 @@ import time
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
 
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
@@ -38,6 +38,7 @@ from accelerate import DistributedType, skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import (
     DistributedDataParallelKwargs,
+    TorchTensorParallelPlugin,
     load_fsdp_model,
     load_fsdp_optimizer,
     save_fsdp_model,
@@ -217,21 +218,21 @@ class GaudiTrainer(Trainer):
     @deprecate_kwarg("tokenizer", new_name="processing_class", version="5.0.0", raise_if_both_names=True)
     def __init__(
         self,
-        model: Union[PreTrainedModel, torch.nn.Module] = None,
+        model: Union[PreTrainedModel, torch.nn.Module, None] = None,
         gaudi_config: GaudiConfig = None,
         args: TrainingArguments = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Union[Dataset, IterableDataset, "datasets.Dataset"]] = None,
-        eval_dataset: Optional[Union[Dataset, Dict[str, Dataset], "datasets.Dataset"]] = None,
+        eval_dataset: Optional[Union[Dataset, dict[str, Dataset], "datasets.Dataset"]] = None,
         processing_class: Optional[
             Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
         ] = None,
         model_init: Optional[Callable[[], PreTrainedModel]] = None,
         compute_loss_func: Optional[Callable] = None,
-        compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
-        callbacks: Optional[List[TrainerCallback]] = None,
-        optimizers: Tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
-        optimizer_cls_and_kwargs: Optional[Tuple[Type[torch.optim.Optimizer], Dict[str, Any]]] = None,
+        compute_metrics: Optional[Callable[[EvalPrediction], dict]] = None,
+        callbacks: Optional[list[TrainerCallback]] = None,
+        optimizers: tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
+        optimizer_cls_and_kwargs: Optional[tuple[type[torch.optim.Optimizer], dict[str, Any]]] = None,
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
     ):
         if args is None:
@@ -502,8 +503,8 @@ class GaudiTrainer(Trainer):
     def train(
         self,
         resume_from_checkpoint: Optional[Union[str, bool]] = None,
-        trial: Union["optuna.Trial", Dict[str, Any]] = None,
-        ignore_keys_for_eval: Optional[List[str]] = None,
+        trial: Union["optuna.Trial", dict[str, Any], None] = None,
+        ignore_keys_for_eval: Optional[list[str]] = None,
         **kwargs,
     ):
         """
@@ -538,7 +539,7 @@ class GaudiTrainer(Trainer):
 
         # do_train is not a reliable argument, as it might not be set and .train() still called, so
         # the following is a workaround:
-        if args.bf16_full_eval and not args.do_train and not self.is_model_parallel:
+        if args.bf16_full_eval and not args.do_train and not self.is_model_parallel and self.model_init is None:
             self._move_model_to_device(self.model, args.device)
 
         if "model_path" in kwargs:
@@ -676,6 +677,11 @@ class GaudiTrainer(Trainer):
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
         delay_optimizer_creation = self.is_fsdp_enabled
+
+        # Can't delay optimizer creation when using FSDP2: https://github.com/huggingface/accelerate/blob/3f636d626063ffcf9a337c7d3624d61b7d187d59/src/accelerate/accelerator.py#L1404
+        is_fsdp2 = self.is_fsdp_enabled and (getattr(self.accelerator.state.fsdp_plugin, "fsdp_version", 1) == 2)
+        if is_fsdp2:
+            delay_optimizer_creation = False
 
         # We need to reset the scheduler, as its parameters may be different on subsequent calls
         if self._created_lr_scheduler:
@@ -871,10 +877,14 @@ class GaudiTrainer(Trainer):
                 torch.distributed.broadcast(param.data, src=0)
 
         # Update the references
-        self.state.init_training_references(self, train_dataloader, max_steps, num_train_epochs, trial)
+        for attr in ("model", "optimizer", "lr_scheduler"):
+            setattr(self.callback_handler, attr, getattr(self, attr))
+        self.callback_handler.train_dataloader = train_dataloader
+
+        self.state.init_training_references(self, max_steps, num_train_epochs, trial)
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
-        tr_loss = torch.tensor(0.0).to(args.device)
+        tr_loss = torch.tensor(0.0, device=args.device)
         # _total_loss_scalar is updated every time .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
@@ -885,6 +895,8 @@ class GaudiTrainer(Trainer):
         _should_compute_grad_norm: bool = self.accelerator.distributed_type != DistributedType.DEEPSPEED and (
             args.max_grad_norm is not None and args.max_grad_norm > 0
         )
+
+        learning_rate = None
 
         # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
         # lazy_mode for llama, qwen2, starcoder2 and mistral
@@ -981,9 +993,7 @@ class GaudiTrainer(Trainer):
                         else:
                             input_tokens = inputs[main_input_name].numel()
                             input_tokens = torch.tensor(input_tokens, device=self.args.device, dtype=torch.int64)
-                            self.state.num_input_tokens_seen += (
-                                self.accelerator.gather(input_tokens).sum().cpu().item()
-                            )
+                            self.state.num_input_tokens_seen += self.accelerator.gather(input_tokens).sum().item()
                     if rng_to_sync:
                         self._load_rng_state(resume_from_checkpoint)
                         rng_to_sync = False
@@ -1066,6 +1076,9 @@ class GaudiTrainer(Trainer):
 
                         self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
 
+                        # get leaning rate before update
+                        learning_rate = self._get_learning_rate()
+
                         if not self.accelerator.optimizer_step_was_skipped:
                             # Delay optimizer scheduling until metrics are generated
                             if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -1078,7 +1091,14 @@ class GaudiTrainer(Trainer):
                             self.htcore.mark_step()
                         self.control = self.callback_handler.on_step_end(args, self.state, self.control)
                         self._maybe_log_save_evaluate(
-                            tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time
+                            tr_loss,
+                            grad_norm,
+                            model,
+                            trial,
+                            epoch,
+                            ignore_keys_for_eval,
+                            start_time,
+                            learning_rate=learning_rate,
                         )
                     else:
                         self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
@@ -1098,7 +1118,9 @@ class GaudiTrainer(Trainer):
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
+            self._maybe_log_save_evaluate(
+                tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time, learning_rate=learning_rate
+            )
 
             if self.control.should_training_stop:
                 break
@@ -1174,7 +1196,6 @@ class GaudiTrainer(Trainer):
         best_safe_adapter_model_path = os.path.join(self.state.best_model_checkpoint, ADAPTER_SAFE_WEIGHTS_NAME)
 
         model = self.model
-
         if self.is_deepspeed_enabled:
             deepspeed_load_checkpoint(
                 self.model_wrapped,
@@ -1196,7 +1217,6 @@ class GaudiTrainer(Trainer):
             or os.path.exists(best_safe_adapter_model_path)
         ):
             has_been_loaded = True
-            weights_only_kwarg = {"weights_only": True}
             if _is_peft_model(model):
                 # If train a model using PEFT & LoRA, assume that adapter have been saved properly.
                 # TODO: in the future support only specific min PEFT versions
@@ -1247,11 +1267,7 @@ class GaudiTrainer(Trainer):
                 if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
                     state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
                 else:
-                    state_dict = torch.load(
-                        best_model_path,
-                        map_location="cpu",
-                        **weights_only_kwarg,
-                    )
+                    state_dict = torch.load(best_model_path, map_location="cpu", weights_only=True)
 
                 # If the model is on the GPU, it still works!
                 # workaround for FSDP bug https://github.com/pytorch/pytorch/issues/82963
@@ -1271,12 +1287,14 @@ class GaudiTrainer(Trainer):
                 "on multiple nodes, you should activate `--save_on_each_node`."
             )
 
-    def _maybe_log_save_evaluate(self, tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time):
+    def _maybe_log_save_evaluate(
+        self, tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time, learning_rate=None
+    ):
         if self.args.adjust_throughput:
             save_start = time.perf_counter()
 
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
-            logs: Dict[str, float] = {}
+            logs: dict[str, float] = {}
 
             # all_gather + mean() to get average loss over all processes
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
@@ -1305,7 +1323,10 @@ class GaudiTrainer(Trainer):
 
             if grad_norm is not None:
                 logs["grad_norm"] = grad_norm
-            logs["learning_rate"] = self._get_learning_rate()
+            if learning_rate is not None:
+                logs["learning_rate"] = learning_rate
+            else:
+                logs["learning_rate"] = self._get_learning_rate()
 
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
@@ -1352,7 +1373,7 @@ class GaudiTrainer(Trainer):
                 return
 
         with safe_globals():
-            checkpoint_rng_state = torch.load(rng_file)
+            checkpoint_rng_state = torch.load(rng_file, weights_only=True)
         random.setstate(checkpoint_rng_state["python"])
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
@@ -1442,7 +1463,9 @@ class GaudiTrainer(Trainer):
             # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
             if not isinstance(self.lr_scheduler, DeepSpeedSchedulerWrapper):
                 with warnings.catch_warnings(record=True) as caught_warnings:
-                    self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+                    self.lr_scheduler.load_state_dict(
+                        torch.load(os.path.join(checkpoint, SCHEDULER_NAME), weights_only=True)
+                    )
                 reissue_pt_warnings(caught_warnings)
             return
 
@@ -1475,12 +1498,12 @@ class GaudiTrainer(Trainer):
                 )
             else:
                 self.optimizer.load_state_dict(
-                    torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+                    torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location, weights_only=True)
                 )
 
             with warnings.catch_warnings(record=True) as caught_warnings:
                 self.lr_scheduler.load_state_dict(
-                    torch.load(os.path.join(checkpoint, SCHEDULER_NAME), map_location=map_location)
+                    torch.load(os.path.join(checkpoint, SCHEDULER_NAME), map_location=map_location, weights_only=True)
                 )
             reissue_pt_warnings(caught_warnings)
 
@@ -1488,7 +1511,7 @@ class GaudiTrainer(Trainer):
             if self.args.use_habana:
                 to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
 
-    def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
+    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         """
         Log `logs` on the various objects watching training.
 
@@ -1567,7 +1590,7 @@ class GaudiTrainer(Trainer):
         return ctx_manager
 
     def training_step(
-        self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
+        self, model: torch.nn.Module, inputs: dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
     ) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
@@ -1719,6 +1742,13 @@ class GaudiTrainer(Trainer):
 
         if self.processing_class is not None:
             self.processing_class.save_pretrained(output_dir)
+        elif (
+            self.data_collator is not None
+            and hasattr(self.data_collator, "tokenizer")
+            and self.data_collator.tokenizer is not None
+        ):
+            logger.info("Saving Trainer.data_collator.tokenizer by default as Trainer.processing_class is `None`")
+            self.data_collator.tokenizer.save_pretrained(output_dir)
 
         self.gaudi_config.save_pretrained(output_dir)
 
@@ -1727,10 +1757,10 @@ class GaudiTrainer(Trainer):
 
     def evaluate(
         self,
-        eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
-        ignore_keys: Optional[List[str]] = None,
+        eval_dataset: Optional[Union[Dataset, dict[str, Dataset]]] = None,
+        ignore_keys: Optional[list[str]] = None,
         metric_key_prefix: str = "eval",
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
         1. use throughput_warmup_steps in evaluation throughput calculation
@@ -1802,7 +1832,7 @@ class GaudiTrainer(Trainer):
         return output.metrics
 
     def predict(
-        self, test_dataset: Dataset, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "test"
+        self, test_dataset: Dataset, ignore_keys: Optional[list[str]] = None, metric_key_prefix: str = "test"
     ) -> PredictionOutput:
         """
         From https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/trainer.py#L3904 with the following modification
@@ -1851,7 +1881,7 @@ class GaudiTrainer(Trainer):
         dataloader: DataLoader,
         description: str,
         prediction_loss_only: Optional[bool] = None,
-        ignore_keys: Optional[List[str]] = None,
+        ignore_keys: Optional[list[str]] = None,
         metric_key_prefix: str = "eval",
     ) -> EvalLoopOutput:
         """
@@ -1976,11 +2006,11 @@ class GaudiTrainer(Trainer):
 
             # Update containers
             if losses is not None:
-                losses = self.gather_function((losses.repeat(batch_size)))
+                losses = self.gather_function(losses.repeat(batch_size))
                 all_losses.add(losses)
             if inputs_decode is not None:
                 inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
-                inputs_decode = self.gather_function((inputs_decode))
+                inputs_decode = self.gather_function(inputs_decode)
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_inputs.add(inputs_decode)
             if labels is not None:
@@ -1995,13 +2025,13 @@ class GaudiTrainer(Trainer):
                 logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
-                logits = self.gather_function((logits))
+                logits = self.gather_function(logits)
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_preds.add(logits)
             if labels is not None:
                 if self.args.context_parallel_size != 1:
                     labels = labels.clone()
-                labels = self.gather_function((labels))
+                labels = self.gather_function(labels)
                 if not self.args.batch_eval_metrics or description == "Prediction":
                     all_labels.add(labels)
 
@@ -2102,10 +2132,10 @@ class GaudiTrainer(Trainer):
     def prediction_step(
         self,
         model: torch.nn.Module,
-        inputs: Dict[str, Union[torch.Tensor, Any]],
+        inputs: dict[str, Union[torch.Tensor, Any]],
         prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
-    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        ignore_keys: Optional[list[str]] = None,
+    ) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Perform an evaluation step on `model` using `inputs`.
         Subclass and override to inject custom behavior.
@@ -2154,7 +2184,7 @@ class GaudiTrainer(Trainer):
                 if has_labels or loss_without_labels:
                     with self.compute_loss_context_manager():
                         loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
-                    loss = loss.mean().detach()
+                    loss = loss.detach().mean()
 
                     if isinstance(outputs, dict):
                         logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
@@ -2264,7 +2294,7 @@ class GaudiTrainer(Trainer):
         dataloader: DataLoader,
         description: str,
         prediction_loss_only: Optional[bool] = None,
-        ignore_keys: Optional[List[str]] = None,
+        ignore_keys: Optional[list[str]] = None,
         metric_key_prefix: str = "eval",
     ) -> EvalLoopOutput:
         """
@@ -2344,10 +2374,10 @@ class GaudiTrainer(Trainer):
         logger.info(f"  Num examples = {num_examples}")
         logger.info(f"  Batch size = {batch_size}")
 
-        losses_host: torch.Tensor = None
-        preds_host: Union[torch.Tensor, List[torch.Tensor]] = None
-        labels_host: Union[torch.Tensor, List[torch.Tensor]] = None
-        inputs_host: Union[torch.Tensor, List[torch.Tensor]] = None
+        losses_host: Optional[torch.Tensor] = None
+        preds_host: Union[torch.Tensor, list[torch.Tensor], None] = None
+        labels_host: Union[torch.Tensor, list[torch.Tensor], None] = None
+        inputs_host: Union[torch.Tensor, list[torch.Tensor], None] = None
         metrics: Optional[dict] = None
         eval_set_kwargs: dict = {}
 
@@ -2506,6 +2536,11 @@ class GaudiTrainer(Trainer):
             "use_regional_compilation": self.args.use_regional_compilation,
             "compiled_autograd_enable": self.args.use_compiled_autograd,
         }
+        # tp is initialized at Accelerator init phase so
+        # args should be prepared here
+        if self.args.tp_size > 1:
+            self.is_tp_enabled = True
+            args["torch_tp_plugin"] = TorchTensorParallelPlugin(tp_size=self.args.tp_size)
 
         # create accelerator object
         self.accelerator = GaudiAccelerator(**args)
@@ -2520,7 +2555,7 @@ class GaudiTrainer(Trainer):
         # deepspeed and accelerate flags covering both trainer args and accelerate launcher
         self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
         self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
-
+        self.is_tp_enabled = getattr(self.accelerator.state, "torch_tp_plugin", None) is not None
         # post accelerator creation setup
         if self.is_fsdp_enabled:
             fsdp_plugin = self.accelerator.state.fsdp_plugin
@@ -2554,6 +2589,12 @@ class GaudiTrainer(Trainer):
             raise ValueError(
                 "`auto_find_batch_size` isn't supported yet with DeepSpeed Zero-3. Please consider using Zero-2, Zero-1, or FSDP"
             )
+        if (
+            self.args.save_only_model
+            and self.is_fsdp_enabled
+            and "SHARDED_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)
+        ):
+            raise ValueError("save_only_model option is not compatible with FSDP state dict type 'SHARDED_STATE_DICT'")
 
     def propagate_args_to_deepspeed(self, auto_find_batch_size=False):
         """

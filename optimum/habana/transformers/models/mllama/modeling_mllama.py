@@ -158,7 +158,7 @@ class GaudiMllamaVisionSdpaAttention(MllamaVisionAttention):
         self,
         hidden_state: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = None,
+        output_attentions: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -214,7 +214,7 @@ class GaudiMllamaVisionEncoderLayer(MllamaVisionEncoderLayer):
         self,
         hidden_state: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = None,
+        output_attentions: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ):
         """
@@ -317,7 +317,7 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-        use_cache: bool = None,
+        use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
@@ -890,7 +890,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
 class GaudiMllamaForCausalLM(MllamaForCausalLM):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         cross_attention_states: Optional[torch.LongTensor] = None,
@@ -1001,7 +1001,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        **kwargs,
+        **loss_kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2077
@@ -1077,7 +1077,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             past_key_values=past_key_values,
             use_cache=use_cache,
             inputs_embeds=inputs_embeds,
-            labels=labels,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             return_dict=return_dict,
@@ -1087,6 +1086,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
+            **loss_kwargs,
         )
 
         return outputs

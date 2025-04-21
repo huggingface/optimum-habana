@@ -21,6 +21,7 @@
 """PyTorch Mixtral model."""
 
 import math
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -33,8 +34,6 @@ from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
 )
@@ -537,7 +536,7 @@ class GaudiMixtralModel(MixtralModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -546,13 +545,13 @@ class GaudiMixtralModel(MixtralModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        **kwargs,
+    ) -> MoeModelOutputWithPast:
         """
         Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1069
         The only differences are:
@@ -569,8 +568,6 @@ class GaudiMixtralModel(MixtralModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
@@ -657,7 +654,7 @@ class GaudiMixtralModel(MixtralModel):
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
+                    partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
                     attention_mask,
                     position_ids,
@@ -708,12 +705,6 @@ class GaudiMixtralModel(MixtralModel):
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
 
-        if not return_dict:
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
-                if v is not None
-            )
         return MoeModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -739,7 +730,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -749,7 +740,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -757,7 +747,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs: Unpack[KwargsForCausalLM],
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
@@ -766,10 +756,9 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: MoeModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -779,7 +768,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
@@ -787,7 +775,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             cache_idx=cache_idx,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
@@ -799,19 +787,13 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         aux_loss = None
         if output_router_logits:
             aux_loss = load_balancing_loss_func(
-                outputs.router_logits if return_dict else outputs[-1],
+                outputs.router_logits,
                 self.num_experts,
                 self.num_experts_per_tok,
                 attention_mask,
             )
             if labels is not None:
                 loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            if output_router_logits:
-                output = (aux_loss,) + output
-            return (loss,) + output if loss is not None else output
 
         return MoeCausalLMOutputWithPast(
             loss=loss,

@@ -266,11 +266,10 @@ def gaudi_gpt_neox_model_forward(
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     **kwargs,
-) -> Union[Tuple, BaseModelOutputWithPast]:
+) -> BaseModelOutputWithPast:
     """
     Copied from GPTNeoxModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
     The only differences are:
@@ -280,7 +279,6 @@ def gaudi_gpt_neox_model_forward(
     output_hidden_states = (
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
     )
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
     use_cache = use_cache if use_cache is not None else self.config.use_cache
 
     if input_ids is not None and inputs_embeds is not None:
@@ -377,9 +375,6 @@ def gaudi_gpt_neox_model_forward(
     if output_hidden_states:
         all_hidden_states = all_hidden_states + (hidden_states,)
 
-    if not return_dict:
-        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_attentions] if v is not None)
-
     return BaseModelOutputWithPast(
         last_hidden_state=hidden_states,
         past_key_values=presents,
@@ -420,15 +415,13 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.gpt_neox(
+        outputs: BaseModelOutputWithPast = self.gpt_neox(
             input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -438,13 +431,12 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             **kwargs,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.embed_out(hidden_states[:, slice_indices, :])
@@ -452,10 +444,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return ((loss,) + output) if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,

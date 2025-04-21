@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 import torch.distributed as dist
+from packaging import version
 from transformers.cache_utils import (
     Cache,
     DynamicCache,
@@ -33,8 +34,8 @@ from transformers.cache_utils import (
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.candidate_generator import (
-    AssistedCandidateGeneratorDifferentTokenizers,
     AssistantVocabTranslatorCache,
+    AssistedCandidateGeneratorDifferentTokenizers,
     CandidateGenerator,
     EarlyExitCandidateGenerator,
     PromptLookupCandidateGenerator,
@@ -71,7 +72,7 @@ from transformers.generation.utils import (
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
-from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available, is_torchdynamo_compiling
+from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available
 
 from optimum.utils import logging
 
@@ -2888,7 +2889,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 + start_token_idx
             )
             # Create a mask for positions greater than the first eos_token_id
-            mask = torch.arange(max_length).expand(batch_size, max_length) > eos_positions.unsqueeze(1)
+            mask = torch.arange(generation_config.max_length).expand(batch_size, generation_config.max_length) > eos_positions.unsqueeze(1)
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
             input_ids[mask] = pad_token_id
 

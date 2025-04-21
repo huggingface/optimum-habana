@@ -314,7 +314,7 @@ def gaudi_BartDecoderLayer_forward(
 
 def gaudi_BartEncoder_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -421,7 +421,7 @@ def gaudi_BartEncoder_forward(
 
 def gaudi_BartDecoder_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -601,7 +601,7 @@ def gaudi_BartDecoder_forward(
 
 def gaudi_BartModel_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -690,7 +690,7 @@ def gaudi_BartModel_forward(
 
 def gaudi_BartForConditionalGeneration_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,

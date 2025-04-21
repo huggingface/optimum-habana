@@ -74,7 +74,7 @@ class GaudiIdefics2VisionEmbeddings(Idefics2VisionEmbeddings):
 class GaudiIdefics2Model(Idefics2Model):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -85,6 +85,7 @@ class GaudiIdefics2Model(Idefics2Model):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, Idefics2BaseModelOutputWithPast]:
         """
@@ -198,6 +199,7 @@ class GaudiIdefics2Model(Idefics2Model):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            cache_position=cache_position,
             return_dict=return_dict,
         )
 
@@ -244,7 +246,7 @@ class GaudiIdefics2Model(Idefics2Model):
 class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -257,6 +259,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, Idefics2CausalLMOutputWithPast]:
@@ -380,6 +383,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                cache_position=cache_position,
                 return_dict=return_dict,
             )
 
