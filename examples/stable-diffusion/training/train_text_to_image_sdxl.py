@@ -28,7 +28,6 @@ import math
 import os
 import random
 import shutil
-import time
 from pathlib import Path
 
 import accelerate
@@ -41,6 +40,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from datasets import load_dataset
@@ -62,14 +62,13 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionXLPipeline,
 )
-from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
+from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, set_seed, to_gb_rounded
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -896,7 +895,7 @@ def main(args):
                         for idx, dt in enumerate(dataset["train"]):
                             dt["image"].save(f"{args.mediapipe}/{idx}.jpg")
                             f.write(dt["text"] + "\n")
-            if accelerator.distributed_type != GaudiDistributedType.NO:
+            if accelerator.distributed_type != DistributedType.NO:
                 torch.distributed.barrier()
 
             from media_pipe_imgdir import get_dataset_for_pipeline
@@ -1145,7 +1144,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if accelerator.distributed_type == DistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
@@ -1208,17 +1207,16 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    t0 = None
-    t_start = time.perf_counter()
+    timer = HabanaGenerationTime()
+    timer.start()
     train_loss = torch.tensor(0, dtype=torch.float, device="hpu")
-    checkpoint_time = 0
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss.zero_()
         if hb_profiler:
             hb_profiler.start()
         for step, batch in enumerate(train_dataloader):
-            if t0 is None and global_step == args.throughput_warmup_steps:
-                t0 = time.perf_counter()
+            if not timer.is_running() and global_step == args.throughput_warmup_steps:
+                timer.step()
             with accelerator.accumulate(unet):
                 # Move compute_vae_encoding here to reflect the transformed image input
                 model_input = compute_vae_encodings(batch["pixel_values"], vae)
@@ -1355,32 +1353,30 @@ def main(args):
 
                 if accelerator.is_main_process:
                     if args.checkpointing_steps is not None and global_step % args.checkpointing_steps == 0:
-                        t_chkpt_start = time.perf_counter()
-                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                        with HabanaGenerationTime() as timer_checkpoint:
+                            # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                            if args.checkpoints_total_limit is not None:
+                                checkpoints = os.listdir(args.output_dir)
+                                checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                                checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
+                                # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                                if len(checkpoints) >= args.checkpoints_total_limit:
+                                    num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                    removing_checkpoints = checkpoints[0:num_to_remove]
 
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                    logger.info(
+                                        f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                    )
+                                    logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
+                                    for removing_checkpoint in removing_checkpoints:
+                                        removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                        shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
-                        t_chkpt_end = time.perf_counter()
-                        checkpoint_time += t_chkpt_end - t_chkpt_start
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
                 if (global_step - 1) % args.logging_step == 0 or global_step == args.max_train_steps:
                     train_loss_scalar = train_loss.item()
@@ -1468,9 +1464,10 @@ def main(args):
                             }
                         )
 
-    if t0 is not None:
-        duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
-        ttt = time.perf_counter() - t_start
+    if timer.is_running():
+        timer.step()
+        duration = timer.last_duration - (timer_checkpoint.last_duration if args.adjust_throughput else 0)
+        ttt = timer.total_time()
         throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
         accelerator.wait_for_everyone()

@@ -16,7 +16,7 @@
 import random
 import subprocess
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.19.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.20.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -258,19 +258,36 @@ def get_driver_version():
     return None
 
 
-class HabanaGenerationtime(object):
-    def __init__(self, iteration_times: List[float] = None):
-        self.iteration_times = iteration_times
-        self.start_time = 0
-        self.end_time = 0
+class HabanaGenerationTime(object):
+    def __init__(self, iteration_times: Optional[List[float]] = None):
+        self.iteration_times = iteration_times if iteration_times is not None else []
+        self.start_time = None
+        self.last_duration = None
 
     def start(self):
         self.start_time = time.perf_counter()
 
+    def is_running(self):
+        return self.start_time is not None
+
     def step(self):
-        self.end_time = time.perf_counter()
-        self.iteration_times.append(self.end_time - self.start_time)
-        self.start_time = self.end_time
+        if not self.is_running():
+            raise ValueError("start() must be call before step()")
+        end_time = time.perf_counter()
+        duration = end_time - self.start_time
+        self.iteration_times.append(duration)
+        self.last_duration = duration
+        self.start_time = end_time
+
+    def total_time(self):
+        return sum(self.iteration_times)
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.step()
 
 
 class HabanaProfile(object):

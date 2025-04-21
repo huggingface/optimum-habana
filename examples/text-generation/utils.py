@@ -17,12 +17,12 @@
 # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
+import argparse
 import copy
 import glob
 import os
 import shutil
 import tempfile
-import time
 from pathlib import Path
 
 import torch
@@ -37,6 +37,7 @@ from optimum.habana.checkpoint_utils import (
     write_checkpoints_json,
 )
 from optimum.habana.utils import (
+    HabanaGenerationTime,
     check_habana_frameworks_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
@@ -130,8 +131,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.9.0.dev0")
+    check_min_version("4.45.0")
+    check_optimum_habana_min_version("1.18.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -436,15 +437,13 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
+    # List of model types that need max position embeddings capped at 8192
+    MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
+
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
-    keep_module_on_host = False
-    if "Llama-3.1-405B" in args.model_name_or_path:
-        keep_module_on_host = True
-
-    load_to_meta = False if keep_module_on_host else model_on_meta(config)
+    load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
         assistant_model = None
@@ -455,9 +454,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                hasattr(config, "rope_scaling")
-                and config.rope_scaling
-                and config.rope_scaling["rope_type"] == "llama3"
+                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -499,7 +496,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
-    ds_inference_kwargs["keep_module_on_host"] = keep_module_on_host
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
     ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
@@ -710,7 +706,8 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    init_start = time.perf_counter()
+    timer = HabanaGenerationTime()
+    timer.start()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -759,10 +756,10 @@ def initialize_model(args, logger):
         setup_const_serialization(args.const_serialization_path)
     if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
-    init_end = time.perf_counter()
+    timer.step()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
-    logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
+    logger.info(f"Model initialization took {(timer.last_duration):.3f}s")
     return model, assistant_model, tokenizer, generation_config
 
 
@@ -802,3 +799,46 @@ def local_split_rank_state_dict(model, gathered_state_dict):
         cur_accelerator.synchronize()
 
     return rank_state_dict
+
+
+class SetTrueOrFalseOrNone(argparse.Action):
+    """
+    Custom argparse action to handle a flag that can be set to True, False, or None.
+
+    This action allows an argument to be:
+    - Set to True if the flag is present without a value.
+    - Set to a boolean value (True or False) if explicitly provided.
+    - Set to None if the flag is not present.
+
+    The argument accepts the following values (case-insensitive):
+    - True values: 'true', '1', 't', 'y', 'yes'
+    - False values: 'false', '0', 'f', 'n', 'no'
+
+    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        value_map = {
+            "true": True,
+            "1": True,
+            "t": True,
+            "y": True,
+            "yes": True,
+            "false": False,
+            "0": False,
+            "f": False,
+            "n": False,
+            "no": False,
+        }
+        if values is None:
+            setattr(namespace, self.dest, True)
+        elif isinstance(values, bool):
+            setattr(namespace, self.dest, values)
+        else:
+            value_lower = values.lower()
+            if value_lower in value_map:
+                setattr(namespace, self.dest, value_map[value_lower])
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid value for {option_string}: {values}. Expected one of: {', '.join(value_map.keys())}."
+                )

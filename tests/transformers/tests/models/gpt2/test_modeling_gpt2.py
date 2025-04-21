@@ -577,6 +577,14 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
 
+    @unittest.skip(reason="This test is not supported for gpt2")
+    def test_torch_fx(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for gpt2")
+    def test_torch_fx_output_loss(self):
+        pass
+
     @slow
     def test_batch_generation(self):
         model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
