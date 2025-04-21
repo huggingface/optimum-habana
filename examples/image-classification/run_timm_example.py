@@ -16,7 +16,6 @@
 # Copied from https://huggingface.co/timm/fastvit_t8.apple_in1k
 
 import argparse
-import time
 
 import habana_frameworks.torch as ht
 import requests
@@ -25,6 +24,7 @@ import torch
 from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 if __name__ == "__main__":
@@ -87,11 +87,10 @@ if __name__ == "__main__":
         total_model_time = 0
         for i in range(args.n_iterations):
             inputs = transforms(img).unsqueeze(0).to("hpu")
-            model_start_time = time.time()
-            outputs = model(inputs)
-            torch.hpu.synchronize()
-            model_end_time = time.time()
-            total_model_time = total_model_time + (model_end_time - model_start_time)
+            with HabanaGenerationTime() as timer:
+                outputs = model(inputs)
+                torch.hpu.synchronize()
+            total_model_time += timer.last_duration
 
         if args.print_result:
             top5_probabilities, top5_class_indices = torch.topk(outputs.softmax(dim=1) * 100, k=5)
