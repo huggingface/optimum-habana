@@ -52,6 +52,7 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "bitsandbytes @ git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
 ]
 
 QUALITY_REQUIRES = [
