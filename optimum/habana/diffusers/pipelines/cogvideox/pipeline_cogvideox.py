@@ -39,11 +39,11 @@ from diffusers.utils import (
 from diffusers.utils.torch_utils import randn_tensor
 from transformers import T5EncoderModel, T5Tokenizer
 
-from optimum.habana.diffusers.models.attention_processor import CogVideoXAttnProcessorGaudi
-from optimum.habana.diffusers.models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
-from optimum.habana.diffusers.models.autoencoders.autoencoder_kl_cogvideox import tiled_decode_gaudi, CogVideoXCausalConv3dforwardGaudi
-from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+from ...models.attention_processor import CogVideoXAttnProcessorGaudi
+from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
+from ...models.autoencoders.autoencoder_kl_cogvideox import tiled_decode_gaudi, CogVideoXCausalConv3dforwardGaudi
+from ..pipeline_utils import GaudiDiffusionPipeline
+from ....transformers.gaudi_configuration import GaudiConfig
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -94,18 +94,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
         self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
-    def num_timesteps(self):
-        return self._num_timesteps
-
-    @property
-    def interrupt(self):
-        return self._interrupt
 
     def enable_model_cpu_offload(self, *args, **kwargs):
         if self.use_habana:

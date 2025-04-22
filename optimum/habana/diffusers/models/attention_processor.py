@@ -23,7 +23,7 @@ from diffusers.utils import deprecate, logging
 from diffusers.utils.import_utils import is_xformers_available
 from torch import nn
 
-from optimum.habana.diffusers.models.embeddings import apply_rotary_emb
+from .embeddings import apply_rotary_emb
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -196,6 +196,7 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -204,6 +205,7 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+
 
 class CogVideoXAttnProcessorGaudi:
     r"""

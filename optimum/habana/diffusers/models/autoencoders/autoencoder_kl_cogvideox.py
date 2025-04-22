@@ -134,10 +134,3 @@ def CogVideoXCausalConv3dforwardGaudi(
         else:
             conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
     return output, conv_cache
-
-
-
-
-
-
-

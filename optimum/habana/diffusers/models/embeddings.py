@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
+
 def apply_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
@@ -34,5 +35,3 @@ def apply_rotary_emb(
     x = torch.ops.hpu.rotary_pos_embedding(x, sin, cos, None, 0, 1)
 
     return x
-
-
