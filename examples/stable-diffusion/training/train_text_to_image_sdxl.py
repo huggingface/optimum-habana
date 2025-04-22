@@ -1219,6 +1219,7 @@ def main(args):
 
     timer = HabanaGenerationTime()
     timer.start()
+    timer_checkpoint = None
     train_loss = torch.tensor(0, dtype=torch.float, device="hpu")
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss.zero_()
@@ -1476,7 +1477,8 @@ def main(args):
 
     if timer.is_running():
         timer.step()
-        duration = timer.last_duration - (timer_checkpoint.last_duration if args.adjust_throughput else 0)
+        timer_adjust = timer_checkpoint.last_duration if args.adjust_throughput and timer_checkpoint else 0
+        duration = timer.last_duration - timer_adjust
         ttt = timer.total_time()
         throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
