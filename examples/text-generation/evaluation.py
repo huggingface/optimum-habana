@@ -146,12 +146,15 @@ def main():
         use_fast=False,
     )
 
-    acc_target = json.load(open(args.target_file, "r"))
+    with open(args.target_file, "r") as f:
+        acc_json = json.load(f)
 
     data = get_groundtruth(args.dataset_file)
     if args.dataset_mix:
+        acc_target = acc_json["mix"]
         query_types, gt_outputs = data["dataset"], data["gt_output"]
     else:
+        acc_target = acc_json["openorca"]
         gt_outputs = data["output"]
 
     target_required_OpenOrca = []
