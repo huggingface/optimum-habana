@@ -15,7 +15,6 @@
 # limitations under the License.
 # This script is based on https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/protein_folding.ipynb
 import os
-import time
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -25,6 +24,7 @@ from transformers.models.esm.openfold_utils.protein import Protein as OFProtein
 from transformers.models.esm.openfold_utils.protein import to_pdb
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 os.environ["PT_HPU_ENABLE_H2D_DYNAMIC_SLICE"] = "0"
@@ -40,7 +40,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.16.0.dev0")
+check_optimum_habana_min_version("1.18.0.dev0")
 
 
 def convert_outputs_to_pdb(outputs):
@@ -99,10 +99,10 @@ with torch.no_grad():
 
     for batch in range(steps):
         print(f"ESMFOLD: step {batch} start ...")
-        start = time.time()
-        output = model(tokenized_input)
-        htcore.mark_step()
-        print(f"ESMFOLD: step {batch} duration: {time.time() - start:.03f} seconds")
+        with HabanaGenerationTime() as timer:
+            output = model(tokenized_input)
+            htcore.mark_step()
+        print(f"ESMFOLD: step {batch} duration: {timer.last_duration:.03f} seconds")
 
 pdb = convert_outputs_to_pdb(output)
 pdb_file = "save-hpu.pdb"

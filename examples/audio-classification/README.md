@@ -27,6 +27,9 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+> [!NOTE]
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for release 1.20 only.
+
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
@@ -58,7 +61,8 @@ python run_audio_classification.py \
     --throughput_warmup_steps 3 \
     --sdp_on_bf16 \
     --bf16 \
-    --trust_remote_code True
+    --trust_remote_code True \
+    --attn_implementation sdpa
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -98,7 +102,8 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --bf16 \
     --trust_remote_code True \
     --torch_compile \
-    --torch_compile_backend hpu_backend
+    --torch_compile_backend hpu_backend \
+    --attn_implementation sdpa
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.

@@ -49,6 +49,7 @@ from diffusers import (
     FluxTransformer2DModel,
     I2VGenXLUNet,
     LCMScheduler,
+    MultiControlNetModel,
     PNDMScheduler,
     SD3Transformer2DModel,
     StableDiffusionXLPipeline,
@@ -60,7 +61,6 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
@@ -125,44 +125,10 @@ from optimum.habana.diffusers.models import (
 from optimum.habana.utils import set_seed
 
 from .clip_coco_utils import calculate_clip_score, download_files
+from .utils import OH_DEVICE_CONTEXT
 
 
-IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
-
-
-if IS_GAUDI2:
-    THROUGHPUT_BASELINE_BF16 = 1.086
-    THROUGHPUT_BASELINE_AUTOCAST = 0.394
-    TEXTUAL_INVERSION_THROUGHPUT = 131.7606336456344
-    TEXTUAL_INVERSION_RUNTIME = 1.542460777796805
-    TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.6694
-    TEXTUAL_INVERSION_SDXL_RUNTIME = 74.92
-    CONTROLNET_THROUGHPUT = 120.123522340414
-    CONTROLNET_RUNTIME = 1.8647471838630736
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 1.025
-    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.175
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.145
-    SDXL_THROUGHPUT = 0.301
-    SVD_THROUGHPUT = 0.012
-    SD3_THROUGHPUT = 0.006
-    FLUX_THROUGHPUT = 0.03
-    FLUX_DEV_I2I_THROUGHPUT = 0.12
-    I2V_THROUGHPUT = 0.017
-else:
-    THROUGHPUT_BASELINE_BF16 = 0.275
-    THROUGHPUT_BASELINE_AUTOCAST = 0.114
-    TEXTUAL_INVERSION_THROUGHPUT = 122.7445217395719
-    TEXTUAL_INVERSION_RUNTIME = 1.8249286960053723
-    TEXTUAL_INVERSION_SDXL_THROUGHPUT = 2.695
-    TEXTUAL_INVERSION_SDXL_RUNTIME = 74.19
-    CONTROLNET_THROUGHPUT = 78.51566937458146
-    CONTROLNET_RUNTIME = 2.852933710993966
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.272
-    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.042
-    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 0.045
-    SDXL_THROUGHPUT = 0.074
-    SVD_THROUGHPUT = 0.012
-    I2V_THROUGHPUT = 0.008
+IS_GAUDI1 = bool("gaudi1" == OH_DEVICE_CONTEXT)
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -184,6 +150,9 @@ def check_gated_model_access(model):
     Skip test for a gated model if access is not granted; this occurs when an account
     with the required permissions is not logged into the HF Hub.
     """
+    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+        return lambda func: func
+
     try:
         hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
         gated = False
@@ -206,6 +175,14 @@ def check_8xhpu(test_case):
         skip = False
 
     return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
+
+
+def legacy(test_case):
+    """
+    Decorator used to skip tests for legacy models
+    """
+    skip = os.environ.get("RUN_DIFFUSERS_LEGACY", "0") != "1"
+    return pytest.mark.skipif(skip, reason="This test is for old/legacy model. Skipped starting 1.16.0.")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -291,6 +268,13 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     """
     Tests the StableDiffusionPipeline for Gaudi.
     """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -627,6 +611,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -657,7 +642,11 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
         n = 0
         clip_score_avg = 0.0
@@ -677,6 +666,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_throughput_regression_autocast(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -706,10 +696,15 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_AUTOCAST)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_generation_regression_ldm3d(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -740,7 +735,11 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.depth), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_AUTOCAST)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
         n = 0
         clip_score_avg = 0.0
@@ -800,6 +799,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -854,8 +854,17 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 # Assess throughput
                 with open(Path(run_dir) / "speed_metrics.json") as fp:
                     results = json.load(fp)
-                self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * TEXTUAL_INVERSION_THROUGHPUT)
-                self.assertLessEqual(results["train_runtime"], 1.05 * TEXTUAL_INVERSION_RUNTIME)
+
+                self.baseline.assertRef(
+                    compare=lambda actual, ref: actual >= (0.95 * ref),
+                    context=[OH_DEVICE_CONTEXT],
+                    train_samples_per_second=results["train_samples_per_second"],
+                )
+                self.baseline.assertRef(
+                    compare=lambda actual, ref: actual <= (1.05 * ref),
+                    context=[OH_DEVICE_CONTEXT],
+                    train_runtime=results["train_runtime"],
+                )
 
                 # Assess generated image
                 pipe = GaudiStableDiffusionPipeline.from_pretrained(
@@ -877,6 +886,13 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     """
     Tests the StableDiffusionXLPipeline for Gaudi.
     """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self, time_cond_proj_dim=None, timestep_spacing="leading"):
         torch.manual_seed(0)
@@ -1230,8 +1246,17 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
                 # Assess throughput
                 with open(Path(run_dir) / "speed_metrics.json") as fp:
                     results = json.load(fp)
-                self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * TEXTUAL_INVERSION_SDXL_THROUGHPUT)
-                self.assertLessEqual(results["train_runtime"], 1.05 * TEXTUAL_INVERSION_SDXL_RUNTIME)
+
+                self.baseline.assertRef(
+                    compare=lambda actual, ref: actual >= (0.95 * ref),
+                    context=[OH_DEVICE_CONTEXT],
+                    train_samples_per_second=results["train_samples_per_second"],
+                )
+                self.baseline.assertRef(
+                    compare=lambda actual, ref: actual <= (1.05 * ref),
+                    context=[OH_DEVICE_CONTEXT],
+                    train_runtime=results["train_runtime"],
+                )
 
                 pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
                     run_dir,
@@ -1470,7 +1495,11 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * SDXL_THROUGHPUT)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiStableDiffusion3PipelineTester(TestCase):
@@ -1491,6 +1520,13 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -1695,7 +1731,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
 
     @slow
     @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_sd3_inference(self):
         repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
@@ -1717,7 +1753,11 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         )
 
         # Check expected performance of FLUX.1 dev img-to-img model
-        self.assertGreaterEqual(outputs.throughput, 0.95 * SD3_THROUGHPUT)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
@@ -2470,6 +2510,7 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         assert images[0].shape == (32, 32, 3)
 
     @slow
+    @legacy
     def test_depth2img_pipeline(self):
         gaudi_config = GaudiConfig(use_torch_autocast=True)
         model_name = "stabilityai/stable-diffusion-2-depth"
@@ -2590,6 +2631,13 @@ class TrainControlNet(TestCase):
     Tests the train_controlnet.py script for Gaudi.
     """
 
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
     def test_script_train_controlnet(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2610,6 +2658,7 @@ class TrainControlNet(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -2662,8 +2711,17 @@ class TrainControlNet(TestCase):
             # Assess throughput
             with open(Path(tmpdir) / "speed_metrics.json") as fp:
                 results = json.load(fp)
-            self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * CONTROLNET_THROUGHPUT)
-            self.assertLessEqual(results["train_runtime"], 1.05 * CONTROLNET_RUNTIME)
+
+            self.baseline.assertRef(
+                compare=lambda actual, ref: actual >= (0.95 * ref),
+                context=[OH_DEVICE_CONTEXT],
+                train_samples_per_second=results["train_samples_per_second"],
+            )
+            self.baseline.assertRef(
+                compare=lambda actual, ref: actual <= (1.05 * ref),
+                context=[OH_DEVICE_CONTEXT],
+                train_runtime=results["train_runtime"],
+            )
 
             # Assess generated image
             controlnet = ControlNetModel.from_pretrained(tmpdir, torch_dtype=torch.bfloat16)
@@ -2872,6 +2930,13 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/stable_video_diffusion/test_stable_video_diffusion.py
     """
 
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNetSpatioTemporalConditionModel(
@@ -3015,7 +3080,11 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * SVD_THROUGHPUT)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiStableVideoDiffusionControlNetPipelineTester(TestCase):
@@ -4922,6 +4991,13 @@ class StableDiffusionInpaintPipelineTests(
     image_latents_params = frozenset([])
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"mask", "masked_image_latents"})
 
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -5025,6 +5101,7 @@ class StableDiffusionInpaintPipelineTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
     @slow
+    @legacy
     def test_stable_diffusion_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
 
@@ -5065,7 +5142,11 @@ class StableDiffusionInpaintPipelineTests(
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_THROUGHPUT_BASELINE_BF16)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class StableDiffusionXLInpaintPipelineTests(PipelineLatentTesterMixin, PipelineTesterMixin, TestCase):
@@ -5083,6 +5164,13 @@ class StableDiffusionXLInpaintPipelineTests(PipelineLatentTesterMixin, PipelineT
             "masked_image_latents",
         }
     )
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -5681,13 +5769,24 @@ class StableDiffusionXLInpaintPipelineTests(PipelineLatentTesterMixin, PipelineT
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Throughput regression test
-        self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_XL_THROUGHPUT_BASELINE_BF16)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiDDPMPipelineTester(TestCase):
     """
     Tests for unconditional image generation
     """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -5814,6 +5913,7 @@ class GaudiDDPMPipelineTester(TestCase):
         self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         batch_size = 16  # use batch size 16 as the baseline
         model_name = "google/ddpm-ema-celebahq-256"
@@ -5829,7 +5929,11 @@ class GaudiDDPMPipelineTester(TestCase):
             sdp_on_bf16=True,
         )
         outputs = pipe(batch_size=batch_size)
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiFluxPipelineTester(TestCase):
@@ -5849,6 +5953,13 @@ class GaudiFluxPipelineTester(TestCase):
         ]
     )
     batch_params = frozenset(["prompt"])
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -5985,7 +6096,7 @@ class GaudiFluxPipelineTester(TestCase):
         assert max_diff < 1e-4
 
     @slow
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_flux_inference(self):
         prompts = [
             "A cat holding a sign that says hello world",
@@ -6012,7 +6123,11 @@ class GaudiFluxPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
 
         # Check expected performance of FLUX.1 schnell model
-        self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_THROUGHPUT)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class GaudiFluxImg2ImgPipelineTester(TestCase):
@@ -6032,6 +6147,13 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
         ]
     )
     batch_params = frozenset(["prompt"])
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -6154,7 +6276,7 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
 
     @slow
     @check_gated_model_access("black-forest-labs/FLUX.1-dev")
-    @pytest.mark.skipif(not IS_GAUDI2, reason="does not fit into Gaudi1 memory")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_flux_img2img_inference(self):
         repo_id = "black-forest-labs/FLUX.1-dev"
         image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
@@ -6183,7 +6305,11 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
         )
 
         # Check expected performance of FLUX.1 dev img-to-img model
-        self.assertGreaterEqual(outputs.throughput, 0.95 * FLUX_DEV_I2I_THROUGHPUT)
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )
 
 
 class I2VGenXLPipelineTests(TestCase):
@@ -6195,6 +6321,13 @@ class I2VGenXLPipelineTests(TestCase):
 
     supports_dduf = False
     test_layerwise_casting = True
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -6389,4 +6522,9 @@ class I2VGenXLPipelineTests(TestCase):
             [0.44921875, 0.3642578, 0.38671875, 0.46484375, 0.41210938, 0.45874023, 0.49536133, 0.4387207, 0.48242188]
         )
         assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
-        self.assertGreaterEqual(output.throughput, 0.95 * I2V_THROUGHPUT)
+
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=output.throughput,
+        )

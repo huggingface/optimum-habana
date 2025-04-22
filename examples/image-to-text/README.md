@@ -178,6 +178,8 @@ python3 ../gaudi_spawn.py \
     --lora_target_modules '".*(language_model).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'
 ```
 
+The single card training command for llava-hf/llava-1.5-7b-hf is similar.
+
 >  For different models, please adjust training parameters and `lora_target_modules`. Such as replace `lora_target_modules`
 >  with below for HuggingFaceM4/idefics2-8b.
 >  '".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$"'

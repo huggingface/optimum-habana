@@ -57,9 +57,9 @@ from .codegen import (
     gaudi_codegen_model_forward,
 )
 from .cohere import (
+    GaudiCohereAttention,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
-    gaudi_cohere_attention_forward,
     gaudi_cohere_model_forward,
 )
 from .decilm import (
@@ -71,11 +71,14 @@ from .deepseek_v2 import (
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
+from .deepseek_v3 import (
+    DeepseekV3Config,
+    DeepseekV3ForCausalLM,
+)
 from .detr import (
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
     gaudi_DetrLoss_forward,
-    gaudi_DetrLoss_get_targets_without_no_objects,
     gaudi_DetrLoss_loss_boxes,
     gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
@@ -160,9 +163,7 @@ from .idefics2 import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
@@ -189,10 +190,8 @@ from .mixtral import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMixtralSparseMoeBlock,
     MixtralConfig,
-    gaudi_mixtral_block_dynamic_moe_forward,
-    gaudi_mixtral_block_moe_forward,
-    gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .mllama import (
@@ -224,11 +223,11 @@ from .mpt import (
     GaudiMptModel,
 )
 from .opt import (
+    GaudiOPTDecoderLayer,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
-    gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
@@ -263,13 +262,13 @@ from .qwen2_moe import (
     gaudi_qwen2moe_rmsnorm_forward,
 )
 from .qwen2_vl import (
-    GaudiQwen2VisionSdpaAttention,
     GaudiQwen2VisionTransformerPretrainedModel,
     GaudiQwen2VLDecoderLayer,
     GaudiQwen2VLForConditionalGeneration,
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiVisionSdpaAttention,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,

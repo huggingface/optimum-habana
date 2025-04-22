@@ -114,7 +114,7 @@ def gaudi_replace_with_awq_linear(
         )
 
     if backend == AwqBackendPackingMethod.AUTOAWQ and quantization_config.version == GaudiAWQLinearVersion.HPU:
-        from optimum.habana.AutoAWQ.gemm_hpu import WQLinear_HPU
+        from ...AutoAWQ.gemm_hpu import WQLinear_HPU
 
         target_cls = WQLinear_HPU
     else:
@@ -161,14 +161,14 @@ def post_init_awq_gemm_hpu_modules(model):
     Runs post init for gemm hpu layers which performs:
         - Weights unpacking, reordering and repacking
     """
-    from optimum.habana.AutoAWQ.gemm_hpu import hpu_post_init
+    from ...AutoAWQ.gemm_hpu import hpu_post_init
 
     model = hpu_post_init(model)
 
     return model
 
 
-def gaudi_awq_quantizer_process_model_after_weight_loading(self, model):
+def gaudi_awq_quantizer_process_model_after_weight_loading(self, model, **kwargs):
     if self.quantization_config.version == GaudiAWQLinearVersion.HPU:
         model = post_init_awq_gemm_hpu_modules(model)
     else:

@@ -21,7 +21,6 @@ import argparse
 import json
 import multiprocessing as mp
 import os
-import time
 from typing import Literal, Optional
 
 import psutil
@@ -34,9 +33,9 @@ from lm_eval.models.huggingface import HFLM, TemplateLM
 from run_generation import setup_parser
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
-from utils import finalize_quantization, initialize_model
+from utils import finalize_quantization, initialize_model, save_model
 
-from optimum.habana.utils import get_hpu_memory_stats
+from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -106,7 +105,8 @@ class HabanaModelAdapter(HFLM):
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
         logits_cache: bool = True,
-        add_bos_token: Optional[bool] = False,
+        add_bos_token: Optional[bool] = True,
+        prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
         **kwargs,
     ) -> None:
@@ -122,6 +122,7 @@ class HabanaModelAdapter(HFLM):
         self.pretrained = model
         self.peft = args.peft_model
         self.delta = delta
+        self.custom_prefix_token_id = prefix_token_id
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.logits_cache = logits_cache
@@ -214,31 +215,61 @@ class HabanaModelAdapter(HFLM):
         logits = logits.to(torch.float32)
         return logits
 
+    def get_model_info(self) -> dict:
+        """
+        Patched method to get Hugging Face model information for experiment reproducibility.
+        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L1375
+        Remove from SynapseAI 1.21
+        """
+
+        def get_model_num_params(model) -> int:
+            if hasattr(model, "num_parameters"):
+                return model.num_parameters()
+            if hasattr(model, "parameters"):
+                return sum(p.numel() for p in model.parameters())
+            else:
+                return -1
+
+        def get_model_dtype(model) -> str:
+            if hasattr(model, "dtype"):
+                return model.dtype
+            else:
+                return ""
+
+        def get_model_sha(pretrained: str, revision: str) -> str:
+            return ""
+
+        model_info = {
+            "model_num_parameters": get_model_num_params(self._model),
+            "model_dtype": get_model_dtype(self._model),
+            "model_revision": self.revision,
+            "model_sha": get_model_sha(self.pretrained, self.revision),
+        }
+        if self.peft:
+            model_info["peft_sha"] = get_model_sha(self.peft, self.revision)
+        if self.delta:
+            model_info["delta_sha"] = get_model_sha(self.delta, self.revision)
+        return model_info
+
 
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
-    if args.trust_remote_code:
-        # trust_remote_code fix was introduced in lm_eval 0.4.3
-        import datasets
-
-        datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-    eval_start = time.perf_counter()
-    with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
-    if args.device == "hpu":
-        import habana_frameworks.torch.hpu as torch_hpu
+    with HabanaGenerationTime() as timer:
+        with torch.no_grad():
+            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=False)
+        if args.device == "hpu":
+            import habana_frameworks.torch.hpu as torch_hpu
 
-        torch_hpu.synchronize()
-    eval_end = time.perf_counter()
+            torch_hpu.synchronize()
 
     results["args"] = vars(args)
-    results["duration"] = eval_end - eval_start
+    results["duration"] = timer.last_duration
 
     if args.local_rank == 0:
         if args.device == "hpu":
@@ -254,6 +285,8 @@ def main() -> None:
 
     if args.quant_config:
         finalize_quantization(model)
+    if args.save_quantized_model_with_inc:
+        save_model(model, tokenizer, args.saved_model_path)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil

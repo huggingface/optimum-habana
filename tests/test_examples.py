@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import json
+import logging
+import operator
 import os
 import re
 import subprocess
@@ -23,6 +25,7 @@ from tempfile import TemporaryDirectory
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from unittest import TestCase
 
+import pytest
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
@@ -50,17 +53,18 @@ from .utils import (
     MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION,
     MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
     MODELS_TO_TEST_MAPPING,
+    OH_DEVICE_CONTEXT,
 )
 
 
-BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
+CONFIG_DIRECTORY = Path(__file__).parent.resolve() / Path("configs") / Path("examples")
 # Models should reach at least 99% of their baseline accuracy
 ACCURACY_PERF_FACTOR = 0.99
 # Trainings/Evaluations should last at most 5% longer than the baseline
 TIME_PERF_FACTOR = 1.05
 
 
-IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+IS_GAUDI1 = bool("gaudi1" == OH_DEVICE_CONTEXT)
 
 
 def _get_supported_models_for_script(
@@ -205,7 +209,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_image2text_lora_finetune": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_VISION_2_SEQ_MAPPING,
-        ["idefics2", "mllama"],
+        ["idefics2", "mllama", "llava"],
     ),
 }
 
@@ -257,12 +261,12 @@ class ExampleTestMeta(type):
 
         models_measured_on_eager_mode = ["google/gemma-2b-it"]
 
-        if (fsdp or fp8) and not IS_GAUDI2:
+        if (fsdp or fp8) and IS_GAUDI1:
             return False
         elif (
             any(case in example_name for case in case_only_in_gaudi2)
             or task_name in ("llama-adapter", "vera", "ia3", "adalora", "ln_tuning", "mamamiya405/finred")
-        ) and not IS_GAUDI2:
+        ) and IS_GAUDI1:
             return False
         elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
             return False
@@ -289,23 +293,23 @@ class ExampleTestMeta(type):
             return False
         elif eager_mode and model_name not in models_measured_on_eager_mode:
             return False
-        elif "gemma" in model_name and not IS_GAUDI2:
+        elif "gemma" in model_name and IS_GAUDI1:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
             return True
-        elif "gpt-neox" in model_name and IS_GAUDI2 and deepspeed:
-            # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
+        elif "gpt-neox" in model_name and not IS_GAUDI1 and deepspeed:
+            # GPT-NeoX is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "flan-t5" in model_name and IS_GAUDI2 and deepspeed:
-            # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+        elif "flan-t5" in model_name and not IS_GAUDI1 and deepspeed:
+            # Flan-T5 is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
-            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
+        elif "CodeLlama" in model_name and not IS_GAUDI1 and deepspeed:
+            # CodeLlama is tested only on Gaudi2+ and with DeepSpeed
             return True
-        elif "Qwen2-72B" in model_name and IS_GAUDI2 and deepspeed:
+        elif "Qwen2-72B" in model_name and not IS_GAUDI1 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -315,21 +319,21 @@ class ExampleTestMeta(type):
             return True
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
             return True
-        elif "bridgetower" in model_name and IS_GAUDI2:
+        elif "bridgetower" in model_name and not IS_GAUDI1:
             return True
-        elif "falcon" in model_name and IS_GAUDI2 and not fsdp and not fp8:
+        elif "falcon" in model_name and not IS_GAUDI1 and not fsdp and not fp8:
             return True
-        elif "bloom" in model_name and deepspeed and not IS_GAUDI2:
+        elif "bloom" in model_name and deepspeed and IS_GAUDI1:
             return True
-        elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
+        elif "LlamaGuard" in model_name and deepspeed and not IS_GAUDI1:
             return True
-        elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+        elif "ast-finetuned-speech-commands-v2" in model_name and not IS_GAUDI1:
             return True
-        elif "huggyllama" in model_name and IS_GAUDI2 and deepspeed:
+        elif "huggyllama" in model_name and not IS_GAUDI1 and deepspeed:
             return True
-        elif "gemma" in model_name and IS_GAUDI2:
+        elif "gemma" in model_name and not IS_GAUDI1:
             return True
-        elif "chatglm3" in model_name and IS_GAUDI2 and deepspeed:
+        elif "chatglm3" in model_name and not IS_GAUDI1 and deepspeed:
             return True
 
         return False
@@ -439,7 +443,7 @@ class ExampleTestMeta(type):
                     # Assess accuracy
                     with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
                         results = json.load(fp)
-                        baseline = 0.43 if os.environ.get("GAUDI2_CI", "0") == "1" else 0.42
+                        baseline = 0.42 if not IS_GAUDI1 else 0.43
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
@@ -453,29 +457,28 @@ class ExampleTestMeta(type):
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
-            # collect baseline from <model_name>_eager.json if eager_mode is True
+            # collect test_config from <model_name>_eager.json if eager_mode is True
             if self.EAGER_MODE:
-                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_") + "_eager"
+                config_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_") + "_eager"
             else:
-                baseline_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_")
+                config_name = model_name.split("/")[-1].replace("-", "_").replace(".", "_")
 
-            path_to_baseline = BASELINE_DIRECTORY / Path(baseline_name).with_suffix(".json")
+            path_to_config = CONFIG_DIRECTORY / Path(config_name).with_suffix(".json")
 
-            with path_to_baseline.open("r") as json_file:
-                device = "gaudi2" if IS_GAUDI2 else "gaudi"
-                baseline = json.load(json_file)[device]
+            with path_to_config.open("r") as json_file:
+                test_config = json.load(json_file)[OH_DEVICE_CONTEXT]
                 if isinstance(self.TASK_NAME, list):
                     for key in self.TASK_NAME:
-                        if key in baseline:
-                            baseline = baseline[key]
+                        if key in test_config:
+                            test_config = test_config[key]
                             break
-                    if "num_train_epochs" not in baseline:
+                    if "num_train_epochs" not in test_config:
                         raise ValueError(
-                            f"Couldn't find a baseline associated to any of these tasks: {self.TASK_NAME}."
+                            f"Couldn't find a test config associated to any of these tasks: {self.TASK_NAME}."
                         )
                     self.TASK_NAME = key
                 else:
-                    baseline = baseline[self.TASK_NAME]
+                    test_config = test_config[self.TASK_NAME]
 
             distribution = "single_card"
             if multi_card:
@@ -506,7 +509,7 @@ class ExampleTestMeta(type):
             if fp8 and "llama" in model_name:
                 env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(example_script.parent / "ops_bf16.txt")
 
-            extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
+            extra_command_line_arguments = test_config.get("distribution").get(distribution).get("extra_arguments", [])
 
             if self.EAGER_MODE:
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
@@ -532,6 +535,8 @@ class ExampleTestMeta(type):
 
             if self.EXAMPLE_NAME == "run_audio_classification":
                 extra_command_line_arguments.append("--sdp_on_bf16")
+                if "wav2vec2" in model_name:
+                    extra_command_line_arguments.append("--attn_implementation sdpa")
 
             if self.EXAMPLE_NAME == "run_image_classification":
                 extra_command_line_arguments.append("--sdp_on_bf16")
@@ -552,6 +557,11 @@ class ExampleTestMeta(type):
                 if model_name == "openai/whisper-small":
                     extra_command_line_arguments.append("--sdp_on_bf16")
 
+            if self.EXAMPLE_NAME == "run_speech_recognition_ctc":
+                if "wav2vec2" in model_name:
+                    extra_command_line_arguments.append("--sdp_on_bf16")
+                    extra_command_line_arguments.append("--attn_implementation sdpa")
+
             if self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments.append("--sdp_on_bf16")
 
@@ -568,10 +578,10 @@ class ExampleTestMeta(type):
                     gaudi_config_name,
                     tmp_dir,
                     task=self.TASK_NAME,
-                    lr=baseline.get("distribution").get(distribution).get("learning_rate"),
-                    train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
-                    eval_batch_size=baseline.get("eval_batch_size"),
-                    num_epochs=baseline.get("num_train_epochs"),
+                    lr=test_config.get("distribution").get(distribution).get("learning_rate"),
+                    train_batch_size=test_config.get("distribution").get(distribution).get("train_batch_size"),
+                    eval_batch_size=test_config.get("eval_batch_size"),
+                    num_epochs=test_config.get("num_train_epochs"),
                     extra_command_line_arguments=extra_command_line_arguments,
                 )
                 print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
@@ -584,7 +594,9 @@ class ExampleTestMeta(type):
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
                 # Ensure performance requirements (accuracy, training time) are met
-                self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
+                self.assert_no_regression(
+                    results, test_config.get("distribution").get(distribution).get("metrics"), model_name
+                )
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -611,16 +623,23 @@ class ExampleTesterBase(TestCase):
     DATASET_PARAMETER_NAME = "dataset_name"
     DATASET_NAME = None
     REGRESSION_METRICS = {
-        "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
-        "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
-        "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
-        "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
-        "train_runtime": (TestCase.assertLessEqual, TIME_PERF_FACTOR),
-        "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
-        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
-        "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
+        "eval_f1": (operator.ge, ACCURACY_PERF_FACTOR),
+        "eval_accuracy": (operator.ge, ACCURACY_PERF_FACTOR),
+        "perplexity": (operator.le, 2 - ACCURACY_PERF_FACTOR),
+        "eval_rougeLsum": (operator.ge, ACCURACY_PERF_FACTOR),
+        "train_runtime": (operator.le, TIME_PERF_FACTOR),
+        "eval_wer": (operator.le, 2 - ACCURACY_PERF_FACTOR),
+        "train_samples_per_second": (operator.ge, 2 - TIME_PERF_FACTOR),
+        "eval_samples_per_second": (operator.ge, 2 - TIME_PERF_FACTOR),
     }
     EAGER_MODE = False
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
 
     def _create_command_line(
         self,
@@ -716,53 +735,57 @@ class ExampleTesterBase(TestCase):
         return_code = p.wait()
         self.assertEqual(return_code, 0)
 
-    def assert_no_regression(self, results: Dict, baseline: Dict, model_name: str):
+    def assert_no_regression(self, results: Dict, metrics: List, model_name: str):
         """
         Assert whether all possible performance requirements are met.
         Attributes:
             results (Dict): results of the run to assess
-            baseline (Dict): baseline to assert whether or not there is regression
+            metrics (List): metrics to assert whether or not there is regression
         """
+
         # Gather all the metrics to assess
-        metrics_to_assess = []
-        for metric_name in self.REGRESSION_METRICS.keys():
-            if metric_name in baseline and metric_name in results:
-                metrics_to_assess.append(metric_name)
-        # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
+        metrics_to_assess = list(set(self.REGRESSION_METRICS.keys()) & set(metrics) & set(results.keys()))
         min_number_metrics = 3
+
+        # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
         if (
             self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo", "ppo", "reward_modeling"]
             or "bloom" in model_name
         ):
             min_number_metrics = 2
 
-        # Check that at least 3 metrics are assessed:
+        # Check that at least min_number_metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
         self.assertGreaterEqual(
             len(metrics_to_assess),
             min_number_metrics,
             (
-                f"{len(metrics_to_assess)} asserted metric(s) while at least 3 are expected (throughput + training"
-                f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
-                f" {baseline.keys()}"
+                f"{len(metrics_to_assess)} asserted metric(s) while at least"
+                f" {min_number_metrics} are expected (throughput + training time + accuracy*)."
+                f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {metrics}"
             ),
         )
 
-        # Message to display if one test fails
-        # This enables to show all the results and baselines even if one test fails before others
-        failure_message = "\n===== Assessed metrics (measured vs thresholded baseline) =====\n"
-        for metric_name in metrics_to_assess:
-            failure_message += f"{metric_name}: {results[metric_name]} vs {self.REGRESSION_METRICS[metric_name][1] * baseline[metric_name]}\n"
-
         # Assess metrics
+        passed = True
         for metric_name in metrics_to_assess:
-            assert_function, threshold_factor = self.REGRESSION_METRICS[metric_name]
-            assert_function(
-                self,
-                results[metric_name],
-                threshold_factor * baseline[metric_name],
-                msg=f"for metric {metric_name}. {failure_message}",
-            )
+            fn, threshold = self.REGRESSION_METRICS[metric_name]
+
+            def check(actual, ref):
+                check.msg = f"{metric_name}: {fn.__name__}({actual}, {threshold} * {ref})\n"
+                return fn(actual, threshold * ref)
+
+            check.msg = ""
+
+            try:
+                self.baseline.assertRef(
+                    compare=check, context=[OH_DEVICE_CONTEXT], **{metric_name: results[metric_name]}
+                )
+            except Exception:
+                logging.getLogger().error(check.msg)
+                passed = False
+
+        assert passed, "One or more metrics failed"
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
