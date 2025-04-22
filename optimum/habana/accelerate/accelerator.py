@@ -60,7 +60,6 @@ if is_deepspeed_available():
     )
 
 from ..distributed import parallel_state
-from .state import GaudiPartialState
 from .utils import convert_model
 
 
@@ -199,7 +198,7 @@ class GaudiAccelerator(Accelerator):
                 model.forward = convert_outputs_to_fp32(new_forward)
 
         if self.state.mixed_precision == "fp8":
-            model = convert_model(model, _minimize_memory=GaudiPartialState().minimize_memory)
+            model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -384,7 +383,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else convert_model(obj, _minimize_memory=GaudiPartialState().minimize_memory)
+            else convert_model(obj)
             if isinstance(obj, torch.nn.Module) and self.state.mixed_precision == "fp8"
             else obj
             for obj in args
