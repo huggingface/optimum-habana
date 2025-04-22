@@ -212,6 +212,11 @@ def main():
         action="store_true",
         help="Compute logits in bf16",
     )
+    parser.add_argument(
+        "--trim_logits",
+        action="store_true",
+        help="Calculate logits only for the last token to save memory in the first step.",
+    )
 
     args = parser.parse_args()
 
@@ -368,6 +373,7 @@ def main():
         "flash_attention_recompute": args.flash_attention_recompute,
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
+        "trim_logits": args.trim_logits,
         "logits_bf16": args.logits_bf16,
     }
 
