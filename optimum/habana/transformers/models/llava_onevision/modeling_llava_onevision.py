@@ -26,50 +26,13 @@ from ...image_processing_utils import select_best_resolution
 from transformers.models.llava_onevision.modeling_llava_onevision import (
     LlavaOnevisionCausalLMOutputWithPast,
     LlavaOnevisionForConditionalGeneration,
-    get_anyres_image_grid_shape,
-    unpad_image,
+    image_size_to_num_patches,
+
 )
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
-
-# Copied from transformers.models.llava_next.modeling_llava_next.image_size_to_num_patches
-def image_size_to_num_patches(image_size, grid_pinpoints, patch_size: int):
-    """
-    Calculate the number of patches after the preprocessing for images of any resolution.
-
-    Args:
-        image_size (`torch.LongTensor` or `np.ndarray` or `Tuple[int, int]`):
-            The size of the input image in the format (height, width). ?
-        grid_pinpoints (`List`):
-            A list containing possible resolutions. Each item in the list should be a tuple or list
-            of the form `(height, width)`.
-        patch_size (`int`):
-            The size of each image patch.
-
-    Returns:
-        int: the number of patches
-    """
-    if not isinstance(grid_pinpoints, list):
-        raise TypeError("grid_pinpoints should be a list of tuples or lists")
-
-    # ! VERY IMPORTANT if image_size is tensor, must convert to into tuple, otherwise it will cause wrong calculate
-    if not isinstance(image_size, (list, tuple)):
-        if not isinstance(image_size, (torch.Tensor, np.ndarray)):
-            raise TypeError(f"image_size invalid type {type(image_size)} with value {image_size}")
-        image_size = image_size.tolist()
-
-    best_resolution = select_best_resolution(image_size, grid_pinpoints)
-    height, width = best_resolution
-    num_patches = 0
-    # consider change to ceil(height/patch_size)*ceil(width/patch_size) + 1
-    for i in range(0, height, patch_size):
-        for j in range(0, width, patch_size):
-            num_patches += 1
-    # add the base patch
-    num_patches += 1
-    return num_patches
 
 class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGeneration):
     def forward(
@@ -120,34 +83,6 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
     
             if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
-
-            # # Video are simply embedded and further pooled to decrease seq len
-            # if pixel_values_videos is not None:
-            #     batch_size, frames, channels, height, width = pixel_values_videos.shape
-            #     pixel_values_videos = pixel_values_videos.view(batch_size * frames, channels, height, width)
-            #     video_features = self.vision_tower(pixel_values_videos, output_hidden_states=True)
-            #     selected_video_feature = video_features.hidden_states[vision_feature_layer]
-
-            #     if vision_feature_select_strategy == "default":
-            #         selected_video_feature = selected_video_feature[:, 1:]
-            #     elif vision_feature_select_strategy == "full":
-            #         selected_video_feature = selected_video_feature
-            #     video_features = self.multi_modal_projector(selected_video_feature)
-
-            #     video_features = self.apply_pooling(video_features)
-            #     video_features = video_features.reshape(batch_size, frames * video_features.shape[1], -1)
-            #     image_newline = self.image_newline[None, None, :].repeat(batch_size, 1, 1).to(video_features.device)
-            #     video_features = torch.cat((video_features, image_newline), dim=1)
-            #     video_features = video_features.flatten(0, 1)
-
-            #     special_video_mask = (
-            #         (input_ids == self.config.video_token_index)
-            #         .unsqueeze(-1)
-            #         .expand_as(inputs_embeds)
-            #         .to(inputs_embeds.device)
-            #     )
-            #     video_features = video_features.to(inputs_embeds.device, inputs_embeds.dtype)
-            #     inputs_embeds = inputs_embeds.masked_scatter(special_video_mask, video_features)
 
             outputs = self.language_model(
                 attention_mask=attention_mask,
@@ -434,35 +369,6 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 height = width = self.config.vision_config.image_size // self.config.vision_config.patch_size
 
                 new_image_features = []
-                # # for image_idx, image_feature in enumerate(image_features):
-                # #     if image_feature.shape[0] > 1:
-                # #         base_image_feature = image_feature[0]
-                # #         image_feature = image_feature[1:]
-
-                # #         if height * width != base_image_feature.shape[0]:
-                # #             raise ValueError("The number of patches is not consistent with the image size.")
-                # #         num_patch_height, num_patch_width = get_anyres_image_grid_shape(
-                # #             image_sizes[image_idx],
-                # #             self.config.image_grid_pinpoints,
-                # #             self.config.vision_config.image_size,
-                # #         )
-                # #         image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
-                # #         image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
-                # #         image_feature = image_feature.flatten(1, 2).flatten(2, 3)
-                # #         image_feature = unpad_image(image_feature, image_sizes[image_idx])
-                # #         image_feature = torch.cat(
-                # #             (
-                # #                 image_feature,
-                # #                 self.image_newline[:, None, None].expand(*image_feature.shape[:-1], 1),
-                # #             ),
-                # #             dim=-1,
-                # #         )
-                # #         image_feature = image_feature.flatten(1, 2).transpose(0, 1)
-                # #         image_feature = torch.cat((base_image_feature, image_feature), dim=0)
-                # #     else:
-                # #         image_feature = image_feature[0]
-                # #         image_feature = torch.cat((image_feature, self.image_newline[None]), dim=0)
-                # #     new_image_features.append(image_feature)
                 new_image_features.append(image_features)
                 if legacy_processing:
                     image_features = torch.stack(new_image_features, dim=0)
