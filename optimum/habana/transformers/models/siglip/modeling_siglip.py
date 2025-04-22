@@ -84,6 +84,7 @@ class GaudiSiglipAttention(SiglipAttention):
         """Input shape: Batch x Time x Channel"""
 
         batch_size, q_len, _ = hidden_states.size()
+        attn_weights = None
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
