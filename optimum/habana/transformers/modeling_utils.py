@@ -152,6 +152,8 @@ from .models import (
     GaudiQwen2MoeAttention,
     GaudiQwen2MoeDecoderLayer,
     GaudiQwen2MoeForCausalLM,
+    GaudiQwen2ForSequenceClassification,
+    GaudiQwen2ForTokenClassification,
     GaudiQwen2MoeMLP,
     GaudiQwen2MoeModel,
     GaudiQwen2VisionTransformerPretrainedModel,
@@ -651,6 +653,8 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification = GaudiQwen2ForSequenceClassification
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForTokenClassification = GaudiQwen2ForTokenClassification
     transformers.models.qwen2.modeling_qwen2.Qwen2Model = GaudiQwen2Model
     transformers.models.qwen2.modeling_qwen2.Qwen2Attention = GaudiQwen2Attention
     transformers.models.qwen2.modeling_qwen2.Qwen2MLP = GaudiQwen2MLP
