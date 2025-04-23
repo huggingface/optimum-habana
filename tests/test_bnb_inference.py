@@ -42,6 +42,22 @@ def get_model(token: str):
 
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
 def test_nf4_quantization_inference(token: str, baseline):
+    try:
+        import subprocess
+        import sys
+
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
+            ]
+        )
+    except subprocess.CalledProcessError:
+        pytest.fail("Failed to install bitsandbytes")
+
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
