@@ -2689,7 +2689,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 + start_token_idx
             )
             # Create a mask for positions greater than the first eos_token_id
-            mask = torch.arange(max_length).expand(batch_size, max_length) > eos_positions.unsqueeze(1)
+            mask = torch.arange(max_length, device="hpu").expand(batch_size, max_length) > eos_positions.unsqueeze(1)
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
             input_ids[mask] = pad_token_id
 

@@ -578,6 +578,7 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
+                ignore_eos=args.ignore_eos,
                 profiler=profiler,
             ).cpu()
             outputs = outputs.tolist()
