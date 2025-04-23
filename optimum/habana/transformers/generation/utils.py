@@ -1286,30 +1286,29 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
             assert generation_config.use_cache, "please set use_cache flag to use bucket_internal"
         if generation_config.reuse_cache:
-            assert (
-                self.config.model_type
-                in [
-                    "llama",
-                    "mistral",
-                    "falcon",
-                    "mixtral",
-                    "phi",
-                    "qwen2",
-                    "gptj",
-                    "starcoder2",
-                    "qwen2_moe",
-                    "gemma",
-                    "gemma2",
-                    "baichuan",
-                    "chatglm",
-                    "deepseek_v2",
-                    "deepseek_v3",
-                ]
-            ), "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+            assert self.config.model_type in [
+                "llama",
+                "mistral",
+                "falcon",
+                "mixtral",
+                "phi",
+                "qwen2",
+                "gptj",
+                "starcoder2",
+                "qwen2_moe",
+                "gemma",
+                "gemma2",
+                "baichuan",
+                "chatglm",
+                "deepseek_v2",
+                "deepseek_v3",
+            ], (
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+            )
             if not generation_config.bucket_internal:
-                assert (
-                    generation_config.bucket_size <= 0
-                ), "please set bucket_internal along with reuse_cache and bucket_size"
+                assert generation_config.bucket_size <= 0, (
+                    "please set bucket_internal along with reuse_cache and bucket_size"
+                )
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 

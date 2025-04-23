@@ -883,9 +883,9 @@ def main(args):
     # download the dataset.
     if args.dataset_name is not None:
         if len(args.mediapipe) > 0:
-            assert (
-                args.resolution == args.crop_resolution
-            ), f"To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})"
+            assert args.resolution == args.crop_resolution, (
+                f"To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})"
+            )
             if args.local_rank == 0:
                 if not os.path.exists(args.mediapipe):
                     os.mkdir(args.mediapipe)

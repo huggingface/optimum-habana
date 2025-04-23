@@ -148,9 +148,9 @@ class KVCache(torch.nn.Module):
             # self.cache = torch.zeros(shape, dtype=dtype, device=device)
             self.cache = torch.zeros(shape, dtype=torch.bfloat16, device=device)
         else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            assert self.inp_seq_len == inp_seq_len, (
+                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            )
             self.cache.fill_(0)
 
     def update(self, prev, cur, dim, idx, inp_seq_len):

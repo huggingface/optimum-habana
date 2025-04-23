@@ -212,9 +212,9 @@ class GPTNeoXModelTester:
         # TODO: Starting v4.49, gpt_neox _attn_implementation is set to eager: https://github.com/huggingface/optimum-habana/blob/transformers_4_49/optimum/habana/transformers/models/modeling_all_models.py
         # here we manually set it back to sdpa for testing
         model.config._attn_implementation = "sdpa"
-        assert (
-            model.config._attn_implementation == "sdpa"
-        ), "This test assumes the model to have the SDPA implementation for its attention calculations."
+        assert model.config._attn_implementation == "sdpa", (
+            "This test assumes the model to have the SDPA implementation for its attention calculations."
+        )
         # Prepare cache and non_cache input, needs a full attention mask
         cached_len = input_ids.shape[-1] // 2
         input_mask = torch.ones(size=input_ids.size()).to(torch_device)
