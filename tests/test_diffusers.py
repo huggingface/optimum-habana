@@ -52,6 +52,7 @@ from diffusers import (
     FluxTransformer2DModel,
     I2VGenXLUNet,
     LCMScheduler,
+    MultiControlNetModel,
     PNDMScheduler,
     SD3Transformer2DModel,
     StableDiffusionXLPipeline,
@@ -63,7 +64,6 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (

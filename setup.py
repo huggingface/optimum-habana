@@ -33,7 +33,7 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate >= 1.5.0",
-    "diffusers >= 0.31.0, < 0.32.0",
+    "diffusers >= 0.32.0, < 0.32.1",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers == 3.3.1",
 ]
@@ -52,6 +52,7 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "bitsandbytes @ git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
 ]
 
 QUALITY_REQUIRES = [
