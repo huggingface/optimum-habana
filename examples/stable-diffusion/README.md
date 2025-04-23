@@ -354,7 +354,7 @@ python text_to_video_generation.py \
     --num_inference_steps 50 \
     --num_frames 49 \
     --guidance_scale 6 \
-    --dtype bf16 \
+    --dtype bf16
 ```
 
 
@@ -447,7 +447,7 @@ python image_to_video_generation.py \
     --bf16
 ```
 
-# Important Notes for Gaudi3 Users  
+# Important Notes for Gaudi3 Users
 
  - **Batch Size Limitation**: Due to a known issue, batch sizes for some Stable Diffusion models need to be reduced.
    This issue is expected to be resolved in a future release.
