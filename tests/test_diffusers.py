@@ -92,7 +92,6 @@ from transformers import (
     DPTForDepthEstimation,
     T5Config,
     T5EncoderModel,
-    T5Tokenizer,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
@@ -3877,7 +3876,7 @@ class GaudiCogVideoXPipelineTester(TestCase):
     """
 
     def get_dummy_components(self):
-        tokenizer = T5Tokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
         set_seed(0)
         text_encoder_cfg = T5Config(
             vocab_size=32128,
