@@ -914,6 +914,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
@@ -953,6 +954,12 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         )
 
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
 
         if token_idx is None and logits_to_keep != 0:
             slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
@@ -1006,6 +1013,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
@@ -1093,6 +1101,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             cache_position=cache_position,
             logits_to_keep=logits_to_keep,
             token_idx=token_idx,
+            trim_logits=trim_logits,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
@@ -1177,6 +1186,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
                 "token_idx_cpu": token_idx_cpu,
+                "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "logits_bf16": kwargs.get("logits_bf16"),

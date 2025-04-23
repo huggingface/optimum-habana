@@ -1,6 +1,5 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/rl_training.py, enable it for Gaudi2
 import json
-import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -14,7 +13,7 @@ from trl.core import LengthSampler
 
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 tqdm.pandas()
@@ -287,7 +286,8 @@ if not config.pad_for_acceleration:
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
 else:
     output_length_sampler = LengthSampler(output_max_length, output_max_length + 1)
-s0 = time.time()
+timer = HabanaGenerationTime()
+timer.start()
 sample = 0
 for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     if epoch >= config.total_ppo_epochs:
@@ -313,9 +313,9 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
 
     if script_args.save_freq and epoch and epoch % script_args.save_freq == 0:
         ppo_trainer.save_pretrained(script_args.output_dir + f"step_{epoch}")
-s1 = time.time()
+timer.step()
 
 ppo_trainer.save_pretrained(script_args.output_dir)
-metrics = {"train_runtime": s1 - s0, "train_samples_per_second": sample / (s1 - s0)}
+metrics = {"train_runtime": timer.last_duration, "train_samples_per_second": sample / timer.last_duration}
 with open(f"{script_args.output_dir}/all_results.json", mode="w") as file:
     json.dump(metrics, file)
