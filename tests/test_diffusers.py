@@ -4000,7 +4000,7 @@ class GaudiCogVideoXPipelineTester(TestCase):
         ).frames[0]
 
         self.assertIsNotNone(video)
-        self.assertEqual(49 == len(video))
+        self.assertEqual(49, len(video))
 
 
 class GaudiTextToVideoSDPipelineTester(TestCase):
