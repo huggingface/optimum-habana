@@ -154,9 +154,9 @@ def main():
         "--bucket_size",
         default=-1,
         type=int,
-        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
-            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
-            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+        help="Bucket size to maintain static shapes. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`). \
+            It can never be negative value.",
     )
     parser.add_argument(
         "--bucket_internal",
