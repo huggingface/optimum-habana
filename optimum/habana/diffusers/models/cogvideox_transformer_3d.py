@@ -12,23 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-import math
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
+from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.utils import (
     USE_PEFT_BACKEND,
-    BaseOutput,
     is_torch_version,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
 )
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def cogvideoXTransformerForwardGaudi(
     self,

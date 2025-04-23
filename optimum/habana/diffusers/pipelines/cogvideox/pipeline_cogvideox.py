@@ -12,38 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import math
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from diffusers import CogVideoXPipeline
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
-from diffusers.models.attention import Attention
 from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3d
-from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from diffusers.pipelines.cogvideo.pipeline_output import CogVideoXPipelineOutput
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import retrieve_timesteps
+from diffusers.pipelines.cogvideo.pipeline_output import CogVideoXPipelineOutput
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import (
-    USE_PEFT_BACKEND,
-    BaseOutput,
-    is_torch_version,
     logging,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...models.attention_processor import CogVideoXAttnProcessorGaudi
-from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
-from ...models.autoencoders.autoencoder_kl_cogvideox import tiled_decode_gaudi, CogVideoXCausalConv3dforwardGaudi
-from ..pipeline_utils import GaudiDiffusionPipeline
 from ....transformers.gaudi_configuration import GaudiConfig
+from ...models.attention_processor import CogVideoXAttnProcessorGaudi
+from ...models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3dforwardGaudi, tiled_decode_gaudi
+from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
+from ..pipeline_utils import GaudiDiffusionPipeline
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

@@ -1725,15 +1725,15 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
-        )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
-        )
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
 
     @slow
     @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
@@ -3870,7 +3870,6 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
-
 class GaudiCogVideoXPipelineTester(TestCase):
     """
     Tests the TextToVideoSDPipeline for Gaudi.
@@ -4012,7 +4011,6 @@ class GaudiTextToVideoSDPipelineTester(TestCase):
     """
 
     def get_dummy_components(self):
-
         set_seed(0)
         unet = UNet3DConditionModel(
             block_out_channels=(4, 8),

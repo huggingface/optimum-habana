@@ -1624,9 +1624,9 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
-                "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
-            )
+            assert not (
+                self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing
+            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)

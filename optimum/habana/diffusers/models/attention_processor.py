@@ -25,6 +25,7 @@ from torch import nn
 
 from .embeddings import apply_rotary_emb
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -190,6 +191,7 @@ class AttnProcessor2_0:
 
         return hidden_states
 
+
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
@@ -281,7 +283,6 @@ class CogVideoXAttnProcessorGaudi:
             [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
         )
         return hidden_states, encoder_hidden_states
-
 
 
 AttentionProcessor = Union[AttnProcessor2_0,]

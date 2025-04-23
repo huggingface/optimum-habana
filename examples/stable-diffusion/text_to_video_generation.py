@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 from diffusers.utils.export_utils import export_to_video
 
-from optimum.habana.diffusers import GaudiTextToVideoSDPipeline,GaudiCogVideoXPipeline
+from optimum.habana.diffusers import GaudiCogVideoXPipeline, GaudiTextToVideoSDPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
@@ -183,7 +183,6 @@ def main():
     elif args.dtype == "fp32":
         kwargs["torch_dtype"] = torch.float32
 
-
     # Generate images
     if args.pipeline_type == "stable_diffusion":
         pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
@@ -194,7 +193,7 @@ def main():
         pipeline.vae.enable_tiling()
         pipeline.vae.enable_slicing()
     else:
-        logger.error(f'unsupported pipeline type {args.pipeline_type}')
+        logger.error(f"unsupported pipeline type {args.pipeline_type}")
         return None
 
     if args.pipeline_type == "stable_diffusion":

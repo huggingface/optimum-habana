@@ -122,9 +122,9 @@ class WQLinear_HPU(WQLinear_GEMM):
         raise NotImplementedError("Only inference is supported for HPU kernels")
 
     def forward(self, x):
-        assert self._preprocess is True, (
-            "module.post_init() must be called before module.forward(). Use hpu_post_init() on the whole model."
-        )
+        assert (
+            self._preprocess is True
+        ), "module.post_init() must be called before module.forward(). Use hpu_post_init() on the whole model."
         out_shape = x.shape[:-1] + (self.out_features,)
         x = x.reshape(-1, x.shape[-1])
         weights = convert_from_uint4(self.qweight, self.scales, self.qzeros, x.dtype)
