@@ -107,6 +107,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         use_compiled_autograd (`bool`, *optional*, defaults to `False`):
             Whether to use compiled autograd for training. Currently only for summarization models.
+        compile_from_sec_iteration (`bool`, *optional*, defaults to `False`):
+            Whether to torch.compile from the second training iteration.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
         use_regional_compilation (`bool`, *optional*, defaults to `False`):
@@ -183,6 +185,11 @@ class GaudiTrainingArguments(TrainingArguments):
                 "Whether to use compiled autograd for training. Currently only for summarization models or when using deepspeed."
             )
         },
+    )
+
+    compile_from_sec_iteration: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to torch.compile from the second training iteration.")},
     )
 
     compile_dynamic: Optional[bool | None] = field(
