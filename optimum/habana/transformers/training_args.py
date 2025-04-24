@@ -22,7 +22,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
-from accelerate import DistributedType
+from accelerate import DistributedType, PartialState
 from accelerate.state import AcceleratorState
 from packaging import version
 from transformers.debug_utils import DebugOption
@@ -54,7 +54,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiPartialState
+from ..distributed import parallel_state
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -107,6 +107,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         use_compiled_autograd (`bool`, *optional*, defaults to `False`):
             Whether to use compiled autograd for training. Currently only for summarization models.
+        compile_from_sec_iteration (`bool`, *optional*, defaults to `False`):
+            Whether to torch.compile from the second training iteration.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
         use_regional_compilation (`bool`, *optional*, defaults to `False`):
@@ -115,6 +117,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config. Currently, disabling this parameter improves the performance of the ALBERT model.
         cache_size_limit(`int`, *optional*, defaults to 'None'):
             Set value of 'cache_size_limit' parameter for torch._dynamo.config
+        allow_unspec_int_on_nn_module (`bool`, *optional*, defaults to `None`):
+            Set value of 'allow_unspec_int_on_nn_module' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -176,7 +180,16 @@ class GaudiTrainingArguments(TrainingArguments):
 
     use_compiled_autograd: Optional[bool] = field(
         default=False,
-        metadata={"help": ("Whether to use compiled autograd for training. Currently only for summarization models.")},
+        metadata={
+            "help": (
+                "Whether to use compiled autograd for training. Currently only for summarization models or when using deepspeed."
+            )
+        },
+    )
+
+    compile_from_sec_iteration: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to torch.compile from the second training iteration.")},
     )
 
     compile_dynamic: Optional[bool | None] = field(
@@ -202,6 +215,13 @@ class GaudiTrainingArguments(TrainingArguments):
     inline_inbuilt_nn_modules: Optional[bool] = field(
         default=None,
         metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
+    )
+
+    # This works only if compile kwarg "dynamic = None" or "dynamic = True" is
+    # set and has no effect when "dynamic = False"
+    allow_unspec_int_on_nn_module: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'allow_unspec_int_on_nn_module' parameter for torch._dynamo.config.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -337,15 +357,6 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
-        },
-    )
-
-    # Overriding ddp_backend to replace all possible backends by hccl
-    ddp_backend: Optional[str] = field(
-        default="hccl",
-        metadata={
-            "help": "The backend to be used for distributed training.",
-            "choices": ["hccl"],
         },
     )
 
@@ -948,6 +959,9 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.torch_compile and self.cache_size_limit is not None:
             torch._dynamo.config.cache_size_limit = self.cache_size_limit
 
+        if self.allow_unspec_int_on_nn_module is not None:
+            torch._dynamo.config.allow_unspec_int_on_nn_module = self.allow_unspec_int_on_nn_module
+
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
@@ -961,13 +975,13 @@ class GaudiTrainingArguments(TrainingArguments):
                 "use_configured_state", False
             )
         if accelerator_state_kwargs["use_configured_state"]:
-            if GaudiPartialState._shared_state == {}:
+            if PartialState._shared_state == {}:
                 raise ValueError(
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
-            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
+            self.distributed_state = PartialState(cpu=self.use_cpu)
             if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
@@ -975,8 +989,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            AcceleratorState._reset_state()
-            GaudiPartialState._reset_state()
+            AcceleratorState._reset_state(reset_partial_state=True)
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
@@ -987,10 +1000,12 @@ class GaudiTrainingArguments(TrainingArguments):
         if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
             os.environ["ACCELERATE_USE_IPEX"] = "false"
 
+        if self.minimize_memory:
+            os.environ["PT_HPU_FP8_MINIMIZE_MEMORY"] = "true"
+
         self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             accelerator_state_kwargs["cpu"] = True
-            accelerator_state_kwargs["backend"] = self.ddp_backend
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -1008,30 +1023,32 @@ class GaudiTrainingArguments(TrainingArguments):
                         "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0"
                     )
 
-            if self.deepspeed:
-                accelerator_state_kwargs["use_deepspeed"] = True
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            else:
-                accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+            accelerator_state_kwargs["cpu"] = False
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
-                "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
+                "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."
             )
 
-        # Now we pop everything
+        # Initialize the accelerator state
         if accelerator_state_kwargs.pop("enabled", False) and not accelerator_state_kwargs.pop(
             "use_configured_state", False
         ):
-            # We need to patch this env var when enabling to detect deepspeed
-            use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
-            if use_deepspeed:
-                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
-            if use_deepspeed:
-                del os.environ["ACCELERATE_USE_DEEPSPEED"]
+            self.distributed_state = PartialState(**accelerator_state_kwargs)
+
+        # Sequence parallelism
+        if self.parallel_mode == ParallelMode.DISTRIBUTED:
+            if parallel_state.is_unitialized():
+                parallel_state.initialize_model_parallel(
+                    sequence_parallel_size=self.context_parallel_size, use_fp8=False
+                )
+            else:
+                if parallel_state.get_sequence_parallel_world_size() != self.context_parallel_size:
+                    raise ValueError(
+                        "The initialized sequence parallel world size does not match the context parallel size."
+                    )
+                if parallel_state.amax_reduction_is_initialized():
+                    logger.info("FP8 amax reduction group is already initialized.")
 
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index

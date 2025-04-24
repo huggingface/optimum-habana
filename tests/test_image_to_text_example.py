@@ -26,6 +26,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("tiiuae/falcon-11B-vlm", 1),
             ("Qwen/Qwen2-VL-2B-Instruct", 1),
             ("Qwen/Qwen2-VL-7B-Instruct", 1),
+            ("THUDM/glm-4v-9b", 1),
         ],
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
@@ -66,6 +67,9 @@ def _test_image_to_text(
         "--max_new_tokens 20",
         "--ignore_eos",
     ]
+
+    if model_name == "THUDM/glm-4v-9b":
+        env_variables["GLM"] = "4v"
 
     command += [
         "--use_hpu_graphs",

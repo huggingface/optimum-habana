@@ -113,7 +113,7 @@ def _prepare_cross_attention_mask(
     cross_attention_mask: torch.Tensor,
     num_vision_tokens: int,
     dtype: str,
-    token_idx: Optional[torch.Tensor] = None,
+    token_idx: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from _prepare_cross_attention_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L99
@@ -121,9 +121,17 @@ def _prepare_cross_attention_mask(
         - if there's pading in cross_attention_mask in the right. do not masked it, or else it will impact softmax in crossattention
     """
     # reshape so it can be used by attn module
-    batch_size, text_total_length, *_ = cross_attention_mask.shape
-    cross_attention_mask = cross_attention_mask.repeat_interleave(num_vision_tokens, dim=3)
+    # Updated cross_attention_mask alignment logic to ensure memory alignment with dtype size (256-byte boundary)
+    cross_attention_mask = cross_attention_mask.to(dtype)
+    dtype_size = (
+        torch.finfo(dtype).bits if torch.is_floating_point(torch.tensor(0, dtype=dtype)) else torch.iinfo(dtype).bits
+    )
+    alignment = int(256 / (dtype_size / 8))
+    aligned_num_vision_tokens = math.ceil(num_vision_tokens / alignment) * alignment
+    batch_size, text_total_length, _, original_dim = cross_attention_mask.shape
+    cross_attention_mask = cross_attention_mask.repeat_interleave(aligned_num_vision_tokens, dim=3)
     cross_attention_mask = cross_attention_mask.view(batch_size, text_total_length, -1)
+    cross_attention_mask = cross_attention_mask[:, :, : num_vision_tokens * original_dim]
     cross_attention_mask = cross_attention_mask.unsqueeze(1)
 
     # invert the mask
@@ -139,9 +147,9 @@ def _prepare_cross_attention_mask(
         (cross_attention_mask != negative_inf_value).any(dim=-1).type_as(cross_attention_mask)[..., None]
     )
     if token_idx is not None:
-        full_text_row_masked_out_mask2 = full_text_row_masked_out_mask.clone()
-        full_text_row_masked_out_mask2[:, :, token_idx:, :] = 1
-        cross_attention_mask *= full_text_row_masked_out_mask2
+        cross_attention_mask_2 = cross_attention_mask[:, :, token_idx:, 1]
+        cross_attention_mask *= full_text_row_masked_out_mask
+        cross_attention_mask[:, :, token_idx:, 1] = cross_attention_mask_2
     else:
         cross_attention_mask *= full_text_row_masked_out_mask
 
@@ -906,6 +914,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
@@ -945,6 +954,12 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         )
 
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
 
         if token_idx is None and logits_to_keep != 0:
             slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
@@ -998,9 +1013,11 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
+        token_idx_cpu: Optional[int] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
@@ -1049,7 +1066,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 cross_attention_mask,
                 num_vision_tokens=self.vision_model.num_patches,
                 dtype=self.dtype,
-                token_idx=token_idx,
+                token_idx=token_idx_cpu,
             )
         else:
             full_text_row_masked_out_mask = None
@@ -1084,6 +1101,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             cache_position=cache_position,
             logits_to_keep=logits_to_keep,
             token_idx=token_idx,
+            trim_logits=trim_logits,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
@@ -1115,6 +1133,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             - add use_flash_attention and flash_attention_recompute
         """
         token_idx = kwargs.get("token_idx", None)
+        token_idx_cpu = kwargs.get("token_idx_cpu", None)
         bucket_internal = kwargs.get("bucket_internal", None)
         if past_key_values is not None:
             if token_idx is not None:
@@ -1166,6 +1185,8 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "attention_mask": attention_mask,
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
+                "token_idx_cpu": token_idx_cpu,
+                "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "logits_bf16": kwargs.get("logits_bf16"),
