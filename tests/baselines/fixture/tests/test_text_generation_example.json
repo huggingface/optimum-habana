@@ -662,5 +662,15 @@
     "gaudi3": {
       "throughput": 182.2741046353745
     }
+  },
+  "tests/test_text_generation_example.py::test_text_generation_bf16_1x[moonshotai/Moonlight-16B-A3B-1-False-False]": {
+    "gaudi2": {
+      "output": "Baseline to set",
+      "throughput": 0
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that enables the training of large-scale models with reduced computational resources. It achieves this by using a technique called model parallelism, which allows the model to be split across multiple GPUs. This makes it possible to train models that are too large to fit on a single GPU.\n## What is DeepSpeed?\nDeepSpeed is a machine learning framework that enables the training of large-scale models with reduced computational resources. It achieves this by using a technique called model parallelism, which allows the model to be split across multiple GPUs",
+      "throughput": 94.70370546821054
+    }
   }
 }

@@ -83,10 +83,19 @@ def test_nf4_quantization_finetuning(token: str, baseline):
     try:
         import sys
 
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "peft==0.12.0",
+                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
+            ]
+        )
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     except subprocess.CalledProcessError:
-        pytest.fail("Failed to install peft==0.12.0")
+        pytest.fail("Failed to install peft==0.12.0 / bitsandbytes")
 
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
