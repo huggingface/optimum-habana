@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import transformers
 import transformers.utils.fx
 
@@ -43,6 +45,7 @@ from .models import (
     BaichuanConfig,
     BaichuanForCausalLM,
     BaichuanTokenizer,
+    ChatGLM4Tokenizer,
     ChatGLMConfig,
     ChatGLMForConditionalGeneration,
     ChatGLMForSequenceClassification,
@@ -183,6 +186,9 @@ from .models import (
     GaudiWhisperModel,
     GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
+    GLM4VConfig,
+    GLM4VForConditionalGeneration,
+    GLM4VForSequenceClassification,
     LlamaConfig,
     MiniCPM3Config,
     MiniCPM3ForCausalLM,
@@ -789,13 +795,23 @@ def adapt_transformers_to_gaudi():
     transformers.AutoTokenizer.register(BaichuanConfig, slow_tokenizer_class=BaichuanTokenizer)
     transformers.AutoModelForCausalLM.register(BaichuanConfig, BaichuanForCausalLM)
 
-    # Register chatglm with optimization on Gaudi
-    transformers.AutoConfig.register("chatglm", ChatGLMConfig)
-    transformers.AutoTokenizer.register(ChatGLMConfig, ChatGLMTokenizer)
-    transformers.AutoModel.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
-    transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
-    transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
-    transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)
+    if os.getenv("GLM") == "4v":
+        # Register glm4v with optimization on Gaudi
+        transformers.AutoConfig.register("chatglm", GLM4VConfig)
+        transformers.AutoTokenizer.register(GLM4VConfig, ChatGLM4Tokenizer)
+        transformers.AutoModel.register(GLM4VConfig, GLM4VForConditionalGeneration)
+        transformers.AutoModelForCausalLM.register(GLM4VConfig, GLM4VForConditionalGeneration)
+        transformers.AutoModelForSeq2SeqLM.register(GLM4VConfig, GLM4VForConditionalGeneration)
+        transformers.AutoModelForVision2Seq.register(GLM4VConfig, GLM4VForConditionalGeneration)
+        transformers.AutoModelForSequenceClassification.register(GLM4VConfig, GLM4VForSequenceClassification)
+    else:
+        # Register chatglm with optimization on Gaudi
+        transformers.AutoConfig.register("chatglm", ChatGLMConfig)
+        transformers.AutoTokenizer.register(ChatGLMConfig, ChatGLMTokenizer)
+        transformers.AutoModel.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+        transformers.AutoModelForCausalLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+        transformers.AutoModelForSeq2SeqLM.register(ChatGLMConfig, ChatGLMForConditionalGeneration)
+        transformers.AutoModelForSequenceClassification.register(ChatGLMConfig, ChatGLMForSequenceClassification)
 
     transformers.quantizers.quantizer_awq.AwqQuantizer.validate_environment = gaudi_awq_quantizer_validate_environment
     transformers.quantizers.quantizer_awq.AwqQuantizer._process_model_before_weight_loading = (

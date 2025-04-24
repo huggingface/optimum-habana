@@ -152,6 +152,19 @@ def main():
         help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
         "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
     )
+    parser.add_argument(
+        "--bucket_size",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`). \
+            It can never be negative value.",
+    )
+    parser.add_argument(
+        "--bucket_internal",
+        action="store_true",
+        help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
@@ -212,6 +225,11 @@ def main():
         action="store_true",
         help="Compute logits in bf16",
     )
+    parser.add_argument(
+        "--trim_logits",
+        action="store_true",
+        help="Calculate logits only for the last token to save memory in the first step.",
+    )
 
     args = parser.parse_args()
 
@@ -242,7 +260,7 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
 
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl", "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -257,8 +275,7 @@ def main():
             "http://images.cocodataset.org/val2017/000000039769.jpg"
         ]
 
-
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl", "llava_onevision"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl", "chatglm", "llava_onevision"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -351,7 +368,7 @@ def main():
             model=args.model_name_or_path,
             config=args.model_name_or_path,
             tokenizer=args.model_name_or_path,
-            image_processor=args.model_name_or_path,
+            image_processor=None if model_type == "chatglm" else args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -371,8 +388,11 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "bucket_internal": args.bucket_internal,
+        "bucket_size": args.bucket_size,
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
+        "trim_logits": args.trim_logits,
         "logits_bf16": args.logits_bf16,
     }
 
@@ -386,6 +406,9 @@ def main():
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
 
+    if model_type == "chatglm":
+        generate_kwargs["reuse_cache"] = True
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
@@ -393,7 +416,7 @@ def main():
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
 
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next", "llava_onevision"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next", "chatglm", "llava_onevision"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -402,7 +425,23 @@ def main():
                 kwargs["max_length"] = args.max_input_tokens
                 kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
+            if model_type == "chatglm":
+                if prompt is None:
+                    prompt = "What is shown in this image?"
+                query = [{"role": "user", "image": image, "content": prompt}]
+
+                model_inputs = processor.apply_chat_template(
+                    query,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors=None,
+                    return_dict=True,
+                )
+                generator.model.adjust_multimodal_inputs(model_inputs)
+                model_inputs.convert_to_tensors(tensor_type="pt")
+                model_inputs.to("hpu")
+            else:
+                model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess

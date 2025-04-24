@@ -61,6 +61,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("THUDM/chatglm2-6b", 1, True, False),
             ("THUDM/chatglm3-6b", 1, True, False),
             ("Qwen/Qwen2.5-7B", 4, False, False),
+            ("moonshotai/Moonlight-16B-A3B", 1, False, False),
         ],
         "fp8": [
             pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, marks=pytest.mark.x4),
@@ -224,6 +225,9 @@ def _test_text_generation(
 
     if "mamba-130m-hf" in model_name.lower():
         command += ["--sdp_on_bf16"]
+
+    if "moonlight-16b-a3b" in model_name.lower():
+        command += ["--trim_logits", "--trust_remote_code_tokenizer"]
 
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]

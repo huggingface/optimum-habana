@@ -180,6 +180,19 @@ python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
 --prompt "DeepSpeed is a machine learning framework"
 ```
 
+To run Moonlight-16B-A3B (a DeepSeek-V3 like model) inference on a Gaudi2 card use the following command:
+```bash
+PT_HPU_LAZY_MODE=1 python3 ./run_generation.py \
+--model_name_or_path moonshotai/Moonlight-16B-A3B \
+--bf16 \
+--trim_logits \
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache  \
+--trust_remote_code_tokenizer \
+--prompt "DeepSpeed is a machine learning framework"
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
@@ -355,7 +368,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -392,7 +406,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
@@ -427,7 +442,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --batch_size 1 \
 --trim_logits \
 --reuse_cache \
---bf16
+--bf16 \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:

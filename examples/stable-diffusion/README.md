@@ -338,6 +338,26 @@ python text_to_video_generation.py \
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
 by the Stability AI team. Stable Video Diffusion XT version (SVD-XT) is tuned to generate 25 frames of video from a single image.
 
+
+# CogvideoX Examples
+
+CogVideoX is an open-source version of the video generation model originating from QingYing, unveiled in https://huggingface.co/THUDM/CogVideoX-5b.
+
+```bash
+python text_to_video_generation.py \
+    --model_name_or_path "THUDM/CogVideoX-2b" \
+    --pipeline_type "cogvideox" \
+    --prompts "An astronaut riding a horse" \
+    --use_habana \
+    --use_hpu_graphs \
+    --num_videos_per_prompt 1 \
+    --num_inference_steps 50 \
+    --num_frames 49 \
+    --guidance_scale 6 \
+    --dtype bf16
+```
+
+
 ## Image-to-Video Generation
 
 Script `image_to_video_generation.py` showcases how to perform image-to-video generation using Stable Video Diffusion on Intel Gaudi.
@@ -427,7 +447,7 @@ python image_to_video_generation.py \
     --bf16
 ```
 
-# Important Notes for Gaudi3 Users  
+# Important Notes for Gaudi3 Users
 
  - **Batch Size Limitation**: Due to a known issue, batch sizes for some Stable Diffusion models need to be reduced.
    This issue is expected to be resolved in a future release.

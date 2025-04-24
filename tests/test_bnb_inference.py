@@ -42,6 +42,22 @@ def get_model(token: str):
 
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
 def test_nf4_quantization_inference(token: str, baseline):
+    try:
+        import subprocess
+        import sys
+
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
+            ]
+        )
+    except subprocess.CalledProcessError:
+        pytest.fail("Failed to install bitsandbytes")
+
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -55,8 +71,6 @@ def test_nf4_quantization_inference(token: str, baseline):
     generation_config.max_new_tokens = 20
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
-
-    model.model = torch.compile(model.model, backend="hpu_backend")
 
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
