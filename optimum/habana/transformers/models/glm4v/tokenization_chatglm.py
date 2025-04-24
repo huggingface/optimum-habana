@@ -38,10 +38,6 @@ from transformers.utils.import_utils import is_tiktoken_available
 
 if is_tiktoken_available():
     import tiktoken
-else:
-    raise ModuleNotFoundError(
-        "GLM-4V requires the Tiktoken library to be installed. Please install it with: `pip install tiktoken`"
-    )
 
 
 class ChatGLM4Tokenizer(PreTrainedTokenizer):
@@ -57,6 +53,11 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
         image_size=None,
         **kwargs,
     ):
+        if not is_tiktoken_available():
+            raise ModuleNotFoundError(
+                "GLM-4V requires the Tiktoken library to be installed. Please install it with: `pip install tiktoken`"
+            )
+
         self.name = "GLM4Tokenizer"
         self.vocab_file = vocab_file
         pat_str = "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+"
