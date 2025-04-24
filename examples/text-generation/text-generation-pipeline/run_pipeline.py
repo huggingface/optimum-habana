@@ -1,10 +1,11 @@
 import argparse
 import logging
 import math
-import time
 
 from pipeline import GaudiTextGenerationPipeline
 from run_generation import setup_parser
+
+from optimum.habana.utils import HabanaGenerationTime
 
 
 logging.basicConfig(
@@ -46,9 +47,9 @@ def main():
     duration = 0
     for iteration in range(args.n_iterations):
         logger.info(f"Running inference iteration {iteration + 1}...")
-        t0 = time.perf_counter()
-        output = pipe(input_sentences)
-        duration += time.perf_counter() - t0
+        with HabanaGenerationTime() as timer:
+            output = pipe(input_sentences)
+        duration += timer.last_duration
 
         for i, (input_sentence, generated_text) in enumerate(zip(input_sentences, output)):
             print(f"Prompt[{iteration + 1}][{i + 1}]: {input_sentence}")

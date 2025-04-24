@@ -39,8 +39,11 @@ import safetensors
 import torch
 from diffusers import (
     AutoencoderKL,
+    AutoencoderKLCogVideoX,
     AutoencoderKLTemporalDecoder,
     AutoencoderTiny,
+    CogVideoXDDIMScheduler,
+    CogVideoXTransformer3DModel,
     ControlNetModel,
     DiffusionPipeline,
     EulerAncestralDiscreteScheduler,
@@ -49,6 +52,7 @@ from diffusers import (
     FluxTransformer2DModel,
     I2VGenXLUNet,
     LCMScheduler,
+    MultiControlNetModel,
     PNDMScheduler,
     SD3Transformer2DModel,
     StableDiffusionXLPipeline,
@@ -60,7 +64,6 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
@@ -87,12 +90,14 @@ from transformers import (
     DPTConfig,
     DPTFeatureExtractor,
     DPTForDepthEstimation,
+    T5Config,
     T5EncoderModel,
 )
 from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
+    GaudiCogVideoXPipeline,
     GaudiDDIMScheduler,
     GaudiDDPMPipeline,
     GaudiDiffusionPipeline,
@@ -150,6 +155,9 @@ def check_gated_model_access(model):
     Skip test for a gated model if access is not granted; this occurs when an account
     with the required permissions is not logged into the HF Hub.
     """
+    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+        return lambda func: func
+
     try:
         hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
         gated = False
@@ -172,6 +180,14 @@ def check_8xhpu(test_case):
         skip = False
 
     return pytest.mark.skipif(skip, reason="test requires 8xHPU multi-card system")(test_case)
+
+
+def legacy(test_case):
+    """
+    Decorator used to skip tests for legacy models
+    """
+    skip = os.environ.get("RUN_DIFFUSERS_LEGACY", "0") != "1"
+    return pytest.mark.skipif(skip, reason="This test is for old/legacy model. Skipped starting 1.16.0.")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -600,6 +616,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -654,6 +671,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_throughput_regression_autocast(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -691,6 +709,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @custom_bf16_ops
     @slow
+    @legacy
     def test_no_generation_regression_ldm3d(self):
         prompts = [
             "An image of a squirrel in Picasso style",
@@ -785,6 +804,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_sd_textual_inversion(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2495,6 +2515,7 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
         assert images[0].shape == (32, 32, 3)
 
     @slow
+    @legacy
     def test_depth2img_pipeline(self):
         gaudi_config = GaudiConfig(use_torch_autocast=True)
         model_name = "stabilityai/stable-diffusion-2-depth"
@@ -2642,6 +2663,7 @@ class TrainControlNet(TestCase):
 
     @slow
     @check_8xhpu
+    @legacy
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -3847,6 +3869,140 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
+class GaudiCogVideoXPipelineTester(TestCase):
+    """
+    Tests the TextToVideoSDPipeline for Gaudi.
+    Adapted from https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/text_to_video_synthesis/test_text_to_video.py
+    """
+
+    def get_dummy_components(self):
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        set_seed(0)
+        text_encoder_cfg = T5Config(
+            vocab_size=32128,
+            d_kv=64,
+            d_ff=10240,
+            num_layers=8,
+            num_decoder_layers=8,
+            relative_attention_num_buckets=32,
+            relative_attention_max_distance=128,
+            initializer_factor=1.0,
+            feed_forward_proj="gated-gelu",
+            is_encoder_decoder=True,
+            pad_token_id=0,
+            eos_token_id=1,
+            torch_dtype=torch.bfloat16,
+            d_model=4096,
+        )
+        text_encoder = T5EncoderModel(text_encoder_cfg).bfloat16()
+
+        set_seed(0)
+        transformer = CogVideoXTransformer3DModel(
+            num_attention_heads=30,
+            attention_head_dim=64,
+            in_channels=16,
+            out_channels=16,
+            flip_sin_to_cos=True,
+            freq_shift=0,
+            time_embed_dim=512,
+            text_embed_dim=4096,
+            num_layers=8,
+            dropout=0.0,
+            attention_bias=True,
+            sample_width=90,
+            sample_height=60,
+            sample_frames=49,
+            patch_size=2,
+            temporal_compression_ratio=4,
+            max_text_seq_length=226,
+            activation_fn="gelu-approximate",
+            timestep_activation_fn="silu",
+            norm_elementwise_affine=True,
+            norm_eps=1e-5,
+            spatial_interpolation_scale=1.875,
+            temporal_interpolation_scale=1.0,
+        ).bfloat16()
+
+        scheduler = CogVideoXDDIMScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.00085,
+            beta_end=0.0120,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=True,
+            steps_offset=0,
+            prediction_type="v_prediction",
+            clip_sample_range=1.0,
+            sample_max_value=1.0,
+            timestep_spacing="trailing",
+            rescale_betas_zero_snr=True,
+            snr_shift_scale=1.0,
+        )
+
+        set_seed(0)
+        vae = AutoencoderKLCogVideoX(
+            in_channels=3,
+            out_channels=3,
+            down_block_types=[
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+            ],
+            block_out_channels=[128, 256, 256, 512],
+            latent_channels=16,
+            layers_per_block=1,
+            act_fn="silu",
+            norm_eps=1e-6,
+            norm_num_groups=32,
+            temporal_compression_ratio=4,
+            sample_height=480,
+            sample_width=720,
+            scaling_factor=1.15258426,
+        ).bfloat16()
+
+        vae.enable_slicing()
+        vae.enable_tiling()
+
+        components = {
+            "tokenizer": tokenizer,
+            "text_encoder": text_encoder,
+            "transformer": transformer,
+            "scheduler": scheduler,
+            "vae": vae,
+        }
+
+        return components
+
+    def get_dummy_inputs(self):
+        prompts = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
+        return prompts
+
+    def test_cogvideoX_default_case(self):
+        gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
+        gaudi_config_kwargs["use_torch_autocast"] = True
+        gaudi_config = GaudiConfig(**gaudi_config_kwargs)
+
+        components = self.get_dummy_components()
+        components["use_habana"] = True
+        components["use_hpu_graphs"] = True
+        components["gaudi_config"] = gaudi_config
+
+        prompts = self.get_dummy_inputs()
+        cogVideoX_pipe = GaudiCogVideoXPipeline(**components)
+        video = cogVideoX_pipe(
+            prompt=prompts,
+            num_videos_per_prompt=1,
+            num_inference_steps=5,
+            num_frames=49,
+            guidance_scale=6,
+            generator=torch.Generator(device="cpu").manual_seed(42),
+        ).frames[0]
+
+        self.assertIsNotNone(video)
+        self.assertEqual(49, len(video))
+
+
 class GaudiTextToVideoSDPipelineTester(TestCase):
     """
     Tests the TextToVideoSDPipeline for Gaudi.
@@ -4276,7 +4432,6 @@ class PipelineTesterMixin:
         for k, v in parameters.items():
             if v.default != inspect._empty:
                 optional_parameters.add(k)
-
         parameters = set(parameters.keys())
         parameters.remove("self")
         parameters.discard("kwargs")  # kwargs can be added if arguments of pipeline call function are deprecated
@@ -4346,7 +4501,6 @@ class PipelineTesterMixin:
 
             if "batch_size" in inputs:
                 batched_input["batch_size"] = batch_size
-
             batched_inputs.append(batched_input)
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
@@ -5084,6 +5238,7 @@ class StableDiffusionInpaintPipelineTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
     @slow
+    @legacy
     def test_stable_diffusion_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
 
@@ -5094,7 +5249,6 @@ class StableDiffusionInpaintPipelineTests(
         mask_image = load_image(
             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
         )
-
         prompts = [
             "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         ]
@@ -5895,6 +6049,7 @@ class GaudiDDPMPipelineTester(TestCase):
         self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
 
     @slow
+    @legacy
     def test_no_throughput_regression_bf16(self):
         batch_size = 16  # use batch size 16 as the baseline
         model_name = "google/ddpm-ema-celebahq-256"

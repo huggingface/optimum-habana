@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import glob
 import json
 import logging
 import os
-import time
 from pathlib import Path
 
 import PIL.Image
@@ -25,9 +25,7 @@ import requests
 import torch
 from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
-from optimum.habana.utils import (
-    set_seed,
-)
+from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
 
 
 logging.basicConfig(
@@ -36,6 +34,10 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def count_hpu_graphs():
+    return len(glob.glob(".graph_dumps/*PreGraph*"))
 
 
 def override_print(enable):
@@ -150,6 +152,19 @@ def main():
         help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
         "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
     )
+    parser.add_argument(
+        "--bucket_size",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`). \
+            It can never be negative value.",
+    )
+    parser.add_argument(
+        "--bucket_internal",
+        action="store_true",
+        help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
@@ -200,8 +215,29 @@ def main():
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Run pipeline using Torch Compile mode",
+    )
+    parser.add_argument(
+        "--logits_bf16",
+        action="store_true",
+        help="Compute logits in bf16",
+    )
+    parser.add_argument(
+        "--trim_logits",
+        action="store_true",
+        help="Calculate logits only for the last token to save memory in the first step.",
+    )
 
     args = parser.parse_args()
+
+    use_lazy_mode = True
+
+    if args.torch_compile:
+        args.use_hpu_graphs = False
+        use_lazy_mode = False
 
     # set args.quant_config with env variable if it is set
     args.quant_config = os.getenv("QUANT_CONFIG", "")
@@ -224,7 +260,7 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
 
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl", "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -235,7 +271,7 @@ def main():
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl", "chatglm"]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -265,6 +301,18 @@ def main():
                     args.prompt = "caption es"
                 else:
                     args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
+
+        else:
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{args.prompt}"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -316,7 +364,7 @@ def main():
             model=args.model_name_or_path,
             config=args.model_name_or_path,
             tokenizer=args.model_name_or_path,
-            image_processor=args.model_name_or_path,
+            image_processor=None if model_type == "chatglm" else args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -328,15 +376,20 @@ def main():
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
+        processor.patch_size = config.vision_config.patch_size
     generate_kwargs = {
-        "lazy_mode": True,
+        "lazy_mode": use_lazy_mode,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "bucket_internal": args.bucket_internal,
+        "bucket_size": args.bucket_size,
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
+        "trim_logits": args.trim_logits,
+        "logits_bf16": args.logits_bf16,
     }
 
     if args.sdp_on_bf16:
@@ -349,6 +402,9 @@ def main():
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
 
+    if model_type == "chatglm":
+        generate_kwargs["reuse_cache"] = True
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
@@ -356,7 +412,7 @@ def main():
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
 
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
+    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next", "chatglm"]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -365,23 +421,39 @@ def main():
                 kwargs["max_length"] = args.max_input_tokens
                 kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
+            if model_type == "chatglm":
+                if prompt is None:
+                    prompt = "What is shown in this image?"
+                query = [{"role": "user", "image": image, "content": prompt}]
+
+                model_inputs = processor.apply_chat_template(
+                    query,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors=None,
+                    return_dict=True,
+                )
+                generator.model.adjust_multimodal_inputs(model_inputs)
+                model_inputs.convert_to_tensors(tensor_type="pt")
+                model_inputs.to("hpu")
+            else:
+                model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
 
     # warm up
-    for i in range(args.warmup):
-        generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    torch.hpu.synchronize()
+    with HabanaGenerationTime() as compilation_timer:
+        for i in range(args.warmup):
+            generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        torch.hpu.synchronize()
+    compilation_duration = compilation_timer.last_duration
     if args.quant_config:
         finalize_quantization(generator.model)
 
-    start = time.perf_counter()
-    for i in range(args.n_iterations):
-        result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    end = time.perf_counter()
-    duration = end - start
+    with HabanaGenerationTime() as timer:
+        for i in range(args.n_iterations):
+            result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
     # Let's calculate the number of generated tokens
     n_input_tokens = len(generator.tokenizer(args.prompt).input_ids) if args.prompt is not None else 0
@@ -396,11 +468,26 @@ def main():
             n_output_tokens += args.max_new_tokens
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
-    throughput = total_new_tokens_generated / duration
+    throughput = total_new_tokens_generated / timer.last_duration
     logger.info(f"result = {result}")
     logger.info(
-        f"time = {(end - start) * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
+        f"time = {timer.last_duration * 1000 / args.n_iterations}ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
+
+    stats = ""
+    stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+    stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+    separator = "-" * len(stats)
+    print()
+    print("Stats:")
+    print(separator)
+    print(stats)
+    mem = get_hpu_memory_stats()
+    for k, v in mem.items():
+        print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+    print(f"Graph compilation duration          = {compilation_duration} seconds")
+    print(separator)
+    print()
 
     # Store results if necessary
     if args.output_dir is not None:

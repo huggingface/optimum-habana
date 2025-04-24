@@ -31,6 +31,15 @@ MODELS_TO_TEST = {
             "run_lora_clm.py",
             "auto_wrap",
         ),
+        (
+            "ibm-granite/granite-3.1-8b-instruct",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+            "auto_wrap",
+        ),
     ],
 }
 
@@ -67,7 +76,6 @@ def _test_fsdp(
         "--do_train",
         f"--per_device_eval_batch_size {batch_size_eval}",
         f"--per_device_train_batch_size {batch_size_train}",
-        f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
         f"--fsdp '{policy}'",
         "--torch_compile_backend hpu_backend",
         "--torch_compile",
@@ -76,6 +84,7 @@ def _test_fsdp(
 
     if model_name == "bert-base-uncased":
         command += [
+            f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
             "--dataset_name squad",
             "--max_seq_length 384",
             "--learning_rate 3e-05",
@@ -90,8 +99,40 @@ def _test_fsdp(
             "--do_eval",
             "--sdp_on_bf16",
         ]
+    elif model_name == "ibm-granite/granite-3.1-8b-instruct":
+        command += [
+            f"--fsdp_config {path_to_example_dir / task / 'granite_fsdp_config.json'}",
+            "--max_steps 100",
+            "--dataset_name tatsu-lab/alpaca ",
+            "--bf16 True ",
+            "--gradient_accumulation_steps 2",
+            "--save_strategy 'no'",
+            "--eval_strategy 'no'",
+            "--learning_rate 0.0003",
+            "--warmup_ratio 0.03",
+            "--max_grad_norm 0.3",
+            "--lr_scheduler_type 'constant'",
+            "--logging_steps 1",
+            "--use_lazy_mode False",
+            "--pipelining_fwd_bwd False",
+            "--throughput_warmup_steps 3",
+            "--lora_rank 8",
+            "--lora_alpha 16",
+            "--lora_dropout 0.05",
+            "--lora_target_modules 'q_proj' 'v_proj' 'k_proj' 'o_proj'",
+            "--dataset_concatenation",
+            "--max_seq_length 512",
+            "--adam_epsilon 1e-08",
+            "--low_cpu_mem_usage True",
+            "--attn_softmax_bf16 True",
+            "--num_train_epochs 3",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
+            f"--token {token.value}",
+        ]
     else:
         command += [
+            f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
             "--dataset_name tatsu-lab/alpaca ",
             "--bf16 True ",
             "--gradient_accumulation_steps 2",

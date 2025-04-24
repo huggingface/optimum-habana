@@ -15,7 +15,6 @@
 
 import argparse
 import logging
-import time
 
 import PIL.Image
 import requests
@@ -23,6 +22,7 @@ import torch
 from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 logging.basicConfig(
@@ -130,12 +130,12 @@ def main():
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
             generator(model_input, batch_size=args.batch_size, topk=args.topk)
 
-    start = time.time()
-    for i in range(args.n_iterations):
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
-            result = generator(model_input, batch_size=args.batch_size, topk=args.topk)
-    end = time.time()
-    logger.info(f"result = {result}, time = {(end - start) * 1000 / args.n_iterations}ms")
+    with HabanaGenerationTime() as timer:
+        for i in range(args.n_iterations):
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
+                result = generator(model_input, batch_size=args.batch_size, topk=args.topk)
+
+    logger.info(f"result = {result}, time = {timer.last_duration * 1000 / args.n_iterations}ms")
 
 
 if __name__ == "__main__":
