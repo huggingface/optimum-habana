@@ -1,10 +1,10 @@
 {
-  "tests/test_bnb_qlora.py::test_nf4_quantization_inference": {
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning": {
     "gaudi2": {
-      "eval_loss": 1.638
+      "eval_loss": 1.225
     },
     "gaudi3": {
-      "eval_loss": 1.638
+      "eval_loss": 1.225
     }
   }
 }

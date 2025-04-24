@@ -110,6 +110,7 @@ from optimum.utils import logging
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper
 from ..utils import (
+    HabanaGenerationTime,
     HabanaProfile,
     get_hpu_memory_stats,
     set_seed,
@@ -135,7 +136,7 @@ if is_peft_available():
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
-from accelerate.utils import DataLoaderConfiguration
+from accelerate.utils import DataLoaderConfiguration, is_torch_version
 
 
 def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
@@ -958,6 +959,8 @@ class GaudiTrainer(Trainer):
                 )
                 for i, inputs in enumerate(batch_samples):
                     step += 1
+                    if self.args.compile_from_sec_iteration and is_torch_version(">=", "2.6.0"):
+                        torch.compiler.set_stance("force_eager" if step == 0 else "default")
 
                     if (
                         args.throughput_warmup_steps > 0
@@ -1272,8 +1275,10 @@ class GaudiTrainer(Trainer):
             )
 
     def _maybe_log_save_evaluate(self, tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time):
+        timer = HabanaGenerationTime()
+        timer.start()
         if self.args.adjust_throughput:
-            save_start = time.perf_counter()
+            timer.step()
 
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             logs: Dict[str, float] = {}
@@ -1326,7 +1331,8 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
         if self.args.adjust_throughput:
-            self.log_evaluate_save_time += time.perf_counter() - save_start
+            timer.step()
+            self.log_evaluate_save_time += timer.last_duration
 
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
@@ -2504,6 +2510,7 @@ class GaudiTrainer(Trainer):
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
             "use_regional_compilation": self.args.use_regional_compilation,
+            "compiled_autograd_enable": self.args.use_compiled_autograd,
         }
 
         # create accelerator object
