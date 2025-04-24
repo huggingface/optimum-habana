@@ -130,6 +130,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deepseek_v3",
     "chatglm",
     "qwen2_vl",
+    "qwen3",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -1302,8 +1303,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 "chatglm",
                 "deepseek_v2",
                 "deepseek_v3",
+                "qwen3",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (

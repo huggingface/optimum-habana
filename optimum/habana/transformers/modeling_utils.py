@@ -163,6 +163,11 @@ from .models import (
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -254,6 +259,7 @@ from .models import (
     gaudi_qwen2_rmsnorm_forward,
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
+    gaudi_qwen3_rmsnorm_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SeamlessM4TAttention_forward,
@@ -686,6 +692,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
         GaudiQwen2VLForConditionalGeneration
     )
+    
+    # Optimization for qwen3 on Gaudi
+    transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
+    transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
+    transformers.models.qwen3.modeling_qwen3.Qwen3Attention = GaudiQwen3Attention
+    transformers.models.qwen3.modeling_qwen3.Qwen3MLP = GaudiQwen3MLP
+    transformers.models.qwen3.modeling_qwen3.Qwen3DecoderLayer = GaudiQwen3DecoderLayer
+    transformers.models.qwen3.modeling_qwen3.Qwen3RMSNorm.forward = gaudi_qwen3_rmsnorm_forward
 
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
