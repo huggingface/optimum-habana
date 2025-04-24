@@ -102,6 +102,9 @@
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[THUDM/glm-4v-9b-1]": {
     "gaudi2": {
       "throughput": 23.1596636261274
+    },
+    "gaudi3": {
+      "throughput": 33.42424880726489
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-1.5-13b-hf-1]": {
