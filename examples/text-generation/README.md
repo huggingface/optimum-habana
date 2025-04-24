@@ -355,7 +355,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -392,7 +393,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
@@ -427,7 +429,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --batch_size 1 \
 --trim_logits \
 --reuse_cache \
---bf16
+--bf16 \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:
