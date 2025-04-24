@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from ...image_processing_utils import select_best_resolution
+from transformers.image_processing_utils import select_best_resolution
 from transformers.models.llava_onevision.modeling_llava_onevision import (
     LlavaOnevisionCausalLMOutputWithPast,
     LlavaOnevisionForConditionalGeneration,
