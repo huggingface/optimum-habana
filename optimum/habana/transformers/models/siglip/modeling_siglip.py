@@ -5,10 +5,10 @@ from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.models.siglip.configuration_siglip import SiglipConfig
 from transformers.models.siglip.modeling_siglip import (
-    SiglipMLP,
     SiglipAttention,
     SiglipEncoder,
     SiglipEncoderLayer,
+    SiglipMLP,
     SiglipVisionEmbeddings,
     SiglipVisionModel,
     SiglipVisionTransformer,
@@ -30,7 +30,7 @@ class GaudiSiglipVisionEmbeddings(SiglipVisionEmbeddings):
         target_dtype = self.patch_embedding.weight.dtype
         # if HQT quantization enabled, remove the explicit cast to float8 to avoid HQT casting error
         if "float8" in str(target_dtype) and pixel_values.device.type == "hpu":
-            target_dtype = torch.bfloat16        
+            target_dtype = torch.bfloat16
         patch_embeds = self.patch_embedding(pixel_values.to(dtype=target_dtype))  # shape = [*, width, grid, grid]
         embeddings = patch_embeds.flatten(2).transpose(1, 2)
 
@@ -39,7 +39,8 @@ class GaudiSiglipVisionEmbeddings(SiglipVisionEmbeddings):
         else:
             embeddings = embeddings + self.position_embedding(self.position_ids)
         return embeddings
-    
+
+
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
         super().__init__()
@@ -132,7 +133,6 @@ class GaudiSiglipAttention(SiglipAttention):
             attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
             attn_output = torch.matmul(attn_weights, value_states)
 
-
         if attn_output.size() != (batch_size, self.num_heads, q_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(batch_size, self.num_heads, q_len, self.head_dim)}, but is"
@@ -182,7 +182,7 @@ class GaudiSiglipEncoderLayer(SiglipEncoderLayer):
             attention_mask=attention_mask,
             output_attentions=output_attentions,
             use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,            
+            flash_attention_recompute=flash_attention_recompute,
         )
         hidden_states = residual + hidden_states
 
@@ -258,7 +258,7 @@ class GaudiSiglipEncoder(SiglipEncoder):
                     attention_mask,
                     output_attentions=output_attentions,
                     use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,  
+                    flash_attention_recompute=flash_attention_recompute,
                 )
 
             hidden_states = layer_outputs[0]
@@ -283,7 +283,7 @@ class GaudiSiglipVisionTransformer(SiglipVisionTransformer):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        interpolate_pos_encoding: Optional[bool] = False,        
+        interpolate_pos_encoding: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
@@ -349,4 +349,3 @@ class GaudiSiglipVisionModel(SiglipVisionModel):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
         )
-

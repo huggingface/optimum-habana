@@ -50,14 +50,6 @@ from .clip import (
     GaudiCLIPVisionModel,
     GaudiCLIPVisionTransformer,
 )
-from .siglip import (
-    GaudiSiglipAttention,
-    GaudiSiglipEncoder,
-    GaudiSiglipEncoderLayer,
-    GaudiSiglipVisionEmbeddings,
-    GaudiSiglipVisionModel,
-    GaudiSiglipVisionTransformer,
-)
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
@@ -290,6 +282,14 @@ from .seamless_m4t import (
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_SeamlessM4TTextToUnitModel_forward,
+)
+from .siglip import (
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
 )
 from .speecht5 import (
     gaudi_generate_speech,

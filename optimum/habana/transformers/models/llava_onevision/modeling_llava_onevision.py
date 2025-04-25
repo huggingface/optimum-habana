@@ -17,22 +17,19 @@
 
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
-
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers.image_processing_utils import select_best_resolution
 from transformers.models.llava_onevision.modeling_llava_onevision import (
     LlavaOnevisionCausalLMOutputWithPast,
     LlavaOnevisionForConditionalGeneration,
     image_size_to_num_patches,
-
 )
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
+
 
 class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGeneration):
     def forward(
@@ -41,7 +38,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         pixel_values: torch.FloatTensor = None,
         image_sizes: Optional[torch.LongTensor] = None,
         pixel_values_videos: torch.FloatTensor = None,
-        image_sizes_videos: Optional[torch.LongTensor] = None,        
+        image_sizes_videos: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -80,7 +77,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 raise ValueError(
                     "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
                 )
-    
+
             if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
 
@@ -249,7 +246,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         pixel_values=None,
         image_sizes=None,
         pixel_values_videos=None,
-        image_sizes_videos=None,        
+        image_sizes_videos=None,
         attention_mask=None,
         cache_position=None,
         num_logits_to_keep=None,
@@ -270,14 +267,16 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 pixel_values=pixel_values,
                 image_sizes=image_sizes,
                 pixel_values_videos=pixel_values_videos,
-                image_sizes_videos=image_sizes_videos,           
+                image_sizes_videos=image_sizes_videos,
                 attention_mask=attention_mask,
                 cache_position=cache_position,
                 num_logits_to_keep=num_logits_to_keep,
                 **kwargs,
             )
         else:
-            legacy_processing = ((input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1) and pixel_values is not None)
+            legacy_processing = (
+                input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1
+            ) and pixel_values is not None
             use_flash_attention = kwargs.get("use_flash_attention", False)
             flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
             position_ids = kwargs.get("position_ids", None)
@@ -364,9 +363,6 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 )
                 image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
-
-                # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
-                height = width = self.config.vision_config.image_size // self.config.vision_config.patch_size
 
                 new_image_features = []
                 new_image_features.append(image_features)
