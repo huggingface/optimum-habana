@@ -463,7 +463,7 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.use_flash_attention and not args.flash_attention_fast_softmax:
+    if args.use_flash_attention and args.flash_attention_fast_softmax is None:
         args.flash_attention_fast_softmax = True
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
