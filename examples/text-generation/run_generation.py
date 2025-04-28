@@ -581,7 +581,12 @@ def main():
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
             logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
             logger.info(f"End to end latency = {e2e_latency * 1000}ms")
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True), first_token_time, rest_token_time, e2e_latency
+            return (
+                tokenizer.batch_decode(outputs, skip_special_tokens=True),
+                first_token_time,
+                rest_token_time,
+                e2e_latency,
+            )
 
         from optimum.habana.utils import HabanaProfile
 
@@ -641,7 +646,7 @@ def main():
                 generated, first_token_time, rest_token_time, e2e_latency = generate(prompt_len, args.reduce_recompile)
                 first_token_latencies.append(first_token_time)
                 rest_token_latencies.append(rest_token_time)
-                e2e_latencies.append(e2e_latency)  
+                e2e_latencies.append(e2e_latency)
         timer.step()
         logger.info("Finished running generate")
         duration = timer.last_duration
@@ -652,7 +657,6 @@ def main():
         avg_rest_token_latency = sum(rest_token_latencies) / len(rest_token_latencies)
         avg_e2e_latency = sum(e2e_latencies) / len(e2e_latencies)
 
-        
         print()
         print("Input/outputs:")
         all_inputs = []
