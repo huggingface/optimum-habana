@@ -45,8 +45,8 @@ file_path2 = hf_hub_download(
     repo_type="dataset",
     local_dir=local_dir,
 )
-shutil.copy2(file_path1, local_dir)
-shutil.copy2(file_path2, local_dir)
+shutil.move(file_path1, local_dir)
+shutil.move(file_path2, local_dir)
 cache_dir = Path(local_dir, ".cache")
 if cache_dir.is_dir():
     shutil.rmtree(cache_dir)

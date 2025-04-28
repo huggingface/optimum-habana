@@ -1,2 +1,2 @@
-datasets
-peft
+datasets==2.19.2
+peft == 0.11.1

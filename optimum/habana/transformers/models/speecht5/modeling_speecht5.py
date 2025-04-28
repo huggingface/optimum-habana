@@ -4,7 +4,6 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.speecht5.modeling_speecht5 import SpeechT5EncoderWithSpeechPrenet, SpeechT5PreTrainedModel
@@ -269,7 +268,7 @@ def gaudi_SpeechT5Decoder_forward(
             encoder_attention_mask, hidden_states.dtype, tgt_len=input_shape[-1]
         )
 
-    synced_gpus = is_deepspeed_zero3_enabled() or is_fsdp_managed_module(self)
+    deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
 
     if self.gradient_checkpointing and self.training:
         if use_cache:
@@ -302,7 +301,7 @@ def gaudi_SpeechT5Decoder_forward(
         if self.training:
             dropout_probability = torch.rand([])
             skip_the_layer = dropout_probability < self.layerdrop
-        if skip_the_layer and not synced_gpus:
+        if skip_the_layer and not deepspeed_zero3_is_enabled:
             continue
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None

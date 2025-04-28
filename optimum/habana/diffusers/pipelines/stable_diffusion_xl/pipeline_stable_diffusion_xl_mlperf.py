@@ -260,37 +260,6 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         return latents
 
-    # Normally we do not wrap from_pretrained.  However this is a
-    # workaround for Transformers 4.49.0 issue (sub_model torch_dtype option ignored).
-    # Note this issue is already fixed in 4.50.0dev working branch..
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
-        model = super().from_pretrained(
-            pretrained_model_name_or_path,
-            **kwargs,
-        )
-        if bf16_full_eval:
-            # Get the component names
-            component_names = [name for name in model.__dict__ if not name.startswith("_")]
-            # Iterate through the component names and fix dtype
-            for name in component_names:
-                component = getattr(model, name, None)
-                if component is not None and hasattr(component, "dtype"):
-                    component.to(torch.bfloat16)
-
-        return model
-
-    def to(self, *args, **kwargs):
-        """
-        Intercept to() method and disable gpu-hpu migration before sending to diffusers
-        """
-        kwargs["hpu_migration"] = False
-        return super().to(
-            *args,
-            **kwargs,
-        )
-
     @classmethod
     def _split_inputs_into_batches(
         cls,
@@ -756,6 +725,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
             warmup=profiling_warmup_steps,
             active=profiling_steps,
             record_shapes=False,
+            name="stable_diffusion",
         )
         hb_profiler.start()
 

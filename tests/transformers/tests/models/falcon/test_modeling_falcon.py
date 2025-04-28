@@ -52,6 +52,8 @@ if is_torch_available():
         FalconModel,
     )
     from transformers.models.falcon.modeling_falcon import (
+        FalconDynamicNTKScalingRotaryEmbedding,
+        FalconLinearScalingRotaryEmbedding,
         FalconRotaryEmbedding,
     )
 
@@ -435,21 +437,32 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
     def test_model_rope_scaling(self):
         self.skipTest("Skip untill SW-209093 is fixed")
         config, _ = self.model_tester.prepare_config_and_inputs_for_common()
+        hidden_size = config.hidden_size
+        num_heads = config.num_attention_heads
+        head_dim = hidden_size // num_heads
         scaling_factor = 10
         short_input_length = 10
         long_input_length = int(config.max_position_embeddings * 1.5)
         # Inputs
         x = torch.randn(1, dtype=torch.float32, device=torch_device)  # used exlusively to get the dtype and the device
         # Sanity check original RoPE
-        original_rope = FalconRotaryEmbedding(config).to(torch_device)
+        original_rope = FalconRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+        ).to(torch_device)
         original_cos_short, original_sin_short = original_rope(x, short_input_length)
         original_cos_long, original_sin_long = original_rope(x, long_input_length)
         torch.testing.assert_close(original_cos_short, original_cos_long[:short_input_length, :])
         torch.testing.assert_close(original_sin_short, original_sin_long[:short_input_length, :])
         # Sanity check linear RoPE scaling
         # New position "x" should match original position with index "x/scaling_factor"
-        config.rope_scaling = {"type": "linear", "factor": scaling_factor}
-        linear_scaling_rope = FalconRotaryEmbedding(config).to(torch_device)
+        linear_scaling_rope = FalconLinearScalingRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+            scaling_factor=scaling_factor,
+        ).to(torch_device)
         linear_cos_short, linear_sin_short = linear_scaling_rope(x, short_input_length)
         linear_cos_long, linear_sin_long = linear_scaling_rope(x, long_input_length)
         torch.testing.assert_close(linear_cos_short, linear_cos_long[:short_input_length, :])
@@ -461,8 +474,12 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
         # Sanity check Dynamic NTK RoPE scaling
         # Scaling should only be observed after a long input is fed. We can observe that the frequencies increase
         # with scaling_factor (or that `inv_freq` decreases)
-        config.rope_scaling = {"type": "dynamic", "factor": scaling_factor}
-        ntk_scaling_rope = FalconRotaryEmbedding(config).to(torch_device)
+        ntk_scaling_rope = FalconDynamicNTKScalingRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+            scaling_factor=scaling_factor,
+        ).to(torch_device)
         ntk_cos_short, ntk_sin_short = ntk_scaling_rope(x, short_input_length)
         ntk_cos_long, ntk_sin_long = ntk_scaling_rope(x, long_input_length)
         torch.testing.assert_close(ntk_cos_short, original_cos_short)

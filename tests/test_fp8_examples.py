@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -7,22 +8,26 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
-from .utils import OH_DEVICE_CONTEXT
 
 
-MODELS_TO_TEST = {
-    "fp8": [
-        (
-            "mistralai/Mistral-7B-Instruct-v0.2",
-            "tatsu-lab/alpaca",
-            "",
-            "language-modeling",
-            8,
-            8,
-            "run_lora_clm.py",
-        ),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    MODELS_TO_TEST = {
+        "fp8": [
+            (
+                "mistralai/Mistral-7B-Instruct-v0.2",
+                "tatsu-lab/alpaca",
+                "",
+                "language-modeling",
+                8,
+                8,
+                "run_lora_clm.py",
+            ),
+        ],
+    }
+else:
+    # FP8 is not supported on Gaudi1
+    MODELS_TO_TEST = {"fp8": []}
 
 
 def _test_fp8_train(
@@ -104,20 +109,21 @@ def _test_fp8_train(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[OH_DEVICE_CONTEXT],
+            context=[device],
             train_samples_per_second=results["train_samples_per_second"],
         )
         baseline.assertRef(
             compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-            context=[OH_DEVICE_CONTEXT],
+            context=[device],
             eval_accuracy=results["eval_accuracy"],
         )
 
 
-@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FP8 is not supported on Gaudi1")
 @pytest.mark.parametrize(
     "model_name, dataset_name, gaudi_config, task, bs_train, bs_eval, script",
     MODELS_TO_TEST["fp8"],

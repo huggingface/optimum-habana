@@ -1,0 +1,5 @@
+evaluate == 0.4.3
+rouge_score == 0.1.2
+pandas <= 2.2.2
+sentencepiece
+nltk==3.8.1

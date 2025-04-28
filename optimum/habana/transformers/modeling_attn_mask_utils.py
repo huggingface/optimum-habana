@@ -16,7 +16,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
-from transformers.utils.import_utils import is_torchdynamo_compiling
 
 
 @dataclass
@@ -57,11 +56,6 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
             row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector
             col_indices = torch.arange(mask.size(1), device=mask.device)
             context_mask = (col_indices <= row_indices + diagonal).bool().expand_as(mask)  # Expand to match mask shape
-
-            # Recent changes in PyTorch prevent mutations on tensors converted with aten::_to_copy
-            # See https://github.com/pytorch/pytorch/issues/127571
-            if is_torchdynamo_compiling():
-                mask = mask.clone()
 
             mask.masked_fill_(context_mask, torch.finfo(dtype).min)
 
@@ -104,7 +98,6 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
             tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
             bool_mask = attention_mask_2d != 1.0
             expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
-
             return causal_4d_mask.masked_fill(expanded_attn_mask, torch.finfo(dtype).min)
         elif self.sliding_window is not None:
             raise NotImplementedError("Sliding window is currently only implemented for causal masking")

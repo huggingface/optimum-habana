@@ -27,6 +27,7 @@ except ImportError:
 
 import habana_frameworks.torch.core as htcore
 from torch import nn
+from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
@@ -281,7 +282,7 @@ class GaudiFalconAttention(FalconAttention):
         use_cache: bool = False,
         output_attentions: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
@@ -575,7 +576,7 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         use_cache: bool = False,
         output_attentions: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
@@ -747,7 +748,7 @@ class GaudiFalconModel(FalconModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape
         elif inputs_embeds is not None:
@@ -1031,7 +1032,6 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
@@ -1039,18 +1039,12 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        **kwargs,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
             `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
             are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
-
-        num_logits_to_keep (`int`, *optional*):
-            Calculate logits for the last `num_logits_to_keep` tokens. If `0`, calculate logits for all
-            `input_ids` (special case). Only last token logits are needed for generation, and calculating them only for that
-            token can save memory, which becomes pretty significant for long sequences or large vocabulary size.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if use_flash_attention:
@@ -1090,16 +1084,18 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1:, :]
 
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        lm_logits = self.lm_head(hidden_states[:, slice_indices, :])
+        lm_logits = self.lm_head(hidden_states)
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(
-                lm_logits,
-                labels,
-                vocab_size=self.config.vocab_size,
-                **kwargs,
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            batch_size, seq_length, vocab_size = shift_logits.shape
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(
+                shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
             )
 
         if not return_dict:

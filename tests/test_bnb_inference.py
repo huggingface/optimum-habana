@@ -16,12 +16,11 @@
 import copy
 import os
 
-import pytest
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-from .utils import OH_DEVICE_CONTEXT
 
+assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 
@@ -40,8 +39,7 @@ def get_model(token: str):
     return model
 
 
-@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_inference(token: str, baseline):
+def test_nf4_quantization_inference(token: str):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -56,11 +54,13 @@ def test_nf4_quantization_inference(token: str, baseline):
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
 
+    # TODO: Uncomment after SW-224176 (and related torch.compile issues) is fixed
+    # model.model = torch.compile(model.model, backend="hpu_backend")
+
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
 
     torch.manual_seed(42)
     outputs = model.generate(**inputs, generation_config=generation_config, lazy_mode=False)
     decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    baseline.assertEqual(output=decoded_output)
+    assert decoded_output == "Hello my name is Kelsey and I am a 16 year old girl who loves to draw and paint. I have"

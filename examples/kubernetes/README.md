@@ -48,7 +48,7 @@ export OS=ubuntu22.04
 export TORCH_VER=2.6.0
 
 # Specify the version of optimum-habana to install in the container
-export OPTIMUM_HABANA_VER=1.17.0
+export OPTIMUM_HABANA_VER=1.16.0
 
 git clone https://github.com/huggingface/optimum-habana.git
 

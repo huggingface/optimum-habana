@@ -3,10 +3,6 @@
     "gaudi2": {
       "eval_accuracy": 0.7538,
       "train_samples_per_second": 12.373
-    },
-    "gaudi3": {
-      "eval_accuracy": 0.7538,
-      "train_samples_per_second": 12.373
     }
   }
 }

@@ -22,20 +22,11 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
-from accelerate import DistributedType, PartialState
-from accelerate.state import AcceleratorState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_pt_utils import AcceleratorConfig
-from transformers.trainer_utils import (
-    EvaluationStrategy,
-    FSDPOption,
-    HubStrategy,
-    IntervalStrategy,
-    SaveStrategy,
-    SchedulerType,
-)
+from transformers.trainer_utils import EvaluationStrategy, FSDPOption, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
     _VALID_DICT_FIELDS,
     OptimizerNames,
@@ -54,7 +45,8 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..distributed import parallel_state
+from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
+from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -137,9 +129,13 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profiling.
+            Number of training steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
-            Number of steps to be captured when enabling profiling.
+            Number of training steps to be captured when enabling profiling.
+        profiling_warmup_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to ignore for profiling.
+        profiling_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -209,7 +205,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     use_regional_compilation: Optional[bool] = field(
         default=False,
-        metadata={"help": ("Whether to use regional compile for traing.")},
+        metadata={"help": ("Whether to use regional compilation for traing.")},
     )
 
     inline_inbuilt_nn_modules: Optional[bool] = field(
@@ -294,12 +290,22 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profiling.")},
+        metadata={"help": ("Number of training steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+        metadata={"help": ("Number of training steps to be captured when enabling profiling.")},
+    )
+
+    profiling_warmup_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to ignore for profiling.")},
+    )
+
+    profiling_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to be captured when enabling profiling.")},
     )
 
     profiling_record_shapes: Optional[bool] = field(
@@ -357,6 +363,15 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
+        },
+    )
+
+    # Overriding ddp_backend to replace all possible backends by hccl
+    ddp_backend: Optional[str] = field(
+        default="hccl",
+        metadata={
+            "help": "The backend to be used for distributed training.",
+            "choices": ["hccl"],
         },
     )
 
@@ -426,14 +441,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
-        # Set default output_dir if not provided
-        if self.output_dir is None:
-            self.output_dir = "trainer_output"
-            logger.info(
-                "No output directory specified, defaulting to 'trainer_output'. "
-                "To change this behavior, specify --output_dir when creating TrainingArguments."
-            )
-
         # Parse in args that could be `dict` sent in from the CLI as a string
         for field in _VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
@@ -476,7 +483,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         self.eval_strategy = IntervalStrategy(self.eval_strategy)
         self.logging_strategy = IntervalStrategy(self.logging_strategy)
-        self.save_strategy = SaveStrategy(self.save_strategy)
+        self.save_strategy = IntervalStrategy(self.save_strategy)
         self.hub_strategy = HubStrategy(self.hub_strategy)
 
         self.lr_scheduler_type = SchedulerType(self.lr_scheduler_type)
@@ -512,13 +519,13 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.eval_steps != int(self.eval_steps):
                 raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
             self.eval_steps = int(self.eval_steps)
-        if self.save_strategy == SaveStrategy.STEPS and self.save_steps > 1:
+        if self.save_strategy == IntervalStrategy.STEPS and self.save_steps > 1:
             if self.save_steps != int(self.save_steps):
                 raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
             self.save_steps = int(self.save_steps)
 
         # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
-        if self.load_best_model_at_end and self.save_strategy != SaveStrategy.BEST:
+        if self.load_best_model_at_end:
             if self.eval_strategy != self.save_strategy:
                 raise ValueError(
                     "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
@@ -619,19 +626,6 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.dataloader_drop_last:
                 self.accelerator_config.even_batches = False
-
-        # Disable average tokens when using single device
-        if self.average_tokens_across_devices:
-            try:
-                if self.world_size == 1:
-                    logger.warning(
-                        "average_tokens_across_devices is set to True but it is invalid when world size is"
-                        "1. Turn it to False automatically."
-                    )
-                    self.average_tokens_across_devices = False
-            except ImportError as e:
-                logger.warning(f"Can not specify world size due to {e}. Turn average_tokens_across_devices to False.")
-                self.average_tokens_across_devices = False
 
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
@@ -763,7 +757,7 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
         # accelerate integration for FSDP
-        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
+        if len(self.fsdp) > 0:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,
@@ -905,19 +899,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 "This is not supported and we recommend you to update your version."
             )
 
-        if self.data_seed is not None:
-            if not is_accelerate_available("1.1.0"):
-                raise NotImplementedError(
-                    "data_seed requires Accelerate version `accelerate` >= 1.1.0. "
-                    "This is not supported and we recommend you to update your version."
-                )
-
-        if self.include_inputs_for_metrics:
-            logger.warning(
-                "Using `include_inputs_for_metrics` is deprecated and will be removed in version 5 of 🤗 Transformers. Please use `include_for_metrics` list argument instead."
-            )
-            self.include_for_metrics.append("inputs")
-
     def __str__(self):
         self_as_dict = asdict(self)
 
@@ -956,17 +937,17 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.inline_inbuilt_nn_modules is not None:
             torch._dynamo.config.inline_inbuilt_nn_modules = self.inline_inbuilt_nn_modules
 
-        if self.torch_compile and self.cache_size_limit is not None:
-            torch._dynamo.config.cache_size_limit = self.cache_size_limit
-
         if self.allow_unspec_int_on_nn_module is not None:
             torch._dynamo.config.allow_unspec_int_on_nn_module = self.allow_unspec_int_on_nn_module
+
+        if self.torch_compile and self.cache_size_limit is not None:
+            torch._dynamo.config.cache_size_limit = self.cache_size_limit
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
                 f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
-                f"Please run `pip install transformers[torch]` or `pip install accelerate -U`"
+                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         # We delay the init of `PartialState` to the end for clarity
         accelerator_state_kwargs = {"enabled": True, "use_configured_state": False}
@@ -975,21 +956,22 @@ class GaudiTrainingArguments(TrainingArguments):
                 "use_configured_state", False
             )
         if accelerator_state_kwargs["use_configured_state"]:
-            if PartialState._shared_state == {}:
+            if GaudiPartialState._shared_state == {}:
                 raise ValueError(
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
-            self.distributed_state = PartialState(cpu=self.use_cpu)
-            if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
+            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
+            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
                     "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            AcceleratorState._reset_state(reset_partial_state=True)
+            GaudiAcceleratorState._reset_state()
+            GaudiPartialState._reset_state()
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
@@ -1000,12 +982,10 @@ class GaudiTrainingArguments(TrainingArguments):
         if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
             os.environ["ACCELERATE_USE_IPEX"] = "false"
 
-        if self.minimize_memory:
-            os.environ["PT_HPU_FP8_MINIMIZE_MEMORY"] = "true"
-
         self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             accelerator_state_kwargs["cpu"] = True
+            accelerator_state_kwargs["backend"] = self.ddp_backend
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -1023,32 +1003,30 @@ class GaudiTrainingArguments(TrainingArguments):
                         "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0"
                     )
 
-            accelerator_state_kwargs["cpu"] = False
-            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            if self.deepspeed:
+                accelerator_state_kwargs["use_deepspeed"] = True
+                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            else:
+                accelerator_state_kwargs["backend"] = self.ddp_backend
+                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
+            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
         else:
             raise ValueError(
-                "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."
+                "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
             )
 
-        # Initialize the accelerator state
+        # Now we pop everything
         if accelerator_state_kwargs.pop("enabled", False) and not accelerator_state_kwargs.pop(
             "use_configured_state", False
         ):
-            self.distributed_state = PartialState(**accelerator_state_kwargs)
-
-        # Sequence parallelism
-        if self.parallel_mode == ParallelMode.DISTRIBUTED:
-            if parallel_state.is_unitialized():
-                parallel_state.initialize_model_parallel(
-                    sequence_parallel_size=self.context_parallel_size, use_fp8=False
-                )
-            else:
-                if parallel_state.get_sequence_parallel_world_size() != self.context_parallel_size:
-                    raise ValueError(
-                        "The initialized sequence parallel world size does not match the context parallel size."
-                    )
-                if parallel_state.amax_reduction_is_initialized():
-                    logger.info("FP8 amax reduction group is already initialized.")
+            # We need to patch this env var when enabling to detect deepspeed
+            use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
+            if use_deepspeed:
+                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
+            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
+            if use_deepspeed:
+                del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index
@@ -1062,7 +1040,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
             )
 
-        if self.distributed_state.distributed_type == DistributedType.NO:
+        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
             self._n_gpu = 0
 
         return device

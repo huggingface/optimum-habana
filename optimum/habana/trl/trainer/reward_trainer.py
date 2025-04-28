@@ -28,7 +28,7 @@ class GaudiRewardTrainer(GaudiTrainer):
     Copied from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/reward_modeling.py#L266
     """
 
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+    def compute_loss(self, model, inputs, return_outputs=False):
         rewards_j = model(input_ids=inputs["input_ids_j"], attention_mask=inputs["attention_mask_j"])[0]
         rewards_k = model(input_ids=inputs["input_ids_k"], attention_mask=inputs["attention_mask_k"])[0]
         loss = -nn.functional.logsigmoid(rewards_j - rewards_k).mean()

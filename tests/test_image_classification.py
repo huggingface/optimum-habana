@@ -15,7 +15,6 @@ from unittest import TestCase
 
 import habana_frameworks.torch as ht
 import numpy as np
-import pytest
 import requests
 import timm
 import torch
@@ -24,23 +23,17 @@ from PIL import Image
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
 
-from .utils import OH_DEVICE_CONTEXT
-
 
 adapt_transformers_to_gaudi()
+
+# For Gaudi 2
+LATENCY_FastViT_BF16_GRAPH_BASELINE = 2.5270626640319824
 
 
 class GaudiFastViTTester(TestCase):
     """
     Tests for FastViT model
     """
-
-    @pytest.fixture(autouse=True)
-    def _use_(self, baseline):
-        """
-        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
-        """
-        self.baseline = baseline
 
     def prepare_model_and_processor(self):
         model = timm.create_model("timm/fastvit_t8.apple_in1k", pretrained=True)
@@ -122,8 +115,5 @@ class GaudiFastViTTester(TestCase):
                     torch.hpu.synchronize()
                 total_model_time += timer.last_duration
 
-        self.baseline.assertRef(
-            compare=lambda latency, expect: latency <= (1.05 * expect),
-            context=[OH_DEVICE_CONTEXT],
-            latency=total_model_time * 1000 / iterations,  # in terms of ms
-        )
+        latency = total_model_time * 1000 / iterations  # in terms of ms
+        self.assertLessEqual(latency, 1.05 * LATENCY_FastViT_BF16_GRAPH_BASELINE)

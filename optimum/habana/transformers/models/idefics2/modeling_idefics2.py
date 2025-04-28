@@ -195,7 +195,6 @@ class GaudiIdefics2Model(Idefics2Model):
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
-            use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
@@ -237,7 +236,7 @@ class GaudiIdefics2Model(Idefics2Model):
         special_image_token_mask = torch.where(input_ids == self.image_token_id)
         new_inputs_embeds = inputs_embeds.clone()
         reshaped_image_hidden_states = image_hidden_states.view(-1, vision_hidden_size)
-        new_inputs_embeds[special_image_token_mask] = reshaped_image_hidden_states.to(new_inputs_embeds.device)
+        new_inputs_embeds[special_image_token_mask] = reshaped_image_hidden_states
         return new_inputs_embeds
 
 
@@ -257,7 +256,6 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, Idefics2CausalLMOutputWithPast]:
         """
@@ -335,16 +333,15 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
                     outputs[1] = outputs[1].to_legacy_cache() if isinstance(outputs[1], Cache) else outputs[1]
 
             hidden_states = outputs[0]
-            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-            logits = self.lm_head(hidden_states[:, slice_indices, :])
+            logits = self.lm_head(hidden_states)
+            logits = logits.float()
 
             loss = None
             if labels is not None:
                 labels = labels.to(logits.device)
                 # Shift so that tokens < n predict n
                 if attention_mask is not None:
-                    shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
+                    shift_attention_mask = attention_mask[..., 1:].to(logits.device)
                     shift_logits = logits[..., :-1, :][shift_attention_mask != 0].contiguous()
                     shift_labels = labels[..., 1:][shift_attention_mask != 0].contiguous()
                 else:

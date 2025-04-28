@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import torch
+from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -166,7 +167,7 @@ def gaudi_gpt_neo_model_forward(
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
@@ -304,9 +305,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-        **kwargs,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -342,13 +341,12 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
             # https://github.com/EleutherAI/gpt-neo/blob/89ce74164da2fb16179106f54e2269b5da8db333/models/gpt2/gpt2.py#L179
             lm_logits = lm_logits.to(torch.float32)
 
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss = self.loss_function(
-                lm_logits,
-                labels,
-                vocab_size=self.config.vocab_size,
-                **kwargs,
-            )
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
             lm_logits = lm_logits.to(hidden_states.dtype)
             loss = loss.to(hidden_states.dtype)

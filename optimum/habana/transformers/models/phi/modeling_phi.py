@@ -19,22 +19,23 @@
 # limitations under the License.
 """PyTorch Phi model."""
 
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
+from torch import nn
+from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.phi.configuration_phi import PhiConfig
 from transformers.models.phi.modeling_phi import (
-    KwargsForCausalLM,
     PhiAttention,
     PhiForCausalLM,
     PhiMLP,
     PhiModel,
     apply_rotary_pos_emb,
 )
-from transformers.processing_utils import Unpack
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -80,34 +81,6 @@ def gaudi_phi_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-def gaudi_eager_attention_forward(
-    module: torch.nn.Module,
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    attention_mask: Optional[torch.Tensor],
-    scaling: float,
-    dropout: float = 0.0,
-    **kwargs,
-):
-    bsz, q_len = kwargs["input_shape"]
-    query_states, key_states, value_states, attention_mask = gaudi_phi_repeat_kv(
-        query, key, value, attention_mask, module.num_key_value_groups
-    )
-
-    attn_weights = module.matmul_qk(query_states, key_states.transpose(2, 3)) * scaling
-    if attention_mask is not None:
-        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-        attn_weights = attn_weights + causal_mask
-
-    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
-    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
-    attn_output = module.matmul_av(attn_weights, value_states)
-    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
-
-    return attn_output, attn_weights
-
-
 class GaudiPhiAttention(PhiAttention):
     def __init__(self, config: PhiConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -117,7 +90,6 @@ class GaudiPhiAttention(PhiAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
-        self.num_key_value_heads = config.num_key_value_heads
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -129,9 +101,10 @@ class GaudiPhiAttention(PhiAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
-        attention_mask: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -147,17 +120,19 @@ class GaudiPhiAttention(PhiAttention):
         - add new args reuse_cache
         - add new args cache_idx
         """
-        input_shape = hidden_states.shape[:-1]
-        q_len = input_shape[1]
-        hidden_shape = (*input_shape, -1, self.head_dim)
+        bsz, q_len, _ = hidden_states.size()
 
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
 
         if self.qk_layernorm:
             query_states = self.q_layernorm(query_states)
             key_states = self.k_layernorm(key_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -189,9 +164,7 @@ class GaudiPhiAttention(PhiAttention):
             key_states[..., self.rotary_ndims :],
         )
         # [batch_size, seq_length, num_heads, head_dim // config.partial_rotary_factor]
-        query_rot, key_rot = apply_rotary_pos_emb(
-            query_rot, key_rot, cos[kwargs["position_ids"]], sin[kwargs["position_ids"]]
-        )
+        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos[position_ids], sin[position_ids])
 
         # [batch_size, seq_length, num_heads, head_dim]
         query_states = torch.cat((query_rot, query_pass), dim=-1)
@@ -224,20 +197,53 @@ class GaudiPhiAttention(PhiAttention):
         else:
             past_key_value = None
 
-        attn_output, attn_weights = gaudi_eager_attention_forward(
-            self,
-            query_states,
-            key_states,
-            value_states,
-            attention_mask,
-            dropout=0.0 if not self.training else self.attention_dropout,
-            scaling=self.scaling,
-            input_shape=input_shape,
+        query_states, key_states, value_states, attention_mask = gaudi_phi_repeat_kv(
+            query_states, key_states, value_states, attention_mask, self.num_key_value_groups
         )
 
+        # Queries and keys upcast to fp32 is required by Phi-2 to avoid overflow
+        attn_weights = self.matmul_qk(
+            query_states.to(torch.float32), key_states.to(torch.float32).transpose(2, 3)
+        ) / math.sqrt(self.head_dim)
+
+        if attn_weights.size() not in [
+            (bsz, self.num_heads, q_len, kv_seq_len),
+            (bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
+        ]:
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
+                f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+
+        if attention_mask is not None:
+            if attention_mask.size() not in [(bsz, 1, q_len, kv_seq_len), (bsz, 1, 1, q_len, kv_seq_len)]:
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)} or {(bsz, 1, 1, q_len, kv_seq_len)},"
+                    f" but is {attention_mask.size()}"
+                )
+            attn_weights = attn_weights + attention_mask
+
+        # upcast attention to fp32
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(value_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+
+        attn_output = self.matmul_av(attn_weights, value_states)
+        attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
+
+        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
+
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
         attn_output = self.dense(attn_output)
+
+        if not output_attentions:
+            attn_weights = None
 
         return attn_output, attn_weights, past_key_value
 
@@ -258,11 +264,10 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
@@ -289,7 +294,6 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
-            position_embeddings=position_embeddings,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
@@ -347,7 +351,7 @@ class GaudiPhiModel(PhiModel):
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape[:2]
         elif inputs_embeds is not None:
@@ -357,7 +361,7 @@ class GaudiPhiModel(PhiModel):
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
             )
             use_cache = False
 
@@ -397,7 +401,7 @@ class GaudiPhiModel(PhiModel):
             attention_mask, (batch_size, seq_length), inputs_embeds, past_seen_tokens
         )
 
-        inputs_embeds = self.embed_dropout(inputs_embeds)  # diff with Llama
+        inputs_embeds = self.embed_dropout(inputs_embeds)
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -405,7 +409,7 @@ class GaudiPhiModel(PhiModel):
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if not use_new_cache else None
 
-        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
+        for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -415,9 +419,9 @@ class GaudiPhiModel(PhiModel):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions,
                     use_cache,
+                    None if past_key_values is None else past_key_values[layer_idx],
                     cache_position,
                     None,
                 )
@@ -443,7 +447,7 @@ class GaudiPhiModel(PhiModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-        hidden_states = self.final_layernorm(hidden_states)  # diff with Llama
+        hidden_states = self.final_layernorm(hidden_states)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -482,12 +486,11 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
-        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from PhiForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/phi/modeling_phi.py
@@ -496,6 +499,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         - add new args reuse_cache
         - add new args cache_idx
         """
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -526,13 +530,28 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                 hidden_states = hidden_states.index_select(1, token_idx - 1)
             else:
                 hidden_states = hidden_states[:, -1, :]
+        if labels is None and not is_torchdynamo_compiling():
+            logger.warning_once(
+                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+            )
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        # TODO: remove the float() operation in v4.46
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

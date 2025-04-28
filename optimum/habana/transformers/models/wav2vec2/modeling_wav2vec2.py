@@ -21,7 +21,6 @@ from typing import Optional, Tuple, Union
 import torch
 from habana_frameworks.torch.hpu import get_device_name
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.modeling_outputs import (
     BaseModelOutput,
     CausalLMOutput,
@@ -232,7 +231,7 @@ def gaudi_wav2vec2_encoder_forward(
     hidden_states = self.layer_norm(hidden_states)
     hidden_states = self.dropout(hidden_states)
 
-    synced_gpus = is_deepspeed_zero3_enabled() or is_fsdp_managed_module(self)
+    deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
 
     for layer in self.layers:
         if output_hidden_states:
@@ -242,8 +241,8 @@ def gaudi_wav2vec2_encoder_forward(
         dropout_probability = torch.rand([])
 
         skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
-        if not skip_the_layer or synced_gpus:
-            # under fsdp or deepspeed zero3 all gpus must run in sync
+        if not skip_the_layer or deepspeed_zero3_is_enabled:
+            # under deepspeed zero3 all gpus must run in sync
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
                     layer.__call__,

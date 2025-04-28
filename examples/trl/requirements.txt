@@ -1,6 +1,7 @@
 trl == 0.9.6
 peft == 0.12.0
 datasets == 2.19.2
-tyro
-evaluate
+wandb == 0.17.1
+tyro == 0.8.4
+evaluate == 0.4.3
 scikit-learn == 1.5.2
