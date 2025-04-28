@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import sys
 from itertools import cycle
 from pathlib import Path
 
@@ -38,6 +39,12 @@ from utils import (
 )
 
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from examples.common_parser import add_profiling_args  # noqa: E402
 
 
 logging.basicConfig(
@@ -132,23 +139,7 @@ def setup_parser(parser):
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
-    parser.add_argument(
-        "--profiling_warmup_steps",
-        default=0,
-        type=int,
-        help="Number of steps to ignore for profiling.",
-    )
-    parser.add_argument(
-        "--profiling_steps",
-        default=0,
-        type=int,
-        help="Number of steps to capture for profiling.",
-    )
-    parser.add_argument(
-        "--profiling_record_shapes",
-        action="store_true",
-        help="Record shapes when enabling profiling.",
-    )
+    add_profiling_args(parser)
     parser.add_argument(
         "--prompt",
         default=None,
