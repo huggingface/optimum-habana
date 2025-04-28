@@ -5,9 +5,6 @@
     },
     "gaudi2": {
       "measured_throughput": 3614.2610109716247
-    },
-    "gaudi3": {
-      "measured_throughput": 5674.813347163265
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/all-MiniLM-L6-v2]": {
@@ -16,9 +13,6 @@
     },
     "gaudi2": {
       "measured_throughput": 2615.6975354038477
-    },
-    "gaudi3": {
-      "measured_throughput": 6489.3086857211365
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/all-distilroberta-v1]": {
@@ -27,9 +21,6 @@
     },
     "gaudi2": {
       "measured_throughput": 958.5097903298335
-    },
-    "gaudi3": {
-      "measured_throughput": 6105.954239105652
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/all-mpnet-base-v2]": {
@@ -38,9 +29,6 @@
     },
     "gaudi2": {
       "measured_throughput": 762.5595168883357
-    },
-    "gaudi3": {
-      "measured_throughput": 4922.539053408532
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/distiluse-base-multilingual-cased-v1]": {
@@ -49,9 +37,6 @@
     },
     "gaudi2": {
       "measured_throughput": 3487.3319366004903
-    },
-    "gaudi3": {
-      "measured_throughput": 5908.987916285729
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/distiluse-base-multilingual-cased-v2]": {
@@ -60,9 +45,6 @@
     },
     "gaudi2": {
       "measured_throughput": 3807.2486282025716
-    },
-    "gaudi3": {
-      "measured_throughput": 5905.9363310232243
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/multi-qa-MiniLM-L6-cos-v1]": {
@@ -71,9 +53,6 @@
     },
     "gaudi2": {
       "measured_throughput": 1208.3672807492396
-    },
-    "gaudi3": {
-      "measured_throughput": 6369.4219807072195
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/multi-qa-distilbert-cos-v1]": {
@@ -82,9 +61,6 @@
     },
     "gaudi2": {
       "measured_throughput": 944.6166139694299
-    },
-    "gaudi3": {
-      "measured_throughput": 6044.311125223232
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/multi-qa-mpnet-base-dot-v1]": {
@@ -93,9 +69,6 @@
     },
     "gaudi2": {
       "measured_throughput": 545.3360251829846
-    },
-    "gaudi3": {
-      "measured_throughput": 4962.288434499423
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-MiniLM-L3-v2]": {
@@ -104,9 +77,6 @@
     },
     "gaudi2": {
       "measured_throughput": 5734.318427972881
-    },
-    "gaudi3": {
-      "measured_throughput": 7073.782785445982
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-albert-small-v2]": {
@@ -115,9 +85,6 @@
     },
     "gaudi2": {
       "measured_throughput": 3896.1911011860166
-    },
-    "gaudi3": {
-      "measured_throughput": 6136.85257090509
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2]": {
@@ -126,9 +93,6 @@
     },
     "gaudi2": {
       "measured_throughput": 3558.0778715789693
-    },
-    "gaudi3": {
-      "measured_throughput": 5650.834160594289
     }
   },
   "tests/test_sentence_transformers.py::test_compute_embeddings_throughput[sentence-transformers/paraphrase-multilingual-mpnet-base-v2]": {
@@ -137,9 +101,6 @@
     },
     "gaudi2": {
       "measured_throughput": 2392.1654748794062
-    },
-    "gaudi3": {
-      "measured_throughput": 4906.993110085868
     }
   }
 }

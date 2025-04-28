@@ -40,7 +40,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from datasets import load_dataset
@@ -62,6 +61,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
@@ -547,13 +547,25 @@ def parse_args(input_args=None):
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of steps to ignore for profiling.",
+        help="Number of training steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
         default=0,
         type=int,
-        help="Number of steps to capture for profiling.",
+        help="Number of training steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps_eval",
+        default=0,
+        type=int,
+        help="Number of inference steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps_eval",
+        default=0,
+        type=int,
+        help="Number of inference steps to capture for profiling.",
     )
     parser.add_argument(
         "--logging_step",
@@ -895,7 +907,7 @@ def main(args):
                         for idx, dt in enumerate(dataset["train"]):
                             dt["image"].save(f"{args.mediapipe}/{idx}.jpg")
                             f.write(dt["text"] + "\n")
-            if accelerator.distributed_type != DistributedType.NO:
+            if accelerator.distributed_type != GaudiDistributedType.NO:
                 torch.distributed.barrier()
 
             from media_pipe_imgdir import get_dataset_for_pipeline
@@ -1144,7 +1156,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == DistributedType.MULTI_HPU:
+            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
@@ -1153,9 +1165,7 @@ def main(args):
 
     unwrap_model(model=unet, training=True)
     hb_profiler = HabanaProfile(
-        warmup=args.profiling_warmup_steps,
-        active=args.profiling_steps,
-        record_shapes=False,
+        warmup=args.profiling_warmup_steps, active=args.profiling_steps, record_shapes=False, name="train"
     )
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1521,6 +1531,8 @@ def main(args):
                         args.validation_prompt,
                         num_inference_steps=25,
                         generator=generator,
+                        profiling_warmup_steps=args.profiling_warmup_steps_eval,
+                        profiling_steps=args.profiling_steps_eval,
                     ).images[0]
                     for _ in range(args.num_validation_images)
                 ]

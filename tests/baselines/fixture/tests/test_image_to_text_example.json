@@ -2,33 +2,21 @@
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[HuggingFaceM4/idefics2-8b-1]": {
     "gaudi2": {
       "throughput": 21.89944593215077
-    },
-    "gaudi3": {
-      "throughput": 55.82131026867695
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[Qwen/Qwen2-VL-2B-Instruct-1]": {
     "gaudi2": {
       "throughput": 28.755882208438422
-    },
-    "gaudi3": {
-      "throughput": 85.45308676024212
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[Qwen/Qwen2-VL-7B-Instruct-1]": {
     "gaudi2": {
       "throughput": 19.32562189532818
-    },
-    "gaudi3": {
-      "throughput": 61.22236102130072
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[google/paligemma-3b-mix-224-1]": {
     "gaudi2": {
       "throughput": 132.8949150246155
-    },
-    "gaudi3": {
-      "throughput": 215.66261236773295
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[llava-hf/llava-1.5-13b-hf-1]": {
@@ -36,9 +24,6 @@
       "throughput": 16.704731010481538
     },
     "gaudi2": {
-      "throughput": 48.54364937033955
-    },
-    "gaudi3": {
       "throughput": 48.54364937033955
     }
   },
@@ -48,9 +33,6 @@
     },
     "gaudi2": {
       "throughput": 77.98733740859008
-    },
-    "gaudi3": {
-      "throughput": 77.98733740859008
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[llava-hf/llava-v1.6-mistral-7b-hf-1]": {
@@ -59,9 +41,6 @@
     },
     "gaudi2": {
       "throughput": 33.17984878151546
-    },
-    "gaudi3": {
-      "throughput": 72.22445594285129
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[llava-hf/llava-v1.6-vicuna-13b-hf-1]": {
@@ -70,81 +49,46 @@
     },
     "gaudi2": {
       "throughput": 23.527610042925
-    },
-    "gaudi3": {
-      "throughput": 45.50628237484548
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[llava-hf/llava-v1.6-vicuna-7b-hf-1]": {
     "gaudi2": {
       "throughput": 35.00608681379742
-    },
-    "gaudi3": {
-      "throughput": 73.24265508277661
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[meta-llama/Llama-3.2-11B-Vision-Instruct-1]": {
     "gaudi2": {
       "throughput": 18.974541922240313
-    },
-    "gaudi3": {
-      "throughput": 60.21756704358577
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[tiiuae/falcon-11B-vlm-1]": {
     "gaudi2": {
       "throughput": 23.69260849957278
-    },
-    "gaudi3": {
-      "throughput": 42.77946694511338
-    }
-  },
-  "tests/test_image_to_text_example.py::test_image_to_text_bf16[THUDM/glm-4v-9b-1]": {
-    "gaudi2": {
-      "throughput": 23.1596636261274
-    },
-    "gaudi3": {
-      "throughput": 33.42424880726489
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-1.5-13b-hf-1]": {
     "gaudi2": {
-      "throughput": 67.20488222876344
-    },
-    "gaudi3": {
       "throughput": 67.20488222876344
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-1.5-7b-hf-1]": {
     "gaudi2": {
       "throughput": 98.72578382705062
-    },
-    "gaudi3": {
-      "throughput": 98.72578382705062
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-v1.6-mistral-7b-hf-1]": {
     "gaudi2": {
       "throughput": 45.011551008367086
-    },
-    "gaudi3": {
-      "throughput": 85.4014722462956
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-v1.6-vicuna-13b-hf-1]": {
     "gaudi2": {
       "throughput": 30.9535718774675
-    },
-    "gaudi3": {
-      "throughput": 56.447951664149116
     }
   },
   "tests/test_image_to_text_example.py::test_image_to_text_fp8[llava-hf/llava-v1.6-vicuna-7b-hf-1]": {
     "gaudi2": {
       "throughput": 45.18544502949674
-    },
-    "gaudi3": {
-      "throughput": 83.9326869276268
     }
   }
 }

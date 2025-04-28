@@ -27,15 +27,12 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
-> [!NOTE]
-> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for release 1.20 only.
-
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
 
 ```bash
-python run_audio_classification.py \
+PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name superb \
     --dataset_config_name ks \
@@ -118,9 +115,9 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset on 1 Gaudi card with the following command:
 ```bash
-python run_audio_classification.py \
+PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb \
+    --dataset_name superb  \
     --dataset_config_name ks \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \

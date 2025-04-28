@@ -230,6 +230,18 @@ def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> P
     return config
 
 
+def gaudi_check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
+    """
+    From https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/modeling_utils.py#L341
+    Disable delayed weight init on HPU due to memory/type mistmatching issue on many models
+    """
+    from .mllama import GaudiMllamaForConditionalGeneration
+
+    if isinstance(model_to_load, GaudiMllamaForConditionalGeneration):
+        return True
+    return False
+
+
 # Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
 class ScopedLinearAllReduce(torch.nn.Module):
     def __init__(self, mod, *args, **kwargs):

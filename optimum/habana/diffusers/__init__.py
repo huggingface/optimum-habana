@@ -1,5 +1,4 @@
 from .pipelines.auto_pipeline import AutoPipelineForInpainting, AutoPipelineForText2Image
-from .pipelines.cogvideox.pipeline_cogvideox import GaudiCogVideoXPipeline
 from .pipelines.controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
 from .pipelines.controlnet.pipeline_stable_video_diffusion_controlnet import (
     GaudiStableVideoDiffusionControlNetPipeline,

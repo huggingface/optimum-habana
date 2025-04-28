@@ -14,17 +14,24 @@
 # limitations under the License.
 
 import os
+import subprocess
 
 import pytest
 import torch
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
-from .utils import OH_DEVICE_CONTEXT
 
+assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
+try:
+    import sys
+
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+except subprocess.CalledProcessError:
+    pytest.fail("Failed to install peft==0.12.0")
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 
@@ -78,8 +85,7 @@ def get_model(token: str):
     return model
 
 
-@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_finetuning(token: str, baseline):
+def test_nf4_quantization_finetuning(token: str):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -134,6 +140,9 @@ def test_nf4_quantization_finetuning(token: str, baseline):
         pipelining_fwd_bwd=True,
         adjust_throughput=True,
         throughput_warmup_steps=2,
+        # TODO: Uncomment after SW-224176 (and related torch.compile issues) is fixed
+        # torch_compile=True,
+        # torch_compile_backend="hpu_backend",
     )
 
     trainer = GaudiTrainer(
@@ -147,9 +156,8 @@ def test_nf4_quantization_finetuning(token: str, baseline):
     model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
 
     trainer.train()
+    eval_loss = trainer.evaluate()["eval_loss"]
 
-    baseline.assertRef(
-        compare=lambda actual, ref: abs(actual - ref) < 5e2,
-        context=[OH_DEVICE_CONTEXT],
-        eval_loss=trainer.evaluate()["eval_loss"],
-    )
+    expected_eval_loss = 1.225
+
+    assert abs(eval_loss - expected_eval_loss) < 5e-2

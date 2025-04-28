@@ -8,11 +8,10 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import TIME_PERF_FACTOR
-from .utils import OH_DEVICE_CONTEXT
 
 
-if OH_DEVICE_CONTEXT not in ["gaudi1"]:
-    # Gaudi2+
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
@@ -26,18 +25,17 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("tiiuae/falcon-11B-vlm", 1),
             ("Qwen/Qwen2-VL-2B-Instruct", 1),
             ("Qwen/Qwen2-VL-7B-Instruct", 1),
-            ("THUDM/glm-4v-9b", 1),
         ],
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
             # ("llava-hf/llava-1.5-13b-hf", 1),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
-            pytest.param("llava-hf/llava-v1.6-vicuna-13b-hf", 1, marks=pytest.mark.x8),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
         ],
     }
 else:
-    # Gaudi1
+    # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
             ("llava-hf/llava-1.5-7b-hf", 1),
@@ -67,9 +65,6 @@ def _test_image_to_text(
         "--max_new_tokens 20",
         "--ignore_eos",
     ]
-
-    if model_name == "THUDM/glm-4v-9b":
-        env_variables["GLM"] = "4v"
 
     command += [
         "--use_hpu_graphs",
@@ -124,10 +119,12 @@ def _test_image_to_text(
         with open(Path(tmp_dir) / "results.json") as fp:
             results = json.load(fp)
 
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
+
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[OH_DEVICE_CONTEXT],
+            context=[device],
             throughput=results["throughput"],
         )
 

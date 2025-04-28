@@ -23,21 +23,16 @@ import json
 import logging
 import math
 import os
+import struct
 from itertools import cycle
 from pathlib import Path
 
+import pandas as pd
 import torch
 from transformers import BatchEncoding
-from utils import (
-    SetTrueOrFalseOrNone,
-    adjust_batch,
-    count_hpu_graphs,
-    finalize_quantization,
-    initialize_model,
-    save_model,
-)
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
 
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
 
 
 logging.basicConfig(
@@ -49,6 +44,21 @@ logger = logging.getLogger(__name__)
 
 
 def setup_parser(parser):
+    class StoreTrueFalseAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            if isinstance(values, bool) or values is None:
+                # Flag passed without any value -> set to True
+                setattr(namespace, self.dest, True)
+            else:
+                # Flag passed with value -> pattern match and set accordingly
+                value_str = values.lower()
+                if value_str in ("true", "1", "yes"):
+                    setattr(namespace, self.dest, True)
+                elif value_str in ("false", "0", "no"):
+                    setattr(namespace, self.dest, False)
+                else:
+                    raise ValueError(f"Invalid value for {option_string}: {values}")
+
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
     parser.add_argument(
@@ -91,6 +101,12 @@ def setup_parser(parser):
         default=None,
         type=str,
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+    )
+    parser.add_argument(
+        "--dataset",
+        default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
+        type=str,
+        help="path of the dataset to run rouge evaluation and measurement for rouge",
     )
     parser.add_argument(
         "--column_name",
@@ -148,6 +164,11 @@ def setup_parser(parser):
         "--profiling_record_shapes",
         action="store_true",
         help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
+        "--profile_whole_sequences",
+        action="store_true",
+        help="When set, profiling step means generation of one whole sequence (not one token).",
     )
     parser.add_argument(
         "--prompt",
@@ -267,24 +288,33 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--use_flash_attention",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
         nargs="?",
-        const=None,
-        action=SetTrueOrFalseOrNone,
+        const=None,  # Default value handled post-parsing
+        action=StoreTrueFalseAction,
         help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
@@ -317,11 +347,6 @@ def setup_parser(parser):
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
-        "--trust_remote_code_tokenizer",
-        action="store_true",
-        help="Whether to trust the execution of code in Tokenizer from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
-    )
-    parser.add_argument(
         "--parallel_strategy",
         type=str,
         choices=["tp", "ep", "none"],  # Add other strategies as needed
@@ -351,6 +376,24 @@ def setup_parser(parser):
         type=str,
         default="inc_quantized_model",
         help="A path to save quantized checkpoint.",
+    )
+    parser.add_argument(
+        "--pt2e_save",
+        action="store_true",
+        help="run pt2e calibration and save. If this argument is not used, but pt2e_path argument is used, load and inference with pt2e quantization will run.",
+    )
+    parser.add_argument(
+        "--pt2e_path",
+        default=None,
+        type=str,
+        help="specify the path where pt2e quantization related information will be saved, or loaded from",
+    )
+    parser.add_argument(
+        "--pt2e_quant_dtype",
+        type=str,
+        choices=["int8", "fp8_143", "fp8_152"],
+        default="fp8_143",
+        help="Set pt2e quantization data type. Available options: int8, fp8_143 [default], fp8_152",
     )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
@@ -387,6 +430,31 @@ def setup_parser(parser):
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
 
+    parser.add_argument(
+        "--use_mark_dynamic",
+        action="store_true",
+        help="Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.",
+    )
+
+    parser.add_argument(
+        "--regional_compile",
+        action="store_true",
+        help="Whether to enable regional compilation.",
+    )
+
+    parser.add_argument(
+        "--force_static_compile",
+        action="store_true",
+        help="Whether to force static compile.",
+    )
+
+    parser.add_argument(
+        "--cache_size_limit",
+        default=None,
+        type=int,
+        help="Overwrite torch._dynamo.config default cache size with user provided value",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -395,13 +463,8 @@ def setup_parser(parser):
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
-    if args.use_flash_attention and args.flash_attention_fast_softmax is None:
-        logger.warning(
-            "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
-        )
+    if args.use_flash_attention and not args.flash_attention_fast_softmax:
         args.flash_attention_fast_softmax = True
-    else:
-        args.flash_attention_fast_softmax = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
@@ -413,6 +476,16 @@ def setup_parser(parser):
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
+
+    if args.use_mark_dynamic:
+        assert args.max_input_tokens == -1, (
+            "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
+        )
+
+    if args.pt2e_path:
+        assert not args.torch_compile, "Expected --torch.compile to be False when using pt2e_path!"
+        assert not args.use_hpu_graphs, "Expected --use_hpu_graphs to be False when using pt2e_path!"
+
     return args
 
 
@@ -434,7 +507,7 @@ def main():
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile:
+    if args.torch_compile or args.pt2e_path:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
@@ -442,7 +515,183 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
-    if args.dataset_name is None:
+    active_profiler = HabanaProfile(
+        warmup=args.profiling_warmup_steps,
+        active=args.profiling_steps,
+        record_shapes=args.profiling_record_shapes,
+        name="generate",
+    )
+    disabled_profiler = HabanaProfile()
+    if args.profile_whole_sequences:
+        per_sequence_profiler = active_profiler
+        per_token_profiler = disabled_profiler
+    else:
+        per_sequence_profiler = disabled_profiler
+        per_token_profiler = active_profiler
+
+    if args.dataset_name == "openorca":
+        # Benchmark over the prompts below
+        def get_ds(args):
+            ds = pd.read_pickle(args.dataset)
+            return ds
+
+        def get_input(ds, batch_size):
+            queries = []
+            tok_input = ds["tok_input"].tolist()
+            for start in range(0, len(ds), batch_size):
+                end = start + batch_size
+                batch = tok_input[start:end]
+                input_ids = []
+                attention_mask = []
+                for query in batch:
+                    input_ids.append([0] * (args.max_input_tokens - len(query)) + query)
+                    attention_mask.append([0] * (args.max_input_tokens - len(query)) + [1] * len(query))
+                queries.append(
+                    {
+                        "input_ids": torch.tensor(input_ids, dtype=torch.int32),
+                        "attention_mask": torch.tensor(attention_mask, dtype=torch.int32),
+                    }
+                )
+            return queries
+
+        ds = get_ds(args)
+        input_sentences = get_input(ds, args.batch_size)
+
+        def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
+            """Generates sequences from the input sentences and returns them."""
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
+
+            timer = HabanaGenerationTime()
+            timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
+            if size is not None:
+                input_tokens = adjust_batch(input_tokens, size)
+
+            if not reduce_recompile:
+                # Move inputs to target device(s)
+                for t in input_tokens:
+                    if torch.is_tensor(input_tokens[t]):
+                        input_tokens[t] = input_tokens[t].to(args.device)
+
+            outputs = model.generate(
+                **input_tokens,
+                generation_config=generation_config,
+                lazy_mode=use_lazy_mode,
+                hpu_graphs=args.use_hpu_graphs,
+                ignore_eos=args.ignore_eos,
+                profiler=profiler,
+            ).cpu()
+            outputs = outputs.tolist()
+            for i in range(len(outputs)):
+                outputs[i] = outputs[i][args.max_input_tokens :]
+            timer.step()
+            duration = timer.last_duration
+            print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
+            return outputs
+
+        # Compilation
+        logger.info("Graph compilation...")
+        dyn_prompt_lens = args.simulate_dyn_prompt
+        timer = HabanaGenerationTime()
+        timer.start()
+        # The first three iterations take longer because of graph compilation
+        if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
+            for _ in range(args.warmup):
+                if dyn_prompt_lens is None:
+                    print("Warming up", flush=True)
+                    generate(input_sentences[0], None, args.reduce_recompile, disable_profiling=True)
+                else:
+                    print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+                    generate(input_sentences[0], dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
+        else:
+            if args.bucket_size > 0:
+                mn = min(dyn_prompt_lens)
+                mx = max(dyn_prompt_lens)
+
+                def rounder(x):
+                    return int(math.ceil(x / args.bucket_size) * args.bucket_size)
+
+                min_prompt_len = rounder(mn)
+                max_sentence_len = rounder(mx)
+                for _ in range(args.warmup):
+                    lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
+                    for sz in lst:
+                        print("Warming up for shape,", sz - 1, flush=True)
+                        generate(input_sentences[0], sz - 1, args.reduce_recompile, disable_profiling=True)
+        torch_hpu.synchronize()
+        timer.step()
+        compilation_duration = timer.last_duration
+
+        total_new_tokens_generated = 0
+        logger.info("Running generate...")
+        timer.step()
+        # Benchmark over n_iterations iterations
+        N = len(input_sentences)
+
+        per_sequence_profiler.start()
+        if dyn_prompt_lens is None:
+            for i in range(args.n_iterations):
+                results = []
+                b = 1
+                for sentence in input_sentences:
+                    generated = generate(sentence, None, args.reduce_recompile)
+                    results.extend(generated)
+                    print(f"Generatig batch {b}/{N}")
+                    b += 1
+                per_sequence_profiler.step()
+        else:
+            repeated_prompt_len = cycle(dyn_prompt_lens)
+            for i in range(args.n_iterations):
+                prompt_len = next(repeated_prompt_len)
+                print("Generating for shape,", prompt_len)
+                results = []
+                for sentence in input_sentences:
+                    generated = generate(sentence, prompt_len, args.reduce_recompile)
+                    results.extend(generated)
+                per_sequence_profiler.step()
+        timer.step()
+        duration = timer.last_duration
+        per_sequence_profiler.stop()
+        total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+        throughput = total_new_tokens_generated / duration
+
+        # Store results if necessary
+        if args.output_dir is not None and args.global_rank == 0:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # TODO dump in hex format
+            acc_file = []
+            num_token = 0
+            for i, idx in enumerate(ds.index):
+                pred = results[i]
+                eos_token_id = 2
+                try:
+                    ind_eos = pred.index(eos_token_id) + 1
+                except:  # noqa
+                    ind_eos = len(pred)
+                pred = pred[:ind_eos]
+                num_token += len(pred)
+                acc_file.append(
+                    {"seq_id": idx, "qsl_idx": idx, "data": bytes(struct.pack("L" * len(pred), *pred)).hex().upper()}
+                )
+            with open(output_dir / "accuracy.json", "w") as outfile:
+                outfile.write(json.dumps(acc_file))
+
+        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+        separator = "-" * len(stats)
+        print()
+        print("Stats:")
+        print(separator)
+        print(stats)
+        mem = get_hpu_memory_stats()
+        for k, v in mem.items():
+            print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(separator)
+        print()
+    elif args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
@@ -505,10 +754,12 @@ def main():
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
 
-        def generate(size=None, reduce_recompile=False):
+        def generate(size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
@@ -562,36 +813,24 @@ def main():
                 input_data.update(input_tokens)
 
             iteration_times = []
-            outputs = model.generate(
+            output_tokens = model.generate(
                 **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
-                profiling_record_shapes=args.profiling_record_shapes,
+                profiler=profiler,
             ).cpu()
+            outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             timer.step()
+            duration = timer.total_time()
             first_token_time = iteration_times[0] + encode_duration
-            rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
-            e2e_latency = first_token_time + rest_token_time
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
-            logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
-            logger.info(f"End to end latency = {e2e_latency * 1000}ms")
-            return (
-                tokenizer.batch_decode(outputs, skip_special_tokens=True),
-                first_token_time,
-                rest_token_time,
-                e2e_latency,
-            )
+            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
+            return outputs
 
-        from optimum.habana.utils import HabanaProfile
-
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
@@ -602,10 +841,10 @@ def main():
             for i in range(args.warmup):
                 if dyn_prompt_lens is None:
                     print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
-                    generate(None, args.reduce_recompile)
+                    generate(None, args.reduce_recompile, disable_profiling=True)
                 else:
                     print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
-                    generate(dyn_prompt_lens[0], args.reduce_recompile)
+                    generate(dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -620,42 +859,31 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
                         print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
-                        generate(sz - 1, args.reduce_recompile)
+                        generate(sz - 1, args.reduce_recompile, disable_profiling=True)
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-        HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
-        first_token_latencies = []
-        rest_token_latencies = []
-        e2e_latencies = []
         timer.step()
         # Benchmark over n_iterations iterations
+        per_sequence_profiler.start()
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
-                generated, first_token_time, rest_token_time, e2e_latency = generate(None, args.reduce_recompile)
-                first_token_latencies.append(first_token_time)
-                rest_token_latencies.append(rest_token_time)
-                e2e_latencies.append(e2e_latency)
+                generated = generate(None, args.reduce_recompile)
+                per_sequence_profiler.step()
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
-                generated, first_token_time, rest_token_time, e2e_latency = generate(prompt_len, args.reduce_recompile)
-                first_token_latencies.append(first_token_time)
-                rest_token_latencies.append(rest_token_time)
-                e2e_latencies.append(e2e_latency)
+                generated = generate(prompt_len, args.reduce_recompile)
+                per_sequence_profiler.step()
         timer.step()
-        logger.info("Finished running generate")
         duration = timer.last_duration
+        per_sequence_profiler.stop()
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
-        # Calculate average latencies
-        avg_first_token_latency = sum(first_token_latencies) / len(first_token_latencies)
-        avg_rest_token_latency = sum(rest_token_latencies) / len(rest_token_latencies)
-        avg_e2e_latency = sum(e2e_latencies) / len(e2e_latencies)
 
         print()
         print("Input/outputs:")
@@ -678,9 +906,6 @@ def main():
 
             results = {
                 "throughput": throughput,
-                "avg_first_token_latency": avg_first_token_latency,
-                "avg_rest_token_latency": avg_rest_token_latency,
-                "avg_e2e_latency": avg_e2e_latency,
                 "input": all_inputs,
                 "output": all_outputs,
             }
@@ -689,9 +914,6 @@ def main():
 
         stats = "Input embeds" if args.input_embeds else "Input tokens"
         stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
-        stats = stats + f"\nAverage first token latency         = {avg_first_token_latency * 1000} ms"
-        stats = stats + f"\nAverage rest token latency          = {avg_rest_token_latency * 1000} ms"
-        stats = stats + f"\nAverage end to end latency          = {avg_e2e_latency * 1000} ms"
         if args.show_graphs_count:
             stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
@@ -781,7 +1003,9 @@ def main():
 
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
 
-        def generate_dataset(batch):
+        def generate_dataset(batch, disable_profiling=False):
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
+
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Move inputs to target device(s)
             for t in batch:
@@ -793,34 +1017,54 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
-                profiling_record_shapes=args.profiling_record_shapes,
+                profiler=profiler,
             ).cpu()
             return prompt, outputs
 
-        # warmup
-        from optimum.habana.utils import HabanaProfile
+        def mark_tensor_dynamic(generation_config, batch):
+            if generation_config.use_mark_dynamic:
+                for t in batch:
+                    if torch.is_tensor(batch[t]):
+                        if generation_config.mark_dyn_dim_0_min and generation_config.mark_dyn_dim_0_max:
+                            # batch dimension as dynamic
+                            torch._dynamo.mark_dynamic(
+                                batch[t],
+                                0,
+                                min=generation_config.mark_dyn_dim_0_min,
+                                max=generation_config.mark_dyn_dim_0_max,
+                            )
 
-        # compilation stage disable profiling
-        HabanaProfile.disable()
+                        if generation_config.mark_dyn_dim_1_min and generation_config.mark_dyn_dim_1_max:
+                            torch._dynamo.mark_dynamic(
+                                batch[t],
+                                1,
+                                min=generation_config.mark_dyn_dim_1_min,
+                                max=generation_config.mark_dyn_dim_1_max,
+                            )
+
         # Compilation
         logger.info("Graph compilation...")
         timer = HabanaGenerationTime()
         timer.start()
         for i, batch in enumerate(dataloader):
+            if i == 0:
+                mark_tensor_dynamic(generation_config, batch)
+            print("Warming up", flush=True)
             timer.step()
-            generate_dataset(batch)
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
+            generate_dataset(batch, disable_profiling=True)
+            if generation_config.use_mark_dynamic:
+                generation_config.use_mark_dynamic = False
             timer.step()
             duration = timer.last_duration
+            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
             # The first three iterations take longer because of graph compilation
             if (i + 1) == 3:
                 break
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-        HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
@@ -828,6 +1072,7 @@ def main():
         logger.info("Running generate dataset...")
         timer = HabanaGenerationTime()
         timer.start()
+        per_sequence_profiler.start()
         for i, batch in enumerate(dataloader):
             timer.step()
             prompt, outputs = generate_dataset(batch)
@@ -843,6 +1088,8 @@ def main():
             print(separator)
             if args.run_partial_dataset and args.n_iterations == i + 1:
                 break
+            per_sequence_profiler.step()
+        per_sequence_profiler.stop()
         timer.step()
 
         throughput = total_new_tokens_generated / duration
@@ -864,6 +1111,10 @@ def main():
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 

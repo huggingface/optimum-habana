@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from unittest import TestCase
 
 import habana_frameworks.torch as ht
@@ -24,12 +25,14 @@ from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
 
-from .utils import OH_DEVICE_CONTEXT
-
 
 adapt_transformers_to_gaudi()
 
 MODEL_NAME = "microsoft/table-transformer-detection"
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 2.2
+else:
+    LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 6.6
 
 
 @pytest.fixture(scope="module")
@@ -84,13 +87,6 @@ class GaudiTableTransformerTester(TestCase):
     """
     Tests for Table Transformer Detection on Gaudi
     """
-
-    @pytest.fixture(autouse=True)
-    def _use_(self, baseline):
-        """
-        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
-        """
-        self.baseline = baseline
 
     def test_inference_default(self):
         """
@@ -148,9 +144,4 @@ class GaudiTableTransformerTester(TestCase):
             torch.hpu.synchronize()
         time_per_iter = timer.last_duration * 1000 / test_iters  # Time in ms
         print(time_per_iter)
-
-        self.baseline.assertRef(
-            compare=lambda latency, expect: latency < (1.05 * expect),
-            context=[OH_DEVICE_CONTEXT],
-            latency=time_per_iter,
-        )
+        self.assertLess(time_per_iter, 1.05 * LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE)

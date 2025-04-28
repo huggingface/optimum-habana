@@ -17,7 +17,6 @@
 # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
-import argparse
 import copy
 import glob
 import os
@@ -131,8 +130,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.45.0")
-    check_optimum_habana_min_version("1.18.0.dev0")
+    check_min_version("4.34.0")
+    check_optimum_habana_min_version("1.16.0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -159,7 +158,12 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
+        if (
+            args.quant_config
+            or args.load_quantized_model_with_inc
+            or args.local_quantized_inc_model_path
+            or args.pt2e_path
+        ):
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -177,23 +181,49 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model, logger):
+def compile_regions(model, **kwargs):
+    """
+    A standalone function to compile regions of a model.
+
+    Args:
+        model (torch.nn.Module): The model or module to be compiled.
+        kwargs (dict): Additional kwargs for torch.compile.
+    """
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            module = torch.compile(module, **kwargs)
+            setattr(model, name, module)
+    else:
+        for _, module in model.named_children():
+            compile_regions(module, **kwargs)
+    return model
+
+
+def get_torch_compiled_model(model, logger, args):
+    if args.cache_size_limit is not None:
+        torch._dynamo.config.cache_size_limit = args.cache_size_limit
+    compile_fn = torch.compile
+    if args.regional_compile:
+        compile_fn = compile_regions
+
+    compile_kwargs = {
+        "backend": "hpu_backend",
+        "options": {"force_static_compile": args.force_static_compile, "keep_input_mutations": True},
+    }
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
     if hasattr(model, "transformer"):
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = compile_fn(model.transformer, **compile_kwargs)
     # for gpt_neox
     elif hasattr(model, "gpt_neox"):
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.gpt_neox = compile_fn(model.gpt_neox, **compile_kwargs)
     # for llama, mistral, mixtral, qwen2
     elif hasattr(model, "model"):
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = compile_fn(model.model, **compile_kwargs)
     else:
         logger.warning(
             "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
         )
-        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model = compile_fn(model, **compile_kwargs)
     return model
 
 
@@ -321,12 +351,18 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
             "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
@@ -391,7 +427,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -399,7 +435,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -420,6 +455,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -429,7 +466,7 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -443,6 +480,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+
     load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
@@ -454,7 +492,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
+                any(model_type in args.model_name_or_path.lower() for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -511,9 +549,15 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
@@ -582,7 +626,7 @@ def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
-        "trust_remote_code": args.trust_remote_code or args.trust_remote_code_tokenizer,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -683,7 +727,17 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
+    generation_config.use_mark_dynamic = args.use_mark_dynamic
     generation_config.attn_batch_split = args.attn_batch_split
+    if generation_config.use_mark_dynamic:
+        mark_dynamic_config = get_mark_dynamic_min_max(args)
+        if mark_dynamic_config.get("dim_0") is not None:
+            generation_config.mark_dyn_dim_0_min = mark_dynamic_config["dim_0"]["min"]
+            generation_config.mark_dyn_dim_0_max = mark_dynamic_config["dim_0"]["max"]
+
+        if mark_dynamic_config.get("dim_1") is not None:
+            generation_config.mark_dyn_dim_1_min = mark_dynamic_config["dim_1"]["min"]
+            generation_config.mark_dyn_dim_1_max = mark_dynamic_config["dim_1"]["max"]
 
     return generation_config
 
@@ -748,6 +802,9 @@ def initialize_model(args, logger):
         if args.parallel_strategy == "tp"
         else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
+    from optimum.habana.environment import set_model_config
+
+    set_model_config(model.config)
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
@@ -769,6 +826,27 @@ def save_model(model, tokenizer, save_path):
 
     save(model, save_path, format="huggingface")
     tokenizer.save_pretrained(save_path)
+
+
+def get_mark_dynamic_min_max(args):
+    """
+    min and max should be determined based on the dataset's min and max seq length.
+    """
+    assert args.max_input_tokens == -1, "get_mark_dynamic_min_max() should be called only for dynamic mode execution."
+
+    # default values
+    min_val = 128
+    max_val = min_val + 128
+
+    if args.dataset_name == "tatsu-lab/alpaca":
+        # have a single bucket of dynamic compilation
+        min_val = args.max_new_tokens
+        max_val = 128 + args.max_new_tokens  # derived from compilation stats
+
+    return {
+        "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
+        "dim_1": {"min": min_val, "max": max_val},
+    }
 
 
 # TODO: This will be removed in v1.20 Synapse release
@@ -799,46 +877,3 @@ def local_split_rank_state_dict(model, gathered_state_dict):
         cur_accelerator.synchronize()
 
     return rank_state_dict
-
-
-class SetTrueOrFalseOrNone(argparse.Action):
-    """
-    Custom argparse action to handle a flag that can be set to True, False, or None.
-
-    This action allows an argument to be:
-    - Set to True if the flag is present without a value.
-    - Set to a boolean value (True or False) if explicitly provided.
-    - Set to None if the flag is not present.
-
-    The argument accepts the following values (case-insensitive):
-    - True values: 'true', '1', 't', 'y', 'yes'
-    - False values: 'false', '0', 'f', 'n', 'no'
-
-    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
-    """
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        value_map = {
-            "true": True,
-            "1": True,
-            "t": True,
-            "y": True,
-            "yes": True,
-            "false": False,
-            "0": False,
-            "f": False,
-            "n": False,
-            "no": False,
-        }
-        if values is None:
-            setattr(namespace, self.dest, True)
-        elif isinstance(values, bool):
-            setattr(namespace, self.dest, values)
-        else:
-            value_lower = values.lower()
-            if value_lower in value_map:
-                setattr(namespace, self.dest, value_map[value_lower])
-            else:
-                raise argparse.ArgumentTypeError(
-                    f"Invalid value for {option_string}: {values}. Expected one of: {', '.join(value_map.keys())}."
-                )

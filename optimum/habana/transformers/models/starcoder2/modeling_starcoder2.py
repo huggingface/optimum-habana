@@ -27,7 +27,6 @@ from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.starcoder2.configuration_starcoder2 import Starcoder2Config
 from transformers.models.starcoder2.modeling_starcoder2 import (
-    KwargsForCausalLM,
     Starcoder2Attention,
     Starcoder2DecoderLayer,
     Starcoder2ForCausalLM,
@@ -35,8 +34,7 @@ from transformers.models.starcoder2.modeling_starcoder2 import (
     Starcoder2Model,
     apply_rotary_pos_emb,
 )
-from transformers.processing_utils import Unpack
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -108,39 +106,6 @@ def gaudi_starcoder2_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-def gaudi_eager_attention_forward(
-    module: torch.nn.Module,
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    attention_mask: Optional[torch.Tensor],
-    scaling: float,
-    dropout: float = 0.0,
-    attn_softmax_bf16: bool = False,
-    **kwargs,
-):
-    bsz, q_len = kwargs["input_shape"]
-    query_states, key_states, value_states, attention_mask = gaudi_starcoder2_repeat_kv(
-        query, key, value, attention_mask, module.num_key_value_groups
-    )
-
-    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)) * scaling
-    if attention_mask is not None:
-        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-        attn_weights = attn_weights + causal_mask
-
-    if attn_softmax_bf16:
-        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-    else:
-        # upcast attention to fp32
-        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
-    attn_output = module.matmul_av(attn_weights, value_states)
-    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
-
-    return attn_output, attn_weights
-
-
 class GaudiStarcoder2Attention(Starcoder2Attention):
     def __init__(self, config: Starcoder2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -150,6 +115,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
@@ -211,9 +177,10 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
-        attention_mask: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -234,13 +201,15 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         """
-        input_shape = hidden_states.shape[:-1]
-        q_len = input_shape[1]
-        hidden_shape = (*input_shape, -1, self.head_dim)
+        bsz, q_len, _ = hidden_states.size()
 
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -257,7 +226,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
+            query_states, key_states, cos, sin, position_ids, self.training
         )
 
         if use_cache:
@@ -288,7 +257,6 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA:
-            attn_weights = None
             import habana_frameworks.torch.hpu as ht
 
             if q_len == 1:
@@ -317,21 +285,41 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                             )
 
         else:
-            attn_output, attn_weights = gaudi_eager_attention_forward(
-                self,
-                query_states,
-                key_states,
-                value_states,
-                attention_mask,
-                dropout=0.0 if not self.training else self.attention_dropout,
-                scaling=self.scaling,
-                sliding_window=getattr(self.config, "sliding_window", None),  # diff with Llama
-                **kwargs,
+            query_states, key_states, value_states, attention_mask = gaudi_starcoder2_repeat_kv(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
+
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
+
+            if attention_mask is not None:  # no matter the length, we just slice it
+                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+                attn_weights = attn_weights + causal_mask
+
+            if attn_softmax_bf16:
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+            else:
+                # upcast attention to fp32
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                    query_states.dtype
+                )
+            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+            attn_output = self.matmul_av(attn_weights, value_states)
+            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
+
+        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
         attn_output = self.o_proj(attn_output)
+
+        if not output_attentions:
+            attn_weights = None
 
         return attn_output, attn_weights, past_key_value
 
@@ -375,7 +363,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -393,7 +380,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
-            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -426,7 +412,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -438,9 +423,10 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states,
-            position_embeddings,
             attention_mask,
+            position_ids,
             past_key_value,
+            output_attentions,
             use_cache,
             cache_position,
             token_idx,
@@ -450,7 +436,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             flash_attention_recompute,
             flash_attention_causal_mask,
             cache_idx=cache_idx,
-            position_ids=position_ids,
         )
         return hidden_states, attn_weights, present_key_value
 
@@ -492,6 +477,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         self.layers = torch.nn.ModuleList(
             [GaudiStarcoder2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
+        self._attn_implementation = "eager"
         self.norm = torch.nn.LayerNorm(config.hidden_size, eps=config.norm_epsilon)
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -539,7 +525,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape[:2]
         elif inputs_embeds is not None:
@@ -547,11 +533,12 @@ class GaudiStarcoder2Model(Starcoder2Model):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
+                use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -585,11 +572,8 @@ class GaudiStarcoder2Model(Starcoder2Model):
             inputs_embeds,
             past_seen_tokens,
         )
-
+        # embed positions
         hidden_states = inputs_embeds
-        hidden_states = torch.nn.functional.dropout(
-            hidden_states, p=self.embedding_dropout, training=self.training
-        )  # main diff with Llama
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -599,7 +583,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         if lazy_mode:
             htcore.mark_step()
 
-        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
+        for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -699,7 +683,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
@@ -709,7 +693,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
-        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -752,13 +735,28 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1, :]
 
+        if labels is None and not is_torchdynamo_compiling():
+            logger.warning_once(
+                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
+            )
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        # TODO: remove the float() operation in v4.46
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = torch.nn.CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

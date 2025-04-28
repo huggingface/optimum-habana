@@ -43,7 +43,6 @@ from transformers import (
     AutoImageProcessor,
     AutoModelForImageClassification,
     HfArgumentParser,
-    TimmWrapperImageProcessor,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -64,8 +63,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.49.0")
-check_optimum_habana_min_version("1.18.0.dev0")
+check_min_version("4.45.0")
+check_optimum_habana_min_version("1.16.0")
 
 require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/image-classification/requirements.txt")
 
@@ -347,36 +346,31 @@ def main():
     )
 
     # Define torchvision transforms to be applied to each image.
-    if isinstance(image_processor, TimmWrapperImageProcessor):
-        _train_transforms = image_processor.train_transforms
-        _val_transforms = image_processor.val_transforms
+    if "shortest_edge" in image_processor.size:
+        size = image_processor.size["shortest_edge"]
     else:
-        if "shortest_edge" in image_processor.size:
-            size = image_processor.size["shortest_edge"]
-        else:
-            size = (image_processor.size["height"], image_processor.size["width"])
-
-        # Create normalization transform
-        if hasattr(image_processor, "image_mean") and hasattr(image_processor, "image_std"):
-            normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
-        else:
-            normalize = Lambda(lambda x: x)
-        _train_transforms = Compose(
-            [
-                RandomResizedCrop(size),
-                RandomHorizontalFlip(),
-                ToTensor(),
-                normalize,
-            ]
-        )
-        _val_transforms = Compose(
-            [
-                Resize(size),
-                CenterCrop(size),
-                ToTensor(),
-                normalize,
-            ]
-        )
+        size = (image_processor.size["height"], image_processor.size["width"])
+    normalize = (
+        Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
+        if hasattr(image_processor, "image_mean") and hasattr(image_processor, "image_std")
+        else Lambda(lambda x: x)
+    )
+    _train_transforms = Compose(
+        [
+            RandomResizedCrop(size),
+            RandomHorizontalFlip(),
+            ToTensor(),
+            normalize,
+        ]
+    )
+    _val_transforms = Compose(
+        [
+            Resize(size),
+            CenterCrop(size),
+            ToTensor(),
+            normalize,
+        ]
+    )
 
     def train_transforms(example_batch):
         """Apply _train_transforms across a batch."""
@@ -420,7 +414,7 @@ def main():
         train_dataset=dataset["train"] if training_args.do_train else None,
         eval_dataset=dataset["validation"] if training_args.do_eval else None,
         compute_metrics=compute_metrics,
-        processing_class=image_processor,
+        tokenizer=image_processor,
         data_collator=collate_fn,
     )
 

@@ -21,6 +21,7 @@ import warnings
 from typing import Optional, Tuple, Union
 
 import torch
+from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
@@ -356,7 +357,7 @@ def gaudi_bloom_model_forward(
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
         batch_size, seq_length = input_ids.shape
     elif inputs_embeds is not None:
@@ -543,8 +544,6 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
             are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
         """
-        # Bloom has deprecated kwargs, so we need to pop num_items_in_batch explicitly
-        num_items_in_batch = deprecated_arguments.pop("num_items_in_batch", None)
         if deprecated_arguments.pop("position_ids", False) is not False:
             # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
             warnings.warn(
@@ -578,12 +577,14 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         if labels is not None:
             # move labels to correct device to enable model parallelism
             labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            batch_size, seq_length, vocab_size = shift_logits.shape
             # Flatten the tokens
-            loss = self.loss_function(
-                lm_logits,
-                labels,
-                vocab_size=self.config.vocab_size,
-                num_items_in_batch=num_items_in_batch,
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(
+                shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
             )
 
         if not return_dict:

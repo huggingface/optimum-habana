@@ -26,6 +26,7 @@ from typing import List, Optional, Tuple, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
+from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
@@ -321,7 +322,6 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -353,7 +353,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
@@ -636,7 +636,6 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -709,7 +708,6 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -731,7 +729,6 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
-            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -828,6 +825,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
+        **kwargs,
     ) -> Union[Tuple, MoeModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -852,7 +850,9 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
+            )
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape[:2]
         elif inputs_embeds is not None:
@@ -1048,7 +1048,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
+        num_logits_to_keep: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         reuse_cache: Optional[bool] = None,
@@ -1061,7 +1061,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-        **loss_kwargs,
+        **kwargs,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -1100,6 +1100,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
             num_virtual_tokens=num_virtual_tokens,
+            **kwargs,
         )
 
         hidden_states = outputs[0]
@@ -1110,13 +1111,20 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1, :]
 
-        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
 
         aux_loss = None
         if output_router_logits:

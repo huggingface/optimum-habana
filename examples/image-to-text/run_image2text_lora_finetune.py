@@ -55,7 +55,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.18.0.dev0")
+check_optimum_habana_min_version("1.10.0")
 
 
 def normalized_levenshtein(s1, s2):
@@ -382,8 +382,8 @@ def eval(processor, model, dataset, batch_size, use_lazy_mode, use_hpu_graphs, m
                 images,
                 texts,
                 return_tensors="pt",
-                padding=True,
-                truncation=False,
+                padding="max_length",
+                truncation=True,
                 max_length=max_seq_length,
                 padding_side="left",
             )
@@ -585,8 +585,6 @@ def main():
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
-        if data_args.save_last_ckpt:
-            trainer._save_checkpoint(trainer.model, None)
 
     if is_main_process(training_args.local_rank):
         processor.tokenizer.padding_side = "left"
@@ -613,12 +611,15 @@ def main():
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
 
         if config.model_type == "llava":
+            # don't expand image_token_id
+            setattr(processor, "patch_size", None)
+            setattr(processor, "vision_feature_select_strategy", None)
             inputs = processor(
                 [image],
                 [text.strip()],
                 return_tensors="pt",
-                padding=True,
-                truncation=False,
+                padding="max_length",
+                truncation=True,
                 max_length=data_args.max_seq_length,
                 padding_side="left",
             )

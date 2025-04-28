@@ -1,4 +1,6 @@
 lm-eval==0.4.7
 datasets==2.21.0
-tiktoken
-blobfile
+evaluate == 0.4.3
+rouge_score == 0.1.2
+accelerate < 0.34.0
+pandas <= 2.2.2

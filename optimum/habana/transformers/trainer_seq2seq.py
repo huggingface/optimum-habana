@@ -13,19 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import warnings
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import Dataset
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-from transformers.integrations.fsdp import is_fsdp_managed_module
-from transformers.utils import is_datasets_available
-from transformers.utils.deprecation import deprecate_kwarg
 
 from optimum.utils import logging
 
@@ -33,17 +28,9 @@ from .generation import GaudiGenerationConfig
 from .trainer import GaudiTrainer
 
 
-if is_datasets_available():
-    import datasets
-
-
 if TYPE_CHECKING:
-    from torch.utils.data import IterableDataset
     from transformers.data.data_collator import DataCollator
-    from transformers.feature_extraction_utils import FeatureExtractionMixin
-    from transformers.image_processing_utils import BaseImageProcessor
     from transformers.modeling_utils import PreTrainedModel
-    from transformers.processing_utils import ProcessorMixin
     from transformers.tokenization_utils_base import PreTrainedTokenizerBase
     from transformers.trainer_callback import TrainerCallback
     from transformers.trainer_utils import EvalPrediction, PredictionOutput
@@ -56,20 +43,16 @@ logger = logging.get_logger(__name__)
 
 
 class GaudiSeq2SeqTrainer(GaudiTrainer):
-    @deprecate_kwarg("tokenizer", new_name="processing_class", version="5.0.0", raise_if_both_names=True)
     def __init__(
         self,
         model: Union["PreTrainedModel", torch.nn.Module] = None,
         gaudi_config: "GaudiConfig" = None,
         args: "GaudiTrainingArguments" = None,
         data_collator: Optional["DataCollator"] = None,
-        train_dataset: Optional[Union[Dataset, "IterableDataset", "datasets.Dataset"]] = None,
+        train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
-        processing_class: Optional[
-            Union["PreTrainedTokenizerBase", "BaseImageProcessor", "FeatureExtractionMixin", "ProcessorMixin"]
-        ] = None,
+        tokenizer: Optional["PreTrainedTokenizerBase"] = None,
         model_init: Optional[Callable[[], "PreTrainedModel"]] = None,
-        compute_loss_func: Optional[Callable] = None,
         compute_metrics: Optional[Callable[["EvalPrediction"], Dict]] = None,
         callbacks: Optional[List["TrainerCallback"]] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
@@ -82,9 +65,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            processing_class=processing_class,
+            tokenizer=tokenizer,
             model_init=model_init,
-            compute_loss_func=compute_loss_func,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
             optimizers=optimizers,
@@ -299,8 +281,10 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         if "max_length" in gen_kwargs and gen_kwargs["max_length"] is None:
             gen_kwargs.pop("max_length")
 
-        default_synced_gpus = is_deepspeed_zero3_enabled() or is_fsdp_managed_module(self.model)
-        gen_kwargs["synced_gpus"] = gen_kwargs.get("synced_gpus", default_synced_gpus)
+        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
+        gen_kwargs["synced_gpus"] = (
+            gen_kwargs["synced_gpus"] if gen_kwargs.get("synced_gpus") is not None else default_synced_gpus
+        )
         # pad batches to max_length on-the-fly in lazy mode
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
@@ -325,18 +309,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             generation_inputs = {
                 k: v for k, v in inputs.items() if k not in ("decoder_input_ids", "decoder_attention_mask")
             }
-
-        summon_full_params_context = (
-            FullyShardedDataParallel.summon_full_params(self.model)
-            if isinstance(self.model, FullyShardedDataParallel)
-            else contextlib.nullcontext()
-        )
-
         try:
-            with (
-                torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp),
-                summon_full_params_context,
-            ):
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
                 generated_tokens = self.model.generate(
                     **generation_inputs,
                     generation_config=self.model.generation_config,
@@ -403,12 +377,10 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         return loss, generated_tokens, labels
 
     def _pad_tensors_to_max_len(self, tensor, max_length):
-        if self.processing_class is not None and hasattr(self.processing_class, "pad_token_id"):
+        if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):
             # If PAD token is not defined at least EOS token has to be defined
             pad_token_id = (
-                self.processing_class.pad_token_id
-                if self.processing_class.pad_token_id is not None
-                else self.processing_class.eos_token_id
+                self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.tokenizer.eos_token_id
             )
         else:
             if self.model.config.pad_token_id is not None:

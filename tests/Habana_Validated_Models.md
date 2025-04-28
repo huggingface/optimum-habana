@@ -109,9 +109,7 @@
 |tests/test_text_generation_example.py|baichuan-inc/Baichuan2-7B-Chat|mixed-precision(bf16)|single_card|
 |tests/test_text_generation_example.py|baichuan-inc/Baichuan2-13B-Chat|mixed-precision(bf16)|single_card|
 |tests/test_text_generation_example.py|deepseek-ai/DeepSeek-V2-Lite|mixed-precision(bf16)|single_card|
-|tests/test_text_generation_example.py|THUDM/chatglm2-6b|mixed-precision(bf16)|single_card|
 |tests/test_text_generation_example.py|THUDM/chatglm3-6b|mixed-precision(bf16)|single_card|
-|tests/test_text_generation_example.py|Qwen/Qwen2.5-7B|mixed-precision(bf16)|single_card|
 |tests/test_text_generation_example.py|tiiuae/falcon-180B|fp8|multi_card|
 |tests/test_text_generation_example.py|meta-llama/Llama-2-7b-hf|fp8|single_card|
 |tests/test_text_generation_example.py|meta-llama/Llama-2-70b-hf|fp8|multi_card|
@@ -125,7 +123,6 @@
 |tests/test_text_generation_example.py|facebook/opt-66b|mixed-precision(bf16)|deepspeed|
 |tests/test_text_generation_example.py|google/gemma-2-9b|mixed-precision(bf16)|deepspeed|
 |tests/test_text_generation_example.py|google/gemma-2-27b|mixed-precision(bf16)|deepspeed|
-|tests/test_text_generation_example.py|[Qwen/Qwen2.5-72B|mixed-precision(bf16)|deepspeed|
 |tests/test_text_generation_example.py|meta-llama/Llama-2-7b-hf|mixed-precision(bf16)|torch.compile|
 |tests/test_text_generation_example.py|meta-llama/Llama-2-7b-hf|mixed-precision(bf16)|distributed_tp|
 |tests/test_text_generation_example.py|gpt2-xl|mixed-precision(bf16)|contrastive_search|
@@ -137,4 +134,3 @@
 |tests/test_sentence_transformers.py|sentence-transformers/all-mpnet-base-v2|mixed-precision(bf16)|single_card|
 |tests/test_custom_file_input.py|bigcode/starcoder|mixed-precision(bf16)|single_card|
 |tests/test_diffusers.py|CompVis/stable-diffusion-v1-4|mixed-precision(bf16)|single_card|
-|tests/test_video_llava.py|LanguageBind/Video-LLaVA-7B-hf|mixed-precision(bf16)|single_card|

@@ -23,7 +23,13 @@ import unittest
 import pytest
 from transformers import T5Config, is_torch_available
 from transformers.models.auto.modeling_auto import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES
-from transformers.testing_utils import require_sentencepiece, require_tokenizers, require_torch, slow
+from transformers.testing_utils import (
+    require_accelerate,
+    require_sentencepiece,
+    require_tokenizers,
+    require_torch,
+    slow,
+)
 from transformers.utils import cached_property, is_torch_fx_available
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -421,6 +427,19 @@ class T5ModelTester:
         output_with_past_cache = model.generate(input_ids[:1], num_beams=2, max_length=5, do_sample=True)
         self.parent.assertTrue(torch.all(output_with_past_cache == output_without_past_cache))
 
+    def create_and_check_model_fp16_forward(
+        self,
+        config,
+        input_ids,
+        decoder_input_ids,
+        attention_mask,
+        decoder_attention_mask,
+        lm_labels,
+    ):
+        model = T5Model(config=config).to(torch_device).half().eval()
+        output = model(input_ids, decoder_input_ids=input_ids, attention_mask=attention_mask)["last_hidden_state"]
+        self.parent.assertFalse(torch.isnan(output).any().item())
+
     def create_and_check_encoder_decoder_shared_weights(
         self,
         config,
@@ -809,6 +828,11 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_encoder_decoder_shared_weights(*config_and_inputs)
 
+    @unittest.skipIf(torch_device == "cpu", "Cant do half precision")
+    def test_model_fp16_forward(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_model_fp16_forward(*config_and_inputs)
+
     def test_v1_1_resize_embeddings(self):
         config = self.model_tester.prepare_config_and_inputs()[0]
         self.model_tester.check_resize_embeddings_t5_v1_1(config)
@@ -870,6 +894,10 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @unittest.skip("Does not work on the tiny model as we keep hitting edge cases.")
     def test_disk_offload(self):
+        pass
+
+    @unittest.skip("Does not support conversations.")
+    def test_pipeline_conversational(self):
         pass
 
 
@@ -965,6 +993,16 @@ class T5EncoderOnlyModelTester:
 
         self.parent.assertEqual(encoder_output.size(), (self.batch_size, self.encoder_seq_length, self.hidden_size))
 
+    def create_and_check_model_fp16_forward(
+        self,
+        config,
+        input_ids,
+        attention_mask,
+    ):
+        model = T5EncoderModel(config=config).to(torch_device).half().eval()
+        output = model(input_ids, attention_mask=attention_mask)["last_hidden_state"]
+        self.parent.assertFalse(torch.isnan(output).any().item())
+
     def prepare_config_and_inputs_for_common(self):
         config_and_inputs = self.prepare_config_and_inputs()
         (
@@ -998,9 +1036,73 @@ class T5EncoderOnlyModelTest(ModelTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_model(*config_and_inputs)
 
+    @unittest.skipIf(torch_device == "cpu", "Cant do half precision")
+    def test_model_fp16_forward(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_model_fp16_forward(*config_and_inputs)
+
 
 def use_task_specific_params(model, task):
     model.config.update(model.config.task_specific_params[task])
+
+
+@require_torch
+@require_accelerate
+@require_tokenizers
+@slow
+class T5ModelFp16Tests(unittest.TestCase):
+    def test_fp16_fp32_conversion(self):
+        r"""
+        A test to check whether the argument `keep_in_fp32_modules` correctly does its job
+        """
+        orig_import = __import__
+        accelerate_mock = unittest.mock.Mock()
+
+        # mock import of accelerate
+        def import_accelerate_mock(name, *args, **kwargs):
+            if name == "accelerate":
+                if accelerate_available:
+                    return accelerate_mock
+                else:
+                    raise ImportError
+            return orig_import(name, *args, **kwargs)
+
+        # Load without using `accelerate`
+        with unittest.mock.patch("builtins.__import__", side_effect=import_accelerate_mock):
+            accelerate_available = False
+
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+
+            # Load without in bf16
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load using `accelerate` in bf16
+        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16, device_map="auto")
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load using `accelerate` in bf16
+        model = T5ForConditionalGeneration.from_pretrained(
+            "t5-small", torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+        )
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load without using `accelerate`
+        model = T5ForConditionalGeneration.from_pretrained(
+            "t5-small", torch_dtype=torch.float16, low_cpu_mem_usage=True
+        )
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+
+        # Load using `accelerate`
+        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16, device_map="auto")
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
 
 
 @require_torch
