@@ -9,7 +9,6 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
 
-
 MODELS_TO_TEST = {
     "fp8": [
         (
@@ -19,6 +18,15 @@ MODELS_TO_TEST = {
             "language-modeling",
             8,
             8,
+            "run_lora_clm.py",
+        ),
+        (
+            "meta-llama/Meta-Llama-3.1-8B",
+            "tatsu-lab/alpaca",
+            "",
+            "language-modeling",
+            1,
+            4,
             "run_lora_clm.py",
         ),
     ],
@@ -46,7 +54,12 @@ def _test_fp8_train(
     assert return_code == 0
 
     command = ["python3"]
-
+    if model_name == "meta-llama/Meta-Llama-3.1-8B":
+        command += [
+            f"{path_to_example_dir/ 'gaudi_spawn.py'}",
+            "--world_size 8",
+            "--use_deepspeed",
+        ]
     command += [
         f"{path_to_example_dir / task / script}",
         f"--model_name_or_path {model_name}",
@@ -56,12 +69,12 @@ def _test_fp8_train(
         f"--per_device_eval_batch_size {batch_size_eval}",
         f"--per_device_train_batch_size {batch_size_train}",
         "--use_habana",
-        "--use_lazy_mode",
         "--fp8 True",
     ]
 
     if model_name == "mistralai/Mistral-7B-Instruct-v0.2":
         command += [
+            "--use_lazy_mode",
             "--num_train_epochs 3",
             "--eval_strategy no",
             "--save_strategy no",
@@ -80,6 +93,38 @@ def _test_fp8_train(
             "--low_cpu_mem_usage True",
             "--validation_split_percentage 4",
             "--adam_epsilon 1e-08",
+            f"--token {token.value}",
+        ]
+    elif model_name == "meta-llama/Meta-Llama-3.1-8B":
+        os.environ["PT_TE_CUSTOM_OP"]= "1"
+        command += [
+            "--num_train_epochs 1",
+            "--eval_strategy no",
+            "--save_strategy no",
+            "--learning_rate 3e-4",
+            "--warmup_ratio 0.03",
+            "--lr_scheduler_type constant",
+            "--max_grad_norm 1.0",
+            "--logging_steps 10",
+            "--gradient_accumulation_steps 16",
+            "--throughput_warmup_steps 3",
+            "--lora_rank 8",
+            "--lora_target_modules v_proj q_proj",
+            "--lora_alpha 16",
+            "--lora_dropout 0.05",
+            "--dataset_concatenation",
+            "--max_seq_length 4096",
+            "--validation_split_percentage 4",
+            "--adam_epsilon 1e-08",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
+            "--torch_compile_backend hpu_backend",
+            "--torch_compile",
+            f"--deepspeed {path_to_example_dir / task /'llama3_ds_zero1_config.json'}",
+            "--cache_size_limit 64",
+            "--use_regional_compilation",
+            "--compile_from_sec_iteration",
+            "--allow_unspec_int_on_nn_module True",
             f"--token {token.value}",
         ]
 
