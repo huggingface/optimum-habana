@@ -834,12 +834,16 @@ class DeepseekV3Attention(nn.Module):
         self._init_rope()
 
         self.num_key_value_groups = self.num_heads // config.num_key_value_heads
-        # hpu specific wrapping functional api into nn.module classes for quantization
+        # hpu-specific wrapping functional api into nn.module classes for quantization
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
+        self._is_fp8 = False
+        if hasattr(config, "quantization_config"):
+            if hasattr(config.quantization_config, "quant_method"):
+                self._is_fp8 = config.quantization_config.quant_method == "fp8"
 
         self.softmax_scale = self.q_head_dim ** (-0.5)
         if self.config.rope_scaling is not None:
@@ -925,8 +929,13 @@ class DeepseekV3Attention(nn.Module):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            # TODO: Handle k_b_proj with INC instead of runtime dequantization
-            _, _ = self.rotary_emb(self.k_b_proj.get_dequant_weight(), seq_len=seq_len)
+            # TODO: Find a better way to handle k_b_proj during runtime dequantization
+            # In FP8 models, rotary_emb() can be called with BF16 or FP8 weights so cannot patch with INC
+            # Better option might be to add k_b_proj to block list and dequant on model load
+            if self._is_fp8:
+                _, _ = self.rotary_emb(self.k_b_proj.get_dequant_weight(), seq_len=seq_len)
+            else:
+                _, _ = self.rotary_emb(self.k_b_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -946,8 +955,12 @@ class DeepseekV3Attention(nn.Module):
         return tensor.view(bsz, seq_len, self.num_heads, self.v_head_dim).transpose(1, 2).contiguous()
 
     def split_kv_b_proj(self):
-        # TODO: Handle kv_b_proj with INC instead of runtime dequantization
-        kv_b_proj_weight = self.kv_b_proj.get_dequant_weight().view(self.num_heads, -1, self.kv_lora_rank)
+        # TODO: Find a better way to handle kv_b_proj during runtime dequantization
+        # Better option might be to add kv_b_proj to block list and dequant on model load
+        if self._is_fp8:
+            kv_b_proj_weight = self.kv_b_proj.get_dequant_weight().view(self.num_heads, -1, self.kv_lora_rank)
+        else:
+            kv_b_proj_weight = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
         self.q_absorb = kv_b_proj_weight[:, : self.qk_nope_head_dim, :].unsqueeze(0).transpose(0, 1)
         self.out_absorb = kv_b_proj_weight[:, self.qk_nope_head_dim :, :].unsqueeze(0)
 
