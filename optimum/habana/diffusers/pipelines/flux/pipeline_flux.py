@@ -26,7 +26,14 @@ from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
 from diffusers.utils import BaseOutput, replace_example_docstring
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
 from optimum.utils import logging
 
@@ -256,7 +263,7 @@ class GaudiFusedFluxAttnProcessor2_0:
 
 class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
     r"""
-    Adapted from https://github.com/huggingface/diffusers/blob/v0.30.3/src/diffusers/pipelines/flux/pipeline_flux.py#L140
+    Adapted from https://github.com/huggingface/diffusers/blob/v0.32.0/src/diffusers/pipelines/flux/pipeline_flux.py#L140
         Added batch size control for inference, and support for HPU graphs and Gaudi quantization via Intel Neural Compressor
 
     The Flux pipeline for text-to-image generation.
@@ -297,7 +304,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _optional_components = []
+    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -309,6 +316,8 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,

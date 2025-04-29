@@ -585,6 +585,8 @@ def main():
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
+        if data_args.save_last_ckpt:
+            trainer._save_checkpoint(trainer.model, None)
 
     if is_main_process(training_args.local_rank):
         processor.tokenizer.padding_side = "left"

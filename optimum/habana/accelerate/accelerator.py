@@ -60,7 +60,6 @@ if is_deepspeed_available():
     )
 
 from ..distributed import parallel_state
-from .state import GaudiPartialState
 from .utils import convert_model
 
 
@@ -75,8 +74,15 @@ def compile_regions(model, compile_kwargs):
             module.__dict__.pop("_parameters", None)
             setattr(model, name, module)
     else:
-        for _, module in model.named_children():
-            compile_regions(module, compile_kwargs)
+        if model._modules:  # If model has submodules, recurse and reassign
+            for name, module in model.named_children():
+                compiled_module = compile_regions(module, **compile_kwargs)
+                if compiled_module is not None:  # Only reassign if something is returned
+                    setattr(model, name, compiled_module)
+        else:  # Leaf node
+            model = torch.compile(model, **compile_kwargs)
+            model.__dict__.pop("_parameters", None)
+            return model
 
 
 class GaudiAccelerator(Accelerator):
@@ -106,8 +112,10 @@ class GaudiAccelerator(Accelerator):
         force_autocast: bool = False,
         distribution_strategy: str = None,
         use_regional_compilation: bool | None = None,
+        compiled_autograd_enable: bool = False,
     ):
         self.use_regional_compilation = use_regional_compilation
+        self.compiled_autograd_enable = compiled_autograd_enable
         self.distribution_strategy = distribution_strategy
         self.force_autocast = force_autocast
         self.mpu = parallel_state
@@ -190,7 +198,7 @@ class GaudiAccelerator(Accelerator):
                 model.forward = convert_outputs_to_fp32(new_forward)
 
         if self.state.mixed_precision == "fp8":
-            model = convert_model(model, _minimize_memory=GaudiPartialState().minimize_memory)
+            model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -375,7 +383,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else convert_model(obj, _minimize_memory=GaudiPartialState().minimize_memory)
+            else convert_model(obj)
             if isinstance(obj, torch.nn.Module) and self.state.mixed_precision == "fp8"
             else obj
             for obj in args
@@ -575,7 +583,11 @@ class GaudiAccelerator(Accelerator):
                 if self.use_regional_compilation:
                     compile_regions(engine.module, compile_kwargs=compile_kwargs)
                 else:
-                    engine.compile(backend=compile_kwargs.pop("backend"), compile_kwargs=compile_kwargs)
+                    engine.compile(
+                        backend=compile_kwargs.pop("backend"),
+                        compile_kwargs=compile_kwargs,
+                        compiled_autograd_enabled=self.compiled_autograd_enable,
+                    )
                 ###############################################################################################################
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)

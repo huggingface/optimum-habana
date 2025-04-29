@@ -23,7 +23,6 @@ import glob
 import os
 import shutil
 import tempfile
-import time
 from pathlib import Path
 
 import torch
@@ -38,6 +37,7 @@ from optimum.habana.checkpoint_utils import (
     write_checkpoints_json,
 )
 from optimum.habana.utils import (
+    HabanaGenerationTime,
     check_habana_frameworks_version,
     check_optimum_habana_min_version,
     get_habana_frameworks_version,
@@ -437,6 +437,9 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
+    # List of model types that need max position embeddings capped at 8192
+    MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
+
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
@@ -451,9 +454,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                hasattr(config, "rope_scaling")
-                and config.rope_scaling
-                and config.rope_scaling["rope_type"] == "llama3"
+                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -581,7 +582,7 @@ def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
-        "trust_remote_code": args.trust_remote_code,
+        "trust_remote_code": args.trust_remote_code or args.trust_remote_code_tokenizer,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -705,7 +706,8 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    init_start = time.perf_counter()
+    timer = HabanaGenerationTime()
+    timer.start()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -754,10 +756,10 @@ def initialize_model(args, logger):
         setup_const_serialization(args.const_serialization_path)
     if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
-    init_end = time.perf_counter()
+    timer.step()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
-    logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
+    logger.info(f"Model initialization took {(timer.last_duration):.3f}s")
     return model, assistant_model, tokenizer, generation_config
 
 

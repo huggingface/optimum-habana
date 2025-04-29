@@ -164,6 +164,9 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
+
+> NOTE: This is an experimental support currently. Due to memory constraints, BS=1 is only supported for now.
+
 ```bash
 python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
 --world_size 16 ./run_generation.py \
@@ -174,6 +177,19 @@ python3 ../gaudi_spawn.py --hostfile=<hostfile> --use_deepspeed \
 --use_hpu_graphs \
 --use_kv_cache  \
 --parallel_strategy "ep" \
+--prompt "DeepSpeed is a machine learning framework"
+```
+
+To run Moonlight-16B-A3B (a DeepSeek-V3 like model) inference on a Gaudi2 card use the following command:
+```bash
+PT_HPU_LAZY_MODE=1 python3 ./run_generation.py \
+--model_name_or_path moonshotai/Moonlight-16B-A3B \
+--bf16 \
+--trim_logits \
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache  \
+--trust_remote_code_tokenizer \
 --prompt "DeepSpeed is a machine learning framework"
 ```
 
@@ -225,18 +241,19 @@ You can also provide the path to a PEFT model to perform generation with the arg
 For example:
 ```bash
 python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+--model_name_or_path TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
 --bf16 \
---max_new_tokens 100 \
---prompt "Here is my prompt" \
---peft_model yard1/llama-2-7b-sql-lora-test \
+--max_new_tokens 26 \
+--prompt """Table: 2-11365528-2
+Columns: ['Team', 'Head Coach', 'President', 'Home Ground', 'Location']
+Natural Query: Who is the Head Coach of the team whose President is Mario Volarevic?
+SQL Query:""" \
+--peft_model smangrul/tinyllama_lora_sql \
 --sdp_on_bf16
 ```
-
-
 
 ### Using Beam Search
 
@@ -352,7 +369,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -389,7 +407,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --reuse_cache \
 --use_flash_attention \
 --flash_attention_recompute \
---flash_attention_causal_mask
+--flash_attention_causal_mask \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
@@ -424,7 +443,8 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --batch_size 1 \
 --trim_logits \
 --reuse_cache \
---bf16
+--bf16 \
+--trust_remote_code
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:
