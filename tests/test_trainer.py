@@ -832,9 +832,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         diff_truth = [
             abs(base - grad) for base, grad in zip(base_loss_callback.losses, grad_accum_loss_callback.losses)
         ]
-        diff_broken = [
-            abs(base - grad) for base, grad in zip(base_loss_callback.losses, broken_loss_callback.losses)
-        ]
+        diff_broken = [abs(base - grad) for base, grad in zip(base_loss_callback.losses, broken_loss_callback.losses)]
 
         # all diff truth should be quite close
         self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")

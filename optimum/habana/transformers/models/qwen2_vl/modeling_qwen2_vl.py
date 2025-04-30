@@ -102,9 +102,13 @@ class GaudiVisionSdpaAttention(VisionSdpaAttention):
         v = v.transpose(0, 1)
 
         if FusedSDPA is not None and use_flash_attention:
-            attn_output = self.fused_scaled_dot_product_attention(q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, 0.0, False, None, "None")
+            attn_output = self.fused_scaled_dot_product_attention(
+                q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, 0.0, False, None, "None"
+            )
         else:
-            attn_output = F.scaled_dot_product_attention(q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, dropout_p=0.0)
+            attn_output = F.scaled_dot_product_attention(
+                q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, dropout_p=0.0
+            )
 
         attn_output = attn_output.squeeze(0).transpose(0, 1)
         attn_output = attn_output.reshape(seq_length, -1)

@@ -65,7 +65,6 @@ from transformers.generation.utils import (
     GenerateOutput,
     GenerationMixin,
     GenerationMode,
-    _split_model_inputs,
     _split_model_outputs,
     stack_model_outputs,
 )
@@ -899,7 +898,10 @@ class GaudiGenerationMixin(GenerationMixin):
         return generation_config
 
     def _prepare_generation_config(
-        self, generation_config: Optional[GaudiGenerationConfig], use_model_defaults: Optional[bool] = None, **kwargs: Dict
+        self,
+        generation_config: Optional[GaudiGenerationConfig],
+        use_model_defaults: Optional[bool] = None,
+        **kwargs: Dict,
     ) -> Tuple[GaudiGenerationConfig, Dict]:
         """
         Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/generation/utils.py#L1230
@@ -978,9 +980,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
             if self.config.model_type == "vision-encoder-decoder":
-                generation_config.static_shapes = (
-                    self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
-                )
+                generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", kwargs.get("lazy_mode", None))
@@ -2138,9 +2138,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     logit_for_next_step = outputs.logits[:, -1, :]
                 # torch.float32 is needed to retain precision for later logits manipulations
-                logit_for_next_step = logit_for_next_step.to(
-                    copy=True, dtype=torch.float32, device=input_ids.device
-                )
+                logit_for_next_step = logit_for_next_step.to(copy=True, dtype=torch.float32, device=input_ids.device)
 
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs,
@@ -2682,9 +2680,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["pad_done"] = False
         model_kwargs["mqa_model"] = False
         model_kwargs["lazy_mode"] = lazy_mode
-        while self._has_unfinished_sequences(
-            this_peer_finished, synced_gpus, device=input_ids.device
-        ):
+        while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -2901,7 +2897,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 + start_token_idx
             )
             # Create a mask for positions greater than the first eos_token_id
-            mask = torch.arange(generation_config.max_length).expand(batch_size, generation_config.max_length) > eos_positions.unsqueeze(1)
+            mask = torch.arange(generation_config.max_length).expand(
+                batch_size, generation_config.max_length
+            ) > eos_positions.unsqueeze(1)
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
             input_ids[mask] = pad_token_id
 
@@ -3003,9 +3001,9 @@ class GaudiGenerationMixin(GenerationMixin):
         do_sample = generation_config.do_sample
         early_stopping = generation_config.early_stopping
         length_penalty = generation_config.length_penalty
-        max_length = generation_config.max_length
+        # max_length = generation_config.max_length
         num_beams = generation_config.num_beams
-        num_return_sequences = generation_config.num_return_sequences
+        # num_return_sequences = generation_config.num_return_sequences
 
         batch_size = len(beam_scorer._beam_hyps)
         num_beams = beam_scorer.num_beams
@@ -3302,7 +3300,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
                 beam_trace_idx.add_(1)
 
-                if self.generation_config.early_stopping:
+                if early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
                 beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
@@ -3385,11 +3383,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 is_min_length_reached = (
                     self.generation_config.min_length and cur_len >= self.generation_config.min_length
                 )
-                if (
-                    self.generation_config.early_stopping
-                    and is_min_length_reached
-                    and num_eos_tokens >= num_beams_tensor
-                ):
+                if early_stopping and is_min_length_reached and num_eos_tokens >= num_beams_tensor:
                     break
                 elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=cur_len)):
                     break
@@ -3458,7 +3452,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             sequence_outputs = {}
             sequence_outputs["sequences"] = finalize_beams(
-                initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
+                initial_ids.cpu(), move(beam_trace, "cpu"), self.config, length_penalty
             )
         else:
             sequence_outputs = beam_scorer.finalize(
