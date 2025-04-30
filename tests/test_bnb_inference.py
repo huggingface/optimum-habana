@@ -56,8 +56,6 @@ def test_nf4_quantization_inference(token: str, baseline):
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
 
-    model.model = torch.compile(model.model, backend="hpu_backend")
-
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
 

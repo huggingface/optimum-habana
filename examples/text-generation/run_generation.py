@@ -317,6 +317,11 @@ def setup_parser(parser):
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
+        "--trust_remote_code_tokenizer",
+        action="store_true",
+        help="Whether to trust the execution of code in Tokenizer from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
+    )
+    parser.add_argument(
         "--parallel_strategy",
         type=str,
         choices=["tp", "ep", "none"],  # Add other strategies as needed
@@ -571,8 +576,17 @@ def main():
             ).cpu()
             timer.step()
             first_token_time = iteration_times[0] + encode_duration
+            rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
+            e2e_latency = first_token_time + rest_token_time
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
+            logger.info(f"End to end latency = {e2e_latency * 1000}ms")
+            return (
+                tokenizer.batch_decode(outputs, skip_special_tokens=True),
+                first_token_time,
+                rest_token_time,
+                e2e_latency,
+            )
 
         from optimum.habana.utils import HabanaProfile
 
@@ -613,21 +627,35 @@ def main():
         HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
+        first_token_latencies = []
+        rest_token_latencies = []
+        e2e_latencies = []
         timer.step()
         # Benchmark over n_iterations iterations
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
-                generated = generate(None, args.reduce_recompile)
+                generated, first_token_time, rest_token_time, e2e_latency = generate(None, args.reduce_recompile)
+                first_token_latencies.append(first_token_time)
+                rest_token_latencies.append(rest_token_time)
+                e2e_latencies.append(e2e_latency)
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
-                generated = generate(prompt_len, args.reduce_recompile)
+                generated, first_token_time, rest_token_time, e2e_latency = generate(prompt_len, args.reduce_recompile)
+                first_token_latencies.append(first_token_time)
+                rest_token_latencies.append(rest_token_time)
+                e2e_latencies.append(e2e_latency)
         timer.step()
+        logger.info("Finished running generate")
         duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
+        # Calculate average latencies
+        avg_first_token_latency = sum(first_token_latencies) / len(first_token_latencies)
+        avg_rest_token_latency = sum(rest_token_latencies) / len(rest_token_latencies)
+        avg_e2e_latency = sum(e2e_latencies) / len(e2e_latencies)
 
         print()
         print("Input/outputs:")
@@ -650,6 +678,9 @@ def main():
 
             results = {
                 "throughput": throughput,
+                "avg_first_token_latency": avg_first_token_latency,
+                "avg_rest_token_latency": avg_rest_token_latency,
+                "avg_e2e_latency": avg_e2e_latency,
                 "input": all_inputs,
                 "output": all_outputs,
             }
@@ -658,6 +689,9 @@ def main():
 
         stats = "Input embeds" if args.input_embeds else "Input tokens"
         stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+        stats = stats + f"\nAverage first token latency         = {avg_first_token_latency * 1000} ms"
+        stats = stats + f"\nAverage rest token latency          = {avg_rest_token_latency * 1000} ms"
+        stats = stats + f"\nAverage end to end latency          = {avg_e2e_latency * 1000} ms"
         if args.show_graphs_count:
             stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
@@ -712,7 +746,7 @@ def main():
             # Tokenize the texts
             return tokenizer(
                 examples[column_name],
-                padding="max_length",
+                padding="max_length" if prompt_length > 0 else False,
                 max_length=prompt_length if prompt_length > 0 else None,
                 truncation=prompt_length > 0,
             )

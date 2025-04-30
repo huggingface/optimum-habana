@@ -116,6 +116,12 @@ from .gemma2 import (
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
 )
+from .glm4v import (
+    ChatGLM4Tokenizer,
+    GLM4VConfig,
+    GLM4VForConditionalGeneration,
+    GLM4VForSequenceClassification,
+)
 from .gpt2 import (
     GaudiGPT2Attention,
     GaudiGPT2Block,
