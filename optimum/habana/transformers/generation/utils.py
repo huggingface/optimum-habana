@@ -1750,7 +1750,18 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         elif generation_mode in (GenerationMode.BEAM_SAMPLE, GenerationMode.BEAM_SEARCH):
-            # 11. interleave input_ids with `num_beams` additional sequences per batch
+            # 11. prepare beam search scorer
+            beam_scorer = BeamSearchScorer(
+                batch_size=batch_size,
+                num_beams=generation_config.num_beams,
+                device=inputs_tensor.device,
+                length_penalty=generation_config.length_penalty,
+                do_early_stopping=generation_config.early_stopping,
+                num_beam_hyps_to_keep=generation_config.num_return_sequences,
+                max_length=generation_config.max_length,
+            )
+
+            # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
                 input_ids=input_ids,
                 expand_size=generation_config.num_beams,
@@ -1758,9 +1769,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 **model_kwargs,
             )
 
-            # 12. run beam sample
+            # 13. run beam sample
             result = self._beam_search(
                 input_ids,
+                beam_scorer,
                 logits_processor=prepared_logits_processor,
                 stopping_criteria=prepared_stopping_criteria,
                 generation_config=generation_config,
@@ -2921,6 +2933,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def _beam_search(
         self,
         input_ids: torch.LongTensor,
+        beam_scorer: BeamScorer,
         logits_processor: LogitsProcessorList,
         stopping_criteria: StoppingCriteriaList,
         generation_config: GaudiGenerationConfig,
@@ -2943,8 +2956,11 @@ class GaudiGenerationMixin(GenerationMixin):
         (https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationMixin.compute_transition_scores)
 
         Parameters:
-            input_ids (`torch.LongTensor` of shape `(batch_size*num_beams, sequence_length)`):
+            input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 The sequence used as a prompt for the generation.
+            beam_scorer (`BeamScorer`):
+                An derived instance of [`BeamScorer`] that defines how beam hypotheses are constructed, stored and
+                sorted during generation. For more information, the documentation of [`BeamScorer`] should be read.
             logits_processor (`LogitsProcessorList`):
                 An instance of [`LogitsProcessorList`]. List of instances of class derived from [`LogitsProcessor`]
                 used to modify the prediction scores of the language modeling head applied at each generation step.
@@ -2991,28 +3007,10 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beams = generation_config.num_beams
         num_return_sequences = generation_config.num_return_sequences
 
-        batch_size_unflattened, cur_len = input_ids.shape
-        batch_size = batch_size_unflattened // num_beams
-        # TODO (joao): standardize special cases
-        if self.__class__.__name__ == "MoshiDepthDecoder":
-            vocab_size = self.config.audio_vocab_size
-        elif self.__class__.__name__ == "ImageGPTForCausalImageModeling":
-            vocab_size = self.get_output_embeddings().out_features
-        else:
-            vocab_size = self.config.get_text_config().vocab_size
-        decoder_prompt_len = cur_len
-        this_peer_finished = False
+        batch_size = len(beam_scorer._beam_hyps)
+        num_beams = beam_scorer.num_beams
 
-        # At each beam search step, we want to keep top K [K = (number of EOS tokens + 1) * `num_beams`] candidates
-        # with the highest log-probabilities, or sample K continuations without replacement. We gather the top K
-        # (as opposed to `num_beams`, or any number lower than K) so that we have at least `num_beams` sequences
-        # non-finished to continue the live beam search, in case the top `num_beams` all select an EOS token.
-        n_eos_tokens = eos_token_id.shape[0] if eos_token_id is not None else 0
-        beams_to_keep = max(2, 1 + n_eos_tokens) * num_beams
-        top_num_beam_mask = torch.cat(
-            (torch.ones((num_beams), dtype=torch.bool), torch.zeros((beams_to_keep - num_beams), dtype=torch.bool)),
-            dim=0,
-        ).to(input_ids.device)
+        batch_beam_size, cur_len = input_ids.shape
         if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
         token_idx = model_kwargs.get("token_idx", None)
@@ -3021,6 +3019,11 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
 
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
+
+        if num_beams * batch_size != batch_beam_size:
+            raise ValueError(
+                f"Batch dimension of `input_ids` should be {num_beams * batch_size}, but is {batch_beam_size}."
+            )
 
         # (joao) feature lost in the refactor. Probably won't implement, hurts readbility with minimal gains (there
         # are newer low-memory alternatives like the offloaded cache)
@@ -3032,9 +3035,11 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # 2. init output tuples
-        all_scores = () if (return_dict_in_generate and output_scores) else None
+        scores = () if (return_dict_in_generate and output_scores) else None
         raw_logits = () if (return_dict_in_generate and output_logits) else None
-        beam_indices = () if (return_dict_in_generate and output_logits) else None
+        beam_indices = (
+            tuple(() for _ in range(batch_beam_size)) if (return_dict_in_generate and output_scores) else None
+        )
         decoder_attentions = () if (return_dict_in_generate and output_attentions) else None
         cross_attentions = () if (return_dict_in_generate and output_attentions) else None
         decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
@@ -3046,33 +3051,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["encoder_outputs"].get("hidden_states") if output_hidden_states else None
             )
 
-        # 3. init running tensors and static-shaped placeholders
-
-        # per batch, beam-item holding current token in loop and completed sequences
-        output_fill_value = pad_token_id or eos_token_id[0] if eos_token_id is not None else -1
-        running_sequences = torch.full(
-            (batch_size, num_beams, max_length),
-            fill_value=output_fill_value,
-            dtype=torch.int64,
-            device=input_ids.device,
-        )
-        running_sequences[:, :, :cur_len] = self._unflatten_beam_dim(input_ids, batch_size, num_beams)
-        sequences = running_sequences.detach().clone()
-
-        # per batch, beam-item score, logprobs
         # initialise score of first beam with 0 and the rest with -1e9. This makes sure that only tokens
         # of the first beam are considered to avoid sampling the exact same tokens across all beams.
-        running_beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
-        running_beam_scores[:, 1:] = -1e9
-        beam_scores = torch.full((batch_size, num_beams), fill_value=-1e9, dtype=torch.float, device=input_ids.device)
-
-        # per batch, beam-item state bit indicating if sentence has finished.
-        is_sent_finished = torch.zeros((batch_size, num_beams), dtype=torch.bool, device=input_ids.device)
-
-        # per batch, beam-item state bit indicating if there are valid continuations.
-        next_token_hits_stopping_criteria = torch.zeros(
-            (batch_size, num_beams), dtype=torch.bool, device=input_ids.device
-        )
+        beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
+        beam_scores[:, 1:] = -1e9
+        beam_scores = beam_scores.view((batch_size * num_beams,))
 
         # Beam token selection: pick 1 + eos_token_id.shape[0] next tokens for each beam so we have at least 1
         # non eos token per beam.
@@ -3206,6 +3189,7 @@ class GaudiGenerationMixin(GenerationMixin):
             initial_ids = input_ids[::num_beams, 0:cur_len]
 
         time_to_first_token_done = False
+        # 4. run the generation loop
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -3224,44 +3208,12 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
 
-            # if sequential is True, split the input to batches of batch_size and run sequentially
-            if sequential:
-                if any(
-                    model_name in self.__class__.__name__.lower()
-                    for model_name in [
-                        "fsmt",
-                        "reformer",
-                        "ctrl",
-                        "gpt_bigcode",
-                        "transo_xl",
-                        "xlnet",
-                        "cpm",
-                        "jamba",
-                    ]
-                ):
-                    raise RuntimeError(
-                        f"Currently generation for {self.__class__.__name__} is not supported "
-                        f"for `low_memory beam_search`. Please open an issue on GitHub if you need this feature."
-                    )
-
-                inputs_per_sub_batches = _split_model_inputs(
-                    model_inputs,
-                    split_size=batch_size,
-                    full_batch_size=batch_beam_size,
-                    config=self.config.get_text_config(),
-                )
-                outputs_per_sub_batch = [
-                    self(**inputs_per_sub_batch, return_dict=True) for inputs_per_sub_batch in inputs_per_sub_batches
-                ]
-
-                outputs = stack_model_outputs(outputs_per_sub_batch, self.config.get_text_config())
-            else:
-                hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-                outputs = self(
-                    **model_inputs,
-                    return_dict=True,
-                    **hpu_graphs_kwargs,
-                )
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+            outputs = self(
+                **model_inputs,
+                return_dict=True,
+                **hpu_graphs_kwargs,
+            )
 
             # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
