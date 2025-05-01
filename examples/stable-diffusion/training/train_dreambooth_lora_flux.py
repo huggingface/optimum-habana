@@ -535,10 +535,16 @@ class DreamBoothDataset(Dataset):
         prompt_embeds = embeddings[0]
         pooled_prompt_embeds = embeddings[1]
         text_ids = embeddings[2]
-        prompt_embeds = prompt_embeds.reshape(self.max_sequence_length, prompt_embeds.shape[-1])
-        pooled_prompt_embeds = pooled_prompt_embeds.reshape(pooled_prompt_embeds.shape[-1])
-        text_ids = text_ids.reshape(self.max_sequence_length, 3)
-        return prompt_embeds, pooled_prompt_embeds, text_ids
+        if torch.is_tensor(prompt_embeds):
+            prompt_embeds = prompt_embeds.reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = pooled_prompt_embeds.reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = text_ids.reshape(self.max_sequence_length, 3)
+            return prompt_embeds, pooled_prompt_embeds, text_ids
+        else:
+            prompt_embeds = np.array(prompt_embeds).reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = np.array(pooled_prompt_embeds).reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = np.array(text_ids).reshape(self.max_sequence_length, 3)
+            return torch.from_numpy(prompt_embeds), torch.from_numpy(pooled_prompt_embeds), torch.from_numpy(text_ids)
 
     def generate_image_hash(self, image):
         return insecure_hashlib.sha256(image.tobytes()).hexdigest()
