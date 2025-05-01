@@ -269,7 +269,7 @@ The following model architectures, tasks and device distributions have been vali
 | Blip |   | <li>Single card</li> | <li>[visual question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/visual-question-answering)</li><li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | OWLViT |   | <li>Single card</li> | <li>[zero shot object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/zero-shot-object-detection)</li> |
 | ClipSeg |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
-| Llava / Llava-next |    | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
+| Llava / Llava-next / Llava-onevision |    | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | idefics2 | <li>LoRA</li> | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | Paligemma | | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | Segment Anything Model |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
@@ -285,6 +285,7 @@ The following model architectures, tasks and device distributions have been vali
 | Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/main/examples/video-comprehension)</li> |
 | GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> 
+
 </div>
 
 
