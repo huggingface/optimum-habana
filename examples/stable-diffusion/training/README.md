@@ -315,7 +315,7 @@ python ../text_to_image_generation.py \
 
 We can use the same `dog` dataset for the following examples.
 
-To launch Stable Diffusion XL LoRA training on a multi-card Gaudi system, use:"
+To launch Stable Diffusion XL LoRA training on a single card Gaudi system, use:"
 ```bash
 python train_dreambooth_lora_sdxl.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"  \
@@ -340,10 +340,9 @@ python train_dreambooth_lora_sdxl.py \
 ```
 
 > [!NOTE]
-> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--deepspeed` in the previous example.
-
-You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_sdxl.py`
-with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`.
+> You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_sdxl.py` with 
+> `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`. To use MPI for multi-card training,
+> add `--use_mpi` after `--world_size <num-HPUs>`. To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
 
 After training is completed, you can directly use `text_to_image_generation.py` sample for inference, as shown below:
 ```bash
@@ -393,10 +392,9 @@ python train_dreambooth_lora_flux.py \
 ```
 
 > [!NOTE]
-> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed` in the previous example
-
-You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_flux.py`
-with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`.
+> You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_flux.py` with 
+> `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`. To use MPI for multi-card training,
+> add `--use_mpi` after `--world_size <num-HPUs>`. To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
