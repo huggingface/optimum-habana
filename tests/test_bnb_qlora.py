@@ -14,24 +14,17 @@
 # limitations under the License.
 
 import os
-import subprocess
 
-import pytest
 import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
-try:
-    import sys
 
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-except subprocess.CalledProcessError:
-    pytest.fail("Failed to install peft==0.12.0")
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
 
