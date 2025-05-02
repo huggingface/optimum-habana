@@ -6503,7 +6503,9 @@ class DreamBoothLoRAFLUX(TestCase):
                 self.assertTrue(os.path.isfile(os.path.join(out_dir, "pytorch_lora_weights.safetensors")))
 
                 # make sure the state_dict has the correct naming in the parameters.
-                lora_state_dict = safetensors.torch.load_file(os.path.join(out_dir, "pytorch_lora_weights.safetensors"))
+                lora_state_dict = safetensors.torch.load_file(
+                    os.path.join(out_dir, "pytorch_lora_weights.safetensors")
+                )
                 is_lora = all("lora" in k for k in lora_state_dict.keys())
                 self.assertTrue(is_lora)
 
@@ -6523,7 +6525,7 @@ class DreamBoothLoRAFLUX(TestCase):
     def test_dreambooth_lora_flux(self):
         RT_VAR = "PT_HPU_MAX_COMPOUND_OP_SIZE"
         orig_value = os.environ.get(RT_VAR)
-        os.environ[RT_VAR] = '1'
+        os.environ[RT_VAR] = "1"
         try:
             self._test_dreambooth_lora_flux(train_text_encoder=False)
         finally:
