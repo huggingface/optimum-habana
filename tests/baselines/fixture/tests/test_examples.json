@@ -161,7 +161,7 @@
     "gaudi3": {
       "eval_accuracy": 0.9849333333333333,
       "train_runtime": 86.4819,
-      "train_samples_per_second": 1043.6
+      "train_samples_per_second": 949.371
     }
   },
   "tests/test_examples.py::ImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_single_card": {
@@ -682,8 +682,8 @@
     },
     "gaudi3": {
       "eval_f1": 94.36192902198283,
-      "train_runtime": 260.988,
-      "train_samples_per_second": 423.007
+      "train_runtime": 276.0212,
+      "train_samples_per_second": 400.151
     }
   },
   "tests/test_examples.py::TextClassificationExampleTester::test_run_glue_bert-large-uncased-whole-word-masking_single_card": {
@@ -699,7 +699,7 @@
     },
     "gaudi3": {
       "eval_f1": 0.8826,
-      "train_runtime": 78.5458,
+      "train_runtime": 85.085,
       "train_samples_per_second": 1674.509
     }
   }
