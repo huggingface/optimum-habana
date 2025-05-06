@@ -19,10 +19,10 @@ import logging
 import PIL.Image
 import requests
 import torch
-from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import pipeline
 
 
 logging.basicConfig(

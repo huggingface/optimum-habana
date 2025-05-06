@@ -22,10 +22,10 @@ import requests
 import torch
 from PIL import Image
 from torchvision.utils import save_image
-from transformers import AutoProcessor, CLIPSegForImageSegmentation
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import AutoProcessor, CLIPSegForImageSegmentation
 
 
 if __name__ == "__main__":

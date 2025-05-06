@@ -38,7 +38,6 @@ import psutil
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
 from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs
@@ -58,13 +57,14 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
+import transformers
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 from optimum.habana.transformers.trainer import _is_peft_model
 from optimum.habana.utils import set_seed
+from transformers import AutoTokenizer, PretrainedConfig
 
 
 logger = get_logger(__name__)

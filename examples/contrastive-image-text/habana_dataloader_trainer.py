@@ -22,6 +22,8 @@ import datasets
 import torch
 from clip_mediapipe_dataloader import MediaApiDataLoader
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
+
+from optimum.habana import GaudiTrainer
 from transformers.trainer_pt_utils import (
     DistributedLengthGroupedSampler,
     DistributedSampler,
@@ -31,8 +33,6 @@ from transformers.trainer_pt_utils import (
 )
 from transformers.trainer_utils import has_length, seed_worker
 from transformers.utils import is_datasets_available
-
-from optimum.habana import GaudiTrainer
 
 
 class HabanaDataloaderTrainer(GaudiTrainer):

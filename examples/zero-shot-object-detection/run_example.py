@@ -21,10 +21,10 @@ import habana_frameworks.torch as ht
 import requests
 import torch
 from PIL import Image
-from transformers import AutoProcessor, OwlViTForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import AutoProcessor, OwlViTForObjectDetection
 
 
 if __name__ == "__main__":

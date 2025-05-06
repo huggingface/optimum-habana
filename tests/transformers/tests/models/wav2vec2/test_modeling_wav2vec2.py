@@ -26,6 +26,8 @@ import unittest
 import numpy as np
 from datasets import load_dataset
 from pytest import mark
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import Wav2Vec2Config, is_torch_available
 from transformers.testing_utils import (
     CaptureLogger,
@@ -44,8 +46,6 @@ from transformers.testing_utils import (
 )
 from transformers.utils import is_torch_fx_available
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
     ModelTesterMixin,
@@ -59,6 +59,7 @@ from ...test_modeling_common import (
 if is_torch_available():
     import torch
     from safetensors.torch import save_file as safe_save_file
+
     from transformers import (
         Wav2Vec2FeatureExtractor,
         Wav2Vec2ForAudioFrameClassification,
@@ -81,6 +82,7 @@ if is_torchaudio_available():
     import torchaudio
 if is_pyctcdecode_available():
     import pyctcdecode.decoder
+
     from transformers import Wav2Vec2ProcessorWithLM
     from transformers.models.wav2vec2_with_lm import processing_wav2vec2_with_lm
 if is_torch_fx_available():

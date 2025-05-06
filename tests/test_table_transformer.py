@@ -19,10 +19,10 @@ import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
-from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 from .utils import OH_DEVICE_CONTEXT
 

@@ -21,9 +21,9 @@ import torch
 from datasets import Dataset as DatasetHF
 from torch.distributed import get_rank, get_world_size
 from torch.utils.data.sampler import BatchSampler
-from transformers.trainer_pt_utils import DistributedSamplerWithLoop
 
 from optimum.utils import logging
+from transformers.trainer_pt_utils import DistributedSamplerWithLoop
 
 
 logger = logging.get_logger(__name__)

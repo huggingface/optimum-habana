@@ -18,11 +18,10 @@ import collections
 import inspect
 import unittest
 
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import SwinConfig
 from transformers.testing_utils import require_torch, require_vision, slow
 from transformers.utils import cached_property, is_torch_available, is_vision_available
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, _config_zero_init, floats_tensor, ids_tensor
@@ -34,11 +33,13 @@ adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
     from torch import nn
+
     from transformers import SwinBackbone, SwinForImageClassification, SwinForMaskedImageModeling, SwinModel
 
 
 if is_vision_available():
     from PIL import Image
+
     from transformers import AutoImageProcessor
 
 

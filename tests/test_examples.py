@@ -26,6 +26,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from unittest import TestCase
 
 import pytest
+
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,

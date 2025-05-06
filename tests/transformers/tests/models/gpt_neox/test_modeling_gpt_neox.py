@@ -17,10 +17,10 @@
 import unittest
 
 from parameterized import parameterized
-from transformers import AutoTokenizer, GPTNeoXConfig, is_torch_available, set_seed
-from transformers.testing_utils import require_torch, require_torch_sdpa, slow
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoTokenizer, GPTNeoXConfig, is_torch_available, set_seed
+from transformers.testing_utils import require_torch, require_torch_sdpa, slow
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
@@ -31,6 +31,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         GPTNeoXForCausalLM,
         GPTNeoXForQuestionAnswering,

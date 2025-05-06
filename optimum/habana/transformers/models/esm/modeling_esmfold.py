@@ -15,6 +15,7 @@
 from typing import Optional
 
 import torch
+
 from transformers.models.esm.modeling_esmfold import EsmForProteinFoldingOutput, categorical_lddt
 from transformers.models.esm.openfold_utils import (
     compute_predicted_aligned_error,

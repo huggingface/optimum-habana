@@ -26,13 +26,16 @@ from typing import Optional
 
 import datasets
 import torch
-import transformers
 from datasets import load_dataset
 from habana_dataloader_trainer import HabanaDataloaderTrainer
 from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode, to_grayscale, to_tensor
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoImageProcessor,
     AutoTokenizer,
@@ -42,9 +45,6 @@ from transformers.models.bridgetower.modeling_bridgetower import BridgeTowerForC
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:

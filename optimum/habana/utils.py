@@ -21,9 +21,9 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 from packaging import version
-from transformers.utils import is_torch_available
 
 from optimum.utils import logging
+from transformers.utils import is_torch_available
 
 from .version import __version__
 

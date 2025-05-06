@@ -18,6 +18,8 @@ import tempfile
 import unittest
 
 import pytest
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import MixtralConfig, is_torch_available
 from transformers.testing_utils import (
     is_flaky,
@@ -28,8 +30,6 @@ from transformers.testing_utils import (
     slow,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor
@@ -39,6 +39,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         MixtralForCausalLM,
         MixtralForSequenceClassification,

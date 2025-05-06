@@ -16,10 +16,9 @@
 
 import unittest
 
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import RobertaConfig, is_torch_available
 from transformers.testing_utils import TestCasePlus, require_torch, slow
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
@@ -31,6 +30,7 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         RobertaForCausalLM,
         RobertaForMaskedLM,

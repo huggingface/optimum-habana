@@ -1,7 +1,7 @@
 import torch
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 from optimum.utils import logging
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 
 logger = logging.get_logger(__name__)

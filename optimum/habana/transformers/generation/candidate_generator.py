@@ -2,6 +2,7 @@ import inspect
 from typing import TYPE_CHECKING, Dict, Optional
 
 import torch
+
 from transformers.generation.candidate_generator import (
     AssistedCandidateGenerator,
 )

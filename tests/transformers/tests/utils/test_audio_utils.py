@@ -17,6 +17,7 @@ import unittest
 
 import numpy as np
 import pytest
+
 from transformers.audio_utils import (
     amplitude_to_db,
     hertz_to_mel,

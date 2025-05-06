@@ -27,9 +27,9 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_depth2img im
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate
-from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
 
 from optimum.utils import logging
+from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ..pipeline_utils import GaudiDiffusionPipeline

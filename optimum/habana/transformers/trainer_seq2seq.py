@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import torch
 from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import Dataset
+
+from optimum.utils import logging
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.utils import is_datasets_available
 from transformers.utils.deprecation import deprecate_kwarg
-
-from optimum.utils import logging
 
 from .generation import GaudiGenerationConfig
 from .trainer import GaudiTrainer
@@ -39,6 +39,7 @@ if is_datasets_available():
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
+
     from transformers.data.data_collator import DataCollator
     from transformers.feature_extraction_utils import FeatureExtractionMixin
     from transformers.image_processing_utils import BaseImageProcessor

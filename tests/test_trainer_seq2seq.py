@@ -13,13 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, DataCollatorForSeq2Seq, T5ForConditionalGeneration
-from transformers.testing_utils import TestCasePlus, require_torch
-from transformers.utils import is_datasets_available
-
 from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 from optimum.habana.transformers.generation import GaudiGenerationConfig
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, DataCollatorForSeq2Seq, T5ForConditionalGeneration
+from transformers.testing_utils import TestCasePlus, require_torch
+from transformers.utils import is_datasets_available
 
 
 if is_datasets_available():

@@ -31,6 +31,7 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.video_processor import VideoProcessor
+
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig

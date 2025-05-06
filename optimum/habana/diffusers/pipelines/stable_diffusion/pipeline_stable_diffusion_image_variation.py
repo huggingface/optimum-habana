@@ -23,9 +23,9 @@ import torch
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionImageVariationPipeline, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
+from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment

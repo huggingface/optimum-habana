@@ -20,10 +20,10 @@ import habana_frameworks.torch as ht
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import AutoModel, AutoTokenizer
 
 
 # Adapted from https://huggingface.co/Supabase/gte-small example

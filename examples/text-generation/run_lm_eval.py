@@ -31,11 +31,11 @@ from lm_eval.models.huggingface import HFLM, TemplateLM
 
 # Local imports
 from run_generation import setup_parser
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.generation import GenerationConfig
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")

@@ -7,6 +7,7 @@ from urllib.request import urlretrieve
 
 import torch
 from torchmetrics.functional.multimodal import clip_score
+
 from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
 
 

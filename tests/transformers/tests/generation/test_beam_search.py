@@ -25,6 +25,7 @@ from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
 assert torch_device == "hpu"
 if is_torch_available():
     import torch
+
     from transformers.generation import (
         BeamHypotheses,
         BeamSearchScorer,

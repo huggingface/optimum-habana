@@ -28,8 +28,11 @@ from typing import Any, Dict, List, Optional, Union
 import datasets
 import evaluate
 import torch
-import transformers
 from datasets import DatasetDict, load_dataset
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoFeatureExtractor,
@@ -41,9 +44,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-
-from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:

@@ -29,7 +29,6 @@ import safetensors
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from diffusers import (
@@ -46,6 +45,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 
+import transformers
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import (

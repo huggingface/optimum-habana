@@ -27,6 +27,7 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpain
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate, logging, replace_example_docstring
+
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,

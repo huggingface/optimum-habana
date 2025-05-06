@@ -3,10 +3,10 @@ import logging
 import sys
 
 from diffusers import DDPMScheduler
-from transformers.utils import check_min_version
 
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDDPMPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+from transformers.utils import check_min_version
 
 
 logger = logging.getLogger(__name__)

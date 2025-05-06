@@ -30,7 +30,6 @@ import safetensors
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from diffusers import (
@@ -47,13 +46,14 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
 
+import transformers
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime, set_seed
+from transformers import CLIPTextModel, CLIPTokenizer
 
 
 if is_wandb_available():

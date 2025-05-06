@@ -18,10 +18,10 @@ import datetime
 import unittest
 
 import pytest
-from transformers import GPTJConfig, is_torch_available
-from transformers.testing_utils import require_torch, slow, tooslow
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import GPTJConfig, is_torch_available
+from transformers.testing_utils import require_torch, slow, tooslow
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
@@ -36,6 +36,7 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         AutoTokenizer,
         GPTJForCausalLM,

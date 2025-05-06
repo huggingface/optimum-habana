@@ -24,6 +24,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline,
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import retrieve_timesteps
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate, logging
+
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig

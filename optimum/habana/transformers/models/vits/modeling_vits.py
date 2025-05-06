@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+
 from transformers.models.vits.modeling_vits import _rational_quadratic_spline
 from transformers.utils import logging
 

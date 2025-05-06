@@ -21,15 +21,15 @@ from typing import Optional
 
 import numpy as np
 import torch
-import transformers
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score, matthews_corrcoef
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from transformers import AutoModel, AutoTokenizer, HfArgumentParser, Trainer
 from transformers.data.data_collator import DataCollatorWithPadding
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer_pt_utils import get_parameter_names
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 try:

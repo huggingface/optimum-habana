@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
+
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.configuration_opt import OPTConfig

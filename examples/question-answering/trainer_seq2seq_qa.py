@@ -21,9 +21,9 @@ import time
 from typing import Dict, List, Optional
 
 from torch.utils.data import Dataset
-from transformers.trainer_utils import PredictionOutput, speed_metrics
 
 from optimum.habana import GaudiSeq2SeqTrainer
+from transformers.trainer_utils import PredictionOutput, speed_metrics
 
 
 class QuestionAnsweringSeq2SeqTrainer(GaudiSeq2SeqTrainer):

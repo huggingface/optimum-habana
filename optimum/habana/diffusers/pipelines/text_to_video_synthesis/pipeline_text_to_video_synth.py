@@ -24,6 +24,7 @@ from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth im
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.outputs import BaseOutput
+
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig

@@ -26,9 +26,9 @@ from diffusers.pipelines import StableDiffusionUpscalePipeline
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from optimum.utils import logging
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics, warmup_inference_steps_time_adjustment

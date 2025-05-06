@@ -20,11 +20,11 @@ import warnings
 
 import numpy as np
 import pytest
-from transformers import is_torch_available, pipeline
-from transformers.testing_utils import require_torch, slow
 
 from optimum.habana.checkpoint_utils import model_is_optimized
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import is_torch_available, pipeline
+from transformers.testing_utils import require_torch, slow
 
 from ..test_modeling_common import floats_tensor, ids_tensor
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
@@ -32,6 +32,7 @@ from .test_framework_agnostic import GenerationIntegrationTestsMixin
 
 if is_torch_available():
     import torch
+
     from transformers import (
         AutoModelForCausalLM,
         AutoModelForSeq2SeqLM,

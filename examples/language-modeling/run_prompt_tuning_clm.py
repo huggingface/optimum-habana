@@ -26,7 +26,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import torch
-import transformers
 from datasets import load_dataset
 from peft import (
     PrefixTuningConfig,
@@ -36,6 +35,10 @@ from peft import (
     TaskType,
     get_peft_model,
 )
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -46,9 +49,6 @@ from transformers import (
 from transformers.trainer_utils import is_main_process
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:

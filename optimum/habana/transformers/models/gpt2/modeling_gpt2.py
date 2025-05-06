@@ -2,6 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
+
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt2.modeling_gpt2 import (
     GPT2MLP,

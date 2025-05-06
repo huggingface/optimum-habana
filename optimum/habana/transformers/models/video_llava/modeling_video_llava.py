@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
+
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.video_llava.modeling_video_llava import (
     VideoLlavaCausalLMOutputWithPast,

@@ -17,6 +17,7 @@ import unittest
 from typing import List, Union
 
 from parameterized import parameterized
+
 from transformers import is_torch_available
 from transformers.testing_utils import require_torch
 
@@ -26,6 +27,7 @@ from ..test_modeling_common import ids_tensor, torch_device
 if is_torch_available():
     import torch
     from torch import nn
+
     from transformers.generation import (
         EncoderNoRepeatNGramLogitsProcessor,
         EncoderRepetitionPenaltyLogitsProcessor,

@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
+
 from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions
 
 

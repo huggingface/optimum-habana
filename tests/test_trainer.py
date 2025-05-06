@@ -32,6 +32,11 @@ from accelerate.state import AcceleratorState
 from huggingface_hub import HfFolder, ModelCard, create_branch, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
+
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.utils import set_seed
+from optimum.utils import logging
 from transformers import (
     AutoFeatureExtractor,
     AutoImageProcessor,
@@ -82,22 +87,17 @@ from transformers.utils import (
 )
 from transformers.utils.hp_naming import TrialShortNamer
 
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.utils import set_seed
-from optimum.utils import logging
-
 
 if is_torch_available():
     import torch
-    import transformers.optimization
     from torch import nn
     from torch.utils.data import IterableDataset
-    from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
 
+    import transformers.optimization
     from optimum.habana import GaudiTrainer
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
     from optimum.habana.transformers.models.gpt2 import GaudiGPT2LMHeadModel
+    from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
 
     if is_safetensors_available():
         import safetensors.torch

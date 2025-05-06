@@ -18,13 +18,13 @@ import os
 
 import habana_frameworks.torch.core as htcore
 import torch
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.models.esm.openfold_utils.feats import atom14_to_atom37
 from transformers.models.esm.openfold_utils.protein import Protein as OFProtein
 from transformers.models.esm.openfold_utils.protein import to_pdb
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.utils import HabanaGenerationTime
 
 
 os.environ["PT_HPU_ENABLE_H2D_DYNAMIC_SLICE"] = "0"

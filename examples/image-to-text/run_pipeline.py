@@ -23,9 +23,9 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
+from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
 
 
 logging.basicConfig(

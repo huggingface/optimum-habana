@@ -27,9 +27,9 @@ from diffusers.pipelines import StableDiffusionLDM3DPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics, warmup_inference_steps_time_adjustment

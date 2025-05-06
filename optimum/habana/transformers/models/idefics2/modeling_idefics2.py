@@ -19,6 +19,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
+
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.idefics2.modeling_idefics2 import (
     Idefics2BaseModelOutputWithPast,

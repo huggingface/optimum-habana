@@ -28,9 +28,11 @@ from typing import List, Optional
 
 import Levenshtein
 import torch
-import transformers
 from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from transformers import (
     AutoConfig,
     AutoModelForVision2Seq,
@@ -38,8 +40,6 @@ from transformers import (
     HfArgumentParser,
 )
 from transformers.trainer_utils import is_main_process
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 try:

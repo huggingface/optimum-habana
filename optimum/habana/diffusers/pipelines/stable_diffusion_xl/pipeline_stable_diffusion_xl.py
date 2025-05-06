@@ -25,6 +25,8 @@ from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipeline
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
+
+from optimum.utils import logging
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -32,8 +34,6 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
 )
-
-from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment

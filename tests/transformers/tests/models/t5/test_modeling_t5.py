@@ -21,12 +21,12 @@ import tempfile
 import unittest
 
 import pytest
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import T5Config, is_torch_available
 from transformers.models.auto.modeling_auto import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES
 from transformers.testing_utils import require_sentencepiece, require_tokenizers, require_torch, slow
 from transformers.utils import cached_property, is_torch_fx_available
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
@@ -39,6 +39,7 @@ if is_torch_fx_available():
 
 if is_torch_available():
     import torch
+
     from transformers import (
         AutoTokenizer,
         ByT5Tokenizer,

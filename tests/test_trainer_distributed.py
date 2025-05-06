@@ -16,12 +16,11 @@
 from pathlib import Path
 from typing import Dict
 
-from transformers import EvalPrediction, HfArgumentParser, is_torch_available
-from transformers.testing_utils import TestCasePlus
-
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
+from transformers import EvalPrediction, HfArgumentParser, is_torch_available
+from transformers.testing_utils import TestCasePlus
 
 
 logger = logging.get_logger(__name__)

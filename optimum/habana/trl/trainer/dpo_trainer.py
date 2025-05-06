@@ -24,15 +24,6 @@ import torch.nn as nn
 from accelerate import PartialState
 from accelerate.utils import is_deepspeed_available
 from datasets import Dataset
-from transformers import (
-    AutoModelForCausalLM,
-    DataCollator,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
-)
-from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES
-from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import EvalLoopOutput
 from trl import DPOTrainer, create_reference_model
 from trl.import_utils import is_peft_available, is_wandb_available
 from trl.trainer.dpo_config import FDivergenceConstants
@@ -43,6 +34,16 @@ from trl.trainer.utils import (
     disable_dropout_in_model,
     pad_to_length,
 )
+
+from transformers import (
+    AutoModelForCausalLM,
+    DataCollator,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
+from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES
+from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import EvalLoopOutput
 
 from ... import GaudiConfig, GaudiTrainer
 from .dpo_config import GaudiDPOConfig

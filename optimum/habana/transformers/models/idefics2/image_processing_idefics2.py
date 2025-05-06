@@ -17,6 +17,7 @@
 from typing import Iterable, List, Optional, Union
 
 import numpy as np
+
 from transformers.image_processing_utils import BatchFeature
 from transformers.image_utils import ChannelDimension, infer_channel_dimension_format
 from transformers.models.idefics2.image_processing_idefics2 import (

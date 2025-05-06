@@ -28,6 +28,7 @@ from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion 
 from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
+
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig

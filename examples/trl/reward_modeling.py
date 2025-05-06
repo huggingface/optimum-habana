@@ -8,16 +8,16 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
+
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.trl import GaudiRewardTrainer, RewardDataCollatorWithPadding
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     HfArgumentParser,
     TrainerCallback,
 )
-
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.trl import GaudiRewardTrainer, RewardDataCollatorWithPadding
-from optimum.habana.utils import set_seed
 
 
 # Define and parse arguments.

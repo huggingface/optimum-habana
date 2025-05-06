@@ -33,7 +33,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
@@ -50,12 +49,13 @@ from huggingface_hub import create_repo, upload_folder
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
+import transformers
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
 from optimum.habana.utils import HabanaGenerationTime, set_seed
+from transformers import AutoTokenizer, PretrainedConfig
 
 
 try:

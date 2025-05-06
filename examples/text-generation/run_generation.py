@@ -27,7 +27,6 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from transformers import BatchEncoding
 from utils import (
     SetTrueOrFalseOrNone,
     adjust_batch,
@@ -38,6 +37,7 @@ from utils import (
 )
 
 from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+from transformers import BatchEncoding
 
 
 logging.basicConfig(

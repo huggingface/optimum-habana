@@ -78,22 +78,6 @@ from huggingface_hub import HfApi, hf_hub_download, snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
-from transformers import (
-    AutoTokenizer,
-    CLIPImageProcessor,
-    CLIPTextConfig,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionConfig,
-    CLIPVisionModelWithProjection,
-    DPTConfig,
-    DPTFeatureExtractor,
-    DPTForDepthEstimation,
-    T5Config,
-    T5EncoderModel,
-)
-from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
@@ -128,6 +112,22 @@ from optimum.habana.diffusers.models import (
     UNetSpatioTemporalConditionControlNetModel,
 )
 from optimum.habana.utils import set_seed
+from transformers import (
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+    DPTConfig,
+    DPTFeatureExtractor,
+    DPTForDepthEstimation,
+    T5Config,
+    T5EncoderModel,
+)
+from transformers.testing_utils import parse_flag_from_env, slow
 
 from .clip_coco_utils import calculate_clip_score, download_files
 from .utils import OH_DEVICE_CONTEXT

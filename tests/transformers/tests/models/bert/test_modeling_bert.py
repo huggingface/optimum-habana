@@ -16,6 +16,7 @@ import os
 import tempfile
 import unittest
 
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import BertConfig, is_torch_available
 from transformers.models.auto import get_values
 from transformers.testing_utils import (
@@ -26,8 +27,6 @@ from transformers.testing_utils import (
     slow,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
@@ -37,6 +36,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         MODEL_FOR_PRETRAINING_MAPPING,
         BertForMaskedLM,

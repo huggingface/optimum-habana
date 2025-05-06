@@ -18,6 +18,8 @@ import tempfile
 import unittest
 
 from parameterized import parameterized
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -33,8 +35,6 @@ from transformers.testing_utils import (
     slow,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
@@ -44,6 +44,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         FalconForCausalLM,
         FalconForQuestionAnswering,

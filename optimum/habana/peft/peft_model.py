@@ -2,8 +2,9 @@ import warnings
 
 import packaging.version
 import torch
-import transformers
 from peft import PeftType
+
+import transformers
 
 
 def gaudi_generate(self, *args, **kwargs):

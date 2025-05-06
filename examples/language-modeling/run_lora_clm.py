@@ -28,7 +28,6 @@ from typing import List, Optional
 import datasets
 import evaluate
 import torch
-import transformers
 from datasets import load_dataset
 from peft import (
     AdaLoraConfig,
@@ -42,6 +41,10 @@ from peft import (
     tuners,
 )
 from peft.utils.other import fsdp_auto_wrap_policy
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -50,9 +53,6 @@ from transformers import (
     HfArgumentParser,
 )
 from transformers.trainer_utils import is_main_process
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:

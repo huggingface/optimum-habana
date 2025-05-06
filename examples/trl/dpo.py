@@ -5,14 +5,14 @@ from typing import Dict, List, Optional
 import torch
 from datasets import Dataset, load_dataset
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
-from transformers.integrations.deepspeed import (
-    is_deepspeed_available,
-)
 
 from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDPOConfig, GaudiDPOTrainer
 from optimum.habana.utils import set_seed
+from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
+from transformers.integrations.deepspeed import (
+    is_deepspeed_available,
+)
 
 
 # Define and parse arguments.

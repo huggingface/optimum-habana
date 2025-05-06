@@ -19,9 +19,9 @@ import habana_frameworks.torch as ht
 import numpy as np
 import pytest
 import torch
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 from .utils import OH_DEVICE_CONTEXT
 

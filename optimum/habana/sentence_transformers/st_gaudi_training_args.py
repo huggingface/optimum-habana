@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Union
 
 from sentence_transformers.training_args import BatchSamplers, MultiDatasetBatchSamplers
+
 from transformers.training_args import ParallelMode
 
 from ..transformers import GaudiTrainingArguments

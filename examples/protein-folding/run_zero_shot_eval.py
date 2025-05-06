@@ -22,9 +22,9 @@ import sys
 import torch
 from datasets import load_dataset
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoModel, AutoTokenizer
 
 
 try:

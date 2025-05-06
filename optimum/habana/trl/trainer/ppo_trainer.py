@@ -23,12 +23,6 @@ import torch
 from accelerate.utils import ProjectConfiguration
 from datasets import Dataset
 from torch.optim import Adam
-from transformers import (
-    DataCollatorForLanguageModeling,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerBase,
-    PreTrainedTokenizerFast,
-)
 from trl import PPOTrainer
 from trl.core import (
     WANDB_PADDING,
@@ -50,6 +44,13 @@ from trl.trainer import (
     BaseTrainer,
     FixedKLController,
     RunningMoments,
+)
+
+from transformers import (
+    DataCollatorForLanguageModeling,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
+    PreTrainedTokenizerFast,
 )
 
 from ...utils import HabanaGenerationTime, set_seed

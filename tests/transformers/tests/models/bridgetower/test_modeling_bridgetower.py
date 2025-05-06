@@ -18,6 +18,8 @@ import tempfile
 import unittest
 
 import numpy as np
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import (
     BridgeTowerConfig,
     BridgeTowerTextConfig,
@@ -27,8 +29,6 @@ from transformers import (
 )
 from transformers.testing_utils import require_torch, require_vision, slow
 from transformers.utils import cached_property
-
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
@@ -44,6 +44,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         BridgeTowerForContrastiveLearning,
         BridgeTowerForImageAndTextRetrieval,
@@ -52,6 +53,7 @@ if is_torch_available():
     )
 if is_vision_available():
     from PIL import Image
+
     from transformers import BridgeTowerProcessor
 
 

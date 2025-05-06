@@ -27,6 +27,7 @@ from diffusers.utils import (
     logging,
 )
 from diffusers.utils.torch_utils import randn_tensor
+
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig

@@ -6,18 +6,18 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import torch
-import transformers
 from datasets import load_dataset
 from peft import LoraConfig
 from tqdm import tqdm
+
+import transformers
+from optimum.habana import GaudiConfig
+from optimum.habana.trl import GaudiSFTConfig, GaudiSFTTrainer
+from optimum.habana.utils import set_seed
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
 from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
-
-from optimum.habana import GaudiConfig
-from optimum.habana.trl import GaudiSFTConfig, GaudiSFTTrainer
-from optimum.habana.utils import set_seed
 
 
 logger = logging.getLogger(__name__)

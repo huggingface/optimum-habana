@@ -21,9 +21,9 @@ import pytest
 import torch
 from datasets import load_dataset
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import pipeline
 
 
 MODELS_TO_TEST = {

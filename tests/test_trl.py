@@ -16,11 +16,11 @@ import gc
 import unittest
 
 import torch
-from transformers.testing_utils import slow
 from trl import DDPOConfig
 
 from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDDPOTrainer, GaudiDefaultDDPOStableDiffusionPipeline
+from transformers.testing_utils import slow
 
 
 def scorer_function(images, prompts, metadata):

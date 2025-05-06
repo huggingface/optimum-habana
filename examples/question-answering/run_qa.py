@@ -27,9 +27,13 @@ from typing import Optional
 
 import datasets
 import evaluate
-import transformers
 from datasets import load_dataset
 from trainer_qa import QuestionAnsweringTrainer
+from utils_qa import postprocess_qa_predictions
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForQuestionAnswering,
@@ -43,10 +47,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from utils_qa import postprocess_qa_predictions
-
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:

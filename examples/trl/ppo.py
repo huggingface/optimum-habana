@@ -7,13 +7,13 @@ import torch
 from datasets import load_dataset
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import Adafactor, AutoModelForSequenceClassification, AutoTokenizer, HfArgumentParser, pipeline
 from trl import AutoModelForCausalLMWithValueHead
 from trl.core import LengthSampler
 
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime, set_seed
+from transformers import Adafactor, AutoModelForSequenceClassification, AutoTokenizer, HfArgumentParser, pipeline
 
 
 tqdm.pandas()

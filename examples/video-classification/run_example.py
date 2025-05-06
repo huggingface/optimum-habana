@@ -26,10 +26,10 @@ import habana_frameworks.torch as ht
 import requests
 import torch
 from tqdm import tqdm
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 
 adapt_transformers_to_gaudi()

@@ -2,6 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
+
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.models.siglip.configuration_siglip import SiglipConfig
 from transformers.models.siglip.modeling_siglip import (

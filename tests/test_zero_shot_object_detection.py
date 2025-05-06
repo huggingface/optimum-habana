@@ -21,10 +21,10 @@ import pytest
 import requests
 import torch
 from PIL import Image
-from transformers import OwlViTForObjectDetection, OwlViTProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
+from transformers import OwlViTForObjectDetection, OwlViTProcessor
 
 from .utils import OH_DEVICE_CONTEXT
 

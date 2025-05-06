@@ -21,6 +21,10 @@ import unittest
 import pytest
 from packaging import version
 from parameterized import parameterized
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.transformers.models.llama.configuration_llama import LlamaConfig
+from optimum.habana.utils import set_seed
 from transformers import StaticCache, is_torch_available
 from transformers.testing_utils import (
     require_bitsandbytes,
@@ -32,10 +36,6 @@ from transformers.testing_utils import (
     slow,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.transformers.models.llama.configuration_llama import LlamaConfig
-from optimum.habana.utils import set_seed
-
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor
@@ -45,6 +45,7 @@ torch_device = "hpu"
 adapt_transformers_to_gaudi()
 if is_torch_available():
     import torch
+
     from transformers import (
         LlamaForCausalLM,
         LlamaForQuestionAnswering,

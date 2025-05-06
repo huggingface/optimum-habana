@@ -24,12 +24,12 @@ import av
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import VideoLlavaProcessor
 
 from optimum.habana.transformers.modeling_utils import (
     GaudiVideoLlavaForConditionalGeneration,
     adapt_transformers_to_gaudi,
 )
+from transformers import VideoLlavaProcessor
 
 
 logging.basicConfig(

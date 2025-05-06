@@ -22,9 +22,9 @@ import habana_frameworks.torch as ht
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
-from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 
 adapt_transformers_to_gaudi()

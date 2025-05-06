@@ -24,10 +24,10 @@ from peft import (
     get_peft_model,
     tuners,
 )
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 
 TEST_CASES = [

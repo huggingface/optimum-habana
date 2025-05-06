@@ -33,7 +33,6 @@ import diffusers
 import numpy as np
 import torch
 import torch.utils.checkpoint
-import transformers
 from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
@@ -66,11 +65,12 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import T5EncoderModel
 
+import transformers
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.utils import set_seed
+from transformers import T5EncoderModel
 
 
 if is_wandb_available():

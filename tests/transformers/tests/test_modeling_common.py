@@ -28,8 +28,10 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import numpy as np
-import transformers
 from pytest import mark
+
+import transformers
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from transformers import (
     AutoModel,
     AutoModelForSequenceClassification,
@@ -74,8 +76,6 @@ from transformers.utils import (
     is_torch_fx_available,
 )
 
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 
 if is_accelerate_available():
     from accelerate.utils import compute_module_sizes
@@ -85,6 +85,7 @@ if is_torch_available():
     import torch
     from safetensors.torch import save_file as safe_save_file
     from torch import nn
+
     from transformers import MODEL_MAPPING, AdaptiveEmbedding
     from transformers.pytorch_utils import id_tensor_storage
 

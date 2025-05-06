@@ -3,13 +3,13 @@ from enum import Enum
 
 import torch.nn as nn
 from packaging import version
+
+from optimum.utils import logging
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import is_accelerate_available, is_auto_awq_available
 from transformers.utils.quantization_config import (
     AwqBackendPackingMethod,
 )
-
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)

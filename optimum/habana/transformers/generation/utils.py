@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 import torch.distributed as dist
+
+from optimum.utils import logging
 from transformers.cache_utils import (
     Cache,
     DynamicCache,
@@ -70,8 +72,6 @@ from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available, is_torchdynamo_compiling
-
-from optimum.utils import logging
 
 from ...utils import HabanaGenerationTime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model

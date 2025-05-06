@@ -19,10 +19,10 @@ import logging
 import soundfile as sf
 import torch
 from datasets import load_dataset
-from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime, set_seed
+from transformers import pipeline
 
 
 logging.basicConfig(

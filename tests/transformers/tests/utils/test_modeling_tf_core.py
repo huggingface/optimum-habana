@@ -32,6 +32,7 @@ from ..test_modeling_tf_common import ids_tensor
 if is_tf_available():
     import numpy as np
     import tensorflow as tf
+
     from transformers import (
         TF_MODEL_FOR_CAUSAL_LM_MAPPING,
         TF_MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,

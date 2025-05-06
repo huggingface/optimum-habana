@@ -26,8 +26,6 @@ import tempfile
 from pathlib import Path
 
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import check_min_version
 
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
@@ -43,6 +41,8 @@ from optimum.habana.utils import (
     get_habana_frameworks_version,
     set_seed,
 )
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
 
 
 def adjust_batch(batch, size):

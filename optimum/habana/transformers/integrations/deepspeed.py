@@ -17,6 +17,8 @@ Integration with Deepspeed
 """
 
 import torch
+
+from optimum.utils import logging
 from transformers.dependency_versions_check import dep_version_check
 from transformers.integrations.deepspeed import (
     HfDeepSpeedConfig,
@@ -24,8 +26,6 @@ from transformers.integrations.deepspeed import (
     deepspeed_optim_sched,
     set_hf_deepspeed_config,
 )
-
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)

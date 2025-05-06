@@ -28,6 +28,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, LayerNorm, MSELoss
 from torch.nn.utils import skip_init
+
+from optimum.habana.transformers.modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from transformers.generation import GenerationMixin
 from transformers.generation.logits_process import LogitsProcessor
 from transformers.modeling_outputs import (
@@ -37,8 +39,6 @@ from transformers.modeling_outputs import (
 )
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
-
-from optimum.habana.transformers.modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 from .configuration_chatglm import GLM4VConfig
 from .visual import EVA2CLIPModel
