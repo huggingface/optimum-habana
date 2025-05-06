@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
+
 
 MODELS_TO_TEST = {
     "fp8": [
@@ -56,7 +58,7 @@ def _test_fp8_train(
     command = ["python3"]
     if model_name == "meta-llama/Meta-Llama-3.1-8B":
         command += [
-            f"{path_to_example_dir/ 'gaudi_spawn.py'}",
+            f"{path_to_example_dir / 'gaudi_spawn.py'}",
             "--world_size 8",
             "--use_deepspeed",
         ]
@@ -96,7 +98,7 @@ def _test_fp8_train(
             f"--token {token.value}",
         ]
     elif model_name == "meta-llama/Meta-Llama-3.1-8B":
-        os.environ["PT_TE_CUSTOM_OP"]= "1"
+        os.environ["PT_TE_CUSTOM_OP"] = "1"
         command += [
             "--num_train_epochs 1",
             "--eval_strategy no",
@@ -120,7 +122,7 @@ def _test_fp8_train(
             "--flash_attention_causal_mask True",
             "--torch_compile_backend hpu_backend",
             "--torch_compile",
-            f"--deepspeed {path_to_example_dir / task /'llama3_ds_zero1_config.json'}",
+            f"--deepspeed {path_to_example_dir / task / 'llama3_ds_zero1_config.json'}",
             "--cache_size_limit 64",
             "--use_regional_compilation",
             "--compile_from_sec_iteration",
