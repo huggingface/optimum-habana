@@ -144,6 +144,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
         sdp_on_bf16: bool = False,
+        is_training: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -165,9 +166,9 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
         )
 
         for block in self.transformer.single_transformer_blocks:
-            block.attn.processor = GaudiFluxAttnProcessor2_0()
+            block.attn.processor = GaudiFluxAttnProcessor2_0(is_training)
         for block in self.transformer.transformer_blocks:
-            block.attn.processor = GaudiFluxAttnProcessor2_0()
+            block.attn.processor = GaudiFluxAttnProcessor2_0(is_training)
 
         self.to(self._device)
         if use_hpu_graphs:
