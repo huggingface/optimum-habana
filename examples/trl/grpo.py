@@ -39,7 +39,7 @@ class ScriptArguments:
     )
 
     use_flash_attention: Optional[bool] = field(
-        default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning."}
+        default=True, metadata={"help": "Whether to use Habana flash attention for fine-tuning."}
     )
     flash_attention_recompute: Optional[bool] = field(
         default=False, metadata={"help": "Whether to enable recompute in Habana flash attention for fine-tuning."}

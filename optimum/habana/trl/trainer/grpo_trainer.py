@@ -510,7 +510,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
     @profiling_decorator
     def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
-        logits = model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep + 1).logits
+        logits = model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep + 1, use_flash_attention=True).logits
         logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
 
         input_ids = input_ids[:, -logits_to_keep:]
@@ -585,7 +585,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         prompts = inputs["prompt"]
         prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
         prompt_inputs = self.processing_class(
-            text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+            #text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+            text=prompts_text, return_tensors="pt", padding='max_length', max_length=self.args.max_prompt_length, padding_side="left", add_special_tokens=False
         )
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
@@ -641,7 +642,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
                 prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config
+                    prompt_ids, attention_mask=prompt_mask, use_flash_attention=True, generation_config=self.generation_config
                 )
 
             # Compute prompt length and extract completion ids
@@ -739,7 +740,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
         # completions may be distributed across processes
-        rewards_per_func = gather(rewards_per_func)
+        rewards_per_func = gather(rewards_per_func) ###(128*num_processes, 1)
 
         # Apply weights to each reward function's output and sum
         rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
@@ -839,7 +840,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             ref_per_token_logps = inputs["ref_per_token_logps"]
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
-            )
+            ) ####the model remains close to the reference model
 
         # Compute the loss
         advantages = inputs["advantages"]
@@ -850,7 +851,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2) ####Maximize advantages
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
