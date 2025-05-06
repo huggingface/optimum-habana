@@ -23,10 +23,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from .utils import OH_DEVICE_CONTEXT
 
 
-MODEL_ID = "meta-llama/Llama-3.2-1B"
 
-
-def get_model(token: str):
+def get_model(token: str, model_id: str):
     nf4_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -34,28 +32,41 @@ def get_model(token: str):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
+        model_id, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
     )
 
     return model
 
 
+<<<<<<< HEAD
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
 def test_nf4_quantization_inference(token: str, baseline):
+=======
+@pytest.mark.parametrize("model_id", ["meta-llama/Llama-3.2-1B"])
+@pytest.mark.parametrize(
+    "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
+)
+def test_nf4_quantization_inference(token: str, model_id: str, compile_on: bool):
+>>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
     modeling_utils.adapt_transformers_to_gaudi()
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
-
-    model = get_model(token)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=token.value)
+    model = get_model(token, model_id)
 
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = 20
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
 
+<<<<<<< HEAD
+=======
+    if compile_on:
+        model.model = torch.compile(model.model, backend="hpu_backend")
+
+>>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
 
