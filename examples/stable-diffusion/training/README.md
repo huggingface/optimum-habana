@@ -23,6 +23,14 @@ This directory contains scripts that showcase how to perform training/fine-tunin
 The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
 such as `stabilityai/stable-diffusion-xl-base-1.0` or `cagliostrolab/animagine-xl-3.1` for example.
 
+For this example we will use a set of cat toy images from the following dataset:
+[https://huggingface.co/datasets/diffusers/cat_toy_example](https://huggingface.co/datasets/diffusers/cat_toy_example).
+
+To download this and other example training datasets locally, run:
+```bash
+python download_train_datasets.py
+```
+
 Assuming the afforemenioned cat toy dataset has been obtained, we can launch textual inversion XL training using:
 
 ```bash
@@ -102,7 +110,7 @@ python train_controlnet.py \
 ```
 
 You can run inference on multiple HPUs by replacing `python train_controlnet.py`
-with `python ../gaudi_spawn.py --world_size <num-HPUs> train_controlnet.py`.
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_controlnet.py`.
 
 ### Inference
 
@@ -172,7 +180,7 @@ python train_text_to_image_sdxl.py \
 > There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
 
 You can run inference on multiple HPUs by replacing `python train_text_to_image_sdxl.py`
-with `PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024 python ../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sdxl.py`.
+with `PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024 python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sdxl.py`.
 
 ### Inference
 
@@ -335,7 +343,7 @@ python train_dreambooth_lora_sdxl.py \
 > To use DeepSpeed instead of MPI, replace `--use_mpi` with `--deepspeed` in the previous example.
 
 You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_sdxl.py`
-with `python ../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`.
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`.
 
 After training is completed, you can directly use `text_to_image_generation.py` sample for inference, as shown below:
 ```bash
@@ -388,7 +396,7 @@ python train_dreambooth_lora_flux.py \
 > To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed` in the previous example
 
 You can run inference on multiple HPUs by replacing `python train_dreambooth_lora_flux.py`
-with `python ../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`.
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash

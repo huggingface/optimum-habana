@@ -20,19 +20,21 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
+            ("llava-hf/llava-onevision-qwen2-7b-ov-hf", 1),
             ("google/paligemma-3b-mix-224", 1),
             ("HuggingFaceM4/idefics2-8b", 1),
             ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1),
             ("tiiuae/falcon-11B-vlm", 1),
             ("Qwen/Qwen2-VL-2B-Instruct", 1),
             ("Qwen/Qwen2-VL-7B-Instruct", 1),
+            ("THUDM/glm-4v-9b", 1),
         ],
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
             # ("llava-hf/llava-1.5-13b-hf", 1),
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
-            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
+            pytest.param("llava-hf/llava-v1.6-vicuna-13b-hf", 1, marks=pytest.mark.x8),
         ],
     }
 else:
@@ -66,6 +68,9 @@ def _test_image_to_text(
         "--max_new_tokens 20",
         "--ignore_eos",
     ]
+
+    if model_name == "THUDM/glm-4v-9b":
+        env_variables["GLM"] = "4v"
 
     command += [
         "--use_hpu_graphs",

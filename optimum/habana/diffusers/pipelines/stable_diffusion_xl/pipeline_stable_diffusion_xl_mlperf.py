@@ -281,6 +281,16 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
 
         return model
 
+    def to(self, *args, **kwargs):
+        """
+        Intercept to() method and disable gpu-hpu migration before sending to diffusers
+        """
+        kwargs["hpu_migration"] = False
+        return super().to(
+            *args,
+            **kwargs,
+        )
+
     @classmethod
     def _split_inputs_into_batches(
         cls,

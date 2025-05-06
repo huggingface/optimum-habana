@@ -13,20 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
+import os
 
 import pytest
 import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.transformers import modeling_utils
 
 from .utils import OH_DEVICE_CONTEXT
-
-
-modeling_utils.adapt_transformers_to_gaudi()
 
 
 MODEL_ID = "meta-llama/Llama-3.2-1B"
@@ -56,10 +53,12 @@ def print_trainable_parameters(model):
     )
 
 
-def get_data(tokenizer, dataset_name):
+def get_data(tokenizer, dataset_name, max_seq_length=1024):
     dataset = load_dataset(dataset_name)
     dataset = dataset.shuffle(seed=42)
-    data = dataset.map(lambda example: tokenizer(example["text"]), batched=True)
+    data = dataset.map(
+        lambda example: tokenizer(example["text"], max_length=max_seq_length, padding="max_length"), batched=True
+    )
     split_data = data["train"].train_test_split(test_size=0.1, seed=42)
 
     return split_data
@@ -80,16 +79,13 @@ def get_model(token: str):
 
 
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_inference(token: str, baseline):
-    try:
-        import sys
+def test_nf4_quantization_finetuning(token: str, baseline):
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    from optimum.habana.transformers import modeling_utils
 
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-    except subprocess.CalledProcessError:
-        pytest.fail("Failed to install peft==0.12.0")
+    modeling_utils.adapt_transformers_to_gaudi()
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value, padding_side="right")
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -111,7 +107,9 @@ def test_nf4_quantization_inference(token: str, baseline):
     model = get_peft_model(model, config)
     print_trainable_parameters(model)
 
-    data = get_data(tokenizer, dataset_name="tatsu-lab/alpaca")
+    max_seq_length = 1024
+    print(f"max_seq_len {max_seq_length}")
+    data = get_data(tokenizer, dataset_name="tatsu-lab/alpaca", max_seq_length=max_seq_length)
 
     gaudi_config = GaudiConfig(
         use_fused_adam=True,
@@ -124,16 +122,18 @@ def test_nf4_quantization_inference(token: str, baseline):
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=2,
-        max_steps=5,
-        eval_steps=3,
+        max_steps=50,
+        eval_steps=10,
         warmup_steps=3,
         learning_rate=2e-4,
         logging_steps=1,
         output_dir="results",
         lr_scheduler_type="linear",
         use_habana=True,
-        use_lazy_mode=True,
+        use_lazy_mode=False,
         pipelining_fwd_bwd=True,
+        adjust_throughput=True,
+        throughput_warmup_steps=2,
     )
 
     trainer = GaudiTrainer(

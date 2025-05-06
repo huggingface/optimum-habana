@@ -25,7 +25,6 @@ import math
 import os
 import random
 import shutil
-import time
 from pathlib import Path
 
 import diffusers
@@ -56,7 +55,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed
 
 
 try:
@@ -68,7 +67,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.17.0.dev0")
+check_optimum_habana_min_version("1.18.0.dev0")
 if is_wandb_available():
     import wandb
 
@@ -1032,11 +1031,11 @@ def main(args):
     )
 
     image_logs = None
-    t0 = None
+    timer = HabanaGenerationTime()
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
-            if t0 is None and global_step == args.throughput_warmup_steps:
-                t0 = time.perf_counter()
+            if not timer.is_running() and global_step == args.throughput_warmup_steps:
+                timer.start()
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
@@ -1150,7 +1149,8 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-    duration = time.perf_counter() - t0
+    timer.step()
+    duration = timer.last_duration
     throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
     # Create the pipeline using using the trained modules and save it.

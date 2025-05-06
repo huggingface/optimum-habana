@@ -32,8 +32,8 @@ INSTALL_REQUIRES = [
     "transformers >= 4.49.0, < 4.50.0",
     "optimum",
     "torch",
-    "accelerate >= 0.33.0, < 0.34.0",
-    "diffusers >= 0.31.0, < 0.32.0",
+    "accelerate >= 1.5.0",
+    "diffusers >= 0.32.0, < 0.32.1",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers == 3.3.1",
 ]

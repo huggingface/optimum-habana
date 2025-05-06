@@ -559,6 +559,7 @@ class GaudiLlamaAttention(LlamaAttention):
         position_embeddings: Tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -779,6 +780,8 @@ class GaudiLlamaAttention(LlamaAttention):
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
+        if not output_attentions:
+            attn_weights = None
 
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
@@ -1346,28 +1349,34 @@ class GaudiLlamaModel(LlamaModel):
                 )
                 hidden_states = layer_outputs[0]
             else:
+                # Calling the layer with positional arguments
+                # This is a workaround for an issue with DeepSpeed where
+                # it cannot handle keyword arguments and throws a RuntimError
                 use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
+                layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
+                layer_hidden_states = hidden_states_split if split_prompt else hidden_states
+                past_key_value = None if past_key_values is None else past_key_values[layer_idx]
                 layer_outputs = decoder_layer(
-                    hidden_states=hidden_states_split if split_prompt else hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    valid_sequence_lengths=valid_sequence_lengths,
-                    cache_idx=cache_idx,
-                    num_virtual_tokens=num_virtual_tokens,
-                    attn_batch_split=attn_batch_split,
-                    prev_layer_residual=prev_layer_residual if use_prev_layer_residual else None,
+                    layer_hidden_states,
+                    causal_mask,
+                    position_ids,
+                    past_key_value,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
+                    position_embeddings,
+                    token_idx,
+                    attn_softmax_bf16,
+                    reuse_cache,
+                    use_flash_attention,
+                    flash_attention_recompute,
+                    flash_attention_causal_mask,
+                    flash_attention_fast_softmax,
+                    valid_sequence_lengths,
+                    cache_idx,
+                    num_virtual_tokens,
+                    attn_batch_split,
+                    layer_prev_layer_residual,
                 )
                 if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)

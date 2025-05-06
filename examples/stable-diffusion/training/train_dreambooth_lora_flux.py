@@ -34,6 +34,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 import transformers
+from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from datasets import load_dataset
@@ -69,7 +70,6 @@ from transformers import T5EncoderModel
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.utils import set_seed
 
 
@@ -535,10 +535,16 @@ class DreamBoothDataset(Dataset):
         prompt_embeds = embeddings[0]
         pooled_prompt_embeds = embeddings[1]
         text_ids = embeddings[2]
-        prompt_embeds = np.array(prompt_embeds).reshape(self.max_sequence_length, prompt_embeds.shape[-1])
-        pooled_prompt_embeds = np.array(pooled_prompt_embeds).reshape(pooled_prompt_embeds.shape[-1])
-        text_ids = np.array(text_ids).reshape(self.max_sequence_length, 3)
-        return torch.from_numpy(prompt_embeds), torch.from_numpy(pooled_prompt_embeds), torch.from_numpy(text_ids)
+        if torch.is_tensor(prompt_embeds):
+            prompt_embeds = prompt_embeds.reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = pooled_prompt_embeds.reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = text_ids.reshape(self.max_sequence_length, 3)
+            return prompt_embeds, pooled_prompt_embeds, text_ids
+        else:
+            prompt_embeds = np.array(prompt_embeds).reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = np.array(pooled_prompt_embeds).reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = np.array(text_ids).reshape(self.max_sequence_length, 3)
+            return torch.from_numpy(prompt_embeds), torch.from_numpy(pooled_prompt_embeds), torch.from_numpy(text_ids)
 
     def generate_image_hash(self, image):
         return insecure_hashlib.sha256(image.tobytes()).hexdigest()
@@ -762,7 +768,7 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        if not accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
             while len(models) > 0:
                 model = models.pop()
 
@@ -1075,7 +1081,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process or accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:

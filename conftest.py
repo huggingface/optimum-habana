@@ -113,6 +113,22 @@ def token(request):
 
 
 def pytest_configure(config):
+    # Bitsandbytes installation for {test_bnb_qlora.py test_bnb_inference.py} tests
+    # This change will be reverted shortly
+    bnb_tests = any("bnb" in name for name in config.known_args_namespace.file_or_dir)
+    if bnb_tests:
+        import subprocess
+        import sys
+
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@multi-backend-refactor",
+            ]
+        )
     name = ""
     try:
         from optimum.habana.utils import get_device_name
