@@ -229,7 +229,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using assitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -448,7 +448,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using assitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
