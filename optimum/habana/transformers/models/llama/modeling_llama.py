@@ -28,7 +28,7 @@ from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
 from ....distributed.tp import TPModule
-from ....features import import_hpex
+from ....features import import_usable_component
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -53,30 +53,32 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 
 
+FusedRMSNorm, has_fused_rms_norm = import_usable_component(
+    "habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"
+)
+
+
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
     Copied from LlamaRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    with import_hpex("habana_frameworks.torch.hpex.normalization", "FusedRMSNorm") as FusedRMSNorm:
-        if hidden_states.device.type == "hpu" and FusedRMSNorm:
-            # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
-            if hidden_states.dtype != self.weight.dtype:
-                orig_dtype = hidden_states.dtype
-                hidden_states = FusedRMSNorm.apply(
-                    hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon
-                )
-                return hidden_states.to(orig_dtype)
-            else:
-                hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-                return hidden_states
+    if hidden_states.device.type == "hpu" and has_fused_rms_norm:
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
         else:
-            input_dtype = hidden_states.dtype
-            hidden_states = hidden_states.to(torch.float32)
-            variance = hidden_states.pow(2).mean(-1, keepdim=True)
-            hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-            return self.weight * hidden_states.to(input_dtype)
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
 
 
 class GaudiLlamaRotaryEmbedding(torch.nn.Module):
