@@ -11,6 +11,7 @@ from optimum.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
     attributes = ["image_processor", "tokenizer"]
     valid_kwargs = ["chat_template", "patch_size", "vision_feature_select_strategy", "image_token", "video_token"]
