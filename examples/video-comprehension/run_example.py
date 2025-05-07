@@ -17,6 +17,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -30,6 +31,12 @@ from optimum.habana.transformers.modeling_utils import (
     GaudiVideoLlavaForConditionalGeneration,
     adapt_transformers_to_gaudi,
 )
+
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from examples.common_parser import add_profiling_args  # noqa: E402
 
 
 logging.basicConfig(
@@ -118,6 +125,7 @@ def main():
         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
 
+    add_profiling_args(parser)
     args = parser.parse_args()
 
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
@@ -186,6 +194,9 @@ def main():
         )
     torch.hpu.synchronize()
 
+    from optimum.habana.utils import HabanaProfile
+
+    HabanaProfile.enable()
     start = time.perf_counter()
     for i in range(args.n_iterations):
         generate_ids = model.generate(
@@ -196,12 +207,16 @@ def main():
             ignore_eos=args.ignore_eos,
             use_flash_attention=args.use_flash_attention,
             flash_attention_recompute=args.flash_attention_recompute,
+            profiling_steps=args.profiling_steps,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_record_shapes=args.profiling_record_shapes,
         )
         generate_texts = processor.batch_decode(
             generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
     end = time.perf_counter()
     duration = end - start
+    HabanaProfile.disable()
 
     # Let's calculate the number of generated tokens
     n_input_tokens = inputs["input_ids"].shape[1]
