@@ -1,5 +1,5 @@
 imagesize
-peft == 0.10.0
+peft == 0.12.0
 sentencepiece
 compel
 datasets
