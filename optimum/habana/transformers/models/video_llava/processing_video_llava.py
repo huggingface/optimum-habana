@@ -29,11 +29,11 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
         chat_template=None,
         **kwargs,
     ):
+        super().__init__(image_processor, tokenizer, chat_template=chat_template)
         self.patch_size = patch_size
         self.vision_feature_select_strategy = vision_feature_select_strategy
         self.image_token = image_token
         self.video_token = video_token
-        super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
     def __call__(
         self,
