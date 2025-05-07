@@ -88,7 +88,7 @@ def setup_lm_eval_parser():
         "--show_config",
         action="store_true",
         default=False,
-        help="If True, shows the the full config of all tasks at the end of the evaluation.",
+        help="If True, shows the full config of all tasks at the end of the evaluation.",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
