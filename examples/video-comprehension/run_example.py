@@ -28,6 +28,7 @@ from transformers import VideoLlavaProcessor
 
 from optimum.habana.transformers.modeling_utils import (
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVideoLlavaProcessor,
     adapt_transformers_to_gaudi,
 )
 
@@ -168,7 +169,7 @@ def main():
 
         model = wrap_in_hpu_graph(model)
 
-    processor = VideoLlavaProcessor.from_pretrained(args.model_name_or_path)
+    processor = GaudiVideoLlavaProcessor.from_pretrained(args.model_name_or_path)
     processor.tokenizer.padding_side = "left"
     inputs = processor(text=prompts, videos=video_clips, return_tensors="pt")
     inputs = inputs.to(device)
