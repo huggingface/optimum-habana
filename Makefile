@@ -17,6 +17,8 @@ DEFAULT_CLONE_URL := https://github.com/huggingface/optimum-habana.git
 # If CLONE_URL is empty, revert to DEFAULT_CLONE_URL
 REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
+export PT_HPU_LAZY_MODE=1
+# will be removed when lazy is disabled
 
 .PHONY:	style test
 
