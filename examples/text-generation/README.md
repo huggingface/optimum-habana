@@ -241,18 +241,19 @@ You can also provide the path to a PEFT model to perform generation with the arg
 For example:
 ```bash
 python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+--model_name_or_path TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
 --bf16 \
---max_new_tokens 100 \
---prompt "Here is my prompt" \
---peft_model yard1/llama-2-7b-sql-lora-test \
+--max_new_tokens 26 \
+--prompt """Table: 2-11365528-2
+Columns: ['Team', 'Head Coach', 'President', 'Home Ground', 'Location']
+Natural Query: Who is the Head Coach of the team whose President is Mario Volarevic?
+SQL Query:""" \
+--peft_model smangrul/tinyllama_lora_sql \
 --sdp_on_bf16
 ```
-
-
 
 ### Using Beam Search
 

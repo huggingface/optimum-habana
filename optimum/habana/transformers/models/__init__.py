@@ -172,6 +172,7 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
 from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
@@ -289,6 +290,14 @@ from .seamless_m4t import (
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_SeamlessM4TTextToUnitModel_forward,
+)
+from .siglip import (
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
 )
 from .speecht5 import (
     gaudi_generate_speech,
