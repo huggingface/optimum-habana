@@ -29,6 +29,10 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
         chat_template=None,
         **kwargs,
     ):
+        r"""
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/processing_video_llava.py#L61
+        except move super().__init__ to the top of the function so that it will not change the default value for self.patch_size and self.vision_feature_select_strategy
+        """
         super().__init__(image_processor, tokenizer, chat_template=chat_template)
         self.patch_size = patch_size
         self.vision_feature_select_strategy = vision_feature_select_strategy
