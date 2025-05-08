@@ -230,7 +230,7 @@ class GaudiStableLmDecoderLayer(torch.nn.Module):
 
 def gaudi_stablelm_model_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -238,10 +238,9 @@ def gaudi_stablelm_model_forward(
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPast]:
+) -> BaseModelOutputWithPast:
     """
     Copied from StableLmModel.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/stablelm/modeling_stablelm.py
     The only differences are:
@@ -253,8 +252,6 @@ def gaudi_stablelm_model_forward(
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
     )
     use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     # retrieve input_ids and inputs_embeds
     if input_ids is not None and inputs_embeds is not None:
@@ -357,8 +354,6 @@ def gaudi_stablelm_model_forward(
     if use_cache:
         next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
 
-    if not return_dict:
-        return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
         last_hidden_state=hidden_states,
         past_key_values=next_cache,
@@ -370,7 +365,7 @@ def gaudi_stablelm_model_forward(
 class GaudiStableLmForCausalLM(StableLmForCausalLM):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -379,12 +374,11 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> CausalLMOutputWithPast:
         """
         Inherits from StableLmForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/stablelm/modeling_stablelm.py
         The only differences are:
@@ -394,9 +388,8 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -405,12 +398,11 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         # No upscaling to float was ever done for StableLm
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :])
@@ -423,10 +415,6 @@ class GaudiStableLmForCausalLM(StableLmForCausalLM):
                 vocab_size=self.config.vocab_size,
                 **kwargs,
             )
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,
