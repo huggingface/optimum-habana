@@ -109,11 +109,13 @@ class GaudiAccelerator(Accelerator):
         dynamo_plugin: TorchDynamoPlugin | None = None,
         deepspeed_plugins: DeepSpeedPlugin | dict[str, DeepSpeedPlugin] | None = None,
         # TODO: remove these when the features are upstream or removed
+        dynamic: bool | None = None,
         force_autocast: bool = False,
         distribution_strategy: str = None,
         use_regional_compilation: bool | None = None,
         compiled_autograd_enable: bool = False,
     ):
+        self.dynamic = dynamic
         self.use_regional_compilation = use_regional_compilation
         self.compiled_autograd_enable = compiled_autograd_enable
         self.distribution_strategy = distribution_strategy
@@ -366,7 +368,9 @@ class GaudiAccelerator(Accelerator):
         if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
-            if self.use_regional_compilation:
+            if self.dynamic is not None:
+                model = torch.compile(model, dynamic=self.dynamic, **compile_kwargs)
+            elif self.use_regional_compilation:
                 compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
@@ -579,6 +583,7 @@ class GaudiAccelerator(Accelerator):
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
             if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
+                compile_kwargs.update({"dynamic": self.dynamic})
                 ###############################################################################################################
                 if self.use_regional_compilation:
                     compile_regions(engine.module, compile_kwargs)
