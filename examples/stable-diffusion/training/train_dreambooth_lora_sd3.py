@@ -13,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+# Adapted from:
+# https://github.com/huggingface/diffusers/blob/v0.32.0/examples/dreambooth/train_dreambooth_lora_sd3.py
 import argparse
 import copy
 import itertools
@@ -78,7 +80,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.29.0")
+check_min_version("0.32.0")
 
 logger = get_logger(__name__)
 
@@ -178,13 +180,9 @@ def log_validation(
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
-    is_training = not is_final_validation
 
     with autocast_ctx:
-        images = [
-            pipeline(**pipeline_args, generator=generator, is_training=is_training).images[0]
-            for _ in range(args.num_validation_images)
-        ]
+        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     if args.save_validation_images:
         os.makedirs(args.save_validation_images_path, exist_ok=True)
@@ -485,7 +483,7 @@ def parse_args(input_args=None):
         "--scale_lr",
         action="store_true",
         default=False,
-        help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
+        help="Scale the learning rate by the number of HPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -630,10 +628,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         choices=["no", "fp32", "fp16", "bf16"],
-        help=(
-            "Choose prior generation precision between fp32, fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to  fp16 if a GPU is available else fp32."
-        ),
+        help=("Choose prior generation precision between fp32, fp16 and bf16. Default to bf16 for HPU."),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
@@ -904,7 +899,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    "A simple dataset to prepare the prompts to generate class images on multiple HPUs."
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
@@ -1114,8 +1109,7 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            has_supported_fp16_accelerator = torch.cuda.is_available() or torch.backends.mps.is_available()
-            torch_dtype = torch.float16 if has_supported_fp16_accelerator else torch.float32
+            torch_dtype = torch.bfloat16
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -1738,7 +1732,6 @@ def main(args):
                     weighting = 1 - u - args.mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
 
                 # simplified flow matching aka 0-rectified flow matching loss
-                # target = model_input - noise
                 target = model_input
 
                 if args.with_prior_preservation:
