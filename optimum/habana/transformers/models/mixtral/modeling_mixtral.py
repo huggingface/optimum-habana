@@ -26,6 +26,8 @@ from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
+import torch.distributed as dist
+import torch.nn as nn
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
@@ -40,16 +42,17 @@ from transformers.modeling_outputs import (
 from transformers.models.mixtral.modeling_mixtral import (
     KwargsForCausalLM,
     MixtralAttention,
+    MixtralBlockSparseTop2MLP,
     MixtralDecoderLayer,
     MixtralForCausalLM,
     MixtralModel,
-    MixtralSparseMoeBlock,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
 from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
+from ....distributed.tensorparallel import _all_reduce
 from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
 from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
@@ -141,7 +144,45 @@ def gaudi_mixtral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
+class GaudiMixtralSparseMoeBlock(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.hidden_dim = config.hidden_size
+        self.ffn_dim = config.intermediate_size
+        self.num_experts = config.num_local_experts
+
+        self.top_k = config.num_experts_per_tok
+        self.ep_size = config.ep_size if hasattr(config, "ep_size") else 1
+        if dist.is_initialized():
+            self.world_size = dist.get_world_size()
+        else:
+            self.world_size = 1
+        # gating
+        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
+        if self.ep_size > 1:
+            assert config.ep_size == dist.get_world_size()
+            ep_rank = dist.get_rank()
+            experts_per_rank = self.num_experts // self.ep_size
+
+            self.experts_min = experts_per_rank * ep_rank
+            self.experts_max = experts_per_rank * (ep_rank + 1) - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
+
+            self.experts = nn.ModuleList(
+                [
+                    (MixtralBlockSparseTop2MLP(config) if i in self.experts_range else None)
+                    for i in range(self.num_experts)
+                ]
+            )
+        else:
+            self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+            self.experts_min = 0
+            self.experts_max = self.num_experts - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
+
+        # Jitter parameters
+        self.jitter_noise = config.router_jitter_noise
+
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         original_shape = hidden_states.shape
         hidden_dim = original_shape[2]
@@ -150,14 +191,6 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
-
-        if deepspeed_available and (not self.training):
-            from deepspeed import comm as dist
-
-            if dist.is_initialized():
-                output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
-                dist.all_gather(output_tensors, router_logits)
-                router_logits = torch.cat(output_tensors, dim=1)
 
         routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
 
@@ -177,11 +210,14 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 expert_routing_table=selected_experts,
                 router_weights=routing_weights,
             )
-            if is_deepspeed_available():
-                from deepspeed import comm as dist
 
-                if dist.is_initialized():
-                    dist.all_reduce(final_hidden_states)
+            if self.ep_size > 1:
+                final_hidden_states = _all_reduce(final_hidden_states)
+            elif deepspeed_available and (not self.training):
+                from deepspeed import comm
+
+                if comm.is_initialized():
+                    comm.all_reduce(final_hidden_states)
 
         return final_hidden_states.view(original_shape), router_logits
 
@@ -192,9 +228,9 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         router_weights,
     ):
         # pre-processing for custom op inputs
-        w1_list = [expert.w1.weight for expert in self.experts]
-        w2_list = [expert.w2.weight for expert in self.experts]
-        w3_list = [expert.w3.weight for expert in self.experts]
+        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
+        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
+        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
 
         return torch.ops.hpu.mixture_of_experts(
             hidden_states=hidden_states,
@@ -205,8 +241,8 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             w2=w3_list,
             permuted_weights=True,
             activation="silu",
-            experts_min=0,
-            experts_max=len(self.experts) - 1,
+            experts_min=self.experts_min,
+            experts_max=self.experts_max,
         )
 
     def call_sparse_moe_op(

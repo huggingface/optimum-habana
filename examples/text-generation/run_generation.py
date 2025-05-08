@@ -288,7 +288,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--book_source",
         action="store_true",
-        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lengths.",
     )
     parser.add_argument(
         "--torch_compile",

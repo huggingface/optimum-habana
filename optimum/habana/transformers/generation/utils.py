@@ -115,6 +115,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2",
     "llava",
     "llava_next",
+    "llava_onevision",
     "stablelm",
     "mamba",
     "deci",
