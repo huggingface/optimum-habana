@@ -189,7 +189,7 @@
       "train_samples_per_second": 1955.74
     },
     "gaudi3": {
-      "eval_accuracy": 0.19650135869565216,
+      "eval_accuracy": 0.18546195652173914,
       "eval_samples_per_second": 2442.221,
       "train_runtime": 118.0048,
       "train_samples_per_second": 2462.94
@@ -209,7 +209,7 @@
       "train_samples_per_second": 2975.844
     },
     "gaudi3": {
-      "eval_accuracy": 0.7352241847826086,
+      "eval_accuracy": 0.7202785326086957,
       "eval_samples_per_second": 2059.992,
       "train_runtime": 71.6177,
       "train_samples_per_second": 3977.496
@@ -446,7 +446,7 @@
     "gaudi3": {
       "eval_accuracy": 0.9817333333333333,
       "train_runtime": 106.7478,
-      "train_samples_per_second": 7042.508
+      "train_samples_per_second": 5241.263
     }
   },
   "tests/test_examples.py::MultiCardImageClassificationExampleTester::test_run_image_classification_vit-base-patch16-224-in21k_multi_card": {
@@ -614,8 +614,8 @@
     "gaudi3": {
       "eval_samples_per_second": 48.493,
       "eval_wer": 0.4296589018302829,
-      "train_runtime": 321.6139,
-      "train_samples_per_second": 504.087
+      "train_runtime": 351.7181,
+      "train_samples_per_second": 417.561
     }
   },
   "tests/test_examples.py::MultiCardSpeechRecognitionExampleTester::test_run_speech_recognition_ctc_wav2vec2-large-lv60_multi_card": {
@@ -632,7 +632,7 @@
       "train_samples_per_second": 225.572
     },
     "gaudi3": {
-      "eval_samples_per_second": 491.004,
+      "eval_samples_per_second": 369.034,
       "eval_wer": 0.06197937326457755,
       "train_runtime": 235.8412,
       "train_samples_per_second": 392.016
