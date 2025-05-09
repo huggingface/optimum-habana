@@ -20,8 +20,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-import torch.nn.functional as F
-from diffusers.models.attention_processor import Attention
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import SD3Transformer2DModel
 from diffusers.pipelines.stable_diffusion_3 import StableDiffusion3Pipeline
@@ -44,6 +42,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.attention_processor import GaudiJointAttnProcessor2_0
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -78,101 +77,6 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("sd3.png")
         ```
 """
-
-
-# ToDo: Look into FusedJointAttnProcessor2_0 usage for sd3 pipeline, and check its perf using fused sdpa
-class GaudiJointAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections.
-    Copied from JointAttnProcessor2_0.forward: https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/models/attention_processor.py
-        The only differences are:
-        - applied Fused SDPA from Habana's framework.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        residual = hidden_states
-
-        batch_size = hidden_states.shape[0]
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
-            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
-            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
-
-        from habana_frameworks.torch.hpex.kernels import FusedSDPA
-
-        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, "fast", None)
-
-        # hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            # Split the attention outputs.
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1]],
-                hidden_states[:, residual.shape[1] :],
-            )
-            if not attn.context_pre_only:
-                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
 
 
 class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipeline):
@@ -243,6 +147,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
         sdp_on_bf16: bool = False,
+        is_training: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -265,6 +170,9 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             text_encoder_3=text_encoder_3,
             tokenizer_3=tokenizer_3,
         )
+
+        for block in self.transformer.transformer_blocks:
+            block.attn.processor = GaudiJointAttnProcessor2_0(is_training)
 
         self.to(self._device)
 
@@ -654,8 +562,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 "images": [],
             }
 
-            for block in self.transformer.transformer_blocks:
-                block.attn.processor = GaudiJointAttnProcessor2_0()
             ht.hpu.synchronize()
 
             t0 = time.time()
