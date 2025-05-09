@@ -649,6 +649,8 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[prefix + "BACKEND"] = self.torch_compile_backend
             if self.torch_compile_mode is not None:
                 os.environ[prefix + "MODE"] = self.torch_compile_mode
+            if self.compile_dynamic is not None:
+                os.environ[prefix + "USE_DYNAMIC"] = str(self.compile_dynamic)
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
