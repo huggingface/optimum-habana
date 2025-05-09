@@ -76,7 +76,7 @@ def compile_regions(model, compile_kwargs):
     else:
         if model._modules:  # If model has submodules, recurse and reassign
             for name, module in model.named_children():
-                compiled_module = compile_regions(module, **compile_kwargs)
+                compiled_module = compile_regions(module, compile_kwargs)
                 if compiled_module is not None:  # Only reassign if something is returned
                     setattr(model, name, compiled_module)
         else:  # Leaf node
@@ -367,7 +367,7 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, **compile_kwargs)
+                compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
@@ -581,7 +581,7 @@ class GaudiAccelerator(Accelerator):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs=compile_kwargs)
+                    compile_regions(engine.module, compile_kwargs)
                 else:
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),
