@@ -47,20 +47,20 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
         },
     )
     max_prompt_length: Optional[int] = field(
-        default=512,
+        default=128,#512, #
         metadata={
             "help": "Maximum length of the prompt. If the prompt is longer than this value, it will be truncated left."
         },
     )
     num_generations: Optional[int] = field(
-        default=8,
+        default=4,#8,#
         metadata={
             "help": "Number of generations to sample. The global batch size (num_processes * per_device_batch_size) "
             "must be divisible by this value."
         },
     )
     max_completion_length: Optional[int] = field(
-        default=256,
+        default=64,#256,#
         metadata={"help": "Maximum length of the generated completion."},
     )
     ds3_gather_for_generation: bool = field(
@@ -142,7 +142,7 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
 
     # Parameters that control the training
     learning_rate: float = field(
-        default=1e-6,
+        default=1e-5,
         metadata={
             "help": "Initial learning rate for `AdamW` optimizer. The default value replaces that of "
             "`transformers.TrainingArguments`."

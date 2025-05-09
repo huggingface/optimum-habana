@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import os
 import textwrap
 import warnings
+import copy
+import time
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Any, Callable, Optional, Sized, Union
@@ -61,6 +64,19 @@ from trl import GRPOTrainer
 from ... import GaudiConfig, GaudiTrainer
 from .grpo_config import GaudiGRPOConfig
 
+from optimum.utils import logging
+logger = logging.get_logger(__name__)
+from optimum.habana.transformers.trainer import _get_input_update_settings
+from optimum.habana.utils import HabanaProfile, speed_metrics
+
+from transformers.debug_utils import DebugOption
+from transformers.trainer_callback import ExportableState,TrainerState
+from transformers.training_args import ParallelMode
+from transformers.trainer_pt_utils import get_model_param_count
+from transformers.trainer import _is_peft_model
+from accelerate import DistributedType
+from peft import PeftType
+import functools
 
 if is_deepspeed_available():
     import deepspeed
@@ -75,7 +91,6 @@ if is_wandb_available():
 # What we call a reward function is a callable that takes a list of prompts and completions and returns a list of
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
-
 
 class RepeatRandomSampler(Sampler):
     """
@@ -294,8 +309,9 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         self.reward_processing_classes = reward_processing_classes
 
         def data_collator(features):
-            batch = {key: [f[key] for f in features] for key in features[0]}
-            return batch
+            #batch = {key: [f[key] for f in features] for key in features[0]}
+            #return batch
+            return features
 
         # Training arguments
         self.max_prompt_length = args.max_prompt_length
@@ -392,19 +408,24 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # synchronize all processes after vLLM has been fully initialized.
             self.accelerator.wait_for_everyone()
         else:
-            self.generation_config = GaudiGenerationConfig(
-                max_new_tokens=self.max_completion_length,
-                do_sample=True,
-                pad_token_id=processing_class.pad_token_id,
-                bos_token_id=processing_class.bos_token_id,
-                eos_token_id=processing_class.eos_token_id,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                top_k=self.top_k,
-                min_p=self.min_p,
-                repetition_penalty=self.repetition_penalty,
-                cache_implementation=args.cache_implementation,
-            )
+            #self.generation_config = GaudiGenerationConfig(
+            self.generation_config = copy.deepcopy(model.generation_config)
+            self.generation_config.max_new_tokens=self.max_completion_length
+            self.generation_config.do_sample=True
+            self.generation_config.pad_token_id=processing_class.pad_token_id
+            self.generation_config.bos_token_id=processing_class.bos_token_id
+            self.generation_config.eos_token_id=processing_class.eos_token_id
+            self.generation_config.temperature=self.temperature
+            self.generation_config.top_p=self.top_p
+            self.generation_config.top_k=self.top_k
+            self.generation_config.min_p=self.min_p
+            self.generation_config.repetition_penalty=self.repetition_penalty
+            self.generation_config.cache_implementation=args.cache_implementation
+            self.generation_config.use_cache=True
+            self.generation_config.static_shapes=True
+            self.generation_config.reuse_cache=True
+            self.generation_config.bucket_internal=True
+            self.generation_config.bucket_size=128
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -427,6 +448,563 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
 
+    def _inner_training_loop(
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
+    ):
+        self.accelerator.free_memory()
+        self._train_batch_size = batch_size
+        if self.args.auto_find_batch_size:
+            if self.state.train_batch_size != self._train_batch_size:
+                from accelerate.utils import release_memory
+
+                (self.model_wrapped,) = release_memory(self.model_wrapped)
+                self.model_wrapped = self.model
+
+                # Check for DeepSpeed *after* the initial pass and modify the config
+                if self.is_deepspeed_enabled:
+                    # Temporarily unset `self.args.train_batch_size`
+                    original_bs = self.args.per_device_train_batch_size
+                    self.args.per_device_train_batch_size = self._train_batch_size // max(1, self.args.n_gpu)
+                    self.propagate_args_to_deepspeed(True)
+                    self.args.per_device_train_batch_size = original_bs
+            self.state.train_batch_size = self._train_batch_size
+        logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
+        # Data loader and number of training steps
+        train_dataloader = self.get_train_dataloader()
+
+        # Setting up training control variables:
+        # number of training epochs: num_train_epochs
+        # number of training steps per epoch: num_update_steps_per_epoch
+        # total number of training steps to execute: max_steps
+        total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size #16
+        (
+            num_train_epochs,
+            num_update_steps_per_epoch,
+            num_examples,
+            num_train_samples,
+            epoch_based,
+            len_dataloader,
+            max_steps,
+        ) = self.set_initial_training_values(args, train_dataloader, total_train_batch_size) #len(train_dataloader)=58361
+        if (
+            self.accelerator.mpu.sequence_parallel_is_initialized()
+            and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
+        ):
+            total_train_batch_size = total_train_batch_size / self.accelerator.mpu.get_sequence_parallel_world_size()
+
+        num_train_tokens = None
+        if self.args.include_tokens_per_second:
+            num_train_tokens = self.num_tokens(train_dataloader, None if epoch_based else max_steps)
+            # If going by epochs, multiply tokens linearly
+            if len_dataloader is not None and epoch_based:
+                num_train_tokens *= args.num_train_epochs
+            # Otherwise since its steps, we just multiply by grad accum
+            else:
+                num_train_tokens *= args.gradient_accumulation_steps
+
+        if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
+            debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
+
+        delay_optimizer_creation = self.is_fsdp_enabled
+
+        # We need to reset the scheduler, as its parameters may be different on subsequent calls
+        if self._created_lr_scheduler:
+            self.lr_scheduler = None
+            self._created_lr_scheduler = False
+
+        if self.is_deepspeed_enabled:
+            self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
+
+        if not delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
+        self.state = TrainerState(
+            stateful_callbacks=[
+                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
+            ]
+        )
+        self.state.is_hyper_param_search = trial is not None
+        self.state.train_batch_size = self._train_batch_size
+
+        # Compute absolute values for logging, eval, and save if given as ratio
+        self.state.compute_steps(args, max_steps)
+
+        # Activate gradient checkpointing if needed
+        if args.gradient_checkpointing:
+            import transformers.modeling_utils
+
+            if args.deepspeed:
+                from deepspeed.runtime.activation_checkpointing.checkpointing import (
+                    CheckpointFunction,
+                    non_reentrant_checkpoint,
+                )
+
+                # HACK because outputs should always be tuples
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args, use_reentrant: Optional[bool] = None):
+                    """DeepSpeed activation checkpointing."""
+                    if use_reentrant is None:
+                        use_reentrant = True
+                    if use_reentrant:
+                        all_outputs = []
+                        CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    else:
+                        logger.info("DeepSpeed activation checkpointing=non_reentrant_checkpoint")
+                        all_outputs = non_reentrant_checkpoint(function, *checkpoint_args)
+
+                    # Always return a tuple
+                    # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
+                    # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
+                    return tuple(all_outputs)
+
+                torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
+                transformers.modeling_utils.checkpoint = hpu_deepspeed_checkpointing
+            elif args.use_lazy_mode:
+                from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
+
+                torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
+                transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
+
+            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+
+            # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
+            if self.accelerator.state.mixed_precision == "fp8":
+                FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
+        else:
+            # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
+            if hasattr(self.model, "gradient_checkpointing_disable"):
+                self.model.gradient_checkpointing_disable()
+
+        model = self._wrap_model(self.model_wrapped)
+
+        # as the model is wrapped, don't use `accelerator.prepare`
+        # this is for unhandled cases such as
+        # FSDP-XLA, SageMaker MP/DP, DataParallel, IPEX
+        use_accelerator_prepare = True if model is self.model else False
+
+        if use_accelerator_prepare and self.is_fsdp_enabled:
+            # In case of auto_find_batch_size=True
+            # Remove FSDP wrapping from sub-models.
+            self.model = unwrap_model(self.model, recursive=True)
+
+        if delay_optimizer_creation:
+            if use_accelerator_prepare:
+                # configure fsdp plugin for qlora if any
+                self._fsdp_qlora_plugin_updates()
+                if self.accelerator.mixed_precision != "fp8":
+                    self.model = self.accelerator.prepare(self.model)
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
+        # prepare using `accelerator` prepare
+        if use_accelerator_prepare:
+            self.model.train()
+            if hasattr(self.lr_scheduler, "step"):
+                model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+            else:
+                # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
+                model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
+                    self.model, self.optimizer, self.lr_scheduler
+                )
+        elif self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
+            # In this case we are in DDP + LOMO, which should be supported
+            self.optimizer = self.accelerator.prepare(self.optimizer)
+
+        if self.is_fsdp_enabled:
+            self.model = self.model_wrapped = model
+
+        # for the rest of this function `model` is the outside model, whether it was wrapped or not
+        if model is not self.model:
+            self.model_wrapped = model
+
+        # backward compatibility
+        if self.is_deepspeed_enabled:
+            self.deepspeed = self.model_wrapped
+
+        # ckpt loading
+        if resume_from_checkpoint is not None:
+            if self.is_deepspeed_enabled:
+                deepspeed_load_checkpoint(
+                    self.model_wrapped, resume_from_checkpoint, load_module_strict=not _is_peft_model(self.model)
+                )
+            elif self.is_fsdp_enabled:
+                self._load_from_checkpoint(resume_from_checkpoint, self.model_wrapped)
+
+        # Check if saved optimizer or scheduler states exist
+        self._load_optimizer_and_scheduler(resume_from_checkpoint)
+        self._load_scaler(resume_from_checkpoint)
+
+        if self.gaudi_config.use_fused_clip_norm and self.args.use_habana:
+            try:
+                from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+            except ImportError as error:
+                error.msg = f"Could not import habana_frameworks.torch.hpex.normalization. {error.msg}."
+                raise error
+            self.FusedNorm = FusedClipNorm(model.parameters(), args.max_grad_norm)
+        else:
+            self.FusedNorm = None
+
+        # important: at this point:
+        # self.model         is the Transformers Model
+        # self.model_wrapped is DDP(Transformers Model), Deepspeed(Transformers Model), etc.
+        # FSDP(Transformers Model), Dynamo Optimized Module(Transformers Model) etc.
+
+        # Train!
+        logger.info("***** Running training *****")
+        logger.info(f"  Num examples = {num_examples:,}")
+        logger.info(f"  Num Epochs = {num_train_epochs:,}")
+        logger.info(f"  Instantaneous batch size per device = {self.args.per_device_train_batch_size:,}")
+        if self.args.per_device_train_batch_size != self._train_batch_size:
+            logger.info(f"  Training with DataParallel so batch size has been adjusted to: {self._train_batch_size:,}")
+        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size:,}")
+        logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+        logger.info(f"  Total optimization steps = {max_steps:,}")
+        logger.info(f"  Number of trainable parameters = {get_model_param_count(model, trainable_only=True):,}")
+
+        self.state.epoch = 0
+        start_time = time.time()
+        start_time_after_warmup = None
+        epochs_trained = 0
+        steps_trained_in_current_epoch = 0
+        steps_trained_progress_bar = None
+
+        # Check if continuing training from a checkpoint
+        if resume_from_checkpoint is not None and os.path.isfile(
+            os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
+        ):
+            self.state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
+            self.compare_trainer_and_checkpoint_args(self.args, self.state)
+            self._load_callback_state()
+            epochs_trained = int(self.state.global_step // num_update_steps_per_epoch)
+            if not args.ignore_data_skip:
+                steps_trained_in_current_epoch = self.state.global_step % (num_update_steps_per_epoch)
+                steps_trained_in_current_epoch *= args.gradient_accumulation_steps
+            else:
+                steps_trained_in_current_epoch = 0
+
+            logger.info("  Continuing training from checkpoint, will skip to saved global_step")
+            logger.info(f"  Continuing training from epoch {epochs_trained}")
+            logger.info(f"  Continuing training from global step {self.state.global_step}")
+            if not args.ignore_data_skip:
+                logger.info(
+                    f"  Will skip the first {epochs_trained} epochs then the first"
+                    f" {steps_trained_in_current_epoch} batches in the first epoch."
+                )
+
+        # In multi-worker training: broadcast model parameters from worker:0 to all the others.
+        # This must be done manually unless DistributedDataParallel is used.
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
+            from ..distributed import all_reduce_gradients
+
+            logger.debug(
+                f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
+            )
+            for param in model.parameters():
+                torch.distributed.broadcast(param.data, src=0)
+
+        # Update the references
+        self.state.init_training_references(self, train_dataloader, max_steps, num_train_epochs, trial)
+
+        # tr_loss is a tensor to avoid synchronization of TPUs through .item()
+        tr_loss = torch.tensor(0.0).to(args.device)
+        # _total_loss_scalar is updated every time .item() has to be called on tr_loss and stores the sum of all losses
+        self._total_loss_scalar = 0.0
+        self._globalstep_last_logged = self.state.global_step
+        self._zero_model_grad(model)
+
+        # Gradient clipping
+        grad_norm: Optional[float] = None
+        _should_compute_grad_norm: bool = self.accelerator.distributed_type != DistributedType.DEEPSPEED and (
+            args.max_grad_norm is not None and args.max_grad_norm > 0
+        )
+
+        # attn_softmax_bf16 and use_flash_attention are enabled only for llama, qwen2, starcoder2, gemma and baichuan
+        # lazy_mode for llama, qwen2, starcoder2 and mistral
+        _should_update_inputs, _inputs_update = _get_input_update_settings(self.model, lazy_mode=args.use_lazy_mode)
+
+        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+
+        if args.eval_on_start:
+            self._evaluate(trial, ignore_keys_for_eval, skip_scheduler=True)
+
+        if self.args.adjust_throughput:
+            self.log_evaluate_save_time = 0
+        else:
+            self.log_evaluate_save_time = None
+
+        hb_profiler = HabanaProfile(
+            warmup=self.args.profiling_warmup_steps,
+            active=self.args.profiling_steps,
+            record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
+        )
+        hb_profiler.start()
+
+        if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+            self.model.base_model.peft_config[self.model.trainable_adapter_name].total_step = max_steps
+            if max_steps < self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal:
+                self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal = 0
+
+        for epoch in range(epochs_trained, num_train_epochs):
+            epoch_dataloader = train_dataloader
+            if hasattr(epoch_dataloader, "set_epoch"):
+                epoch_dataloader.set_epoch(epoch)
+
+            # Reset the past mems state at the beginning of each epoch if necessary.
+            if args.past_index >= 0:
+                self._past = None
+
+            steps_in_epoch = (
+                len(epoch_dataloader)
+                if len_dataloader is not None
+                else args.max_steps * args.gradient_accumulation_steps
+            )
+            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
+
+            if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
+                self._load_rng_state(resume_from_checkpoint)
+
+            rng_to_sync = False
+            steps_skipped = 0
+            if steps_trained_in_current_epoch > 0:
+                epoch_dataloader = skip_first_batches(epoch_dataloader, steps_trained_in_current_epoch)
+                steps_skipped = steps_trained_in_current_epoch
+                steps_trained_in_current_epoch = 0
+                rng_to_sync = True
+
+            step = -1
+            epoch_iterator = iter(epoch_dataloader)
+            # We chunkify the epoch iterator into gradient accumulation steps `n` batches
+            remainder = num_examples % args.gradient_accumulation_steps
+            if remainder == 0:
+                remainder = args.gradient_accumulation_steps
+            update_step = -1
+            total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
+            if args.gradient_accumulation_steps == 1:
+                total_updates -= 1
+            for _ in range(total_updates):
+                update_step += 1
+                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
+                batch_samples, num_items_in_batch = self.get_batch_samples_transformers(
+                    epoch_iterator, num_batches, args.device
+                )
+
+                for i, inputs in enumerate(batch_samples):
+                    step += 1
+
+                    if (
+                        args.throughput_warmup_steps > 0
+                        and (args.throughput_warmup_steps * args.gradient_accumulation_steps)
+                        == epoch * steps_in_epoch + step
+                    ):
+                        start_time_after_warmup = time.time()
+
+                    do_sync_step = (step + 1) % args.gradient_accumulation_steps == 0 or (step + 1) == steps_in_epoch
+                    # Since we perform prefetching, we need to manually set sync_gradients
+                    self.accelerator.gradient_state._set_sync_gradients(do_sync_step)
+
+                    if self.args.include_num_input_tokens_seen:
+                        main_input_name = getattr(self.model, "main_input_name", "input_ids")
+                        if main_input_name not in inputs:
+                            logger.warning(
+                                "Tried to track the number of tokens seen, however the current model is "
+                                "not configured properly to know what item is the input. To fix this, add "
+                                "a `main_input_name` attribute to the model class you are using."
+                            )
+                        else:
+                            input_tokens = inputs[main_input_name].numel()
+                            input_tokens = torch.tensor(input_tokens, device=self.args.device, dtype=torch.int64)
+                            self.state.num_input_tokens_seen += (
+                                self.accelerator.gather(input_tokens).sum().cpu().item()
+                            )
+                    if rng_to_sync:
+                        self._load_rng_state(resume_from_checkpoint)
+                        rng_to_sync = False
+
+                    # Skip past any already trained steps if resuming training
+                    if steps_trained_in_current_epoch > 0:
+                        steps_trained_in_current_epoch -= 1
+                        if steps_trained_progress_bar is not None:
+                            steps_trained_progress_bar.update(1)
+                        if steps_trained_in_current_epoch == 0:
+                            self._load_rng_state(resume_from_checkpoint)
+                        continue
+                    elif steps_trained_progress_bar is not None:
+                        steps_trained_progress_bar.close()
+                        steps_trained_progress_bar = None
+
+                    if step % args.gradient_accumulation_steps == 0:
+                        self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+
+                    # attn_softmax_bf16 and use_flash_attention is enabled only for llama, qwen2, starcoder2, gemma, baichuan and chatglm
+                    # lazy_mode for llama, qwen2, starcoder2 and mistral
+                    #if _should_update_inputs:
+                    #    import pdb;pdb.set_trace()
+                    #    ##########due to the RepeatRandomSampler(???) inputs is a list of dicts. but is expected to be a dict
+                    #    inputs.update(_inputs_update)
+
+                    # TODO: keep syncs for fast DDP?
+                    # We explicitly want to avoid relying on `accelerator.accumulate` for generation training
+                    context = (
+                        functools.partial(self.accelerator.no_sync, model=model)
+                        if i != len(batch_samples) - 1
+                        and self.accelerator.distributed_type != DistributedType.DEEPSPEED
+                        else contextlib.nullcontext
+                    )
+                    with context():
+                        tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+
+                    if (
+                        args.parallel_mode == ParallelMode.DISTRIBUTED
+                        and args.distribution_strategy == "fast_ddp"
+                        and do_sync_step
+                    ):
+                        all_reduce_gradients(
+                            model, use_hpu_graphs=True
+                        )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
+
+                    if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
+                        # if loss is nan or inf simply add the average of previous logged losses
+                        tr_loss = tr_loss + tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    else:
+                        if tr_loss.device != tr_loss_step.device:
+                            raise ValueError(
+                                f"Calculated loss must be on the original device: {tr_loss.device} but device in use is {tr_loss_step.device}"
+                            )
+                        tr_loss = tr_loss + tr_loss_step
+
+                    self.current_flos += float(self.floating_point_ops(inputs))
+
+                    if args.use_lazy_mode:
+                        self.htcore.mark_step()
+
+                    if do_sync_step:
+                        # Since we perform prefetching, we need to manually set sync_gradients to True
+                        self.accelerator.gradient_state._set_sync_gradients(True)
+
+                        # If the condition is true, we need to compute grad_norm, deepspeed does its own clipping
+                        if _should_compute_grad_norm:
+                            # Gradient clipping
+                            if self.FusedNorm is not None:
+                                # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
+                                grad_norm = self.FusedNorm.clip_norm(model.parameters())
+                            else:
+                                # Revert to normal clipping otherwise
+                                grad_norm = self.accelerator.clip_grad_norm_(
+                                    model.parameters(),
+                                    args.max_grad_norm,
+                                )
+
+                        self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
+
+                        self.optimizer.step()
+
+                        self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
+
+                        if not self.accelerator.optimizer_step_was_skipped:
+                            # Delay optimizer scheduling until metrics are generated
+                            if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                                self.lr_scheduler.step()
+
+                        self._zero_model_grad(model)
+                        self.state.global_step += 1
+                        self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
+                        if args.use_lazy_mode:
+                            self.htcore.mark_step()
+                        self.control = self.callback_handler.on_step_end(args, self.state, self.control)
+                        self._maybe_log_save_evaluate(
+                            tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time
+                        )
+                    else:
+                        self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+
+                    hb_profiler.step()
+                    if self.control.should_epoch_stop or self.control.should_training_stop:
+                        break
+                # We also need to break out of the nested loop
+                if self.control.should_epoch_stop or self.control.should_training_stop:
+                    break
+            if step < 0:
+                logger.warning(
+                    "There seems not to be a single sample in your epoch_iterator, stopping training at step"
+                    f" {self.state.global_step}! This is expected if you're using an IterableDataset and set"
+                    f" num_steps ({max_steps}) higher than the number of available samples."
+                )
+                self.control.should_training_stop = True
+
+            self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
+            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
+
+            if self.control.should_training_stop:
+                break
+
+        hb_profiler.stop()
+
+        if args.past_index and hasattr(self, "_past"):
+            # Clean the state at the end of training
+            delattr(self, "_past")
+
+        logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
+        if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
+            # Wait for everyone to get here so we are sure the model has been saved by process 0.
+            if args.parallel_mode == ParallelMode.DISTRIBUTED:
+                torch.distributed.barrier()
+
+            self._load_best_model()
+
+        # add remaining tr_loss
+        self._total_loss_scalar += tr_loss.item()
+        effective_global_step = max(self.state.global_step, 0.001)  # Avoid ZeroDivisionError
+        train_loss = self._total_loss_scalar / effective_global_step
+
+        # Warmup steps are removed from the calculation of speed metrics
+        num_samples_for_speed_metrics = num_train_samples - args.throughput_warmup_steps * total_train_batch_size
+        num_steps_for_speed_metrics = self.state.max_steps - args.throughput_warmup_steps
+        metrics = speed_metrics(
+            "train",
+            start_time,
+            num_samples=num_samples_for_speed_metrics,
+            num_steps=num_steps_for_speed_metrics,
+            num_tokens=num_train_tokens,
+            start_time_after_warmup=start_time_after_warmup,
+            log_evaluate_save_time=self.log_evaluate_save_time,
+        )
+        self.store_flos()
+        metrics["total_flos"] = self.state.total_flos
+        metrics["train_loss"] = train_loss
+
+        self.is_in_train = False
+
+        self._memory_tracker.stop_and_update_metrics(metrics)
+
+        self.log(metrics)
+
+        run_dir = self._get_output_dir(trial)
+        checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
+
+        # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint and process allowed to save.
+        if self.args.should_save and self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+            for checkpoint in checkpoints_sorted:
+                if not os.path.samefile(checkpoint, self.state.best_model_checkpoint):
+                    logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                    shutil.rmtree(checkpoint, ignore_errors=True)
+
+        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
+
+        # Wait for the checkpoint to be uploaded.
+        self._finish_current_push()
+
+        # After training we make sure to retrieve back the original forward pass method
+        # for the embedding layer by removing the forward post hook.
+        if self.neftune_noise_alpha is not None:
+            self._deactivate_neftune(self.model)
+
+        return TrainOutput(self.state.global_step, train_loss, metrics)
+
+    """
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
         # By default, this method sets `self._signature_columns` to the model's expected inputs.
@@ -485,7 +1063,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         )
 
     def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GaudiGRPOConfig) -> PreTrainedModel:
-        """Enables gradient checkpointing for the model."""
+        #Enables gradient checkpointing for the model.
         # Ensure use_cache is disabled
         model.config.use_cache = False
 
@@ -505,7 +1083,9 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             model.enable_input_require_grads()
 
         return model
+    """
 
+    ###this is required to pass use_flash_attention=True, otherwise getting NaN
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
@@ -522,6 +1102,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         logits = logits / self.temperature
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
+    """
     @profiling_decorator
     def _move_model_to_vllm(self):
         # For DeepSpeed ZeRO-3, we need to gather all parameters before operations
@@ -577,16 +1158,23 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # In evaluation, we don't reuse completions across multiple updates, so we don't need to buffer inputs.
             inputs = self._generate_and_score_completions(inputs)
         return inputs
+    """
 
     def _generate_and_score_completions(
         self, inputs: dict[str, Union[torch.Tensor, Any]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        prompts = inputs["prompt"]
-        prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
+        
+        
+        #prompts = inputs['prompt']
+        #prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
+        prompts = [x["prompt"] for x in inputs]
+        prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
+
         prompt_inputs = self.processing_class(
             #text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
-            text=prompts_text, return_tensors="pt", padding='max_length', max_length=self.args.max_prompt_length, padding_side="left", add_special_tokens=False
+            text=prompts_text, return_tensors="pt", padding='max_length', max_length=self.args.max_prompt_length, \
+            padding_side="left", add_special_tokens=False, truncation=True
         )
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
@@ -642,7 +1230,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
                 prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, use_flash_attention=True, generation_config=self.generation_config
+                    prompt_ids, attention_mask=prompt_mask, use_flash_attention=True, generation_config=self.generation_config, \
+                    lazy_mode=True,
                 )
 
             # Compute prompt length and extract completion ids
@@ -656,6 +1245,12 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
         sequence_indices = torch.arange(is_eos.size(1), device=device).expand(is_eos.size(0), -1)
         completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
+
+        # Convert tensor to a list of lists of token IDs. This will be passed to the reward function, avoiding the need
+        # to re-tokenize completions if the reward is computed from tokens.
+        completion_ids_list = [
+            [id.item() for id, m in zip(row, mask_row) if m] for row, mask_row in zip(completion_ids, completion_mask)
+        ]
 
         # Concatenate prompt_mask with completion_mask for logit computation
         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B, P+C)
@@ -686,7 +1281,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Decode the generated completions
         completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-        if is_conversational(inputs):
+        if is_conversational(inputs[0]):
             completions = []
             for prompt, completion in zip(prompts, completions_text):
                 bootstrap = prompt.pop()["content"] if prompt[-1]["role"] == "assistant" else ""
@@ -719,9 +1314,19 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
                 else:
                     # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                    keys = [key for key in inputs if key not in ["prompt", "completion"]]
+                    keys = [key for key in inputs[0] if key not in ["prompt", "completion", "completion_ids", "use_flash_attention", 'lazy_mode']]
+                    """
+                    if "prompt" in inputs: #tldr dataset
+                       keys = [key for key in inputs if key not in ["prompt", "completion", "use_flash_attention", 'lazy_mode']]
+                    elif "question" in inputs: #gsm8k
+                        keys = [key for key in inputs if key not in ["question", "use_flash_attention", 'lazy_mode']]
                     reward_kwargs = {key: inputs[key] for key in keys}
                     output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
+                    """
+                    reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
+                    output_reward_func = reward_func(
+                        prompts=prompts, completions=completions, completion_ids=completion_ids_list, **reward_kwargs
+                    )
                     # Convert None values to NaN
                     output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
 
@@ -821,6 +1426,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             "advantages": advantages,
         }
 
+    """
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
@@ -891,3 +1497,4 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         else:  # transformers<=4.46
             super().log(logs)
         self._metrics[mode].clear()
+    """

@@ -11,14 +11,65 @@ from transformers.integrations.deepspeed import (
 from dataclasses import dataclass, field
 from typing import List, Optional
 from peft import LoraConfig
-# from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+import re
+from math_verify import LatexExtractionConfig, parse, verify
+#from trl.data_utils import apply_chat_template
 
+#from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
+SYSTEM_PROMPT = (
+    "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
+    "first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning "
+    "process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., "
+    "<think> reasoning process here </think><answer> answer here </answer>"
+)
+def make_conversation(example):
+    return {
+        "prompt": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": example["problem"]},#question"]},#
+        ],
+    }
 
 ideal_length = 50
 
 def reward_len(completions, **kwargs):
-    return [-abs(ideal_length - len(completion)) for completion in completions]
+    return [-abs(ideal_length - len(completion)) for completion in completions] #penalize response when len!=50
 
+def format_reward(completions, **kwargs):
+    """Reward function that checks if the reasoning process is enclosed within <think> and </think> tags, while the final answer is enclosed within <answer> and </answer> tags."""
+    #pattern = r"^<think>\n.*?\n</think>\n<answer>\n.*?\n</answer>$"
+    pattern = r"^<think>.*?</think>\s*<answer>.*?</answer>$"
+    completion_contents = [completion[0]["content"] for completion in completions]
+    #completion_contents = [completion for completion in completions]
+    matches = [re.match(pattern, content) for content in completion_contents]
+    rewards_list = [1.0 if match else 0.0 for match in matches]
+    return [1.0 if match else 0.0 for match in matches]
+
+def accuracy_reward(completions, **kwargs):
+    """Reward function that checks if the completion is the same as the ground truth."""
+    solutions = kwargs["solution"]#["answer"]#
+    completion_contents = [completion[0]["content"] for completion in completions]
+    rewards = []
+    for content, solution in zip(completion_contents, solutions):
+        try:
+            gold_parsed = parse(solution, extraction_mode="first_match", extraction_config=[LatexExtractionConfig()])
+            answer_parsed = parse(content, extraction_mode="first_match", extraction_config=[LatexExtractionConfig()])
+            if len(gold_parsed) != 0:
+                try:
+                    rewards.append(float(verify(answer_parsed, gold_parsed)))
+                except ValueError as ve: # Catch the specific SymPy error
+                    print(f"  [VERIFY ERROR - ValueError] For content='{content}', solution='{solution}': {ve}")
+                    rewards.append(0.0) # Keep current behavior of scoring 0
+                except Exception as e_verify: # Catch other potential errors from verify
+                    print(f"  [VERIFY ERROR - Other] For content='{content}', solution='{solution}': {e_verify}")
+                    rewards.append(0.0)
+            else:
+                rewards.append(1.0)
+        except Exception as e_outer: # Catch errors from parsing or other steps
+            print(f"  [OUTER ERROR] For content='{content}', solution='{solution}': {e_outer}")
+            rewards.append(0.0)
+    return rewards
 
 @dataclass
 class ScriptArguments:
@@ -49,8 +100,8 @@ class ScriptArguments:
     )
 
     # LoraConfig
-    lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
-    lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "the lora dropout parameter"})
+    lora_alpha: Optional[float] = field(default=32, metadata={"help": "the lora alpha parameter"})
+    lora_dropout: Optional[float] = field(default=0.1, metadata={"help": "the lora dropout parameter"})
     lora_r: Optional[int] = field(default=8, metadata={"help": "the lora r parameter"})
     lora_target_modules: List[str] = field(
         default_factory=lambda: None,
@@ -73,11 +124,31 @@ if __name__ == "__main__":
     else:
         peft_config = None
 
-    dataset = load_dataset(
-        script_args.dataset_name,
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
+
+    train_dataset, test_dataset = load_dataset(
+        script_args.dataset_name, 'default',#'main',#
         data_dir=None if script_args.subset == "None" else script_args.subset,
         num_proc=script_args.num_workers if not script_args.streaming else None,
+        split=["train[:5%]", "test[:5%]"]
     )
+
+    train_dataset = train_dataset.map(make_conversation)
+    test_dataset = test_dataset.map(make_conversation)
+    train_dataset = train_dataset.remove_columns(["messages", "problem"])
+    """
+    ###apply template for gsm8k and deepseek-r1-base
+    ###only question was reformatted 'answer' has to be processed later
+    dataset = dataset.map(
+        lambda x: { 
+                "prompt": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": x["question"]},
+                ],
+            }
+    )
+    dataset = dataset.map(lambda x: apply_chat_template(x, tokenizer))
+    """
 
     low_cpu_mem_usage = True
     if is_deepspeed_available():
@@ -86,7 +157,7 @@ if __name__ == "__main__":
         if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False
 
-    # adapt_transformers_to_gaudi()
+    #adapt_transformers_to_gaudi()
 
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
@@ -103,14 +174,13 @@ if __name__ == "__main__":
     model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
     model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
 
-    reward_funcs = reward_len
+    reward_funcs = [format_reward, accuracy_reward]#reward_len
     if script_args.reward_model_name_or_path:
         reward_funcs = AutoModelForSequenceClassification.from_pretrained(
             script_args.reward_model_name_or_path,
             trust_remote_code=True,
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -122,8 +192,8 @@ if __name__ == "__main__":
         model=model,
         reward_funcs=reward_funcs,
         args=training_args,
-        train_dataset=dataset[script_args.dataset_train_split],
-        eval_dataset=dataset[script_args.dataset_test_split] if training_args.eval_strategy != "no" else None,
+        train_dataset=train_dataset,#dataset[script_args.dataset_train_split],
+        eval_dataset=test_dataset,#dataset[script_args.dataset_test_split] if training_args.eval_strategy != "no" else None,
         processing_class=tokenizer,
         gaudi_config=gaudi_config,
         peft_config=peft_config,
