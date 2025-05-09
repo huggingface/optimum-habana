@@ -2507,7 +2507,6 @@ class GaudiTrainer(Trainer):
         args = {
             "dataloader_config": dataloader_config,
             "deepspeed_plugins": self.args.deepspeed_plugin,
-            "dynamic": self.args.compile_dynamic,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
             "use_regional_compilation": self.args.use_regional_compilation,
