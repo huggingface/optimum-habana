@@ -356,6 +356,50 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py 
     --validation_split_percentage 6
 ```
 
+- Multi-card finetuning of Llama3.1-8B with Deepspeed ZeRO-1 optimization, LoRA and FP8 precision:
+```bash
+PT_TE_CUSTOM_OP=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_clm.py \
+    --model_name_or_path meta-llama/Meta-Llama-3.1-8B \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 False \
+    --output_dir ./model_lora_llama_8B \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm 1.0 \
+    --logging_steps 10 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode False \
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 4096 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
+    --deepspeed llama3_ds_zero1_config.json \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --fp8 \
+    --use_flash_attention True \
+    --flash_attention_causal_mask True  \
+    --per_device_eval_batch_size 4  \
+    --cache_size_limit 64 \
+    --use_regional_compilation \
+    --compile_from_sec_iteration \
+    --allow_unspec_int_on_nn_module True
+```
+
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization, LoRA and FP8 precision:
 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
