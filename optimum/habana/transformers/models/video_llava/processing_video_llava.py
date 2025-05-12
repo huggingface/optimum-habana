@@ -1,11 +1,11 @@
 from typing import List, Optional, Union
-import numpy as np
 
-from transformers.models.video_llava.processing_video_llava import VideoLlavaProcessor
 from transformers.image_processing_utils import BatchFeature
 from transformers.image_utils import ImageInput, get_image_size, to_numpy_array
+from transformers.models.video_llava.processing_video_llava import VideoLlavaProcessor
 from transformers.tokenization_utils_base import PaddingStrategy, PreTokenizedInput, TextInput, TruncationStrategy
 from transformers.utils import TensorType
+
 from optimum.utils import logging
 
 
