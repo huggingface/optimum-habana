@@ -51,7 +51,7 @@ class ControlNetOutput(BaseOutput):
             be of shape `(batch_size, channel * resolution, height //resolution, width // resolution)`. Output can be
             used to condition the original UNet's downsampling activations.
         mid_down_block_re_sample (`torch.Tensor`):
-            The activation of the midde block (the lowest sample resolution). Each tensor should be of shape
+            The activation of the middle block (the lowest sample resolution). Each tensor should be of shape
             `(batch_size, channel * lowest_resolution, height // lowest_resolution, width // lowest_resolution)`.
             Output can be used to condition the original UNet's middle block activation.
     """
@@ -94,7 +94,7 @@ class ControlNetConditioningEmbeddingSVD(nn.Module):
         )
 
     def forward(self, conditioning):
-        # this seeems appropriate? idk if i should be applying a more complex setup to handle the frames
+        # this seems appropriate? idk if i should be applying a more complex setup to handle the frames
         # combine batch and frames dimensions
         batch_size, frames, channels, height, width = conditioning.size()
         conditioning = conditioning.view(batch_size * frames, channels, height, width)
@@ -122,7 +122,7 @@ class ControlNetSDVModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     A conditional Spatio-Temporal UNet model that takes a noisy video frames, conditional state, and a timestep and returns a sample
     shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "--point_prompt",
         default="450, 600",
         type=str,
-        help='Prompt for segmentation. It should be a string seperated by comma. (eg: --point_prompt "450, 600")',
+        help='Prompt for segmentation. It should be a string separated by comma. (eg: --point_prompt "450, 600")',
     )
     parser.add_argument(
         "--use_hpu_graphs",

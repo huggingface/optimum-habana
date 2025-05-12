@@ -801,6 +801,10 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         self.model_tester.create_and_check_decoder_model_past_large_inputs(*config_and_inputs)
 
     @pytest.mark.skip("Skipped for Gaudi")
+    def test_contrastive_generate_dynamic_shapes(self):
+        pass
+
+    @pytest.mark.skip("Skipped for Gaudi")
     def test_generate_with_past_key_values(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_generate_with_past_key_values(*config_and_inputs)
@@ -1046,7 +1050,7 @@ class T5ModelIntegrationTests(unittest.TestCase):
     @slow
     def test_small_integration_test(self):
         """
-        For comparision run:
+        For comparison run:
         >>> import t5  # pip install t5==0.7.1
         >>> from t5.data.sentencepiece_vocabulary import SentencePieceVocabulary
 
@@ -1072,7 +1076,7 @@ class T5ModelIntegrationTests(unittest.TestCase):
     @slow
     def test_small_v1_1_integration_test(self):
         """
-        For comparision run:
+        For comparison run:
         >>> import t5  # pip install t5==0.7.1
         >>> from t5.data.sentencepiece_vocabulary import SentencePieceVocabulary
 
@@ -1098,7 +1102,7 @@ class T5ModelIntegrationTests(unittest.TestCase):
     @slow
     def test_small_byt5_integration_test(self):
         """
-        For comparision run:
+        For comparison run:
         >>> import t5  # pip install t5==0.9.1
 
         >>> path_to_byt5_small_checkpoint = '<fill_in>'
