@@ -440,7 +440,7 @@ python train_dreambooth_lora_sd3.py \
     --rank=8 \
     --resolution=1024 \
     --train_batch_size=1 \
-    --guidance_scale 7 \
+    --guidance_scale=7 \
     --learning_rate=5e-4 \
     --max_grad_norm=0.5 \
     --report_to="tensorboard" \
@@ -485,7 +485,7 @@ python ../text_to_image_generation.py \
 
 We can use the `dog` dataset for the following example.
 
-To launch SD3 full model training on single gaudi card, use:
+To launch SD3 full model training on single Gaudi card, use:
 ```bash
 python train_text_to_image_sd3.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-3-medium-diffusers" \
@@ -496,7 +496,7 @@ python train_text_to_image_sd3.py \
     --mixed_precision="bf16" \
     --resolution=1024 \
     --train_batch_size=1 \
-    --guidance_scale 7 \
+    --guidance_scale=7 \
     --learning_rate=5e-4 \
     --max_grad_norm=1 \
     --report_to="tensorboard" \
@@ -517,7 +517,7 @@ with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sd
 > [!NOTE]
 > To use MPI for multi-card training, add `--use_mpi` after `--world_size <num-HPUs>`.
 > To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
-> Fine-tuning the full SD3.5-Large model requires multiple HPU cards
+> Fine-tuning the full SD3.5-Large model requires multiple HPU cards.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash

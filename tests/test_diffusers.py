@@ -2929,7 +2929,7 @@ class DreamBoothLoRASDXL(TestCase):
         self._test_dreambooth_lora_sdxl(train_text_encoder=False)
 
 
-class DreamBoothLoRASD3(TestCase):
+class DreamBoothSD3(TestCase):
     def _test_dreambooth_lora_sd3(self, train_text_encoder=False):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -3004,6 +3004,64 @@ class DreamBoothLoRASD3(TestCase):
             if cache_dir.is_dir():
                 shutil.rmtree(cache_dir)
 
+    def _test_dreambooth_sd3(self, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_text_to_image_sd3.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        instance_prompt = "a photo of sks dog"
+        validation_prompt = "a photo of sks dog in a bucket"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot_download(
+                "diffusers/dog-example", local_dir=tmpdir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            cache_dir = Path(tmpdir, ".cache")
+
+            test_args = f"""
+                python3
+                {path_to_script}
+                --pretrained_model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers
+                --dataset_name {tmpdir}
+                --resolution 256
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 20
+                --learning_rate 5e-04
+                --max_grad_norm 1
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --gaudi_config_name Habana/stable-diffusion
+                --use_hpu_graphs_for_training
+                --use_hpu_graphs_for_inference
+                --mixed_precision bf16
+                --bf16
+                --sdp_on_bf16
+                --num_validation_images 1
+                --output_dir {tmpdir}
+                """.split()
+            if train_text_encoder:
+                test_args.append("--train_text_encoder")
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
+            test_args.append("--validation_prompt")
+            test_args.append(validation_prompt)
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "model_index.json")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
+
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
+
     @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
     @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
     def test_dreambooth_lora_sd3(self):
@@ -3011,6 +3069,19 @@ class DreamBoothLoRASD3(TestCase):
         os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
         try:
             self._test_dreambooth_lora_sd3(train_text_encoder=False)
+        finally:
+            if orig_value is not None:
+                os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = orig_value
+            else:
+                del os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"]
+
+    @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
+    def test_dreambooth_sd3(self):
+        orig_value = os.environ.get("PT_HPU_MAX_COMPOUND_OP_SIZE")
+        os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+        try:
+            self._test_dreambooth_sd3(train_text_encoder=False)
         finally:
             if orig_value is not None:
                 os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = orig_value
