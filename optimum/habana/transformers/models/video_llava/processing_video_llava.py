@@ -49,6 +49,10 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
         max_length=None,
         return_tensors: Optional[Union[str, TensorType]] = TensorType.PYTORCH,
     ) -> BatchFeature:
+        r"""
+        Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/processing_video_llava.py#L78
+        Here we use the processor logit in transformers 4.45.2 to avoid the performance regression for op `masked_scatter` in transformers 4.49 on Gaudi3
+        """
         data = {}
         if images is not None or videos is not None:
             encoded_images = self.image_processor(images=images, videos=videos, return_tensors=return_tensors)
