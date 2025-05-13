@@ -81,16 +81,12 @@ def get_model(token: str, model_id: str):
 
 modeldata = [
     ("meta-llama/Llama-3.2-1B", 8, 8, 1.225),
-    pytest.param(
-        "meta-llama/Meta-Llama-3.1-8B", 4, 4, 0.961, marks=pytest.mark.skipif(True, reason="8B FT takes long time")
-    ),
+    ("meta-llama/Llama-3.1-8B", 4, 4, 1.044),
 ]
 
 
 @pytest.mark.parametrize("model_id, train_bs, eval_bs, expected_loss", modeldata)
-@pytest.mark.parametrize(
-    "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
-)
+@pytest.mark.parametrize("compile_on", [True, False])
 def test_nf4_quantization_finetuning(
     token: str, model_id: str, train_bs: int, eval_bs: int, expected_loss: float, compile_on: bool
 ):
@@ -153,12 +149,10 @@ def test_nf4_quantization_finetuning(
         adjust_throughput=True,
         throughput_warmup_steps=3,
         gradient_checkpointing=False,
+        torch_compile=True if compile_on else False,
+        torch_compile_backend="hpu_backend" if compile_on else None,
+        compile_dynamic=False if compile_on else None,
     )
-
-    if compile_on:
-        training_args.torch_compile = True
-        training_args.torch_compile_backend = "hpu_backend"
-        training_args.compile_dynamic = False
 
     if PT_PROFILER_ENABLE:
         training_args.profiling_warmup_steps = 5
