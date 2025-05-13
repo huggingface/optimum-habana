@@ -229,7 +229,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -399,7 +399,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -420,6 +419,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -448,7 +449,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load

@@ -51,6 +51,7 @@ python textual_inversion_sdxl.py \
     --output_dir /tmp/textual_inversion_cat_sdxl \
     --save_as_full_pipeline \
     --gaudi_config_name Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --throughput_warmup_steps 3
 ```
 

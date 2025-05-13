@@ -38,7 +38,7 @@
     },
     "gaudi3": {
       "predict_bleu": 11.7168,
-      "predict_samples_per_second": 18.174
+      "predict_samples_per_second": 13.581
     }
   }
 }

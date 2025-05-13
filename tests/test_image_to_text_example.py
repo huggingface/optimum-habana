@@ -20,6 +20,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
             ("llava-hf/llava-v1.6-vicuna-13b-hf", 1),
+            ("llava-hf/llava-onevision-qwen2-7b-ov-hf", 1),
             ("google/paligemma-3b-mix-224", 1),
             ("HuggingFaceM4/idefics2-8b", 1),
             ("meta-llama/Llama-3.2-11B-Vision-Instruct", 1),

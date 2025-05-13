@@ -112,6 +112,7 @@ from .models import (
     GaudiLlamaRotaryEmbedding,
     GaudiLlavaForConditionalGeneration,
     GaudiLlavaNextForConditionalGeneration,
+    GaudiLlavaOnevisionForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -163,6 +164,12 @@ from .models import (
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -171,6 +178,7 @@ from .models import (
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
@@ -495,6 +503,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
         GaudiLlavaNextForConditionalGeneration
     )
+    transformers.models.llava_onevision.modeling_llava_onevision.LlavaOnevisionForConditionalGeneration = (
+        GaudiLlavaOnevisionForConditionalGeneration
+    )
 
     # Optimization for paligemma on Gaudi
     transformers.models.paligemma.modeling_paligemma.PaliGemmaForConditionalGeneration = (
@@ -516,6 +527,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
     transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
     transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
+
+    # Optimization for Siglip on Gaudi
+    transformers.models.siglip.modeling_siglip.SiglipVisionEmbeddings = GaudiSiglipVisionEmbeddings
+    transformers.models.siglip.modeling_siglip.SiglipAttention = GaudiSiglipAttention
+    transformers.models.siglip.modeling_siglip.SiglipEncoderLayer = GaudiSiglipEncoderLayer
+    transformers.models.siglip.modeling_siglip.SiglipEncoder = GaudiSiglipEncoder
+    transformers.models.siglip.modeling_siglip.SiglipVisionTransformer = GaudiSiglipVisionTransformer
+    transformers.models.siglip.modeling_siglip.SiglipVisionModel = GaudiSiglipVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
@@ -720,6 +739,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
+    transformers.models.video_llava.processing_video_llava.VideoLlavaProcessor = GaudiVideoLlavaProcessor
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
