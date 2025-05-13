@@ -46,6 +46,7 @@ from accelerate.utils import (
     convert_outputs_to_fp32,
     is_deepspeed_available,
 )
+from accelerate.utils.environment import str_to_bool
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -64,6 +65,24 @@ from .utils import convert_model
 
 
 logger = get_logger(__name__)
+
+
+# TODO: remove the monkey patch when the fix for USE_DYNAMIC is upstreamed
+def gaudi_TorchDynamoPlugin_post_init(self):
+    prefix = "ACCELERATE_DYNAMO_"
+    if self.backend is None:
+        self.backend = os.environ.get(prefix + "BACKEND", "no")
+    self.backend = DynamoBackend(self.backend.upper())
+    if self.mode is None:
+        self.mode = os.environ.get(prefix + "MODE", "default")
+    if self.fullgraph is None:
+        self.fullgraph = str_to_bool(os.environ.get(prefix + "USE_FULLGRAPH", "False")) == 1
+    if self.dynamic is None:
+        env_value = os.environ.get(prefix + "USE_DYNAMIC")
+        self.dynamic = (str_to_bool(env_value) == 1) if env_value is not None else None
+
+
+TorchDynamoPlugin.__post_init__ = gaudi_TorchDynamoPlugin_post_init
 
 
 # TODO: Compare to fullgraph=False in torch.compile
