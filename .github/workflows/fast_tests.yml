@@ -15,7 +15,7 @@ jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
     runs-on:
-      group: itac-bm-emr-gaudi3-dell-1gaudi
+      group: itac-bm-emr-gaudi3-dell-2gaudi
 
     container:
       image: docker://vault.habana.ai/gaudi-docker/1.20.1/ubuntu22.04/habanalabs/pytorch-installer-2.6.0:latest
