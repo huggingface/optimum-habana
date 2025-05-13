@@ -26,7 +26,8 @@ jobs:
     steps:
       - name: HL-SMI (1)
         run: |
-          hl-smi
+          #hl-smi
+          sleep 3600
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Extract HPU visible modules
