@@ -15,8 +15,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 import accelerate
 import torch
 from accelerate import Accelerator
@@ -31,18 +29,21 @@ from .utils import convert_model as gaudi_convert_model
 logger = get_logger(__name__)
 
 
-@contextmanager
-def patch_convert_model():
+def patch_convert_model(func):
     """
-    Context manager to patch the convert_model function in accelerate.utils.
-    This is used to avoid the need to import accelerate.utils in this file.
+    A decorator to patch the convert_model function in accelerate to use Gaudi specific conversion.
+    This is used to avoid the need to revert the patch after the function is called.
     """
-    accelerate_convert_model = accelerate.utils.convert_model
-    accelerate.utils.convert_model = gaudi_convert_model
-    try:
-        yield
-    finally:
-        accelerate.utils.convert_model = accelerate_convert_model
+
+    def wrapper(self, *args, **kwargs):
+        original_convert_model = accelerate.utils.convert_model
+        accelerate.utils.convert_model = gaudi_convert_model
+        result = func(self, *args, **kwargs)
+        accelerate.utils.convert_model = original_convert_model
+
+        return result
+
+    return wrapper
 
 
 class GaudiAccelerator(Accelerator):
