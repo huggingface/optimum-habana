@@ -5195,6 +5195,7 @@ class StableDiffusionInpaintPipelineTests(
         }
         return components
 
+    # IG: this test passes locally, but crashes on CI with uncleared graph. Adding teardown and gc.collect to remediate.
     def test_attention_slicing_forward_pass(self):
         super().tearDown()
         gc.collect()
