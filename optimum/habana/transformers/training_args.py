@@ -22,6 +22,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+import torch.distributed as dist
 from accelerate import DistributedType, PartialState
 from accelerate.state import AcceleratorState
 from packaging import version
@@ -1026,17 +1027,24 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
 
             accelerator_state_kwargs["cpu"] = False
+            accelerator_state_kwargs["use_deepspeed"] = self.deepspeed
             accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."
             )
 
-        # Initialize the accelerator state
+        # Now we pop everything
         if accelerator_state_kwargs.pop("enabled", False) and not accelerator_state_kwargs.pop(
             "use_configured_state", False
         ):
+            # We need to patch this env var when enabling to detect deepspeed
+            use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
+            if use_deepspeed:
+                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
             self.distributed_state = PartialState(**accelerator_state_kwargs)
+            if use_deepspeed:
+                del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
         # Sequence parallelism
         if self.parallel_mode == ParallelMode.DISTRIBUTED:
@@ -1054,11 +1062,8 @@ class GaudiTrainingArguments(TrainingArguments):
 
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index
-        if (
-            torch.distributed.is_available()
-            and torch.distributed.is_initialized()
-            and self.parallel_mode != ParallelMode.DISTRIBUTED
-        ):
+
+        if dist.is_available() and dist.is_initialized() and self.parallel_mode != ParallelMode.DISTRIBUTED:
             logger.warning(
                 "torch.distributed process group is initialized, but parallel_mode != ParallelMode.DISTRIBUTED. "
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
