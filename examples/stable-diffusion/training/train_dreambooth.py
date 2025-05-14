@@ -833,13 +833,11 @@ def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
-    gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.mixed_precision == "bf16"
     accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_dir=logging_dir,
-        force_autocast=gaudi_config.use_torch_autocast,
     )
     if args.report_to == "wandb":
         import wandb
