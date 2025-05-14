@@ -77,9 +77,8 @@ def gaudi_TorchDynamoPlugin_post_init(self):
         self.mode = os.environ.get(prefix + "MODE", "default")
     if self.fullgraph is None:
         self.fullgraph = str_to_bool(os.environ.get(prefix + "USE_FULLGRAPH", "False")) == 1
-    if self.dynamic is None:
-        env_value = os.environ.get(prefix + "USE_DYNAMIC")
-        self.dynamic = (str_to_bool(env_value) == 1) if env_value is not None else None
+    if self.dynamic is None and os.environ.get(prefix + "USE_DYNAMIC", None) is not None:
+        self.dynamic = str_to_bool(os.environ.get(prefix + "USE_DYNAMIC", "False")) == 1
 
 
 TorchDynamoPlugin.__post_init__ = gaudi_TorchDynamoPlugin_post_init
