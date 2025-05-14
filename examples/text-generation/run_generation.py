@@ -382,13 +382,6 @@ def setup_parser(parser):
         type=int,
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
-
-    parser.add_argument(
-        "--use_mark_dynamic",
-        action="store_true",
-        help="Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.",
-    )
-
     parser.add_argument(
         "--regional_compile",
         action="store_true",
