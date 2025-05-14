@@ -235,7 +235,7 @@ def main():
         result["gsm8k"] = 100.0 * correct / gsm8k_total
 
         # MBXP metric
-        from mbxp_evaluation.evaluate_mbxp import evaluate_mbxp
+        from evaluate_mbxp import evaluate_mbxp
 
         result["mbxp"] = evaluate_mbxp(results_MBXP, N_WORKERS)
 
