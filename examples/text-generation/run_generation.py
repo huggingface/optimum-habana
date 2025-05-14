@@ -386,6 +386,22 @@ def setup_parser(parser):
         type=int,
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
+    parser.add_argument(
+        "--regional_compile",
+        action="store_true",
+        help="Whether to enable regional compilation.",
+    )
+    parser.add_argument(
+        "--force_static_compile",
+        action="store_true",
+        help="Whether to force static compile.",
+    )
+    parser.add_argument(
+        "--cache_size_limit",
+        default=None,
+        type=int,
+        help="Overwrite torch._dynamo.config default cache size with user provided value",
+    )
 
     args = parser.parse_args()
 
