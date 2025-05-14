@@ -78,13 +78,13 @@ class GaudiAccelerator(Accelerator):
     # and compiled_autograd_enabled is upstreamed in deepspeed
     def _prepare_deepspeed(self, *args):
         orig_num_models = len(self._models)
-        tuple = super()._prepare_deepspeed(*args)
+        prepared_deepspeed = super()._prepare_deepspeed(*args)
 
         if len(self._models) > orig_num_models and self._models[-1]._is_compiled:
             # an engine was added and is compiled
             self._models[-1]._is_compiled_autograd_enabled = self.compiled_autograd_enabled
 
-        return tuple
+        return prepared_deepspeed
 
     # INFO: this adds support for sequence/context parallelism to the dataloader
     def prepare_data_loader(
