@@ -2509,8 +2509,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "use_regional_compilation": self.args.use_regional_compilation,
-            "compiled_autograd_enable": self.args.use_compiled_autograd,
+            "compiled_autograd_enabled": self.args.use_compiled_autograd,
         }
 
         # create accelerator object
