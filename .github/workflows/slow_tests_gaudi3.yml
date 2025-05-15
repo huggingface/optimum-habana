@@ -50,7 +50,7 @@ jobs:
       - name: Checkout Optimum Habana
         uses: actions/checkout@v4
       - name: Install optimum-habana and run tests
-        run: pip install .[tests] && pytest test_sentence_transformers.py
+        run: pip install .[tests] && pytest tests/test_sentence_transformers.py
       - name: Checkout Sentence Transformers
         uses: actions/checkout@v4
         with:
