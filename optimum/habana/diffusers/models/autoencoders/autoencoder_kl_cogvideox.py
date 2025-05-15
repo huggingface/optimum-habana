@@ -120,13 +120,14 @@ def CogVideoXCausalConv3dforwardGaudi(
     inputs = self.fake_context_parallel_forward(inputs, conv_cache)
     # conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
-    padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-    inputs_pad = F.pad(inputs, padding_2d, mode="constant", value=0)
+    if self.pad_mode == "replicate":
+        conv_cache = None
+    else:
+        if self.time_kernel_size > 1:
+            if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1 :].shape:
+                conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1 :])
+            else:
+                conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
-    output = self.conv(inputs_pad)
-    if self.time_kernel_size > 1:
-        if conv_cache is not None and conv_cache.shape == inputs[:, :, -self.time_kernel_size + 1 :].shape:
-            conv_cache.copy_(inputs[:, :, -self.time_kernel_size + 1 :])
-        else:
-            conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
+    output = self.conv(inputs)
     return output, conv_cache
