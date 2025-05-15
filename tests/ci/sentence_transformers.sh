@@ -1,7 +1,7 @@
 #!/bin/bash
 
-OPTIMUM_HABANA_PATH=${CI_OPTIMUM_HABANA_PATH:-~/optimum-habana}
-SENTENCE_TRANSFORMER_PATH=${CI_SENTENCE_TRANSFORMER_PATH:-~/sentence-transformers}
+OPTIMUM_HABANA_PATH=${CI_OPTIMUM_HABANA_PATH:-/root/workspace/optimum-habana}
+SENTENCE_TRANSFORMER_PATH=${CI_SENTENCE_TRANSFORMER_PATH:-/root/workspace/sentence-transformers}
 
 python -m pip install --upgrade pip
 python -m pip install $OPTIMUM_HABANA_PATH[tests]
