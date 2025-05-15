@@ -49,16 +49,14 @@ jobs:
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout Optimum Habana
         uses: actions/checkout@v4
-      - name: Install optimum-habana
-        run: pip install .[tests]
+      - name: Install optimum-habana and run tests
+        run: pip install .[tests] && pytest test_sentence_transformers.py
       - name: Checkout Sentence Transformers
         uses: actions/checkout@v4
         with:
           repository: 'UKPLab/sentence-transformers'
       - name: Install sentence-transformers and run tests
         run: pip install . && cd tests && pytest test_cmnrl.py test_multi_process.py test_compute_embeddings.py test_model_card_data.py test_util.py
-      - name: Run optimum-habana tests
-        run: cd ../../optimum-habana && pytest test_sentence_transformers.py
 
   stable-diffusion:
     name: Test Stable Diffusion
