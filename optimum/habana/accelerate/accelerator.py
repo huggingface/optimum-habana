@@ -76,7 +76,7 @@ def compile_regions(model, compile_kwargs):
     else:
         if model._modules:  # If model has submodules, recurse and reassign
             for name, module in model.named_children():
-                compiled_module = compile_regions(module, **compile_kwargs)
+                compiled_module = compile_regions(module, compile_kwargs)
                 if compiled_module is not None:  # Only reassign if something is returned
                     setattr(model, name, compiled_module)
         else:  # Leaf node
@@ -305,11 +305,11 @@ class GaudiAccelerator(Accelerator):
                     for module in FSDP.fsdp_modules(model):
                         # Referencing DeepSpeed Zero3
                         # - in Init, params are converted to 16bit while partitioning.
-                        # - in accelerator.prepare, deepspeed.initalize is called to:
-                        #   * creates the DeepSpeeedEngine.
+                        # - in accelerator.prepare, deepspeed.initialize is called to:
+                        #   * creates the DeepSpeedEngine.
                         #   * since zero_optimization() is True , calls engine._configure_zero_optimizer.
                         #
-                        # Inside the DeepSpeed Zero3 optimizer configuration, which initalizes
+                        # Inside the DeepSpeed Zero3 optimizer configuration, which initializes
                         # DeepSpeedZeroOptimizer_Stage3, during which:
                         #   * trainable_param_groups are obtained from the attached optimizer
                         #     (already partitioned in 16bit).
@@ -367,7 +367,7 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, **compile_kwargs)
+                compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
@@ -581,7 +581,7 @@ class GaudiAccelerator(Accelerator):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs=compile_kwargs)
+                    compile_regions(engine.module, compile_kwargs)
                 else:
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),

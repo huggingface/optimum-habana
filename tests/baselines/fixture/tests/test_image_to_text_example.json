@@ -83,6 +83,14 @@
       "throughput": 73.24265508277661
     }
   },
+  "tests/test_image_to_text_example.py::test_image_to_text_bf16[llava-hf/llava-onevision-qwen2-7b-ov-hf-1]": {
+    "gaudi2": {
+      "throughput": 25.65
+    },
+    "gaudi3": {
+      "throughput": 5.7
+    }
+  },
   "tests/test_image_to_text_example.py::test_image_to_text_bf16[meta-llama/Llama-3.2-11B-Vision-Instruct-1]": {
     "gaudi2": {
       "throughput": 18.974541922240313

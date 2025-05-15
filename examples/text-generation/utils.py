@@ -177,23 +177,49 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model, logger):
+def compile_regions(model, **kwargs):
+    """
+    A standalone function to compile regions of a model.
+
+    Args:
+        model (torch.nn.Module): The model or module to be compiled.
+        kwargs (dict): Additional kwargs for torch.compile.
+    """
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            module = torch.compile(module, **kwargs)
+            setattr(model, name, module)
+    else:
+        for _, module in model.named_children():
+            compile_regions(module, **kwargs)
+    return model
+
+
+def get_torch_compiled_model(model, logger, args):
+    if args.cache_size_limit is not None:
+        torch._dynamo.config.cache_size_limit = args.cache_size_limit
+    compile_fn = torch.compile
+    if args.regional_compile:
+        compile_fn = compile_regions
+
+    compile_kwargs = {
+        "backend": "hpu_backend",
+        "options": {"force_static_compile": args.force_static_compile, "keep_input_mutations": True},
+    }
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
     if hasattr(model, "transformer"):
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = compile_fn(model.transformer, **compile_kwargs)
     # for gpt_neox
     elif hasattr(model, "gpt_neox"):
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.gpt_neox = compile_fn(model.gpt_neox, **compile_kwargs)
     # for llama, mistral, mixtral, qwen2
     elif hasattr(model, "model"):
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = compile_fn(model.model, **compile_kwargs)
     else:
         logger.warning(
             "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
         )
-        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model = compile_fn(model, **compile_kwargs)
     return model
 
 
@@ -229,7 +255,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -321,7 +347,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
             "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
         )
@@ -391,7 +417,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -399,7 +425,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -420,6 +445,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -429,7 +456,7 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -448,7 +475,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
@@ -511,7 +538,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
     return model, assistant_model
