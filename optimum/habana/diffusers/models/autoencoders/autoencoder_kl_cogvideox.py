@@ -15,7 +15,6 @@
 from typing import Optional, Union
 
 import torch
-import torch.nn.functional as F
 from diffusers.models.autoencoders.vae import DecoderOutput
 
 
