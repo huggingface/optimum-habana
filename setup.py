@@ -20,19 +20,19 @@ from setuptools import find_namespace_packages, setup
 
 
 # Ensure we match the version set in optimum/habana/version.py
+filepath = "optimum/habana/version.py"
 try:
-    filepath = "optimum/habana/version.py"
     with open(filepath) as version_file:
         (__version__,) = re.findall('__version__ = "(.*)"', version_file.read())
 except Exception as error:
-    assert False, "Error: Could not open '%s' due %s\n" % (filepath, error)
+    raise RuntimeError("Error: Could not open '%s' due to %s\n" % (filepath, error))
 
 
 INSTALL_REQUIRES = [
     "transformers >= 4.49.0, < 4.50.0",
     "optimum",
     "torch",
-    "accelerate >= 1.5.0",
+    "accelerate >= 1.7.0",
     "diffusers >= 0.33.1, < 0.33.2",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers == 3.3.1",
