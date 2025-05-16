@@ -70,6 +70,9 @@ from transformers import T5EncoderModel
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.diffusers.models.attention_processor import (
+    GaudiFluxAttnProcessor2_0,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -907,6 +910,13 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = "dreambooth-flux-dev-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
+
+    # Use Gaudi-optimized attention processor
+    module = transformer.module if hasattr(transformer, "module") else transformer
+    for block in module.single_transformer_blocks:
+        block.attn.processor = GaudiFluxAttnProcessor2_0(is_training=True)
+    for block in module.transformer_blocks:
+        block.attn.processor = GaudiFluxAttnProcessor2_0(is_training=True)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
