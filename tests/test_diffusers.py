@@ -5195,6 +5195,12 @@ class StableDiffusionInpaintPipelineTests(
         }
         return components
 
+    # IG: this test passes locally, but crashes on CI with uncleared graph. Adding teardown and gc.collect to remediate.
+    def test_attention_slicing_forward_pass(self):
+        super().tearDown()
+        gc.collect()
+        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+
     def get_dummy_inputs(self, device, seed=0):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
         # ensure determinism for the device-dependent torch.Generator on HPU
