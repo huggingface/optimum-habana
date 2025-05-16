@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ## Single HPU Inference
 
 ```bash
-python run_example.py \
+PT_HPU_LAZY_MODE=1 python run_example.py \
     --model_name_or_path microsoft/table-transformer-detection \
     --dataset_name nielsr/example-pdf \
     --filename example_pdf.png \

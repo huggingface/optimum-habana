@@ -21,7 +21,7 @@ This folder contains an example script which demonstrates the usage of OWL-ViT t
 ## Single-HPU inference
 
 ```bash
-python3 run_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_example.py \
     --model_name_or_path google/owlvit-base-patch32 \
     --image_path "http://images.cocodataset.org/val2017/000000039769.jpg" \
     --prompt "a photo of a cat, a photo of a dog" \
