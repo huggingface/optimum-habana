@@ -1,32 +1,33 @@
-3c3
+2c2,3
 < # Copyright 2020 The HuggingFace Inc. team. All rights reserved.
 ---
+> # coding=utf-8
 > # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
-17,19c17,18
+16,18c17,18
 < Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 < 
 < Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-35,36d33
+34,35d33
 < from datasets import load_dataset
 < 
-37a35
+36a35
 > from datasets import load_dataset
-45,46d42
+44,45d42
 <     Trainer,
 <     TrainingArguments,
-48,49d43
+47,48d43
 <     is_torch_xla_available,
 <     set_seed,
-55a50,51
+54a50,51
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-57,58d52
+56,57d52
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-60c54,60
+< check_min_version("4.52.0.dev0")
+59c54,60
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
@@ -36,19 +37,19 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-63a64,69
+62a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
-79c85,86
+78c85,86
 <                 "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
 ---
 >                 "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
 >                 " scratch."
-142a150,158
+141a150,184
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -58,24 +59,50 @@
 >             )
 >         },
 >     )
-148c164
+>     attn_softmax_bf16: bool = field(
+>         default=False,
+>         metadata={"help": ("Whether to run attention softmax layer in bf16 precision for fine-tuning.")},
+>     )
+>     use_flash_attention: bool = field(
+>         default=False,
+>         metadata={"help": ("Whether to use Habana flash attention for fine-tuning.")},
+>     )
+>     flash_attention_recompute: bool = field(
+>         default=False,
+>         metadata={
+>             "help": (
+>                 "Whether to enable recompute in Habana flash attention for fine-tuning."
+>                 " It is applicable only when use_flash_attention is True."
+>             )
+>         },
+>     )
+>     flash_attention_causal_mask: bool = field(
+>         default=False,
+>         metadata={
+>             "help": (
+>                 "Whether to enable causal mask in Habana flash attention for fine-tuning."
+>                 " It is applicable only when use_flash_attention is True."
+>             )
+>         },
+>     )
+147c190
 <                 "set True will benefit LLM loading time and RAM consumption."
 ---
 >                 "Setting it to True will benefit LLM loading time and RAM consumption."
-195c211,212
+194c237,238
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
 > 
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-221a239,241
+220a265,267
 >     save_last_ckpt: bool = field(
 >         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
 >     )
-243c263
+242c289
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-272a293,299
+271a319,325
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -83,38 +110,63 @@
 >         token=model_args.token,
 >     )
 > 
-273a301
+272a327
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-275,276c303,305
+274,275c329,331
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-390a420
+389a446
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-486a517
+402a460,463
+>     # Note that chatglm2/3 has float16 dtype from config.json, and on Gaudi we need to use bfloat16.
+>     if config.model_type == "chatglm":
+>         config.torch_dtype = torch.bfloat16
 > 
-550a582,585
+425a487,491
+>         # workaraund for https://github.com/huggingface/transformers/issues/36258
+>         # TODO: remove after fix is avalible in a release version of `transformers``
+>         if torch_dtype is None:
+>             torch_dtype = getattr(config, "torch_dtype", None)
+> 
+444,446c510,522
+<     embedding_size = model.get_input_embeddings().weight.shape[0]
+<     if len(tokenizer) > embedding_size:
+<         model.resize_token_embeddings(len(tokenizer))
+---
+>     # We need to skip this test for baichuan and chatglm pretrain
+>     if config.model_type not in ("baichuan", "chatglm"):
+>         embedding_size = model.get_input_embeddings().weight.shape[0]
+>         if len(tokenizer) > embedding_size:
+>             model.resize_token_embeddings(len(tokenizer))
+> 
+>     # We need to add these fused kernels config
+>     if model_args.attn_softmax_bf16:
+>         model.generation_config.attn_softmax_bf16 = True
+>     if model_args.use_flash_attention:
+>         model.generation_config.use_flash_attention = True
+>         model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+>         model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+485a562
+> 
+549a627,630
 > 
 >         def tensor_mapper(x):
 >             return {i: torch.tensor(x[i], dtype=torch.int32) for i in x}
 > 
-553a589,590
+552a634,635
 >         if training_args.resume_from_checkpoint is not None and training_args.resume_from_checkpoint != "":
 >             train_dataset = train_dataset.map(tensor_mapper)
-584c621
+583c666
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-585a623
+584a668
 >         gaudi_config=gaudi_config,
-589c627
-<         processing_class=tokenizer,
----
->         tokenizer=tokenizer,
-592,595c630,631
+591,594c675,676
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_xla_available()
@@ -122,12 +174,12 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-606c642,643
+605c687,688
 <         trainer.save_model()  # Saves the tokenizer too for easy upload
 ---
 >         if data_args.save_last_ckpt:
 >             trainer.save_model()  # Saves the tokenizer too for easy upload
-610,613c647,653
+609,612c692,698
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -140,9 +192,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-622d661
+621d706
 < 
-625,626c664,669
+624,625c709,714
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -152,7 +204,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-649,653d691
+648,652d736
 < 
 < 
 < def _mp_fn(index):
