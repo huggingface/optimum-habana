@@ -5,6 +5,7 @@ from optimum.habana.trl import GaudiGRPOTrainer, GaudiGRPOConfig
 from optimum.habana import GaudiConfig, GaudiTrainer
 from transformers import HfArgumentParser, AutoTokenizer, AutoModelForSequenceClassification, AutoModelForCausalLM
 from trl import ScriptArguments
+from trl.data_utils import maybe_apply_chat_template
 from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
@@ -136,6 +137,7 @@ if __name__ == "__main__":
     train_dataset = train_dataset.map(make_conversation)
     test_dataset = test_dataset.map(make_conversation)
     train_dataset = train_dataset.remove_columns(["messages", "problem"])
+
     """
     ###apply template for gsm8k and deepseek-r1-base
     ###only question was reformatted 'answer' has to be processed later

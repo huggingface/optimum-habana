@@ -21,7 +21,9 @@ import time
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Any, Callable, Optional, Sized, Union
+import bisect
 
+import pandas as pd
 import torch
 import torch.utils.data
 import transformers
@@ -29,7 +31,8 @@ from accelerate.utils import broadcast_object_list, gather, gather_object, is_pe
 from datasets import Dataset, IterableDataset
 from packaging import version
 from torch import nn
-from torch.utils.data import Sampler
+from transformers.utils import is_datasets_available
+from torch.utils.data import Sampler, DataLoader
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
@@ -42,6 +45,7 @@ from transformers import (
 )
 from optimum.habana.transformers.generation import GaudiGenerationConfig
 from transformers.utils import is_peft_available
+from transformers.tokenization_utils_base import BatchEncoding
 
 from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.extras.vllm_client import VLLMClient
@@ -67,6 +71,7 @@ from .grpo_config import GaudiGRPOConfig
 from optimum.utils import logging
 logger = logging.get_logger(__name__)
 from optimum.habana.transformers.trainer import _get_input_update_settings
+from optimum.habana.trl.trainer.sft_trainer import BucketedDataCollatorForLanguageModeling
 from optimum.habana.utils import HabanaProfile, speed_metrics
 
 from transformers.debug_utils import DebugOption
@@ -74,9 +79,11 @@ from transformers.trainer_callback import ExportableState,TrainerState
 from transformers.training_args import ParallelMode
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer import _is_peft_model
+from transformers.trainer_utils import seed_worker, TrainOutput
 from accelerate import DistributedType
 from peft import PeftType
 import functools
+from functools import partial
 
 if is_deepspeed_available():
     import deepspeed
@@ -84,6 +91,8 @@ if is_deepspeed_available():
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
 
+if is_datasets_available():
+    import datasets
 
 if is_wandb_available():
     import wandb
@@ -308,9 +317,14 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 reward_processing_classes[i] = reward_processing_class
         self.reward_processing_classes = reward_processing_classes
 
+        #### can't add padding here because train_dataset is not yet tokenized
+        #data_collator = BucketedDataCollatorForLanguageModeling(tokenizer=processing_class, mlm=False)
+        #data_collator.buckets = buckets
+        
         def data_collator(features):
             #batch = {key: [f[key] for f in features] for key in features[0]}
             #return batch
+            
             return features
 
         # Training arguments
@@ -323,6 +337,11 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         self.min_p = args.min_p
         self.repetition_penalty = args.repetition_penalty
         self.use_vllm = args.use_vllm
+
+        #buckets, padded_len_per_sentence = self._get_buckets(train_dataset, processing_class)
+        self.buckets = self._get_buckets(train_dataset, processing_class)
+        
+        print("*****buckets ", self.buckets)
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -448,6 +467,22 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
 
+    def _get_buckets(self, train_dataset, tokenizer, num_buckets=5):
+        #####sc get list of seq len here, because sentences get repeated later in trainer
+        #-> pass buckets to trainer
+        #num_buckets=10
+        sentence_lengths = []
+        for batch in train_dataset:
+            formatted_prompt = maybe_apply_chat_template(batch, tokenizer)["prompt"]
+            formatted_prompt_len = len(tokenizer(formatted_prompt)['input_ids']) #144
+            sentence_lengths.append(formatted_prompt_len)
+        bucket_label_per_sentence = pd.qcut(sentence_lengths, q=num_buckets, labels=False)
+        df = pd.DataFrame({'value': sentence_lengths, 'bucket': bucket_label_per_sentence})
+        buckets = df.groupby('bucket')['value'].max().tolist()
+        #padded_length_per_sentence = [buckets[label] for label in bucket_label_per_sentence]
+        buckets = [b if b<self.max_prompt_length else self.max_prompt_length for b in buckets]
+        return buckets#, padded_length_per_sentence
+
     def _inner_training_loop(
         self,
         batch_size=None,
@@ -474,6 +509,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     self.args.per_device_train_batch_size = original_bs
             self.state.train_batch_size = self._train_batch_size
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
+        
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
 
@@ -788,11 +824,13 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
+
                 batch_samples, num_items_in_batch = self.get_batch_samples_transformers(
                     epoch_iterator, num_batches, args.device
                 )
 
                 for i, inputs in enumerate(batch_samples):
+                    sc_time = time.time()
                     step += 1
 
                     if (
@@ -924,6 +962,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     hb_profiler.step()
                     if self.control.should_epoch_stop or self.control.should_training_stop:
                         break
+
+                    print("***********", time.time() - sc_time)
                 # We also need to break out of the nested loop
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -1171,11 +1211,37 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         prompts = [x["prompt"] for x in inputs]
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
 
+        sc_start_time = time.time()
+        #### inputs are tokenized and padded, add bucketing here??
+        """
+        ###initial version, pad to max len of a batch >90s/generation
         prompt_inputs = self.processing_class(
-            #text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+            #####pad to max len of a batch
+            text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+        ) #"input_ids": tensor([[]])
+        
+
+        ###pad to max len
+        prompt_inputs = self.processing_class( 
             text=prompts_text, return_tensors="pt", padding='max_length', max_length=self.args.max_prompt_length, \
             padding_side="left", add_special_tokens=False, truncation=True
+        ) #"input_ids": tensor([[]])
+
+        """
+        #######bucketing
+        max_prompt_len_per_batch = 0
+        for prompt_idx in range(0, len(prompts_text), self.num_generations): #prompts are repeated self.num_generations times
+            prompt_len = len(self.processing_class(text=prompts_text[prompt_idx], return_tensors="pt", padding=False, add_special_tokens=False)["input_ids"][0])
+            max_prompt_len_per_batch = max(max_prompt_len_per_batch, prompt_len)
+
+        bucket_indices = bisect.bisect_left(self.buckets, max_prompt_len_per_batch)
+        bucket_indices = min(bucket_indices, len(self.buckets)-1) #
+        print("bucket ", bucket_indices)
+        print("bucket_len ", self.buckets[bucket_indices])
+        prompt_inputs = self.processing_class(
+            text=prompts_text, return_tensors="pt", padding="max_length", padding_side="left", max_length=self.buckets[bucket_indices], truncation=True, add_special_tokens=False
         )
+     
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
@@ -1233,11 +1299,12 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     prompt_ids, attention_mask=prompt_mask, use_flash_attention=True, generation_config=self.generation_config, \
                     lazy_mode=True,
                 )
-
+            
             # Compute prompt length and extract completion ids
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
+            print("**********inside generate", time.time()-sc_start_time)
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
