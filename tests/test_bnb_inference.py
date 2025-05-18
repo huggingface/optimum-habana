@@ -23,7 +23,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from .utils import OH_DEVICE_CONTEXT
 
 
-
 def get_model(token: str, model_id: str):
     nf4_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -38,16 +37,12 @@ def get_model(token: str, model_id: str):
     return model
 
 
-<<<<<<< HEAD
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_inference(token: str, baseline):
-=======
 @pytest.mark.parametrize("model_id", ["meta-llama/Llama-3.2-1B"])
 @pytest.mark.parametrize(
     "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
 )
-def test_nf4_quantization_inference(token: str, model_id: str, compile_on: bool):
->>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
+def test_nf4_quantization_inference(token: str, baseline, model_id: str, compile_on: bool):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -61,12 +56,9 @@ def test_nf4_quantization_inference(token: str, model_id: str, compile_on: bool)
     generation_config.use_cache = True
     generation_config.use_flash_attention = True
 
-<<<<<<< HEAD
-=======
     if compile_on:
         model.model = torch.compile(model.model, backend="hpu_backend")
 
->>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
 

@@ -78,26 +78,18 @@ def get_model(token: str, model_id: str):
     return model
 
 
-<<<<<<< HEAD
-@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_finetuning(token: str, baseline):
-=======
 modeldata = [
-    ("meta-llama/Llama-3.2-1B", 8, 8, 1.225),
-    pytest.param(
-        "meta-llama/Meta-Llama-3.1-8B", 4, 4, 0.961, marks=pytest.mark.skipif(True, reason="8B FT takes long time")
-    ),
+    ("meta-llama/Llama-3.2-1B", 8, 8),
+    ("meta-llama/Llama-3.1-8B", 4, 4),
 ]
 
 
-@pytest.mark.parametrize("model_id, train_bs, eval_bs, expected_loss", modeldata)
-@pytest.mark.parametrize(
-    "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
-)
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
+@pytest.mark.parametrize("model_id, train_bs, eval_bs", modeldata)
+@pytest.mark.parametrize("compile_on", [True, False])
 def test_nf4_quantization_finetuning(
-    token: str, model_id: str, train_bs: int, eval_bs: int, expected_loss: float, compile_on: bool
+    token: str, baseline, model_id: str, train_bs: int, eval_bs: int, compile_on: bool
 ):
->>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -155,18 +147,12 @@ def test_nf4_quantization_finetuning(
         use_habana=True,
         use_lazy_mode=False,
         adjust_throughput=True,
-<<<<<<< HEAD
-        throughput_warmup_steps=2,
-=======
         throughput_warmup_steps=3,
         gradient_checkpointing=False,
->>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
+        torch_compile=True if compile_on else False,
+        torch_compile_backend="hpu_backend" if compile_on else None,
+        compile_dynamic=False if compile_on else None,
     )
-
-    if compile_on:
-        training_args.torch_compile = True
-        training_args.torch_compile_backend = "hpu_backend"
-        training_args.compile_dynamic = False
 
     if PT_PROFILER_ENABLE:
         training_args.profiling_warmup_steps = 5
@@ -186,12 +172,9 @@ def test_nf4_quantization_finetuning(
 
     trainer.train()
 
-<<<<<<< HEAD
+    baseline_kwargs = {f"{model_id}/eval_loss": trainer.evaluate()["eval_loss"]}
     baseline.assertRef(
         compare=lambda actual, ref: abs(actual - ref) < 5e2,
         context=[OH_DEVICE_CONTEXT],
-        eval_loss=trainer.evaluate()["eval_loss"],
+        **baseline_kwargs,
     )
-=======
-    assert abs(eval_loss - expected_loss) < 5e-2
->>>>>>> 14c4962d ([SW-227812] Configure qlora tests with additional arguments (#271))
