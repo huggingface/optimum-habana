@@ -98,7 +98,7 @@ def gaudi_eager_attention_forward(
         query, key, value, attention_mask, module.num_key_value_groups
     )
 
-    attn_weights = module.matmul_qk(query_states, key_states.transpose(2, 3)) * scaling
+    attn_weights = module.matmul_qk(query_states.to(torch.float32), key_states.to(torch.float32).transpose(2, 3)) * scaling
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
@@ -419,6 +419,13 @@ class GaudiPhiModel(PhiModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
+            if (
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
+                htcore.mark_step()
+
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -457,9 +464,6 @@ class GaudiPhiModel(PhiModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-            
-            if lazy_mode:
-                htcore.mark_step()
 
         hidden_states = self.final_layernorm(hidden_states)  # diff with Llama
 
