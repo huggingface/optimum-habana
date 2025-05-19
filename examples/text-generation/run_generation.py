@@ -564,7 +564,6 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
             input_data = {}
             if args.input_embeds:
                 inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
@@ -593,7 +592,7 @@ def main():
             timer.step()
             first_token_time = iteration_times[0] + encode_duration
             rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
-            e2e_latency = first_token_time + rest_token_time
+            e2e_latency = timer.total_time()
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
             logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
             logger.info(f"End to end latency = {e2e_latency * 1000}ms")
