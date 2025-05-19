@@ -25,7 +25,14 @@ from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux_img2img import FluxImg2ImgPipeline, calculate_shift, retrieve_timesteps
 from diffusers.utils import BaseOutput, replace_example_docstring
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
 from optimum.utils import logging
 
@@ -83,7 +90,7 @@ EXAMPLE_DOC_STRING = """
 
 class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
     r"""
-    Adapted from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/pipelines/flux/pipeline_flux_img2img.py#L162
+    Adapted from https://github.com/huggingface/diffusers/blob/v0.33.1/src/diffusers/pipelines/flux/pipeline_flux_img2img.py#L169
 
     The Flux pipeline for image-to-image generation.
 
@@ -135,6 +142,8 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
