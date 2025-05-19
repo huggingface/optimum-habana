@@ -682,6 +682,7 @@ class GaudiAccelerator(Accelerator):
         # To avoid training crash issue SW-207456 when num_worker > 0 in multi-node training tasks
         if data_loader.num_workers > 0:
             import multiprocessing
+
             multiprocessing_context = multiprocessing.get_context("spawn")
             data_loader.multiprocessing_context = multiprocessing_context
 
