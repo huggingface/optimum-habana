@@ -72,7 +72,7 @@ python run_generation.py --help
 
 If you want to generate a sequence of text from a prompt of your choice, you should use the `--prompt` argument.
 For example:
-```
+```bash
 python run_generation.py \
 --model_name_or_path gpt2 \
 --use_hpu_graphs \
@@ -84,7 +84,7 @@ python run_generation.py \
 ```
 
 If you want to provide several prompts as inputs, here is how to do it:
-```
+```bash
 python run_generation.py \
 --model_name_or_path gpt2 \
 --use_hpu_graphs \
@@ -102,7 +102,7 @@ python run_generation.py \
 
 If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
 
-```
+```bash
 python run_generation.py \
 --model_name_or_path gpt2 \
 --assistant_model distilgpt2 \
@@ -758,7 +758,7 @@ pip install -r requirements_lm_eval.txt
 ### Examples
 
 Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type:
-```
+```bash
 python run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \

@@ -42,7 +42,7 @@ GLM=4v python3 run_pipeline.py \
     --sdp_on_bf16 \
     --use_flash_attention \
     --use_kv_cache
-
+```
 
 ### Multi-cards inference with BF16
 
