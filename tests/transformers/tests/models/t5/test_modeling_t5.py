@@ -801,6 +801,10 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         self.model_tester.create_and_check_decoder_model_past_large_inputs(*config_and_inputs)
 
     @pytest.mark.skip("Skipped for Gaudi")
+    def test_contrastive_generate_dynamic_shapes(self):
+        pass
+
+    @pytest.mark.skip("Skipped for Gaudi")
     def test_generate_with_past_key_values(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_generate_with_past_key_values(*config_and_inputs)

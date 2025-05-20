@@ -76,7 +76,7 @@ def compile_regions(model, compile_kwargs):
     else:
         if model._modules:  # If model has submodules, recurse and reassign
             for name, module in model.named_children():
-                compiled_module = compile_regions(module, **compile_kwargs)
+                compiled_module = compile_regions(module, compile_kwargs)
                 if compiled_module is not None:  # Only reassign if something is returned
                     setattr(model, name, compiled_module)
         else:  # Leaf node
@@ -367,7 +367,7 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, **compile_kwargs)
+                compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
@@ -581,7 +581,7 @@ class GaudiAccelerator(Accelerator):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs=compile_kwargs)
+                    compile_regions(engine.module, compile_kwargs)
                 else:
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),
@@ -678,6 +678,13 @@ class GaudiAccelerator(Accelerator):
         if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
             process_index = int(process_index / parallel_state.get_sequence_parallel_world_size())
         ###############################################################################################################
+
+        # To avoid training crash issue SW-207456 when num_worker > 0 in multi-node training tasks
+        if int(os.environ.get("WORLD_SIZE", 1)) > 8 and data_loader.num_workers > 0:
+            import multiprocessing
+
+            multiprocessing_context = multiprocessing.get_context("spawn")
+            data_loader.multiprocessing_context = multiprocessing_context
 
         prepared_data_loader = prepare_data_loader(
             data_loader,
