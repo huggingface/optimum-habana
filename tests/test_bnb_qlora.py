@@ -172,9 +172,8 @@ def test_nf4_quantization_finetuning(
 
     trainer.train()
 
-    baseline_kwargs = {f"{model_id}/eval_loss": trainer.evaluate()["eval_loss"]}
     baseline.assertRef(
         compare=lambda actual, ref: abs(actual - ref) < 5e2,
         context=[OH_DEVICE_CONTEXT],
-        **baseline_kwargs,
+        eval_loss=trainer.evaluate()["eval_loss"]
     )

@@ -1,12 +1,34 @@
 {
-  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning": {
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[True-meta-llama/Llama-3.2-1B-8-8]": {
     "gaudi2": {
-      "meta-llama/Llama-3.2-1B/eval_loss": 1.225,
-      "meta-llama/Llama-3.2-8B/eval_loss": 1.044
+      "eval_loss": 1.225
     },
     "gaudi3": {
-      "meta-llama/Llama-3.2-1B/eval_loss": 1.225,
-      "meta-llama/Llama-3.2-8B/eval_loss": 1.044
+      "eval_loss": 1.225
+    }
+  },
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[False-meta-llama/Llama-3.2-1B-8-8]": {
+    "gaudi2": {
+      "eval_loss": 1.225
+    },
+    "gaudi3": {
+      "eval_loss": 1.225
+    }
+  },
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[True-meta-llama/Llama-3.1-8B-4-4]": {
+    "gaudi2": {
+      "eval_loss": 1.044
+    },
+    "gaudi3": {
+      "eval_loss": 1.044
+    }
+  },
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[False-meta-llama/Llama-3.1-8B-4-4]": {
+    "gaudi2": {
+      "eval_loss": 1.044
+    },
+    "gaudi3": {
+      "eval_loss": 1.044
     }
   }
 }
