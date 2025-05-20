@@ -175,5 +175,5 @@ def test_nf4_quantization_finetuning(
     baseline.assertRef(
         compare=lambda actual, ref: abs(actual - ref) < 5e2,
         context=[OH_DEVICE_CONTEXT],
-        eval_loss=trainer.evaluate()["eval_loss"]
+        eval_loss=trainer.evaluate()["eval_loss"],
     )
