@@ -109,7 +109,7 @@ The first column is assumed to be for `text` and the second is for the summary.
 
 If the csv file has multiple columns, you can then specify the names of the columns to use:
 
-```bash
+```
     --text_column text_column_name \
     --summary_column summary_column_name \
 ```
@@ -122,7 +122,7 @@ id,date,text,summary
 
 and you wanted to select only `text` and `summary`, then you'd pass these additional arguments:
 
-```bash
+```
     --text_column text \
     --summary_column summary \
 ```
@@ -142,7 +142,7 @@ Same as with the CSV files, by default the first value will be used as the text 
 
 And as with the CSV files, you can specify which values to select from the file, by explicitly specifying the corresponding key names. In our example this again would be:
 
-```bash
+```
     --text_column text \
     --summary_column summary \
 ```

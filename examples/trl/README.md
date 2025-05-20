@@ -4,14 +4,14 @@
 ## Requirements
 
 First, you should install the requirements:
-```
-$ pip install -U -r requirements.txt
+```bash
+pip install -U -r requirements.txt
 ```
 ## Supervised Finetuning
 
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
-    ```
+    ```bash
     python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
         --dataset_name "philschmid/dolly-15k-oai-style" \
@@ -45,7 +45,7 @@ $ pip install -U -r requirements.txt
 
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
-    ```
+    ```bash
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
@@ -87,7 +87,7 @@ For large model like Llama2-70B, we could use DeepSpeed Zero-3 to enable DPO tra
 steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
-    ```
+    ```bash
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
@@ -114,12 +114,12 @@ steps like:
         --use_lazy_mode
     ```
     To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
-    ```
+    ```bash
     python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-70b-hf" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
     ```
 
 2. Run the DPO trainer using the model saved by the previous step:
-    ```
+    ```bash
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
         --model_name_or_path="sft/final_merged_checkpoint" \
         --tokenizer_name_or_path=meta-llama/Llama-2-70b-hf \
@@ -136,7 +136,7 @@ steps like:
 
 To merge the adaptors into the base model we can use the `merge_peft_adapter.py` helper script that comes with TRL:
 
-```
+```bash
 python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-70b-hf" --adapter_model_name="dpo" --output_name="stack-llama-2"
 ```
 
@@ -146,7 +146,7 @@ which will also push the model to your HuggingFace hub account.
 
 We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
-```
+```bash
 python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
 --model_name_or_path ../trl/stack-llama-2/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
@@ -162,7 +162,7 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
 The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
 There are three main steps to the PPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
-    ```
+    ```bash
     python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
@@ -188,11 +188,11 @@ There are three main steps to the PPO training process:
         --use_lazy_mode
     ```
     To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
-    ```
+    ```bash
     python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-7b-hf" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
     ```
 2. Reward modeling using dialog pairs from the SE dataset on the llama-v2-7b-se to create llama-v2-7b-se-rm
-    ```
+    ```bash
     python ../gaudi_spawn.py --world_size 8 --use_mpi reward_modeling.py \
         --model_name_or_path=./sft/final_merged_checkpoint \
         --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
@@ -250,7 +250,7 @@ HPU graphs are enabled by default for better performance.
 There are two main steps to the DDPO training process:
 
 1. Fine-tuning of the base stable-diffusion model with LoRA to create ddpo-aesthetic-predictor:
-```
+```bash
 python ddpo.py \
   --num_epochs=200 \
   --train_gradient_accumulation_steps=1 \
