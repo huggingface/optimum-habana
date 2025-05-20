@@ -679,6 +679,13 @@ class GaudiAccelerator(Accelerator):
             process_index = int(process_index / parallel_state.get_sequence_parallel_world_size())
         ###############################################################################################################
 
+        # To avoid training crash issue SW-207456 when num_worker > 0 in multi-node training tasks
+        if int(os.environ.get("WORLD_SIZE", 1)) > 8 and data_loader.num_workers > 0:
+            import multiprocessing
+
+            multiprocessing_context = multiprocessing.get_context("spawn")
+            data_loader.multiprocessing_context = multiprocessing_context
+
         prepared_data_loader = prepare_data_loader(
             data_loader,
             self.device,
