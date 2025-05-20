@@ -1593,9 +1593,8 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
-        # TODO
-        # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
-        #     self.optimizer.train()
+        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+            self.optimizer.train()
 
         inputs = self._prepare_inputs(inputs)
 
@@ -1646,6 +1645,7 @@ class GaudiTrainer(Trainer):
                     self.accelerator.backward(loss, **kwargs)
             else:
                 self.accelerator.backward(loss, **kwargs)
+
         return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
@@ -2509,8 +2509,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "use_regional_compilation": self.args.use_regional_compilation,
-            "compiled_autograd_enable": self.args.use_compiled_autograd,
+            "compiled_autograd_enabled": self.args.use_compiled_autograd,
         }
 
         # create accelerator object
