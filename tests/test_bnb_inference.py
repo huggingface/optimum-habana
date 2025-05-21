@@ -39,9 +39,7 @@ def get_model(token: str, model_id: str):
 
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
 @pytest.mark.parametrize("model_id", ["meta-llama/Llama-3.2-1B"])
-@pytest.mark.parametrize(
-    "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
-)
+@pytest.mark.parametrize("compile_on", [True, False])
 def test_nf4_quantization_inference(token: str, baseline, model_id: str, compile_on: bool):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
