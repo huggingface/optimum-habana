@@ -28,7 +28,7 @@ from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
 from ....distributed.tp import TPModule
-from ....features import import_hpex
+from ....features import import_usable_component
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -53,30 +53,32 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 
 
+FusedRMSNorm, has_fused_rms_norm = import_usable_component(
+    "habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"
+)
+
+
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
     Copied from LlamaRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    with import_hpex("habana_frameworks.torch.hpex.normalization", "FusedRMSNorm") as FusedRMSNorm:
-        if hidden_states.device.type == "hpu" and FusedRMSNorm:
-            # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
-            if hidden_states.dtype != self.weight.dtype:
-                orig_dtype = hidden_states.dtype
-                hidden_states = FusedRMSNorm.apply(
-                    hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon
-                )
-                return hidden_states.to(orig_dtype)
-            else:
-                hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-                return hidden_states
+    if hidden_states.device.type == "hpu" and has_fused_rms_norm:
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
         else:
-            input_dtype = hidden_states.dtype
-            hidden_states = hidden_states.to(torch.float32)
-            variance = hidden_states.pow(2).mean(-1, keepdim=True)
-            hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-            return self.weight * hidden_states.to(input_dtype)
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
 
 
 class GaudiLlamaRotaryEmbedding(torch.nn.Module):
@@ -1324,6 +1326,7 @@ class GaudiLlamaModel(LlamaModel):
         use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
+
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 if isinstance(past_key_values[0][0], torch.Tensor):
@@ -1356,15 +1359,12 @@ class GaudiLlamaModel(LlamaModel):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            if not use_flash_attention:
-                causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                    attention_mask,
-                    input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                    inputs_embeds,
-                    past_seen_tokens,
-                )
-            else:
-                causal_mask = None
+            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+                attention_mask,
+                input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                inputs_embeds,
+                past_seen_tokens,
+            )
         else:
             causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
 

@@ -36,8 +36,8 @@ def pt2e_prepare(model, qdtype_key, save, path, logger):
         habana_quant_config_symmetric,
         habana_quantizer,
     )
-    from torch._export import capture_pre_autograd_graph
     from torch.ao.quantization.quantize_pt2e import prepare_pt2e
+    from torch.export import export_for_training
 
     if config.save:
         # Export --> prepare_pt2e --> return model for calibration
@@ -45,7 +45,9 @@ def pt2e_prepare(model, qdtype_key, save, path, logger):
         quantizer = habana_quantizer()
         quant_config = habana_quant_config_symmetric(config.qdtype)
         quantizer.set_global(quant_config)
-        exported_model = capture_pre_autograd_graph(model.model)
+        exported_model = export_for_training(model.model)
+        if isinstance(exported_model, torch.export.exported_program.ExportedProgram):
+            exported_model = exported_model.module()
         config.logger.info("[pt2e_quant] Inserting observers for measurement")
         model.model = prepare_pt2e(exported_model, quantizer)
         return model

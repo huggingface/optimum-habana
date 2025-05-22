@@ -6,7 +6,6 @@ from unittest.mock import patch
 from optimum.habana.features import (
     Feature,
     IsFusedRMSNormAvailable,
-    IsFusedRMSNormDisabledInConfig,
     IsGaudi1Available,
     IsGaudi2Available,
     IsGaudi3Available,
@@ -97,42 +96,6 @@ class TestFeatureDetection(unittest.TestCase):
         self.assertTrue(IsGaudi1Available() and Not(IsGaudi2Available()))
         self.assertFalse(IsGaudi1Available() and IsGaudi2Available())
         self.assertFalse(IsGaudi2Available() and IsGaudi3Available())
-
-    @patch("optimum.habana.feature_detection_utils.get_environment")
-    def test_optional_model_config(self, mock_get_environment):
-        """
-        Tests the detection of optional model configuration for disabling FusedRMSNorm.
-        """
-        mock_get_environment.return_value = {"model_config": {"use_fused_rms_norm": False}}
-        self.assertTrue(IsFusedRMSNormDisabledInConfig())
-        self.assertFalse(Not(IsFusedRMSNormDisabledInConfig()))
-
-    @patch("optimum.habana.feature_detection_utils.get_environment")
-    def test_optional_model_config_2(self, mock_get_environment):
-        """
-        Tests the detection of optional model configuration when no config is provided.
-        """
-        mock_get_environment.return_value = {"model_config": {}}
-        self.assertFalse(IsFusedRMSNormDisabledInConfig())
-        self.assertTrue(Not(IsFusedRMSNormDisabledInConfig()))
-
-    @patch("optimum.habana.feature_detection_utils.get_environment")
-    def test_optional_model_config_3(self, mock_get_environment):
-        """
-        Tests the detection of optional model configuration when hardware is specified.
-        """
-        mock_get_environment.return_value = {"hw": "gaudi"}
-        self.assertFalse(IsFusedRMSNormDisabledInConfig())
-        self.assertTrue(Not(IsFusedRMSNormDisabledInConfig()))
-
-    @patch("optimum.habana.feature_detection_utils.get_environment")
-    def test_optional_model_config_4(self, mock_get_environment):
-        """
-        Tests the detection of optional model configuration when no environment is provided.
-        """
-        mock_get_environment.return_value = {}
-        self.assertFalse(IsFusedRMSNormDisabledInConfig())
-        self.assertTrue(Not(IsFusedRMSNormDisabledInConfig()))
 
     @patch("optimum.habana.environment.get_hw")
     def test_env_flag(self, mock_get_hw):

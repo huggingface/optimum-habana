@@ -55,26 +55,44 @@ def get_build():
 runtime_params = {}
 
 
-def get_model_config():
+def get_disabled_kernels():
     """
-    Retrieves the current model configuration stored in runtime parameters.
+    Retrieves the current disabled kernels stored in runtime parameters.
 
     Returns:
-        dict: The model configuration dictionary or None if not set.
+        dict: The disabled kernels dictionary or None if not set.
     """
-    return runtime_params.get("model_config", {})
+    return runtime_params.get("disabled_kernels", {})
 
 
-def set_model_config(config):
+def set_kernel_availability(kernel_name, enabled):
     """
-    Sets the model configuration in runtime parameters.
+    Enables or disables a specific kernel at runtime.
 
     Args:
-        config: The configuration object or dictionary to be stored.
+        kernel_name (str): The name of the kernel to enable or disable.
+        enabled (bool): True to enable the kernel, False to disable it.
     """
     global runtime_params
-    config_dict = vars(config) if hasattr(config, "__dict__") else config
-    runtime_params["model_config"] = config_dict
+    if "disabled_kernels" not in runtime_params:
+        runtime_params["disabled_kernels"] = set()
+    if enabled:
+        runtime_params["disabled_kernels"].discard(kernel_name)
+    else:
+        runtime_params["disabled_kernels"].add(kernel_name)
+
+
+def disable_kernel(kernel_name):
+    """
+    Disables a specific kernel at runtime.
+
+    Args:
+        kernel_name (str): The name of the kernel to disable.
+    """
+    global runtime_params
+    if "disabled_kernels" not in runtime_params:
+        runtime_params["disabled_kernels"] = set()
+    runtime_params["disabled_kernels"].add(kernel_name)
 
 
 def get_environment_variables():
@@ -89,7 +107,7 @@ def get_environment_variables():
 
 def get_environment(**overrides):
     """
-    Constructs a dictionary of environment information including build version, hardware type, model configuration, and environment variables.
+    Constructs a dictionary of environment information including build version, hardware type, and environment variables.
 
     Args:
         **overrides: Optional overrides for specific environment information.
@@ -101,7 +119,7 @@ def get_environment(**overrides):
     getters = {
         "build": get_build,
         "hw": get_hw,
-        "model_config": get_model_config,
         "environment_variables": get_environment_variables,
+        "disabled_kernels": get_disabled_kernels,
     }
     return {k: g() for k, g in (getters | overrides).items()}

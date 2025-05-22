@@ -238,40 +238,6 @@ class Hardware(Value):
         super().__init__("hw", target_hw)
 
 
-class OptionalModelConfig(Feature):
-    """
-    Represents a feature that checks for an optional model configuration.
-
-    Attributes:
-        key (str): The key to check in the model configuration.
-        value_expected: The expected value for the key.
-    """
-
-    def __init__(self, key, value_expected):
-        super().__init__(self.check, "model_config", assert_missing=False)
-        self.key = key
-        self.value_expected = value_expected
-
-    def check(self, **kwargs):
-        """
-        Performs the optional model configuration check.
-
-        Args:
-            **kwargs: The parameters for the feature check.
-
-        Returns:
-            bool: The result of the optional model configuration check.
-        """
-        if "model_config" in kwargs:
-            return (
-                kwargs["model_config"][self.key] == self.value_expected
-                if self.key in kwargs["model_config"]
-                else False
-            )
-        else:
-            return False
-
-
 class EnvVariable(Feature):
     """
     Represents a feature that checks for a specific environment variable.
@@ -330,6 +296,29 @@ class Kernel(Feature):
             return hasattr(module, self.kernel_name)
         except (ImportError, AttributeError):
             return False
+
+
+class IsKernelExplicitlyDisabled(Feature):
+    """
+    Represents whether a specific kernel is explicitly disabled via runtime configuration.
+    """
+
+    def __init__(self, kernel_name):
+        super().__init__(self.check, "disabled_kernels")
+        self.kernel_name = kernel_name
+
+    def check(self, **kwargs):
+        """
+        Checks if the kernel is explicitly disabled via runtime configuration.
+
+        Args:
+            **kwargs: The parameters for the feature check.
+
+        Returns:
+            bool: True if the kernel is explicitly disabled, False otherwise.
+        """
+        disabled_kernels = kwargs.get("disabled_kernels", set())
+        return self.kernel_name in disabled_kernels
 
 
 class SynapseVersionRange(Feature):
