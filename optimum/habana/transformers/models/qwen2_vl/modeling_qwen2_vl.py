@@ -623,7 +623,8 @@ class GaudiQwen2VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 mbatch, mtokens = image_mask.size()
                 image_mask = image_mask.flatten(0, -1)
                 inputs_embeds = inputs_embeds.flatten(0, -2)
-                inputs_embeds = inputs_embeds.clone()
+                if self.training:
+                    inputs_embeds = inputs_embeds.clone()
                 inputs_embeds[image_mask] = image_embeds
                 inputs_embeds = inputs_embeds.unflatten(0, [mbatch, mtokens])
 
