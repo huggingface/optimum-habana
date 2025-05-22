@@ -594,7 +594,7 @@
       "train_samples_per_second": 51.54
     },
     "gaudi3": {
-      "train_runtime": 347.6082,
+      "train_runtime": 406.4479,
       "train_samples_per_second": 86.193
     }
   },

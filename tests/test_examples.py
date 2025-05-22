@@ -568,6 +568,9 @@ class ExampleTestMeta(type):
             if self.EXAMPLE_NAME == "run_image2text_lora_finetune":
                 extra_command_line_arguments.append("--sdp_on_bf16")
 
+            if self.EXAMPLE_NAME == "sft":
+                env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
