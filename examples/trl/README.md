@@ -12,7 +12,7 @@ $ pip install -U -r requirements.txt
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
     ```
-    python sft.py \
+    PT_ENABLE_INT64_SUPPORT=1 python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --streaming False \
@@ -46,7 +46,7 @@ $ pip install -U -r requirements.txt
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
     ```
-    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+    PT_ENABLE_INT64_SUPPORT=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
@@ -88,7 +88,7 @@ steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
     ```
-    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
+    PT_ENABLE_INT64_SUPPORT=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
@@ -163,7 +163,7 @@ The following example is for the creation of StackLlaMa 2: a Stack exchange llam
 There are three main steps to the PPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
     ```
-    python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
+    PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
