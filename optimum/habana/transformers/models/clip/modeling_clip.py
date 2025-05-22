@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -146,7 +146,7 @@ class GaudiCLIPAttention(CLIPAttention):
             attn_weights = self.softmax(attn_weights, dim=-1)
 
             if output_attentions:
-                # this operation is a bit akward, but it's required to
+                # this operation is a bit awkward, but it's required to
                 # make sure that attn_weights keeps its gradient.
                 # In order to do so, attn_weights have to reshaped
                 # twice and have to be reused in the following
@@ -232,10 +232,9 @@ class GaudiCLIPEncoder(CLIPEncoder):
         causal_attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-    ) -> Union[Tuple, BaseModelOutput]:
+    ) -> BaseModelOutput:
         """
         Copied from CLIPEncoder.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
@@ -246,7 +245,6 @@ class GaudiCLIPEncoder(CLIPEncoder):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -281,10 +279,10 @@ class GaudiCLIPEncoder(CLIPEncoder):
         if output_hidden_states:
             encoder_states = encoder_states + (hidden_states,)
 
-        if not return_dict:
-            return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
         return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
+            last_hidden_state=hidden_states,
+            hidden_states=encoder_states,
+            attentions=all_attentions,
         )
 
 
@@ -294,11 +292,10 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         pixel_values: Optional[torch.FloatTensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+    ) -> BaseModelOutputWithPooling:
         """
         Copied from CLIPVisionTransformer.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
@@ -309,7 +306,6 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if pixel_values is None:
             raise ValueError("You have to specify pixel_values")
@@ -317,21 +313,17 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         hidden_states = self.embeddings(pixel_values, interpolate_pos_encoding=interpolate_pos_encoding)
         hidden_states = self.pre_layrnorm(hidden_states)
 
-        encoder_outputs = self.encoder(
+        encoder_outputs: BaseModelOutput = self.encoder(
             inputs_embeds=hidden_states,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
         )
 
-        last_hidden_state = encoder_outputs[0]
+        last_hidden_state = encoder_outputs.last_hidden_state
         pooled_output = last_hidden_state[:, 0, :]
         pooled_output = self.post_layernorm(pooled_output)
-
-        if not return_dict:
-            return (last_hidden_state, pooled_output) + encoder_outputs[1:]
 
         return BaseModelOutputWithPooling(
             last_hidden_state=last_hidden_state,
@@ -348,23 +340,20 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         interpolate_pos_encoding: bool = False,
-        return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+    ) -> BaseModelOutputWithPooling:
         """
         Copied from CLIPVisionModel.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
         - add new args use_flash_attention
         - add new args flash_attention_recompute
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         return self.vision_model(
             pixel_values=pixel_values,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             interpolate_pos_encoding=interpolate_pos_encoding,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
