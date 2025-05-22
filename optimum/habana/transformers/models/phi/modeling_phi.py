@@ -37,6 +37,7 @@ from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
 import habana_frameworks.torch.core as htcore
+import habana_frameworks.torch.hpu as hthpu
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -423,6 +424,7 @@ class GaudiPhiModel(PhiModel):
                 lazy_mode
                 and not self.training
                 and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+                and hthpu.get_device_name() != "GAUDI3"
             ):
                 htcore.mark_step()
 
