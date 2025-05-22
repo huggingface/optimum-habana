@@ -1874,7 +1874,7 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
-        if len(self.accelerator._models) == 0 and model is self.model:
+        if (len(self.accelerator._models) == 0 or self.args.torch_compile) and model is self.model:
             start_time = time.time()
             model = (
                 self.accelerator.prepare(model)
