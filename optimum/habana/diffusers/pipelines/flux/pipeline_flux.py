@@ -470,6 +470,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
             warmup=profiling_warmup_steps,
             active=profiling_steps,
             record_shapes=False,
+            name="diffuser_pipeline",
         )
         hb_profiler.start()
 
