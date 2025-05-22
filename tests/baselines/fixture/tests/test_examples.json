@@ -405,7 +405,7 @@
       "train_samples_per_second": 63.161
     },
     "gaudi3": {
-      "perplexity": 1.2158095633720596,
+      "perplexity": 1.2817338202117678,
       "train_runtime": 16.7016,
       "train_samples_per_second": 61.478
     }
@@ -564,8 +564,8 @@
       "train_samples_per_second": 1.6
     },
     "gaudi3": {
-      "train_runtime": 169.1724,
-      "train_samples_per_second": 2.418
+      "train_runtime": 196.1679,
+      "train_samples_per_second": 2.085
     }
   },
   "tests/test_examples.py::MultiCardSFTChatExampleTester::test_sft_Qwen2-7B_multi_card": {
