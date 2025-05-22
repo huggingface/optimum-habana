@@ -14,26 +14,20 @@
 # limitations under the License.
 
 import os
-import subprocess
 
 import pytest
 import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
-try:
-    import sys
 
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "peft==0.12.0"])
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-except subprocess.CalledProcessError:
-    pytest.fail("Failed to install peft==0.12.0")
 
-MODEL_ID = "meta-llama/Llama-3.2-1B"
+PT_PROFILER_ENABLE = False
 
 
 def print_model_size(model):
@@ -66,12 +60,12 @@ def get_data(tokenizer, dataset_name, max_seq_length=1024):
     data = dataset.map(
         lambda example: tokenizer(example["text"], max_length=max_seq_length, padding="max_length"), batched=True
     )
-    split_data = data["train"].train_test_split(test_size=0.1, seed=42)
+    split_data = data["train"].train_test_split(test_size=0.04, seed=42)
 
     return split_data
 
 
-def get_model(token: str):
+def get_model(token: str, model_id: str):
     nf4_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -79,24 +73,39 @@ def get_model(token: str):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
+        model_id, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
     )
 
     return model
 
 
-def test_nf4_quantization_finetuning(token: str):
+modeldata = [
+    ("meta-llama/Llama-3.2-1B", 8, 8, 1.225),
+    ("meta-llama/Llama-3.1-8B", 4, 4, 1.044),
+]
+
+
+@pytest.mark.parametrize("model_id, train_bs, eval_bs, expected_loss", modeldata)
+@pytest.mark.parametrize("compile_on", [True, False])
+def test_nf4_quantization_finetuning(
+    token: str, model_id: str, train_bs: int, eval_bs: int, expected_loss: float, compile_on: bool
+):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
     modeling_utils.adapt_transformers_to_gaudi()
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value, padding_side="right")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=token.value, padding_side="right")
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = get_model(token)
+    model = get_model(token, model_id)
     model.gradient_checkpointing_enable()
+    model.generation_config.use_flash_attention = True
+    model.generation_config.flash_attention_recompute = False
+    model.generation_config.flash_attention_causal_mask = True
+    model.generation_config.attn_softmax_bf16 = True
+    model.generation_config.use_fused_rope = True
     print_model_size(model)
 
     model = prepare_model_for_kbit_training(model)
@@ -124,9 +133,9 @@ def test_nf4_quantization_finetuning(token: str):
     )
 
     training_args = GaudiTrainingArguments(
-        evaluation_strategy="steps",
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
+        evaluation_strategy="no",
+        per_device_train_batch_size=train_bs,
+        per_device_eval_batch_size=eval_bs,
         gradient_accumulation_steps=2,
         max_steps=50,
         eval_steps=10,
@@ -137,13 +146,19 @@ def test_nf4_quantization_finetuning(token: str):
         lr_scheduler_type="linear",
         use_habana=True,
         use_lazy_mode=False,
-        pipelining_fwd_bwd=True,
         adjust_throughput=True,
-        throughput_warmup_steps=2,
-        # TODO: Uncomment after SW-224176 (and related torch.compile issues) is fixed
-        # torch_compile=True,
-        # torch_compile_backend="hpu_backend",
+        throughput_warmup_steps=3,
+        gradient_checkpointing=False,
+        torch_compile=True if compile_on else False,
+        torch_compile_backend="hpu_backend" if compile_on else None,
+        compile_dynamic=False if compile_on else None,
     )
+
+    if PT_PROFILER_ENABLE:
+        training_args.profiling_warmup_steps = 5
+        training_args.profiling_steps = 2
+        training_args.profiling_record_shapes = False
+        training_args.profiling_with_stack = True
 
     trainer = GaudiTrainer(
         model=model,
@@ -158,6 +173,4 @@ def test_nf4_quantization_finetuning(token: str):
     trainer.train()
     eval_loss = trainer.evaluate()["eval_loss"]
 
-    expected_eval_loss = 1.225
-
-    assert abs(eval_loss - expected_eval_loss) < 5e-2
+    assert abs(eval_loss - expected_loss) < 5e-2

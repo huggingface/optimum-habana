@@ -1,13 +1,12 @@
-from contextlib import contextmanager
 from functools import cache
 
 from optimum.habana.feature_detection_utils import (
     EnvVariable,
     Feature,
     Hardware,
+    IsKernelExplicitlyDisabled,
     Kernel,
     Not,
-    OptionalModelConfig,
     SynapseVersionRange,
 )
 
@@ -57,15 +56,6 @@ class IsFusedRMSNormAvailable(Feature):
         super().__init__(Kernel("habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"))
 
 
-class IsFusedRMSNormDisabledInConfig(Feature):
-    """
-    Represents whether the FusedRMSNorm is disabled in the model configuration.
-    """
-
-    def __init__(self):
-        super().__init__(OptionalModelConfig("use_fused_rms_norm", value_expected=False))
-
-
 class IsLazyMode(Feature):
     """
     Represents whether lazy mode is enabled via environment variable.
@@ -94,37 +84,52 @@ class IsSynapseUnreleasedVersion(Feature):
 
 
 @cache
-def import_component(module_path, component):
+def import_usable_component(module_path, component):
     """
-    Imports a specific component from a module.
+    Imports a specific component from a module and checks if it can be used.
 
     Args:
         module_path (str): The path to the module.
         component (str): The component to import.
 
     Returns:
-        object: The imported component, or None if import fails.
+        object: The imported component, or None if import fails or is not usable.
     """
     try:
         module = __import__(module_path, fromlist=[component])
-        return getattr(module, component)
+        imported_component = getattr(module, component)
+        if is_component_usable(imported_component):
+            return imported_component, True
+        return None, False
     except (ImportError, AttributeError):
-        return None
+        return None, False
 
 
-@contextmanager
-def import_hpex(module_path, component):
+@cache
+def get_conditional_components():
     """
-    Context manager for conditionally importing components from the hpex module.
+    Initializes the conditional components and their conditions.
+
+    Returns:
+        dict: A dictionary mapping component names to their conditions.
+    """
+    print("Initializing conditional components...")
+    return {
+        "FusedRMSNorm": Not(IsKernelExplicitlyDisabled("FusedRMSNorm")),
+    }
+
+
+@cache
+def is_component_usable(component):
+    """
+    Determines if a specific component can be used based on precomputed conditions.
 
     Args:
-        module_path (str): The path to the module.
-        component (str): The component to import.
+        component (object): The component to check (imported Python object or None).
 
-    Yields:
-        object: The imported component, or None if conditions are not met.
+    Returns:
+        bool: True if the component can be used, False otherwise.
     """
-    conditional_components = {"FusedRMSNorm": Not(IsFusedRMSNormDisabledInConfig())}
-    if component in conditional_components and not conditional_components[component]:
-        yield None
-    yield import_component(module_path, component)
+    component_name = component.__name__
+    conditional_components = get_conditional_components()
+    return conditional_components.get(component_name, True)

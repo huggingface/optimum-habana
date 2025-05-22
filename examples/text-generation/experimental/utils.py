@@ -324,8 +324,8 @@ class PT2EQTestManager:
             habana_quant_config_symmetric,
             habana_quantizer,
         )
-        from torch._export import capture_pre_autograd_graph
         from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
+        from torch.export import export_for_training
 
         if cls.model_state[cls.state_index] == "None":
             if not cls.load_path:
@@ -334,7 +334,9 @@ class PT2EQTestManager:
                 quant_config = habana_quant_config_symmetric(cls.test_qdtype)
                 quantizer.set_global(quant_config)
                 # export
-                exported_model = capture_pre_autograd_graph(model.model)
+                exported_model = export_for_training(model.model)
+                if isinstance(exported_model, torch.export.exported_program.ExportedProgram):
+                    exported_model = exported_model.module()
                 # prepare
                 cls.logger.info("[pt2e_quant] Inserting observers for measurement.")
                 model.model = prepare_pt2e(exported_model, quantizer)
@@ -905,9 +907,6 @@ def initialize_model(args, logger):
         if args.parallel_strategy == "tp"
         else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
     )
-    from optimum.habana.environment import set_model_config
-
-    set_model_config(model.config)
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)
     generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
