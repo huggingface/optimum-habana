@@ -455,6 +455,12 @@ def setup_parser(parser):
         help="Overwrite torch._dynamo.config default cache size with user provided value",
     )
 
+    parser.add_argument(
+        "--dynamo_specialize_float",
+        action="store_true",
+        help="Set torch._dynamo.config.specialize_float to True.",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:

@@ -134,6 +134,7 @@ Here are a few settings you may be interested in:
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--use_mark_dynamic` Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.
 - `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing. This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits. This feature is thoroughly tested with Llama 2 70B but may be useful for other models as well. 
+- `--dynamo_specialize_float` enables specialization for float inputs by setting `specialize_float=True` in the `torch._dynamo` configuration. This option is applicable only when using `torch.compile` and can enhance performance, particularly in models utilizing FP8 quantization.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -460,6 +461,27 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json PT_HPU_LAZY_MODE=1 
 --max_new_tokens 2048 \
 --batch_size 16 \
 --bf16
+```
+
+Here is an example to run the Mixtral-8x7B model with previously generated measurements on 2 cards with torch.compile:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json TQDM_DISABLE=1 PT_HPU_LAZY_MODE=0 \
+python3 ../gaudi_spawn.py \
+  --use_deepspeed --world_size 2 run_generation.py \
+  --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+  --bf16 \
+  --use_kv_cache \
+  --batch_size 1920 \
+  --max_new_tokens 128 \
+  --max_input_tokens 128 \
+  --torch_compile \
+  --regional_compile \
+  --force_static_compile \
+  --cache_size_limit 128 \
+  --reuse_cache \
+  --bucket_size 128 \
+  --bucket_internal \
+  --dynamo_specialize_float
 ```
 
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
