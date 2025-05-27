@@ -31,3 +31,9 @@ python run_feature_extraction.py \
     --sdp_on_bf16 \
     --bf16
 ```
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```

@@ -55,7 +55,7 @@ python run_pipeline.py --help
 
 If you want to generate a sequence of text from a prompt of your choice, you should use the `--prompt` argument.
 For example:
-```
+```bash
 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
@@ -66,7 +66,7 @@ python run_pipeline.py \
 ```
 
 If you want to provide several prompts as inputs, here is how to do it:
-```
+```bash
 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
@@ -78,7 +78,7 @@ python run_pipeline.py \
 ```
 
 If you want to perform generation on default prompts, do not pass the `--prompt` argument.
-```
+```bash
 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
@@ -88,7 +88,7 @@ python run_pipeline.py \
 ```
 
 If you want to change the temperature and top_p values, make sure to include the `--do_sample` argument. Here is a sample command.
-```
+```bash
 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
@@ -104,7 +104,7 @@ python run_pipeline.py \
 ### Multi-card runs
 
 To run a large model such as Llama-2-70b via DeepSpeed, run the following command.
-```
+```bash
 python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --max_new_tokens 100 \
@@ -116,7 +116,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 ```
 
 To change the temperature and top_p values, run the following command.
-```
+```bash
 python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --max_new_tokens 100 \
@@ -133,7 +133,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 ### Usage with LangChain
 
 To run a Q&A example with LangChain, use the script `run_pipeline_langchain.py`. It supports a similar syntax to `run_pipeline.py`. For example, you can use following command:
-```
+```bash
 python run_pipeline_langchain.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --bf16 \
