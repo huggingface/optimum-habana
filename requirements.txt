@@ -55,17 +55,6 @@ parameterized==0.9.0
 pathspec==0.12.1
 peft==0.14.0
 perfetto==0.11.0
-pillow==11.0.0
-pluggy==1.5.0
-prettytable==3.9.0
-propcache==0.2.0
-protobuf==3.20.3
-psutil==6.0.0
-py-cpuinfo==9.0.0
-pyarrow==18.1.0
-pyasn1==0.6.1
-pyasn1_modules==0.4.1
-pybind11==2.10.4
 pillow==11.1.0
 Pillow-SIMD==9.5.0.post1
 pluggy==1.5.0
