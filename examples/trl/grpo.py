@@ -161,7 +161,7 @@ def tag_count_reward(completions, **kwargs) -> list[float]:
 class ScriptArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-0.5B-Instruct", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(default=None, metadata={"help": "the dataset name"})
-    use_peft: Optional[bool] = field(default=True, metadata={"help": "whether to use peft"})
+    use_peft: Optional[bool] = field(default=False, metadata={"help": "whether to use peft"})
     num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
     subset: Optional[str] = field(default=None, metadata={"help": "the subset to use"})
     streaming: Optional[bool] = field(default=False, metadata={"help": "whether to stream the dataset"})
@@ -263,9 +263,6 @@ if __name__ == "__main__":
     low_cpu_mem_usage = True
     if is_deepspeed_available() and use_deepspeed:
         from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-        import deepspeed
-        logger.info("DeepSpeed is enabled.")
-        deepspeed.init_distributed(dist_backend="hccl")
         
         if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False

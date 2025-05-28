@@ -1315,8 +1315,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
-                
-                for layer in unwrapped_model.base_model.model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
+                for layer in unwrapped_model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
                     layer.self_attn.k_cache.cache = None
                     layer.self_attn.v_cache.cache = None
 
