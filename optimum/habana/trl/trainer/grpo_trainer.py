@@ -71,6 +71,7 @@ from .grpo_config import GaudiGRPOConfig
 from optimum.utils import logging
 logger = logging.get_logger(__name__)
 from optimum.habana.transformers.trainer import _get_input_update_settings
+from optimum.habana.transformers.integrations.deepspeed import deepspeed_init
 from optimum.habana.trl.trainer.sft_trainer import BucketedDataCollatorForLanguageModeling
 from optimum.habana.utils import HabanaProfile, speed_metrics
 
@@ -217,10 +218,11 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             model_name = model if isinstance(model, str) else model.config._name_or_path
             model_name = model_name.split("/")[-1]
             args = GaudiGRPOConfig(f"{model_name}-GRPO")
+            self.args = args   
 
         # Models
         # Trained model
-        model_init_kwargs = args.model_init_kwargs or {}
+        model_init_kwargs = args.model_init_kwargs or {} ###{} in our case
         if isinstance(model, str):
             model_id = model
             torch_dtype = model_init_kwargs.get("torch_dtype")
@@ -234,6 +236,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     "Invalid `torch_dtype` passed to `GaudiGRPOConfig`. Expected either 'auto' or a string representing "
                     f"a `torch.dtype` (e.g., 'float32'), but got {torch_dtype}."
                 )
+
             # Disable caching if gradient checkpointing is enabled (not supported)
             model_init_kwargs["use_cache"] = (
                 False if args.gradient_checkpointing else model_init_kwargs.get("use_cache")
@@ -261,7 +264,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         if self.beta == 0.0:
             # If beta is 0.0, the reference model is not needed
             self.ref_model = None
-        elif is_deepspeed_zero3_enabled():
+        elif is_deepspeed_zero3_enabled(): ####sc ref model is separate with ds zero3
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
         elif is_peft_model(model):
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
@@ -340,8 +343,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         #buckets, padded_len_per_sentence = self._get_buckets(train_dataset, processing_class)
         self.buckets = self._get_buckets(train_dataset, processing_class)
-        
-        print("*****buckets ", self.buckets)
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -443,8 +444,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             self.generation_config.use_cache=True
             self.generation_config.static_shapes=True
             self.generation_config.reuse_cache=True
-            self.generation_config.bucket_internal=True
-            self.generation_config.bucket_size=128
+            self.generation_config.bucket_internal=False#True
+            self.generation_config.bucket_size=-1#128
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -553,7 +554,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             self.lr_scheduler = None
             self._created_lr_scheduler = False
 
-        if self.is_deepspeed_enabled:
+        if self.is_deepspeed_enabled:      
             self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
 
         if not delay_optimizer_creation:
@@ -572,6 +573,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
+            
             import transformers.modeling_utils
 
             if args.deepspeed:
@@ -600,7 +602,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
                 transformers.modeling_utils.checkpoint = hpu_deepspeed_checkpointing
             elif args.use_lazy_mode:
-                from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
+                from optimum.habana.transformers.gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
                 transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
@@ -610,6 +612,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
             if self.accelerator.state.mixed_precision == "fp8":
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
+            
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
             if hasattr(self.model, "gradient_checkpointing_disable"):
@@ -1125,12 +1128,16 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         return model
     """
 
+
     ###this is required to pass use_flash_attention=True, otherwise getting NaN
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
-    def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
+    def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep): ###training added to enable gc
         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
+        #####should use_cache added for ref model?
+
         logits = model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep + 1, use_flash_attention=True).logits
+
         logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
 
         input_ids = input_ids[:, -logits_to_keep:]
@@ -1141,6 +1148,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
         logits = logits / self.temperature
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
 
     """
     @profiling_decorator
@@ -1183,7 +1191,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         # Reset cache on main process
         if self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
-
+    """
     @profiling_decorator
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         mode = "eval" if self.control.should_evaluate else "train"
@@ -1198,7 +1206,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # In evaluation, we don't reuse completions across multiple updates, so we don't need to buffer inputs.
             inputs = self._generate_and_score_completions(inputs)
         return inputs
-    """
+    
 
     def _generate_and_score_completions(
         self, inputs: dict[str, Union[torch.Tensor, Any]]
@@ -1249,6 +1257,13 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             prompt_ids = prompt_ids[:, -self.max_prompt_length :]
             prompt_mask = prompt_mask[:, -self.max_prompt_length :]
 
+        ####added this for inference part, have to re-enable for training later
+        ###is it self.model_wrapped or self.model
+        #self.generation_config.use_cache=True
+        #self.model_wrapped.gradient_checkpointing_disable() ##AttributeError: 'DistributedDataParallel' object has no attribute 'gradient_checkpointing_disable'
+        #self.model.gradient_checkpointing_disable()
+        #self.ref_model.gradient_checkpointing_disable()
+
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
             # First, have main process load weights if needed
@@ -1292,19 +1307,38 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         else:
             # Regular generation path
+            before_generate=time.time()
+
+            #prompt_completion_ids = torch.nn.functional.pad(prompt_ids, (0,512))
+
+            ###what is self.model_wrapped DDP(model), is it same as the training model???
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
+                
+                for layer in unwrapped_model.base_model.model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
+                    layer.self_attn.k_cache.cache = None
+                    layer.self_attn.v_cache.cache = None
+
+                unwrapped_model.gradient_checkpointing_disable()
+                unwrapped_model.config.use_cache = True
+                unwrapped_model.config.torch_dtype=torch.bfloat16
+
+
                 prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, use_flash_attention=True, generation_config=self.generation_config, \
+                    prompt_ids, attention_mask=prompt_mask,
+                    use_flash_attention=True,
+                    generation_config=self.generation_config,
                     lazy_mode=True,
+                    ignore_eos=True,
                 )
-            
+
             # Compute prompt length and extract completion ids
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
-            print("**********inside generate", time.time()-sc_start_time)
+            print("*******just generate time", time.time()-before_generate)
+            print("**********inside generate", time.time()-sc_start_time) ####1st iter takes 450 -> 164 -> 28 sec.. 
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
@@ -1493,11 +1527,35 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             "advantages": advantages,
         }
 
-    """
+
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
+                            
+        ###enable gradient checkpointing and disable use_cache
+        ###here model is wrapped with DDP. so no config and no gradient_checkpointing_enable
+        ###original model is stored in the module, so model.module instead
+
+        # distributed
+        if self.args.gradient_checkpointing:
+            if hasattr(model, 'module'):
+                print("*************1556")
+                model.module.config.use_cache = False
+                if is_peft_model(model.module):
+                    model.module.base_model.gradient_checkpointing_enable()
+                else:
+                    model.module.gradient_checkpointing_enable()
+            #single card
+            else:
+                model.config.use_cache = False
+                if is_peft_model(model):
+                    model.base_model.gradient_checkpointing_enable()
+                # Enable gradient checkpointing for non-PEFT models
+                else:
+                    model.gradient_checkpointing_enable()
+
+
         # Compute the per-token log probabilities for the model
 
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
@@ -1507,7 +1565,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
 
         per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, logits_to_keep)
-
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
             ref_per_token_logps = inputs["ref_per_token_logps"]
@@ -1540,7 +1597,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
         self._metrics[mode]["clip_ratio"].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
         return loss
-
+    """
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys: Optional[list[str]] = None):
         inputs = self._prepare_inputs(inputs)
         with torch.no_grad():

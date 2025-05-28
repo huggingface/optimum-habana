@@ -26,6 +26,7 @@ import os
 from itertools import cycle
 from pathlib import Path
 
+import time
 import torch
 from transformers import BatchEncoding
 from utils import (
@@ -562,6 +563,7 @@ def main():
                 input_data.update(input_tokens)
 
             iteration_times = []
+            sc_start_time = time.time()
             outputs = model.generate(
                 **input_data,
                 generation_config=generation_config,
@@ -574,7 +576,9 @@ def main():
                 iteration_times=iteration_times,
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
+            print("******generate time", time.time()-sc_start_time)
             timer.step()
+            import pdb;pdb.set_trace()
             first_token_time = iteration_times[0] + encode_duration
             rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
             e2e_latency = first_token_time + rest_token_time

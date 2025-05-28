@@ -19,6 +19,64 @@ from typing import Optional
 from ... import GaudiTrainingArguments
 
 
+####this chat template is to keep <think></think> section for DeepSeek Distill model
+CHAT_TEMPLATE = """
+{% if not add_generation_prompt is defined %}
+  {% set add_generation_prompt = false %}
+{% endif %}
+{% set ns = namespace(is_first=false, is_tool=false, is_output_first=true, system_prompt='') %}
+{%- for message in messages %}
+  {%- if message['role'] == 'system' %}
+    {% set ns.system_prompt = message['content'] %}
+  {%- endif %}
+{%- endfor %}
+{{ bos_token }}{{ ns.system_prompt }}
+{%- for message in messages %}
+  {%- if message['role'] == 'user' %}
+    {% set ns.is_tool = false %}
+    {{ '<｜User｜>' + message['content'] }}
+  {%- endif %}
+  
+  {%- if message['role'] == 'assistant' and message['content'] is none %}
+    {% set ns.is_tool = false %}
+    {%- for tool in message['tool_calls'] %}
+      {%- if not ns.is_first %}
+        {{ '<｜Assistant｜><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>' + tool['type'] + '<｜tool▁sep｜>' + tool['function']['name'] + '\\n' + '```json\\n' + tool['function']['arguments'] + '\\n```<｜tool▁call▁end｜>' }}
+        {% set ns.is_first = true %}
+      {%- else %}
+        {{ '\\n<｜tool▁call▁begin｜>' + tool['type'] + '<｜tool▁sep｜>' + tool['function']['name'] + '\\n```json\\n' + tool['function']['arguments'] + '\\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜><｜end▁of▁sentence｜>' }}
+      {%- endif %}
+    {%- endfor %}
+  {%- endif %}
+
+  {%- if message['role'] == 'assistant' and message['content'] is not none %}
+    {% if ns.is_tool %}
+      {{ '<｜tool▁outputs▁end｜>' + message['content'] + '<｜end▁of▁sentence｜>' }}
+      {% set ns.is_tool = false %}
+    {% else %}
+      {{ '<｜Assistant｜>' + message['content'] + '<｜end▁of▁sentence｜>' }}
+    {% endif %}
+  {%- endif %}
+
+  {%- if message['role'] == 'tool' %}
+    {% set ns.is_tool = true %}
+    {%- if ns.is_output_first %}
+      {{ '<｜tool▁outputs▁begin｜><｜tool▁output▁begin｜>' + message['content'] + '<｜tool▁output▁end｜>' }}
+      {% set ns.is_output_first = false %}
+    {%- else %}
+      {{ '\\n<｜tool▁output▁begin｜>' + message['content'] + '<｜tool▁output▁end｜>' }}
+    {%- endif %}
+  {%- endif %}
+{%- endfor %}
+{% if ns.is_tool %}
+  {{ '<｜tool▁outputs▁end｜>' }}
+{% endif %}
+{% if add_generation_prompt and not ns.is_tool %}
+  {{ '<｜Assistant｜>' }}
+{% endif %}
+"""
+
+
 @dataclass
 class GaudiGRPOConfig(GaudiTrainingArguments):
     r"""
@@ -47,20 +105,20 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
         },
     )
     max_prompt_length: Optional[int] = field(
-        default=512, #128,#
+        default=256,#128,#
         metadata={
             "help": "Maximum length of the prompt. If the prompt is longer than this value, it will be truncated left."
         },
     )
     num_generations: Optional[int] = field(
-        default=4,#8,#
+        default=16,#16,#8,#
         metadata={
             "help": "Number of generations to sample. The global batch size (num_processes * per_device_batch_size) "
             "must be divisible by this value."
         },
     )
     max_completion_length: Optional[int] = field(
-        default=64,#256,#
+        default=512,#256,#
         metadata={"help": "Maximum length of the generated completion."},
     )
     ds3_gather_for_generation: bool = field(
@@ -75,7 +133,7 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
 
     # Parameters that control generation
     temperature: float = field(
-        default=0.9,
+        default=0.7,#0.9,
         metadata={"help": "Temperature for sampling. The higher the temperature, the more random the completions."},
     )
     top_p: float = field(
@@ -260,6 +318,7 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
             "vLLM, you should now use the `enable_prefix_caching` parameter in the vLLM server configuration."
         },
     )
+    chat_template: Optional[str] = field(default=CHAT_TEMPLATE, metadata={"help": "chat_template"})
 
     def __post_init__(self):
         super().__post_init__()

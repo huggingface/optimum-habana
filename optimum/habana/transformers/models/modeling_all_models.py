@@ -44,6 +44,8 @@ class KVCache(torch.nn.Module):
         self.inp_seq_len = -1
 
     def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is not None:
+            print("*******", self.cache.shape, shape)
         if self.cache is None or self.cache.shape != shape:
             self.inp_seq_len = inp_seq_len
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
