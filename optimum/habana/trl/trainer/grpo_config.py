@@ -130,6 +130,10 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
             "is not compatible with vLLM generation."
         },
     )
+    shuffle_dataset: Optional[bool] = field(
+        default=True,
+        metadata={"help": "Whether to shuffle the training dataset."},
+    )
 
     # Parameters that control generation
     temperature: float = field(

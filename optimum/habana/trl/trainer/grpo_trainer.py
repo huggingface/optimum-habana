@@ -344,6 +344,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         #buckets, padded_len_per_sentence = self._get_buckets(train_dataset, processing_class)
         self.buckets = self._get_buckets(train_dataset, processing_class)
 
+        self.shuffle_dataset = args.shuffle_dataset
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
         self.epsilon_low = args.epsilon
@@ -1191,7 +1192,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         # Reset cache on main process
         if self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
-    """
+    
     @profiling_decorator
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         mode = "eval" if self.control.should_evaluate else "train"
@@ -1206,7 +1207,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # In evaluation, we don't reuse completions across multiple updates, so we don't need to buffer inputs.
             inputs = self._generate_and_score_completions(inputs)
         return inputs
-    
+    """
 
     def _generate_and_score_completions(
         self, inputs: dict[str, Union[torch.Tensor, Any]]
