@@ -417,7 +417,7 @@
       "train_samples_per_second": 125.798
     },
     "gaudi3": {
-      "perplexity": 2.613,
+      "perplexity": 2.6391937381661483,
       "train_runtime": 321.3809,
       "train_samples_per_second": 168.296
     }
@@ -498,7 +498,7 @@
     },
     "gaudi3": {
       "eval_accuracy": 0.20785648331296863,
-      "train_runtime": 184.9003,
+      "train_runtime": 257.3229,
       "train_samples_per_second": 27.828
     }
   },

@@ -1084,6 +1084,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 else:
                     cross_attention_mask = cross_attention_mask[:, :, -1:]
                     full_text_row_masked_out_mask = full_text_row_masked_out_mask[:, :, -1:]
+
         outputs = self.language_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1094,6 +1095,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             past_key_values=past_key_values,
             use_cache=use_cache,
             inputs_embeds=inputs_embeds,
+            labels=labels,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             return_dict=return_dict,
