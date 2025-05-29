@@ -232,12 +232,12 @@ python run_generation.py \
 --trust_remote_code
 ```
 
-> The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
+> The prompt length is limited to 16 tokens. Prompts longer than this will be truncated. Please make sure to set `--dataset_name` to `custom` to enable this.
 
 ### Run custom dataset
 You can also provide your own dataset in pkl format to validate accuracy.
 
-This will generate mlperf submission format file named `accuracy.json` in path provided in ``--output_dir`
+This will generate mlperf submission format file named `accuracy.json` in path provided in `--output_dir`
 
 Script was validated on mlperf Mixtral [dataset](https://github.com/mlcommons/inference/tree/v5.0/language/mixtral-8x7b#using-wget-1)
 
@@ -254,7 +254,7 @@ PT_HPU_LAZY_MODE=1 python3 run_generation.py \
 --bf16 \
 --reuse_cache \
 --bucket_internal \
---dataset custom_dataset.pkl \
+--dataset <path to custom dataset pickle file> \
 --dataset_name custom \
 --n_iterations 1 \
 --warmup 1 \
@@ -264,20 +264,23 @@ PT_HPU_LAZY_MODE=1 python3 run_generation.py \
 ### MLCommons dataset evaluation
 
 #### Setup environment and prepare necessary files to run evaluation
+1. Download dataset.
 ```bash
-
-# Download dataset
 wget https://inference.mlcommons-storage.org/mixtral_8x7b/09292024_mixtral_15k_mintoken2_v1.pkl
-
-# Download and install python requirements
+```
+2. Download and install python requirements.
+```bash
 wget https://raw.githubusercontent.com/mlcommons/inference/v5.0/language/mixtral-8x7b/requirements.txt -O requirements_evaluation.txt && pip install -r requirements_evaluation.txt
-
-# Install mbxp dataset dependencies
+```
+3. Install mbxp dataset dependencies.
+```bash
 cd mbxp_evaluation
 ./setup.sh
 PS1=1 source ~/.bashrc
+```
 
-# Download evaluation scripts
+4. Download evaluation scripts.
+```bash
 wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate-accuracy.py
 wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate_mbxp.py
 ```
