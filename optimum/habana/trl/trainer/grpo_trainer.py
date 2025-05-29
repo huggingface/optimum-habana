@@ -1537,24 +1537,27 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         ###here model is wrapped with DDP. so no config and no gradient_checkpointing_enable
         ###original model is stored in the module, so model.module instead
 
-        # distributed
         if self.args.gradient_checkpointing:
+            # distributed
             if hasattr(model, 'module'):
                 print("*************1556")
                 model.module.config.use_cache = False
                 if is_peft_model(model.module):
                     model.module.base_model.gradient_checkpointing_enable()
+                    model.module.base_model.enable_input_require_grads()
                 else:
                     model.module.gradient_checkpointing_enable()
+                    model.module.enable_input_require_grads()
             #single card
             else:
                 model.config.use_cache = False
                 if is_peft_model(model):
                     model.base_model.gradient_checkpointing_enable()
+                    model.base_model.enable_input_require_grads()
                 # Enable gradient checkpointing for non-PEFT models
                 else:
                     model.gradient_checkpointing_enable()
-
+                    model.enable_input_require_grads()
 
         # Compute the per-token log probabilities for the model
 
