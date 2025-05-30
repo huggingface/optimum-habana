@@ -565,7 +565,7 @@ def parse_args(input_args=None):
         "--mediapipe",
         default="",
         type=str,
-        help="Use gaudi2 HW mediapipe over regular dataloader. \
+        help="Use gaudi2/gaudi3 HW mediapipe over regular dataloader. \
         case 1: nothing is passed to this argument -> regular torch dataloader is used\
         case 2: an empty or non existant path is passed -> images are dumped from dataset (passed in through dataset_name) in that location before first run \
         case 3: a non empty path is passed -> images from that location are used ",
