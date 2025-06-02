@@ -250,7 +250,7 @@ PT_HPU_LAZY_MODE=1 python3 run_generation.py \
 --bucket_size 128 \
 --max_new_tokens 1024  \
 --max_input_tokens 2048  \
---batch_size 48 \
+--batch_size 8 \
 --bf16 \
 --reuse_cache \
 --bucket_internal \
