@@ -94,10 +94,10 @@ def setup_parser(parser):
         type=str,
         help="Specify the dataset name from the Hugging Face Hub to evaluate your model on. "
         "To run the benchmark on the MLCommons dataset, set this argument to `mlcommons`. "
-        "Use this in combination with `--mlcommons-dataset`.",
+        "Use this in combination with `--mlcommons_dataset`.",
     )
     parser.add_argument(
-        "--mlcommons-dataset",
+        "--mlcommons_dataset",
         default=None,
         type=str,
         help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
@@ -471,7 +471,7 @@ def main():
     if args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
-            ds = pd.read_pickle(args.dataset)
+            ds = pd.read_pickle(args.mlcommons_dataset)
             return ds
 
         def get_input(ds, batch_size):
@@ -501,7 +501,7 @@ def main():
 
             timer = HabanaGenerationTime()
             timer.start()
-            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
+            print(f"Starting time is {timer.start_time * 1000}", flush=True)
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
 

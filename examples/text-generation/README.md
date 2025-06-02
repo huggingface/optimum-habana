@@ -232,10 +232,10 @@ python run_generation.py \
 --trust_remote_code
 ```
 
-> The prompt length is limited to 16 tokens. Prompts longer than this will be truncated. Please make sure to set `--dataset_name` to `custom` to enable this.
+> The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
 ### Run mlcommons dataset
-You can also provide mlcommons dataset in pkl format to validate accuracy.
+You can also provide mlcommons dataset in pkl format as a `--mlcommons_dataset` argument to validate accuracy. Please make sure to set `--dataset_name` to `mlcommons` to enable this.
 
 This will generate mlperf submission format file named `accuracy.json` in path provided in `--output_dir`
 
@@ -254,7 +254,7 @@ PT_HPU_LAZY_MODE=1 python3 run_generation.py \
 --bf16 \
 --reuse_cache \
 --bucket_internal \
---dataset <path to mlcommons dataset pickle file> \
+--mlcommons_dataset <path to mlcommons dataset pickle file> \
 --dataset_name mlcommons \
 --n_iterations 1 \
 --warmup 1 \
