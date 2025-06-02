@@ -92,13 +92,15 @@ def setup_parser(parser):
         "--dataset_name",
         default=None,
         type=str,
-        help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+        help="Specify the dataset name from the Hugging Face Hub to evaluate your model on. "
+        "To run the benchmark on the MLCommons dataset, set this argument to `mlcommons`. "
+        "Use this in combination with `--mlcommons-dataset`.",
     )
     parser.add_argument(
-        "--dataset",
+        "--mlcommons-dataset",
         default=None,
         type=str,
-        help="Path of the dataset to run rouge evaluation and measurement for rouge",
+        help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
     )
     parser.add_argument(
         "--column_name",
@@ -466,7 +468,7 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
-    if args.dataset_name == "custom":
+    if args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
             ds = pd.read_pickle(args.dataset)
@@ -569,7 +571,7 @@ def main():
                 for sentence in input_sentences:
                     generated = generate(sentence, None, args.reduce_recompile)
                     results.extend(generated)
-                    print(f"Generatig batch {b}/{N}")
+                    print(f"Generating batch {b}/{N}")
                     b += 1
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
