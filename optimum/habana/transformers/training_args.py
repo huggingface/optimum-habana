@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import io
 import json
 import os
 import warnings
@@ -38,7 +37,6 @@ from transformers.trainer_utils import (
     SchedulerType,
 )
 from transformers.training_args import (
-    _VALID_DICT_FIELDS,
     OptimizerNames,
     ParallelMode,
     TrainingArguments,
@@ -436,9 +434,9 @@ class GaudiTrainingArguments(TrainingArguments):
             )
 
         # Parse in args that could be `dict` sent in from the CLI as a string
-        for field in _VALID_DICT_FIELDS:
+        for field in self._VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
-            # We only want to do this if the str starts with a bracket to indiciate a `dict`
+            # We only want to do this if the str starts with a bracket to indicate a `dict`
             # else its likely a filename if supported
             if isinstance(passed_value, str) and passed_value.startswith("{"):
                 loaded_dict = json.loads(passed_value)
@@ -459,13 +457,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.disable_tqdm is None:
             self.disable_tqdm = logger.getEffectiveLevel() > logging.WARN
 
-        if self.evaluation_strategy is not None:
-            warnings.warn(
-                "`evaluation_strategy` is deprecated and will be removed in version 4.46 of 🤗 Transformers. Use `eval_strategy` instead",
-                FutureWarning,
-            )
-            self.eval_strategy = self.evaluation_strategy
-
         if isinstance(self.eval_strategy, EvaluationStrategy):
             warnings.warn(
                 "using `EvaluationStrategy` for `eval_strategy` is deprecated and will be removed in version 5"
@@ -485,7 +476,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self.do_eval = True
 
         if self.torch_empty_cache_steps is not None:
-            if not (isinstance(self.torch_empty_cache_steps, int) or self.torch_empty_cache_steps > 0):
+            if not (isinstance(self.torch_empty_cache_steps, int) and self.torch_empty_cache_steps > 0):
                 raise ValueError(
                     f"`torch_empty_cache_steps` must be an integer bigger than 0, got {self.torch_empty_cache_steps}."
                 )
@@ -587,7 +578,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # We need to setup the accelerator config here *before* the first call to `self.device`
         if is_accelerate_available():
-            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
+            if not isinstance(self.accelerator_config, AcceleratorConfig):
                 if self.accelerator_config is None:
                     self.accelerator_config = AcceleratorConfig()
                 elif isinstance(self.accelerator_config, dict):
@@ -601,22 +592,6 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
                 else:
                     self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
-
-            if self.dispatch_batches is not None:
-                warnings.warn(
-                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.dispatch_batches = self.dispatch_batches
-
-            if self.split_batches is not None:
-                warnings.warn(
-                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'split_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.split_batches = self.split_batches
 
             if self.dataloader_drop_last:
                 self.accelerator_config.even_batches = False
@@ -641,7 +616,7 @@ class GaudiTrainingArguments(TrainingArguments):
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
         if self.torch_compile and self.torch_compile_backend is None:
-            self.torch_compile_backend = "inductor"
+            self.torch_compile_backend = "hpu_backend"
 
         # accelerate integration for torch compile
         if self.torch_compile:
@@ -725,7 +700,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if isinstance(self.fsdp_config, str):
             if len(self.fsdp) == 0:
                 warnings.warn("`--fsdp_config` is useful only when `--fsdp` is specified.")
-            with io.open(self.fsdp_config, "r", encoding="utf-8") as f:
+            with open(self.fsdp_config, encoding="utf-8") as f:
                 self.fsdp_config = json.load(f)
                 for k in list(self.fsdp_config.keys()):
                     if k.startswith("fsdp_"):
@@ -765,6 +740,9 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
+        if self.tp_size > 1:
+            os.environ["ACCELERATE_USE_TP"] = "true"
+            os.environ["TP_SIZE"] = str(self.tp_size)
         # accelerate integration for FSDP
         if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
