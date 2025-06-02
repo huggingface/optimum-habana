@@ -84,7 +84,7 @@ Stable Diffusion 3 was introduced by Stability AI [here](https://stability.ai/ne
 It uses Diffusion Transformer instead of UNet for denoising, which yields improved image quality.
 
 ```bash
-PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+PT_HPU_LAZY_MODE=1 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
@@ -113,6 +113,34 @@ SD3 in quantization mode by setting runtime variable `QUANT_CONFIG=quantization/
 > Running quantization mode multiple times on the same pipeline object may cause errors.
 
 To run Stable Diffusion 3.5 Large, use `--model_name_or_path stabilityai/stable-diffusion-3.5-large` in the input.
+
+#### SD3 Distributed CFG Inference
+
+SD3 family of models use classifier-free guidance (CFG), which processes both conditional and unconditional latents during denoising, typically in
+a single forward pass with batch size 2. With the `--use_distributed_cfg` option, we parallelize this step across two HPU devices by splitting the
+batch and running each branch independently, then synchronizing to apply guidance. While this mode uses 2 HPUs per unique generated image, it
+achieves roughly 2x faster inference. Here is an example of running SD3.5-Large model with 2 HPU devices in disributed CFG mode:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --world_size 2 text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-3.5-large \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 4 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/stable_diffusion_3_images \
+    --scheduler default \
+    --use_habana \
+    --use_hpu_graphs \
+    --use_distributed_cfg \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+> [!NOTE]
+> Distributed CFG mode requires even number of devices in the `world_size`.
 
 ### FLUX
 
