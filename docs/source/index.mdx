@@ -118,12 +118,14 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 
 | Architecture        | Training | Inference | Tasks |
 |---------------------|:--------:|:---------:|:------|
-| Stable Diffusion    | <li>[textual inversion](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#textual-inversion)</li><li>[ControlNet](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#controlnet-training)</li> | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
-| Stable Diffusion XL | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#fine-tuning-for-stable-diffusion-xl)</li> | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion    | ✅ | ✅ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion XL | ✅ | ✅ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Stable Diffusion Depth2img | | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion 3  | ✅ | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
 | LDM3D               |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
-| FLUX.1              | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#dreambooth-lora-fine-tuning-with-flux1-dev)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| FLUX.1              | <li>LoRA</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | Text to Video       |          | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-video-generation)</li> |
+| Image to Video      |               | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#image-to-video-generation)</li> |
 | i2vgen-xl       |          | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#I2vgen-xl)</li> |
 
 - PyTorch Image Models/TIMM:
