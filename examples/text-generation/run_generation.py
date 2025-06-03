@@ -107,7 +107,15 @@ def setup_parser(parser):
         "--dataset_name",
         default=None,
         type=str,
-        help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+        help="Specify the dataset name from the Hugging Face Hub to evaluate your model on. "
+        "To run the benchmark on the MLCommons dataset, set this argument to `mlcommons`. "
+        "Use this in combination with `--mlcommons_dataset`.",
+    )
+    parser.add_argument(
+        "--mlcommons_dataset",
+        default=None,
+        type=str,
+        help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
     )
     parser.add_argument(
         "--dataset",
@@ -550,10 +558,10 @@ def main():
         per_sequence_profiler = disabled_profiler
         per_token_profiler = active_profiler
 
-    if args.dataset_name == "openorca":
+    if args.dataset_name == "openorca" or args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
-            ds = pd.read_pickle(args.dataset)
+            ds = pd.read_pickle(args.mlcommons_dataset)
             return ds
 
         def get_input(ds, batch_size):
@@ -642,7 +650,6 @@ def main():
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
-
         total_new_tokens_generated = 0
         logger.info("Running generate...")
         timer.step()
