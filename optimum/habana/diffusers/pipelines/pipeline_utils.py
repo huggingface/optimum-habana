@@ -19,7 +19,7 @@ import importlib
 import inspect
 import os
 import sys
-from typing import Callable, Dict, Optional, Union
+from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
@@ -413,6 +413,23 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
+        **kwargs,
+    ):
+        # Move all lora layers state dicts from HPU to CPU before saving
+        for key in list(kwargs.keys()):
+            if key.endswith("_lora_layers") and kwargs[key] is not None:
+                kwargs[key] = to_device_dtype(kwargs[key], target_device=torch.device("cpu"))
+
+        # Call diffusers' base class handler
+        return super().save_lora_weights(
+            save_directory,
+            **kwargs,
+        )
+
+    """
+    def save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -452,3 +469,4 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 save_function,
                 safe_serialization,
             )
+    """
