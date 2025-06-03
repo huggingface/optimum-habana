@@ -75,7 +75,7 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
