@@ -234,6 +234,78 @@ python run_generation.py \
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
+### Run mlcommons dataset
+You can also provide mlcommons dataset in pkl format as a `--mlcommons_dataset` argument to validate accuracy. Please make sure to set `--dataset_name` to `mlcommons` to enable this.
+
+This will generate mlperf submission format file named `accuracy.json` in path provided in `--output_dir`
+
+Script was validated on mlperf Mixtral [dataset](https://github.com/mlcommons/inference/tree/v5.0/language/mixtral-8x7b#using-wget-1)
+
+```bash
+PT_HPU_LAZY_MODE=1 python3 run_generation.py \
+--model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
+--use_hpu_graphs \
+--limit_hpu_graphs   \
+--use_kv_cache \
+--bucket_size 128 \
+--max_new_tokens 1024  \
+--max_input_tokens 2048  \
+--batch_size 8 \
+--bf16 \
+--reuse_cache \
+--bucket_internal \
+--mlcommons_dataset <path to mlcommons dataset pickle file> \
+--dataset_name mlcommons \
+--n_iterations 1 \
+--warmup 1 \
+--output_dir .
+```
+
+### MLCommons dataset evaluation
+
+#### Setup environment and prepare necessary files to run evaluation
+1. Download dataset.
+```bash
+wget https://inference.mlcommons-storage.org/mixtral_8x7b/09292024_mixtral_15k_mintoken2_v1.pkl
+```
+2. Download and install python requirements.
+```bash
+wget https://raw.githubusercontent.com/mlcommons/inference/v5.0/language/mixtral-8x7b/requirements.txt -O requirements_evaluation.txt && pip install -r requirements_evaluation.txt
+```
+3. Install mbxp dataset dependencies.
+```bash
+cd mbxp_evaluation
+./setup.sh
+PS1=1 source ~/.bashrc
+```
+
+4. Download evaluation scripts.
+```bash
+wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate-accuracy.py
+wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate_mbxp.py
+```
+
+#### Run evaluation script with accuracy.json
+```bash
+python evaluate-accuracy.py --checkpoint-path <path to model> --mlperf-accuracy-file <path to accuracy.json> --dataset-file <path to dataset> --verbose
+```
+
+#### Example results
+```bash
+{
+    'rouge1': 45.4708,
+    'rouge2': 23.2887,
+    'rougeL': 30.3478,
+    'rougeLsum': 42.4501,
+    'gsm8k': 74.16,
+    'mbxp': 60.36,
+    'gen_len': 4243067,
+    'gen_num': 15000,
+    'gen_tok_len': 2808861,
+    'tokens_per_sample': 187.3
+}
+```
+
 ### Use PEFT models for generation
 
 You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
