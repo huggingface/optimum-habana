@@ -376,7 +376,6 @@ PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
 We can use the same `dog` dataset for the following examples.
 
 To launch FLUX.1-dev LoRA training on a single Gaudi card, use:
-
 ```bash
 PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_flux.py \
     --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
@@ -416,7 +415,120 @@ PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --prompts "A picture of a sks dog in a bucket" \
     --num_images_per_prompt 5 \
     --batch_size 1 \
+    --num_inference_steps 30 \
     --image_save_dir /tmp/flux_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+### DreamBooth LoRA Fine-Tuning with Stable Diffusion 3 and 3.5 (SD3)
+
+We can use the same `dog` dataset for the following example.
+
+To launch SD3 LoRA training on a single Gaudi card, use:
+```bash
+python train_dreambooth_lora_sd3.py \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-3-medium-diffusers" \
+    --dataset_name="dog" \
+    --instance_prompt="a photo of sks dog" \
+    --validation_prompt="a photo of sks dog in a bucket" \
+    --output_dir="dog_lora_sd3" \
+    --mixed_precision="bf16" \
+    --rank=8 \
+    --resolution=1024 \
+    --train_batch_size=1 \
+    --guidance_scale=7 \
+    --learning_rate=5e-4 \
+    --max_grad_norm=0.5 \
+    --report_to="tensorboard" \
+    --lr_scheduler="constant" \
+    --lr_warmup_steps=0 \
+    --max_train_steps=1500 \
+    --validation_epochs=50 \
+    --save_validation_images \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --gaudi_config_name="Habana/stable-diffusion" \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+You can run training on multiple HPUs by replacing `python train_text_to_image_sd3.py`
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sd3.py`.
+
+> [!NOTE]
+> To use MPI for multi-card training, add `--use_mpi` after `--world_size <num-HPUs>`.
+> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
+
+After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
+```bash
+python ../text_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-3-medium-diffusers" \
+    --lora_id dog_lora_sd3 \
+    --prompts "A picture of a sks dog in a bucket" \
+    --scheduler flow_match_euler_discrete \
+    --num_images_per_prompt 5 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/sd3_lora_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+## Full Model Fine-Tuning for Stable Diffusion 3 and 3.5 (SD3)
+
+We can use the `dog` dataset for the following example.
+
+To launch SD3 full model training on single Gaudi card, use:
+```bash
+python train_text_to_image_sd3.py \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-3-medium-diffusers" \
+    --dataset_name="dog" \
+    --instance_prompt="a photo of sks dog" \
+    --validation_prompt="a photo of sks dog in a bucket" \
+    --output_dir="dog_ft_sd3" \
+    --mixed_precision="bf16" \
+    --resolution=1024 \
+    --train_batch_size=1 \
+    --guidance_scale=7 \
+    --learning_rate=5e-4 \
+    --max_grad_norm=1 \
+    --report_to="tensorboard" \
+    --lr_scheduler="constant" \
+    --lr_warmup_steps=0 \
+    --max_train_steps=1500 \
+    --validation_epochs=50 \
+    --save_validation_images \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --gaudi_config_name="Habana/stable-diffusion" \
+    --sdp_on_bf16 \
+    --bf16
+```
+You can run training on multiple HPUs by replacing `python train_text_to_image_sd3.py`
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sd3.py`.
+
+> [!NOTE]
+> To use MPI for multi-card training, add `--use_mpi` after `--world_size <num-HPUs>`.
+> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
+> Fine-tuning the full SD3.5-Large model requires multiple HPU cards.
+
+After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
+```bash
+python ../text_to_image_generation.py \
+    --model_name_or_path "dog_ft_sd3" \
+    --prompts "A picture of a sks dog in a bucket" \
+    --scheduler flow_match_euler_discrete \
+    --num_images_per_prompt 5 \
+    --batch_size 1 \
+    --num_inference_steps 28 \
+    --image_save_dir /tmp/sd3_images \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
