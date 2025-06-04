@@ -158,7 +158,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --trust_remote_code
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
 
 
 ### DeepSpeed
