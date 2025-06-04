@@ -35,7 +35,7 @@ pip install -r requirements.txt
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
 
 ```bash
-python run_audio_classification.py \
+PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name superb \
     --dataset_config_name ks \
@@ -75,7 +75,7 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
@@ -118,7 +118,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset on 1 Gaudi card with the following command:
 ```bash
-python run_audio_classification.py \
+PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name superb \
     --dataset_config_name ks \
