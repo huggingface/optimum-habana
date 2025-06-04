@@ -572,8 +572,6 @@ class GaudiAccelerator(Accelerator):
                     compiled_autograd_enabled=self.compiled_autograd_enable,
                 )
 
-            print("Model has _orig_mod after deepspeed initialization:", hasattr(engine, "_orig_mod"))
-
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
