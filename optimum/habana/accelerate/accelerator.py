@@ -21,7 +21,6 @@ import os
 from dataclasses import make_dataclass
 from types import MethodType
 
-import accelerate.utils.other
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
@@ -44,6 +43,7 @@ from accelerate.utils import (
     RNGType,
     TorchDynamoPlugin,
     TorchTensorParallelPlugin,
+    compile_regions,
     convert_outputs_to_fp32,
     is_deepspeed_available,
 )
@@ -65,24 +65,6 @@ from .utils import convert_model
 
 
 logger = get_logger(__name__)
-
-
-def compile_regions(model, compile_kwargs):
-    if isinstance(model, torch.nn.ModuleList):
-        for name, module in model.named_children():
-            module = torch.compile(module, **compile_kwargs)
-            module.__dict__.pop("_parameters", None)
-            setattr(model, name, module)
-    else:
-        if model._modules:  # If model has submodules, recurse and reassign
-            for name, module in model.named_children():
-                compiled_module = compile_regions(module, compile_kwargs)
-                if compiled_module is not None:  # Only reassign if something is returned
-                    setattr(model, name, compiled_module)
-        else:  # Leaf node
-            model = torch.compile(model, **compile_kwargs)
-            model.__dict__.pop("_parameters", None)
-            return model
 
 
 class GaudiAccelerator(Accelerator):
@@ -367,13 +349,12 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, compile_kwargs)
+                model = compile_regions(model, **compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
         return model
 
-    # TODO: Remove when compile_regions is removed
     def _prepare_deepspeed(self, *args):
         import deepspeed
 
@@ -575,20 +556,24 @@ class GaudiAccelerator(Accelerator):
                 # This env variable is initialized here to make sure it is set to "true"
                 # It should be done by the launcher but it does not work for multi-node runs
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
-            engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
-            # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
-            if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
+
+            if self.state.dynamo_plugin.backend != DynamoBackend.NO and self.use_regional_compilation:
+                # regional compilation should be done before deepspeed initialization
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
-                ###############################################################################################################
-                if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs)
-                else:
-                    engine.compile(
-                        backend=compile_kwargs.pop("backend"),
-                        compile_kwargs=compile_kwargs,
-                        compiled_autograd_enabled=self.compiled_autograd_enable,
-                    )
-                ###############################################################################################################
+                model = compile_regions(model, **compile_kwargs)
+
+            engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
+
+            if self.state.dynamo_plugin.backend != DynamoBackend.NO and not self.use_regional_compilation:
+                # deepspeed native compilation is done after deepspeed initialization
+                engine.compile(
+                    backend=compile_kwargs.pop("backend"),
+                    compile_kwargs=self.state.dynamo_plugin.to_kwargs(),
+                    compiled_autograd_enabled=self.compiled_autograd_enable,
+                )
+
+            print("Model has _orig_mod after deepspeed initialization:", hasattr(engine, "_orig_mod"))
+
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
@@ -705,10 +690,3 @@ class GaudiAccelerator(Accelerator):
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader
-
-
-def patch_has_compiled_regions(*args, **kwargs):
-    return False
-
-
-accelerate.utils.other.has_compiled_regions = patch_has_compiled_regions
