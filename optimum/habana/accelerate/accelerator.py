@@ -565,10 +565,11 @@ class GaudiAccelerator(Accelerator):
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
 
             if self.state.dynamo_plugin.backend != DynamoBackend.NO and not self.use_regional_compilation:
+                compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 # deepspeed native compilation is done after deepspeed initialization
                 engine.compile(
                     backend=compile_kwargs.pop("backend"),
-                    compile_kwargs=self.state.dynamo_plugin.to_kwargs(),
+                    compile_kwargs=compile_kwargs,
                     compiled_autograd_enabled=self.compiled_autograd_enable,
                 )
 
