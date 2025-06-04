@@ -99,6 +99,11 @@
       "throughput": 633.0694674407139
     }
   },
+  "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen3-8B-1-False-False]": {
+    "gaudi2": {
+      "throughput": 123.06282996640333
+    },
+  },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Salesforce/codegen2-1B-1-False-False]": {
     "gaudi1": {
       "throughput": 155.32071248826423
