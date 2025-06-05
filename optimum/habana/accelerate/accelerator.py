@@ -45,6 +45,7 @@ from accelerate.utils import (
     RNGType,
     TorchDynamoPlugin,
     TorchTensorParallelPlugin,
+    compile_regions,
     convert_outputs_to_fp32,
     is_deepspeed_available,
 )
@@ -66,24 +67,6 @@ from .utils import convert_model
 
 
 logger = get_logger(__name__)
-
-
-def compile_regions(model, compile_kwargs):
-    if isinstance(model, torch.nn.ModuleList):
-        for name, module in model.named_children():
-            module = torch.compile(module, **compile_kwargs)
-            module.__dict__.pop("_parameters", None)
-            setattr(model, name, module)
-    else:
-        if model._modules:  # If model has submodules, recurse and reassign
-            for name, module in model.named_children():
-                compiled_module = compile_regions(module, compile_kwargs)
-                if compiled_module is not None:  # Only reassign if something is returned
-                    setattr(model, name, compiled_module)
-        else:  # Leaf node
-            model = torch.compile(model, **compile_kwargs)
-            model.__dict__.pop("_parameters", None)
-            return model
 
 
 class GaudiAccelerator(Accelerator):
@@ -368,12 +351,10 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                model_compiled = copy.deepcopy(model)
-                compile_regions(model_compiled, compile_kwargs)
+                model = compile_regions(model, **compile_kwargs)
             else:
-                model_compiled = torch.compile(model, **compile_kwargs)
+                model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
-            return model_compiled
         return model
 
     # TODO: Remove when compile_regions is removed
