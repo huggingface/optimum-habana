@@ -1,3 +1,5 @@
 datasets>=3.0.2
 peft
 sentencepiece
+tiktoken
+blobfile
