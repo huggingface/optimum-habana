@@ -113,7 +113,7 @@ def _prepare_cross_attention_mask(
     cross_attention_mask: torch.Tensor,
     num_vision_tokens: int,
     dtype: str,
-    token_idx: Optional[int] = None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from _prepare_cross_attention_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L99
@@ -1017,7 +1017,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        token_idx_cpu: Optional[int] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
@@ -1066,7 +1065,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 cross_attention_mask,
                 num_vision_tokens=self.vision_model.num_patches,
                 dtype=self.dtype,
-                token_idx=token_idx_cpu,
+                token_idx=token_idx,
             )
         else:
             full_text_row_masked_out_mask = None
@@ -1133,7 +1132,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             - add use_flash_attention and flash_attention_recompute
         """
         token_idx = kwargs.get("token_idx", None)
-        token_idx_cpu = kwargs.get("token_idx_cpu", None)
         bucket_internal = kwargs.get("bucket_internal", None)
         if past_key_values is not None:
             if token_idx is not None:
@@ -1185,7 +1183,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "attention_mask": attention_mask,
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
-                "token_idx_cpu": token_idx_cpu,
                 "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
