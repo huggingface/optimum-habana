@@ -12,6 +12,7 @@ from trl import AutoModelForCausalLMWithValueHead
 from trl.core import LengthSampler
 
 from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.environment import set_model_config
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime, set_seed
 
@@ -207,6 +208,7 @@ model = AutoModelForCausalLMWithValueHead.from_pretrained(
 )
 model.config.use_fused_rope = False
 model.config.use_fused_rms_norm = False
+set_model_config(model.config)
 optimizer = None
 model = model.to(torch.bfloat16)
 
