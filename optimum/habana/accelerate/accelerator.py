@@ -18,6 +18,7 @@ from __future__ import annotations
 import functools
 import math
 import os
+import copy
 from dataclasses import make_dataclass
 from types import MethodType
 
@@ -367,10 +368,12 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, compile_kwargs)
+                model_compiled = copy.deepcopy(model)
+                compile_regions(model_compiled, compile_kwargs)
             else:
-                model = torch.compile(model, **compile_kwargs)
+                model_compiled = torch.compile(model, **compile_kwargs)
             ############################################################################################################
+            return model_compiled
         return model
 
     # TODO: Remove when compile_regions is removed
