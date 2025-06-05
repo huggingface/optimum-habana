@@ -577,6 +577,14 @@ class GPT2ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
 
+    @unittest.skip(reason="This test is not supported for gpt2")
+    def test_torch_fx(self):
+        pass
+
+    @unittest.skip(reason="This test is not supported for gpt2")
+    def test_torch_fx_output_loss(self):
+        pass
+
     @slow
     def test_batch_generation(self):
         model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
@@ -829,7 +837,7 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
     @slow
     def test_flash_attn_2_generate_padding_left(self):
         """
-        Overwritting the common test as the test is flaky on tiny models
+        Overwriting the common test as the test is flaky on tiny models
         """
         model = GPT2LMHeadModel.from_pretrained("gpt2", torch_dtype=torch.float16).to(0)
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")

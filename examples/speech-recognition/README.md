@@ -18,13 +18,19 @@ limitations under the License.
 
 ## Table of Contents
 
-- [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
-	- [Single HPU example](#single-hpu-ctc)
-	- [Multi HPU example](#multi-hpu-ctc)
-- [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
-	- [Whisper Model](#whisper-model)
-	- [Fine tuning](#single-hpu-whisper-fine-tuning-with-seq2seq)
-	- [Inference](#single-hpu-seq2seq-inference)
+- [Automatic Speech Recognition Examples](#automatic-speech-recognition-examples)
+  - [Table of Contents](#table-of-contents)
+  - [Requirements](#requirements)
+  - [Connectionist Temporal Classification](#connectionist-temporal-classification)
+    - [Single-HPU CTC](#single-hpu-ctc)
+    - [Multi-HPU CTC](#multi-hpu-ctc)
+  - [DeepSpeed](#deepspeed)
+  - [Inference](#inference)
+  - [Sequence to Sequence](#sequence-to-sequence)
+    - [Whisper Model](#whisper-model)
+    - [Single HPU Whisper Fine tuning with Seq2Seq](#single-hpu-whisper-fine-tuning-with-seq2seq)
+    - [Multi HPU Whisper Training with Seq2Seq](#multi-hpu-whisper-training-with-seq2seq)
+      - [Single HPU Seq2Seq Inference](#single-hpu-seq2seq-inference)
 
 
 ## Requirements
@@ -89,7 +95,8 @@ python run_speech_recognition_ctc.py \
     --bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa
+    --attn_implementation sdpa \
+    --trust_remote_code True
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.
@@ -132,7 +139,8 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --sdp_on_bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa
+    --attn_implementation sdpa \
+    --trust_remote_code True
 ```
 
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
@@ -182,7 +190,8 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json \
     --sdp_on_bf16 \
-    --attn_implementation sdpa
+    --attn_implementation sdpa \
+    --trust_remote_code True
 ```
 
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
@@ -215,7 +224,8 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --gaudi_config_name="Habana/wav2vec2" \
     --sdp_on_bf16 \
     --bf16 \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --trust_remote_code True
 ```
 ## Sequence to Sequence
 
@@ -273,7 +283,7 @@ If training on a different language, you should be sure to change the `language`
 ### Multi HPU Whisper Training with Seq2Seq
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-large" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \

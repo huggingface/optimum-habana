@@ -40,6 +40,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate import DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from datasets import load_dataset
@@ -61,7 +62,6 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
@@ -547,7 +547,7 @@ def parse_args(input_args=None):
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of training steps to ignore for profiling.",
+        help="Number of steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
@@ -907,7 +907,7 @@ def main(args):
                         for idx, dt in enumerate(dataset["train"]):
                             dt["image"].save(f"{args.mediapipe}/{idx}.jpg")
                             f.write(dt["text"] + "\n")
-            if accelerator.distributed_type != GaudiDistributedType.NO:
+            if accelerator.distributed_type != DistributedType.NO:
                 torch.distributed.barrier()
 
             from media_pipe_imgdir import get_dataset_for_pipeline
@@ -1156,7 +1156,7 @@ def main(args):
         if not training:
             return model
         else:
-            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if accelerator.distributed_type == DistributedType.MULTI_HPU:
                 kwargs = {}
                 kwargs["gradient_as_bucket_view"] = True
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)

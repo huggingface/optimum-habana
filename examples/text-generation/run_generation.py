@@ -30,7 +30,14 @@ from pathlib import Path
 import pandas as pd
 import torch
 from transformers import BatchEncoding
-from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model, save_model
+from utils import (
+    SetTrueOrFalseOrNone,
+    adjust_batch,
+    count_hpu_graphs,
+    finalize_quantization,
+    initialize_model,
+    save_model,
+)
 
 from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
 
@@ -313,14 +320,14 @@ def setup_parser(parser):
     parser.add_argument(
         "--flash_attention_fast_softmax",
         nargs="?",
-        const=None,  # Default value handled post-parsing
-        action=StoreTrueFalseAction,
+        const=None,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",
         action="store_true",
-        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lengths.",
     )
     parser.add_argument(
         "--torch_compile",
@@ -345,6 +352,11 @@ def setup_parser(parser):
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
+    )
+    parser.add_argument(
+        "--trust_remote_code_tokenizer",
+        action="store_true",
+        help="Whether to trust the execution of code in Tokenizer from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     parser.add_argument(
         "--parallel_strategy",
@@ -441,13 +453,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable regional compilation.",
     )
-
     parser.add_argument(
         "--force_static_compile",
         action="store_true",
         help="Whether to force static compile.",
     )
-
     parser.add_argument(
         "--cache_size_limit",
         default=None,
@@ -470,7 +480,12 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     if args.use_flash_attention and args.flash_attention_fast_softmax is None:
+        logger.warning(
+            "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
+        )
         args.flash_attention_fast_softmax = True
+    else:
+        args.flash_attention_fast_softmax = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config and args.load_quantized_model_with_autogptq:
@@ -805,7 +820,6 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
             input_data = {}
             if args.input_embeds:
                 inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
@@ -819,7 +833,7 @@ def main():
                 input_data.update(input_tokens)
 
             iteration_times = []
-            output_tokens = model.generate(
+            outputs = model.generate(
                 **input_data,
                 generation_config=generation_config,
                 assistant_model=assistant_model,
@@ -829,13 +843,19 @@ def main():
                 iteration_times=iteration_times,
                 profiler=profiler,
             ).cpu()
-            outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             timer.step()
-            duration = timer.total_time()
             first_token_time = iteration_times[0] + encode_duration
+            rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
+            e2e_latency = timer.total_time()
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
-            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
-            return outputs
+            logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
+            logger.info(f"End to end latency = {e2e_latency * 1000}ms")
+            return (
+                tokenizer.batch_decode(outputs, skip_special_tokens=True),
+                first_token_time,
+                rest_token_time,
+                e2e_latency,
+            )
 
         # Compilation
         logger.info("Graph compilation...")
@@ -871,25 +891,39 @@ def main():
         compilation_duration = timer.last_duration
         total_new_tokens_generated = 0
         logger.info("Running generate...")
+        first_token_latencies = []
+        rest_token_latencies = []
+        e2e_latencies = []
         timer.step()
         # Benchmark over n_iterations iterations
         per_sequence_profiler.start()
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
-                generated = generate(None, args.reduce_recompile)
+                generated, first_token_time, rest_token_time, e2e_latency = generate(None, args.reduce_recompile)
                 per_sequence_profiler.step()
+                first_token_latencies.append(first_token_time)
+                rest_token_latencies.append(rest_token_time)
+                e2e_latencies.append(e2e_latency)
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
-                generated = generate(prompt_len, args.reduce_recompile)
+                generated, first_token_time, rest_token_time, e2e_latency = generate(prompt_len, args.reduce_recompile)
                 per_sequence_profiler.step()
+                first_token_latencies.append(first_token_time)
+                rest_token_latencies.append(rest_token_time)
+                e2e_latencies.append(e2e_latency)
         timer.step()
-        duration = timer.last_duration
         per_sequence_profiler.stop()
+        logger.info("Finished running generate")
+        duration = timer.last_duration
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
+        # Calculate average latencies
+        avg_first_token_latency = sum(first_token_latencies) / len(first_token_latencies)
+        avg_rest_token_latency = sum(rest_token_latencies) / len(rest_token_latencies)
+        avg_e2e_latency = sum(e2e_latencies) / len(e2e_latencies)
 
         print()
         print("Input/outputs:")
@@ -912,6 +946,9 @@ def main():
 
             results = {
                 "throughput": throughput,
+                "avg_first_token_latency": avg_first_token_latency,
+                "avg_rest_token_latency": avg_rest_token_latency,
+                "avg_e2e_latency": avg_e2e_latency,
                 "input": all_inputs,
                 "output": all_outputs,
             }
@@ -920,6 +957,9 @@ def main():
 
         stats = "Input embeds" if args.input_embeds else "Input tokens"
         stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
+        stats = stats + f"\nAverage first token latency         = {avg_first_token_latency * 1000} ms"
+        stats = stats + f"\nAverage rest token latency          = {avg_rest_token_latency * 1000} ms"
+        stats = stats + f"\nAverage end to end latency          = {avg_e2e_latency * 1000} ms"
         if args.show_graphs_count:
             stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
@@ -1028,43 +1068,19 @@ def main():
             ).cpu()
             return prompt, outputs
 
-        def mark_tensor_dynamic(generation_config, batch):
-            if generation_config.use_mark_dynamic:
-                for t in batch:
-                    if torch.is_tensor(batch[t]):
-                        if generation_config.mark_dyn_dim_0_min and generation_config.mark_dyn_dim_0_max:
-                            # batch dimension as dynamic
-                            torch._dynamo.mark_dynamic(
-                                batch[t],
-                                0,
-                                min=generation_config.mark_dyn_dim_0_min,
-                                max=generation_config.mark_dyn_dim_0_max,
-                            )
-
-                        if generation_config.mark_dyn_dim_1_min and generation_config.mark_dyn_dim_1_max:
-                            torch._dynamo.mark_dynamic(
-                                batch[t],
-                                1,
-                                min=generation_config.mark_dyn_dim_1_min,
-                                max=generation_config.mark_dyn_dim_1_max,
-                            )
-
+        # compilation stage disable profiling
+        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         timer = HabanaGenerationTime()
         timer.start()
         for i, batch in enumerate(dataloader):
-            if i == 0:
-                mark_tensor_dynamic(generation_config, batch)
-            print("Warming up", flush=True)
             timer.step()
-            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             generate_dataset(batch, disable_profiling=True)
             if generation_config.use_mark_dynamic:
                 generation_config.use_mark_dynamic = False
             timer.step()
             duration = timer.last_duration
-            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
             # The first three iterations take longer because of graph compilation
             if (i + 1) == 3:
                 break

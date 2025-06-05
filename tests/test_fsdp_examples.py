@@ -8,35 +8,40 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
+from .utils import OH_DEVICE_CONTEXT
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            (
-                "bert-base-uncased",
-                "Habana/bert-base-uncased",
-                "question-answering",
-                24,
-                8,
-                "run_qa.py",
-                "full_shard",
-            ),
-            (
-                "meta-llama/Llama-2-7b-hf",
-                "",
-                "language-modeling",
-                8,
-                8,
-                "run_lora_clm.py",
-                "auto_wrap",
-            ),
-        ],
-    }
-else:
-    # FSDP is not supported on Gaudi1
-    MODELS_TO_TEST = {"bf16": []}
+MODELS_TO_TEST = {
+    "bf16": [
+        (
+            "bert-base-uncased",
+            "Habana/bert-base-uncased",
+            "question-answering",
+            24,
+            8,
+            "run_qa.py",
+            "full_shard",
+        ),
+        (
+            "meta-llama/Llama-2-7b-hf",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+            "auto_wrap",
+        ),
+        (
+            "ibm-granite/granite-3.1-8b-instruct",
+            "",
+            "language-modeling",
+            8,
+            8,
+            "run_lora_clm.py",
+            "auto_wrap",
+        ),
+    ],
+}
 
 
 def _test_fsdp(
@@ -71,7 +76,6 @@ def _test_fsdp(
         "--do_train",
         f"--per_device_eval_batch_size {batch_size_eval}",
         f"--per_device_train_batch_size {batch_size_train}",
-        f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
         f"--fsdp '{policy}'",
         "--torch_compile_backend hpu_backend",
         "--torch_compile",
@@ -80,6 +84,7 @@ def _test_fsdp(
 
     if model_name == "bert-base-uncased":
         command += [
+            f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
             "--dataset_name squad",
             "--max_seq_length 384",
             "--learning_rate 3e-05",
@@ -94,8 +99,40 @@ def _test_fsdp(
             "--do_eval",
             "--sdp_on_bf16",
         ]
+    elif model_name == "ibm-granite/granite-3.1-8b-instruct":
+        command += [
+            f"--fsdp_config {path_to_example_dir / task / 'granite_fsdp_config.json'}",
+            "--max_steps 100",
+            "--dataset_name tatsu-lab/alpaca ",
+            "--bf16 True ",
+            "--gradient_accumulation_steps 2",
+            "--save_strategy 'no'",
+            "--eval_strategy 'no'",
+            "--learning_rate 0.0003",
+            "--warmup_ratio 0.03",
+            "--max_grad_norm 0.3",
+            "--lr_scheduler_type 'constant'",
+            "--logging_steps 1",
+            "--use_lazy_mode False",
+            "--pipelining_fwd_bwd False",
+            "--throughput_warmup_steps 3",
+            "--lora_rank 8",
+            "--lora_alpha 16",
+            "--lora_dropout 0.05",
+            "--lora_target_modules 'q_proj' 'v_proj' 'k_proj' 'o_proj'",
+            "--dataset_concatenation",
+            "--max_seq_length 512",
+            "--adam_epsilon 1e-08",
+            "--low_cpu_mem_usage True",
+            "--attn_softmax_bf16 True",
+            "--num_train_epochs 3",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
+            f"--token {token.value}",
+        ]
     else:
         command += [
+            f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
             "--dataset_name tatsu-lab/alpaca ",
             "--bf16 True ",
             "--gradient_accumulation_steps 2",
@@ -145,28 +182,27 @@ def _test_fsdp(
         with open(Path(tmp_dir) / "all_results.json") as fp:
             results = json.load(fp)
 
-        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi1"
-
         # Ensure performance requirements (throughput) are met
         baseline.assertRef(
             compare=lambda actual, ref: actual >= (2 - TIME_PERF_FACTOR) * ref,
-            context=[device],
+            context=[OH_DEVICE_CONTEXT],
             train_samples_per_second=results["train_samples_per_second"],
         )
         if model_name == "bert-base-uncased":
             baseline.assertRef(
                 compare=lambda actual, ref: actual >= ACCURACY_PERF_FACTOR * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 eval_f1=results["eval_f1"],
             )
         else:
             baseline.assertRef(
                 compare=lambda actual, ref: actual <= (2 - ACCURACY_PERF_FACTOR) * ref,
-                context=[device],
+                context=[OH_DEVICE_CONTEXT],
                 train_loss=results["train_loss"],
             )
 
 
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="FSDP is not supported on Gaudi1")
 @pytest.mark.parametrize("model_name, gaudi_config, task, bs_train, bs_eval, script, policy", MODELS_TO_TEST["bf16"])
 def test_fsdp_bf16(
     model_name: str,

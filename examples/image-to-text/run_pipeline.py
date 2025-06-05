@@ -18,7 +18,6 @@ import glob
 import json
 import logging
 import os
-import time
 from pathlib import Path
 
 import PIL.Image
@@ -157,9 +156,9 @@ def main():
         "--bucket_size",
         default=-1,
         type=int,
-        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
-            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
-            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+        help="Bucket size to maintain static shapes. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`). \
+            It can never be negative value.",
     )
     parser.add_argument(
         "--bucket_internal",
@@ -171,11 +170,8 @@ def main():
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument(
         "--ignore_eos",
-        nargs="?",
-        const=True,
-        default=True,
-        type=lambda x: x.lower() != "false" if isinstance(x, str) else True,
-        help="Whether to disable stopping with eos token when calling `generate`. Defaults to True.",
+        action="store_true",
+        help="Whether to disable stopping with eos token when calling `generate`.",
     )
     parser.add_argument(
         "--use_flash_attention",
@@ -265,7 +261,7 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
 
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl", "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -275,8 +271,19 @@ def main():
         args.image_path = [
             "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
         ]
+    elif args.image_path is None and model_type == "llava_onevision":
+        args.image_path = ["http://images.cocodataset.org/val2017/000000039769.jpg"]
 
-    if model_type in ["llava", "idefics2", "llava_next", "mllama", "paligemma", "qwen2_vl"]:
+    if model_type in [
+        "llava",
+        "idefics2",
+        "llava_next",
+        "mllama",
+        "paligemma",
+        "qwen2_vl",
+        "chatglm",
+        "llava_onevision",
+    ]:
         processor = AutoProcessor.from_pretrained(args.model_name_or_path, padding_side="left")
         if args.prompt is None:
             if processor.chat_template is not None:
@@ -284,7 +291,7 @@ def main():
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "What is shown in this image?"},
+                            {"type": "text", "text": "Describe what is shown in this image?"},
                             {"type": "image"},
                         ],
                     }
@@ -306,6 +313,18 @@ def main():
                     args.prompt = "caption es"
                 else:
                     args.prompt = f"User:{image_str}\nWhat is shown in this image?\nAssistant:"
+
+        else:
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{args.prompt}"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            args.prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -357,7 +376,7 @@ def main():
             model=args.model_name_or_path,
             config=args.model_name_or_path,
             tokenizer=args.model_name_or_path,
-            image_processor=args.model_name_or_path,
+            image_processor=None if model_type == "chatglm" else args.model_name_or_path,
             torch_dtype=model_dtype,
             device="hpu",
         )
@@ -369,6 +388,7 @@ def main():
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
+        processor.patch_size = config.vision_config.patch_size
     generate_kwargs = {
         "lazy_mode": use_lazy_mode,
         "hpu_graphs": args.use_hpu_graphs,
@@ -376,12 +396,12 @@ def main():
         "ignore_eos": args.ignore_eos,
         "use_flash_attention": args.use_flash_attention,
         "flash_attention_recompute": args.flash_attention_recompute,
+        "bucket_internal": args.bucket_internal,
+        "bucket_size": args.bucket_size,
         "limit_hpu_graphs": args.limit_hpu_graphs,
         "do_sample": args.do_sample,
         "trim_logits": args.trim_logits,
         "logits_bf16": args.logits_bf16,
-        "bucket_internal": args.bucket_internal,
-        "bucket_size": args.bucket_size,
     }
 
     if args.sdp_on_bf16:
@@ -394,6 +414,9 @@ def main():
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
 
+    if model_type == "chatglm":
+        generate_kwargs["reuse_cache"] = True
+
     if args.quant_config:
         generator.model = setup_quantization(generator.model, args)
         htcore.hpu_initialize(generator.model)
@@ -401,7 +424,16 @@ def main():
     # delete once pipeline integrate AutoProcessor as preprocess engine
     # could use "image-text-to-text" pipeline in transformers 4.47
 
-    if model_type in ["idefics2", "mllama", "paligemma", "qwen2_vl", "llava", "llava_next"]:
+    if model_type in [
+        "idefics2",
+        "mllama",
+        "paligemma",
+        "qwen2_vl",
+        "llava",
+        "llava_next",
+        "chatglm",
+        "llava_onevision",
+    ]:
         from transformers.image_utils import load_image
 
         def preprocess(self, image, prompt=None, timeout=None):
@@ -410,17 +442,34 @@ def main():
                 kwargs["max_length"] = args.max_input_tokens
                 kwargs["padding"] = "max_length"
             image = load_image(image, timeout=timeout)
-            model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
+            if model_type == "chatglm":
+                if prompt is None:
+                    prompt = "What is shown in this image?"
+                query = [{"role": "user", "image": image, "content": prompt}]
+
+                model_inputs = processor.apply_chat_template(
+                    query,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors=None,
+                    return_dict=True,
+                )
+                generator.model.adjust_multimodal_inputs(model_inputs)
+                model_inputs.convert_to_tensors(tensor_type="pt")
+                model_inputs.to("hpu")
+            else:
+                model_inputs = processor(images=image, text=prompt, return_tensors=self.framework, **kwargs)
             return model_inputs
 
         generator.__class__.preprocess = preprocess
 
-    t0 = time.perf_counter()
     # warm up
-    for i in range(args.warmup):
-        generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    torch.hpu.synchronize()
-    compilation_duration = time.perf_counter() - t0
+    with HabanaGenerationTime() as compilation_timer:
+        for i in range(args.warmup):
+            generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        torch.hpu.synchronize()
+    compilation_duration = compilation_timer.last_duration
+
     if args.quant_config:
         finalize_quantization(generator.model)
 
@@ -449,8 +498,7 @@ def main():
 
     stats = ""
     stats = stats + f"\nThroughput (including tokenization) = {throughput} tokens/second"
-    if True:
-        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+    stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
     separator = "-" * len(stats)
     print()
     print("Stats:")

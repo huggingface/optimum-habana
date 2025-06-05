@@ -21,7 +21,7 @@ This folder contains an example script which demonstrates the usage of DETR to r
 ## Single-HPU inference
 
 ```bash
-PT_HPU_LAZY_MODE=1 python3 run_example.py \
+python3 run_example.py \
 	--model_name_or_path facebook/detr-resnet-101 \
 	--image_path "http://images.cocodataset.org/val2017/000000039769.jpg" \
 	--use_hpu_graphs \

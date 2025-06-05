@@ -12,7 +12,7 @@ $ pip install -U -r requirements.txt
 1. The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
     ```
-    PT_HPU_LAZY_MODE=1 python sft.py \
+    python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --streaming False \
@@ -46,7 +46,7 @@ $ pip install -U -r requirements.txt
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
     ```
-    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
@@ -88,7 +88,7 @@ steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
     ```
-    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
@@ -120,7 +120,7 @@ steps like:
 
 2. Run the DPO trainer using the model saved by the previous step:
     ```
-    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
         --model_name_or_path="sft/final_merged_checkpoint" \
         --tokenizer_name_or_path=meta-llama/Llama-2-70b-hf \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
@@ -147,7 +147,7 @@ which will also push the model to your HuggingFace hub account.
 We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
 ```
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
 --model_name_or_path ../trl/stack-llama-2/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
 --prompt "Here is my prompt"
@@ -163,7 +163,7 @@ The following example is for the creation of StackLlaMa 2: a Stack exchange llam
 There are three main steps to the PPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
     ```
-    PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
+    python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
@@ -206,7 +206,7 @@ There are three main steps to the PPO training process:
 
 3. RL fine-tuning of llama-v2-7b-se with the llama-v2-7b-se-rm reward model:
     ```
-    PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_mpi ppo.py \
+    python ../gaudi_spawn.py --world_size 8 --use_mpi ppo.py \
         --model_name_or_path=./sft/final_merged_checkpoint \
         --reward_model_name=./rm_merged_checkpoint \
         --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
@@ -231,7 +231,7 @@ There are three main steps to the PPO training process:
 We can load the PPO-trained LoRA adaptors which were saved by the PPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
 ```
-PT_HPU_LAZY_MODE=1 python run_generation.py \
+python run_generation.py \
 --model_name_or_path ../trl/rl_merged_checkpoint/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
 --prompt "Here is my prompt"

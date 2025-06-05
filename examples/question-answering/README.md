@@ -33,7 +33,6 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
-
 ## Fine-tuning Llama on SQuAD1.1
 
 > [!NOTE]
@@ -41,7 +40,7 @@ pip install -r requirements.txt
 
 Here is a command you can run to train a Llama model for question answering:
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
   --world_size 8 --use_deepspeed run_qa.py \
   --model_name_or_path meta-llama/Llama-2-7b-chat-hf \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \

@@ -176,7 +176,7 @@ Llama Guard can be used for text classification. The Transformers library will c
 Llama Guard can be fine-tuned with DeepSpeed, here is how you would do it on the text classification MRPC task using DeepSpeed with 8 HPUs:
 
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path meta-llama/LlamaGuard-7b \
     --gaudi_config Habana/llama \
@@ -207,7 +207,7 @@ You can look at the [documentation](https://huggingface.co/docs/optimum/habana/u
 You can run inference with Llama Guard on GLUE on 1 Gaudi card with the following command:
 
 ```bash
-PT_HPU_LAZY_MODE=1 python run_glue.py \
+python run_glue.py \
   --model_name_or_path meta-llama/LlamaGuard-7b \
   --gaudi_config Habana/llama \
   --task_name mrpc \

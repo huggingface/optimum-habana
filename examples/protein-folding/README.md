@@ -50,7 +50,7 @@ python run_zero_shot_eval.py --bf16 --max_seq_length 1024
 ## Multi-HPU finetune for sequence classification task
 
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --world_size 8 --use_mpi run_sequence_classification.py \
+python ../gaudi_spawn.py --world_size 8 --use_mpi run_sequence_classification.py \
     --output_dir ./out \
     --model_name_or_path mila-intel/protst-esm1b-for-sequential-classification \
     --tokenizer_name facebook/esm1b_t33_650M_UR50S \

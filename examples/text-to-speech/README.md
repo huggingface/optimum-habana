@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ## Single-HPU inference
 
 ```bash
-PT_HPU_LAZY_MODE=1 python3 run_pipeline.py \
+python3 run_pipeline.py \
     --model_name_or_path microsoft/speecht5_tts \
     --text "Hello, my dog is cooler than you!" \
     --use_hpu_graphs \

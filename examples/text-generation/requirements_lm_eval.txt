@@ -2,8 +2,10 @@ lm-eval==0.4.7
 datasets==2.21.0
 evaluate == 0.4.3
 rouge_score == 0.1.2
-accelerate < 0.34.0
+accelerate
 pandas <= 2.2.2
 sentencepiece <= 0.2.0
 langdetect <= 1.0.9
 immutabledict <= 4.2.1
+tiktoken
+blobfile

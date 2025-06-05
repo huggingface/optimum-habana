@@ -175,7 +175,7 @@ converge slightly slower (over-fitting takes more epochs).
 ### Multi-card Training
 
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_mlm.py \
     --model_name_or_path roberta-base \
     --dataset_name wikitext \
@@ -292,7 +292,7 @@ python3 run_lora_clm.py \
 
 - Multi-card finetuning of gemma2 using chat template:
 ```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 2 --use_mpi run_lora_clm.py \
     --model_name_or_path google/gemma-2b-it \
     --per_device_train_batch_size 16 \
@@ -321,7 +321,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Falcon-40B:
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -356,13 +356,57 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3
     --validation_split_percentage 6
 ```
 
+- Multi-card finetuning of Llama3.1-8B with Deepspeed ZeRO-1 optimization, LoRA and FP8 precision:
+```bash
+PT_TE_CUSTOM_OP=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_clm.py \
+    --model_name_or_path meta-llama/Meta-Llama-3.1-8B \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 False \
+    --output_dir ./model_lora_llama_8B \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm 1.0 \
+    --logging_steps 10 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode False \
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 4096 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
+    --deepspeed llama3_ds_zero1_config.json \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --fp8 \
+    --use_flash_attention True \
+    --flash_attention_causal_mask True  \
+    --per_device_eval_batch_size 4  \
+    --cache_size_limit 64 \
+    --use_regional_compilation \
+    --compile_from_sec_iteration \
+    --allow_unspec_int_on_nn_module True
+```
+
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization, LoRA and FP8 precision:
 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 \
-python3 ../gaudi_spawn.py --use_deepspeed --world_size 8 run_lora_clm.py \
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 \
+python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --deepspeed llama2_ds_zero3_config.json \
   --dataset_name tatsu-lab/alpaca \
@@ -445,7 +489,7 @@ Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_typ
 To run on your own training and validation files, use the following command:
 
 ```bash
-PT_HPU_LAZY_MODE=1 python run_lora_clm.py \
+python run_lora_clm.py \
     --model_name_or_path bigcode/starcoder \
     --train_file path_to_train_file \
     --validation_file path_to_validation_file \
@@ -488,7 +532,7 @@ To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
 Here are single-card command examples for Llama2-7B:
 - single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
-PT_HPU_LAZY_MODE=1 python3 run_prompt_tuning_clm.py \
+python3 run_prompt_tuning_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --output_dir prompt_tuning_out \
     --bf16 True \
@@ -509,7 +553,7 @@ Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuni
 
 Use the prompt finetuned model for text-generation:
 ```bash
-PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
+python3 ../text-generation/run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf  \
     --max_new_tokens 128 \
     --bf16 \
@@ -526,7 +570,7 @@ PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
 To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
 Here is a multi-device command example for [google/flan-t5-base](https://huggingface.co/google/flan-t5-base):
 ```bash
-PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
     --model_name_or_path google/flan-t5-base \
     --do_train \
     --report_to=none \
@@ -548,7 +592,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multit
 To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
 Here is a multi-device command example for [google/flan-t5-xl](https://huggingface.co/google/flan-t5-xl):
 ```bash
-PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
     --model_name_or_path google/flan-t5-xl \
     --do_train \
     --report_to=none \
@@ -577,7 +621,7 @@ We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepS
 > This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
 
 ```bash
-PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py  \
+python3 ../gaudi_spawn.py  \
         --world_size 8  --use_deepspeed run_lora_clm.py \
         --model_name_or_path meta-llama/Llama-3.1-8B \
         --dataset_name tatsu-lab/alpaca \
