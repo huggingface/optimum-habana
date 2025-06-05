@@ -84,7 +84,7 @@ Stable Diffusion 3 was introduced by Stability AI [here](https://stability.ai/ne
 It uses Diffusion Transformer instead of UNet for denoising, which yields improved image quality.
 
 ```bash
-PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+PT_HPU_LAZY_MODE=1 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
