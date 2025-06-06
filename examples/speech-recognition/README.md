@@ -78,7 +78,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --text_column_name="text" \
     --layerdrop="0.0" \
     --freeze_feature_encoder \
-    --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -122,7 +122,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --text_column_name text \
     --layerdrop 0.0 \
     --freeze_feature_encoder \
-    --chars_to_ignore '",?.!-;:\"“%‘”"' \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -175,7 +175,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --text_column_name text \
     --layerdrop 0.0 \
     --freeze_feature_encoder \
-    --chars_to_ignore '",?.!-;:\"“%‘”"' \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -211,7 +211,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --text_column_name="text" \
-    --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
