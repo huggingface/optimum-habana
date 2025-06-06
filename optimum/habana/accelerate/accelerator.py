@@ -84,6 +84,7 @@ def compile_regions(model, compile_kwargs):
             model.__dict__.pop("_parameters", None)
             return model
 
+
 class GaudiAccelerator(Accelerator):
     def __init__(
         self,
