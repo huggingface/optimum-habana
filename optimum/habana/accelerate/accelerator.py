@@ -18,7 +18,6 @@ from __future__ import annotations
 import functools
 import math
 import os
-import copy
 from dataclasses import make_dataclass
 from types import MethodType
 
