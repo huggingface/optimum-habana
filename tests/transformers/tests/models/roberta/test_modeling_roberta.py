@@ -16,6 +16,7 @@
 
 import unittest
 
+import pytest
 from transformers import RobertaConfig, is_torch_available
 from transformers.testing_utils import TestCasePlus, require_torch, slow
 
@@ -476,6 +477,10 @@ class RobertaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     def test_for_question_answering(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_for_question_answering(*config_and_inputs)
+
+    @pytest.mark.skip("Skipped since HF upstream test is modified starting v4.47")
+    def test_generate_from_inputs_embeds_decoder_only():
+        pass
 
     @slow
     def test_model_from_pretrained(self):

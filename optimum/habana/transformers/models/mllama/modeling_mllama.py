@@ -24,7 +24,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_outputs import (
@@ -50,7 +49,6 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaVisionEncoder,
     MllamaVisionEncoderLayer,
     MllamaVisionModel,
-    _prepare_4d_causal_attention_mask_with_cache_position,
     _prepare_aspect_ratio_attention_mask,
     apply_rotary_pos_emb,
     repeat_kv,
@@ -115,15 +113,15 @@ def _prepare_cross_attention_mask(
     cross_attention_mask: torch.Tensor,
     num_vision_tokens: int,
     dtype: str,
-    token_idx: Optional[torch.Tensor] = None,
+    token_idx: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from _prepare_cross_attention_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L99
     The only differences are:
         - if there's pading in cross_attention_mask in the right. do not masked it, or else it will impact softmax in crossattention
     """
-
     # reshape so it can be used by attn module
+    # Updated cross_attention_mask alignment logic to ensure memory alignment with dtype size (256-byte boundary)
     cross_attention_mask = cross_attention_mask.to(dtype)
     dtype_size = (
         torch.finfo(dtype).bits if torch.is_floating_point(torch.tensor(0, dtype=dtype)) else torch.iinfo(dtype).bits
@@ -149,9 +147,9 @@ def _prepare_cross_attention_mask(
         (cross_attention_mask != negative_inf_value).any(dim=-1).type_as(cross_attention_mask)[..., None]
     )
     if token_idx is not None:
-        full_text_row_masked_out_mask2 = full_text_row_masked_out_mask.clone()
-        full_text_row_masked_out_mask2[:, :, token_idx:, :] = 1
-        cross_attention_mask *= full_text_row_masked_out_mask2
+        cross_attention_mask_2 = cross_attention_mask[:, :, token_idx:, 1]
+        cross_attention_mask *= full_text_row_masked_out_mask
+        cross_attention_mask[:, :, token_idx:, 1] = cross_attention_mask_2
     else:
         cross_attention_mask *= full_text_row_masked_out_mask
 
@@ -170,7 +168,7 @@ class GaudiMllamaVisionSdpaAttention(MllamaVisionAttention):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = None,
         use_flash_attention: Optional[bool] = False,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
         """
         Copied from MllamaVisionSdpaAttention::forward:https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L283
@@ -686,9 +684,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -742,7 +738,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
 
         for idx, decoder_layer in enumerate(self.layers):
             if not self.training and (
-                torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
+                not torch.distributed.is_initialized() or torch.distributed.get_world_size() == 1
             ):
                 htcore.mark_step()
             if output_hidden_states:
@@ -840,7 +836,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
             - add support if past_key_value is not Cache
         """
         if self.config._attn_implementation == "flash_attention_2":
-            if attention_mask is not None and 0.0 in attention_mask:
+            if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
 
@@ -874,7 +870,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         )
 
         # In case the provided `attention` mask is 2D, we generate a causal mask here (4D).
-        causal_mask = _prepare_4d_causal_attention_mask_with_cache_position(
+        causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position(
             attention_mask,
             sequence_length=sequence_length,
             target_length=target_length,
@@ -916,12 +912,13 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
+        **loss_kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1871
@@ -964,8 +961,9 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
             else:
                 hidden_states = hidden_states[:, -1, :]
 
-        if token_idx is None and num_logits_to_keep != 0:
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
+        if token_idx is None and logits_to_keep != 0:
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            logits = self.lm_head(hidden_states[:, slice_indices, :])
         else:
             logits = self.lm_head(hidden_states)
 
@@ -974,18 +972,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
         loss = None
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1004,7 +991,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
         # sdpa is better for vision model in HPU
         config._attn_implementation = "sdpa"
-        super(GaudiMllamaForConditionalGeneration, self).__init__(config)
+        super().__init__(config)
 
     def forward(
         self,
@@ -1024,12 +1011,13 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
+        token_idx_cpu: Optional[int] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
@@ -1045,9 +1033,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if pixel_values is not None and inputs_embeds is not None:
             raise ValueError(
@@ -1080,7 +1066,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 cross_attention_mask,
                 num_vision_tokens=self.vision_model.num_patches,
                 dtype=self.dtype,
-                token_idx=token_idx,
+                token_idx=token_idx_cpu,
             )
         else:
             full_text_row_masked_out_mask = None
@@ -1113,7 +1099,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             output_attentions=output_attentions,
             return_dict=return_dict,
             cache_position=cache_position,
-            num_logits_to_keep=num_logits_to_keep,
+            logits_to_keep=logits_to_keep,
             token_idx=token_idx,
             trim_logits=trim_logits,
             use_flash_attention=use_flash_attention,
@@ -1136,7 +1122,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         past_key_values=None,
         use_cache=False,
         cache_position=None,
-        num_logits_to_keep=None,
+        logits_to_keep=None,
         **kwargs,
     ):
         """
@@ -1147,6 +1133,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             - add use_flash_attention and flash_attention_recompute
         """
         token_idx = kwargs.get("token_idx", None)
+        token_idx_cpu = kwargs.get("token_idx_cpu", None)
         bucket_internal = kwargs.get("bucket_internal", None)
         if past_key_values is not None:
             if token_idx is not None:
@@ -1183,8 +1170,8 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             # The clone here is for the same reason as for `position_ids`.
             model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
-        if num_logits_to_keep is not None:
-            model_inputs["num_logits_to_keep"] = num_logits_to_keep
+        if logits_to_keep is not None:
+            model_inputs["logits_to_keep"] = logits_to_keep
 
         # keep cache_position implementation as None for HPU
         cache_position = None
@@ -1198,6 +1185,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "attention_mask": attention_mask,
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
+                "token_idx_cpu": token_idx_cpu,
                 "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
@@ -1273,7 +1261,9 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         aspect_ratio_ids = aspect_ratio_ids.reshape(batch_size * num_concurrent_media, -1)
 
         # Patch embedding
-        patch_embeds = self.patch_embedding(pixel_values.to(self.dtype).to(self.device))
+        target_dtype = self.patch_embedding.weight.dtype
+        target_device = self.patch_embedding.weight.device
+        patch_embeds = self.patch_embedding(pixel_values.to(target_device, target_dtype))
         hidden_state = patch_embeds.flatten(2).transpose(1, 2)
 
         # Tile embeddings
@@ -1347,13 +1337,8 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
 
         # Collect intermediate layer outputs from encoder output
-        all_intermediate_hidden_states = output[1]
-        intermediate_hidden_states = [
-            hidden_state
-            for idx, hidden_state in enumerate(all_intermediate_hidden_states)
-            if idx in self.intermediate_layers_indices
-        ]
-        intermediate_hidden_states = torch.stack(intermediate_hidden_states, dim=-1)
+        all_intermediate_hidden_states = [output[1][i] for i in self.intermediate_layers_indices]
+        intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
 
         """
         intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)

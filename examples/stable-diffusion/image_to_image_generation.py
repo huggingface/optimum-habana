@@ -41,7 +41,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.16.0")
+check_optimum_habana_min_version("1.18.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def main():
         type=float,
         default=1.5,
         help=(
-            "Image guidance scale is to push the generated image towards the inital image `image`. Image guidance"
+            "Image guidance scale is to push the generated image towards the initial image `image`. Image guidance"
             "scale is enabled by setting `image_guidance_scale > 1`. Higher image guidance scale encourages to"
             "generate images that are closely linked to the source image `image`, usually at the expense of lower"
             "image quality. This pipeline requires a value of at least `1`.used in intruct_pix2pix"

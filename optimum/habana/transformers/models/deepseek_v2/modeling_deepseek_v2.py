@@ -1002,7 +1002,6 @@ class DeepseekV2Attention(nn.Module):
         self,
         hidden_states_kv: torch.Tensor,
         kv_position_ids: torch.LongTensor,
-        past_key_value: Optional[Cache] = None,
     ) -> torch.Tensor:
         # return the RoPE'ed & compressed kv
         bsz, kv_seq_len, _ = hidden_states_kv.size()
@@ -1013,6 +1012,366 @@ class DeepseekV2Attention(nn.Module):
         cos, sin = self.rotary_emb.cos_cached, self.rotary_emb.sin_cached
         k_pe = apply_rotary_pos_emb(k_pe, cos, sin, kv_position_ids).view(bsz, kv_seq_len, self.qk_rope_head_dim)
         return compressed_kv, k_pe
+
+    def train_forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
+        token_idx: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        valid_sequence_lengths: Optional[torch.Tensor] = None,
+        num_virtual_tokens: int = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            )
+        bsz, q_len, _ = hidden_states.size()
+        if self.q_lora_rank is None:
+            q = self.q_proj(hidden_states)
+        else:
+            q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states)))
+        q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
+        q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+
+        compressed_kv = self.kv_a_proj_with_mqa(hidden_states)
+        compressed_kv, k_pe = torch.split(compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
+        k_pe = k_pe.view(bsz, q_len, 1, self.qk_rope_head_dim).transpose(1, 2)
+
+        kv = (
+            self.kv_b_proj(self.kv_a_layernorm(compressed_kv))
+            .view(bsz, q_len, self.num_heads, self.qk_nope_head_dim + self.v_head_dim)
+            .transpose(1, 2)
+        )
+
+        k_nope, value_states = torch.split(kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
+        kv_seq_len = value_states.shape[-2]
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+
+            if token_idx is None:
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
+            else:
+                if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
+                    kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
+                else:
+                    kv_seq_len = past_key_value[0].shape[-2]
+
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
+
+        query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
+        query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
+        query_states[:, :, :, self.qk_nope_head_dim :] = q_pe
+
+        key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
+        key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
+        key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
+
+        if past_key_value is not None:
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+        # optimization
+        if use_flash_attention and FusedSDPA is not None:
+            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+            if flash_attention_causal_mask:
+                attn_output = self.fused_scaled_dot_product_attention(
+                    query_states,
+                    key_states,
+                    value_states,
+                    None,
+                    0.0,
+                    True,
+                    None,
+                    softmax_mode,
+                    flash_attention_recompute,
+                    valid_sequence_lengths,
+                    "left",
+                )
+            else:
+                attn_output = self.fused_scaled_dot_product_attention(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    0.0,
+                    False,
+                    None,
+                    softmax_mode,
+                    flash_attention_recompute,
+                    None,
+                    "None",
+                )
+        else:
+            query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
+            htcore.mark_step()
+
+            if attention_mask is not None:  # no matter the length, we just slice it
+                causal_mask = attention_mask
+                if cache_position is not None:
+                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
+                attn_weights = attn_weights + causal_mask.float()
+
+            if attn_softmax_bf16:
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+            else:
+                # upcast attention to fp32
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                    query_states.dtype
+                )
+            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+            attn_output = self.matmul_av(attn_weights, value_states)
+
+        if not output_attentions:
+            attn_weights = None
+
+        return attn_output, attn_weights, past_key_value
+
+    def prefill_forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        use_cache: bool = False,
+        token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        bsz, q_len, _ = hidden_states.size()
+        if self.q_lora_rank is None:
+            q = self.q_proj(hidden_states)
+        else:
+            q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states)))
+        q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
+        q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+
+        compressed_kv = self.kv_a_proj_with_mqa(hidden_states)
+        compressed_kv, k_pe = torch.split(compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
+        compressed_kv = self.kv_a_layernorm(compressed_kv)
+        k_pe = k_pe.view(bsz, q_len, 1, self.qk_rope_head_dim).transpose(1, 2)
+
+        cos, sin = self.rotary_emb.cos_cached, self.rotary_emb.sin_cached
+        k_pe_cache = apply_rotary_pos_emb(k_pe, cos, sin, position_ids).view(bsz, q_len, self.qk_rope_head_dim)
+
+        kv = (
+            self.kv_b_proj(compressed_kv)  # self.kv_a_layernorm(compressed_kv))
+            .view(bsz, q_len, self.num_heads, self.qk_nope_head_dim + self.v_head_dim)
+            .transpose(1, 2)
+        )
+
+        k_nope, value_states = torch.split(kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
+        kv_seq_len = value_states.shape[-2]
+        assert kv_seq_len == q_len
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            if token_idx is None:
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
+            else:
+                if reuse_cache:
+                    kv_seq_len = past_key_value[0][-2]
+                else:
+                    kv_seq_len = past_key_value[0].shape[-2]
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
+        # update & get all compressed_kv, k_pe
+        if use_cache:
+            k_pe_cache = k_pe_cache.view(bsz, q_len, self.qk_rope_head_dim)  # k_pe.squeeze(1)
+
+            if reuse_cache:
+                compressed_kv = self.k_cache(compressed_kv, 1, token_idx)
+
+                k_pe_cache = self.v_cache(k_pe_cache, 1, token_idx)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+
+            else:
+                if past_key_value is None:
+                    dtype_1 = hidden_states.dtype
+                    device_1 = hidden_states.device
+                    past_key = torch.zeros(compressed_kv.shape, dtype=dtype_1, device=device_1)
+                    past_value = torch.zeros(k_pe_cache.shape, dtype=dtype_1, device=device_1)
+                    past_key_value = (past_key, past_value)
+                compressed_kv = self.k_cache.update(past_key_value[0], compressed_kv, 1, token_idx, self.inp_seq_len)
+
+                k_pe_cache = self.v_cache.update(past_key_value[1], k_pe_cache, 1, token_idx, self.inp_seq_len)
+
+                if token_idx is None:
+                    past_key_value = (compressed_kv, k_pe_cache)
+        else:
+            past_key_value = None
+
+        query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
+        query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
+        query_states[:, :, :, self.qk_nope_head_dim :] = q_pe
+
+        key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
+        key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
+        key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
+
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
+
+        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+        assert attention_mask is not None
+        if attention_mask is not None:
+            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                )
+            attn_weights = attn_weights + attention_mask
+
+        # upcast attention to fp32
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        attn_output = torch.matmul(attn_weights, value_states)
+
+        return attn_output, attn_weights, past_key_value
+
+    def decode_forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        use_cache: bool = False,
+        token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        cache_idx: int = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        hidden_states_q = hidden_states
+        hidden_states_kv = hidden_states
+        self.split_kv_b_proj()
+        q_position_ids = position_ids
+        kv_position_ids = position_ids
+        bsz, q_len, _ = hidden_states_q.size()
+
+        if self.q_lora_rank is None:
+            q = self.q_proj(hidden_states_q)
+        else:
+            q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states_q)))
+
+        q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
+
+        q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+
+        kv_seq_len = q_pe.shape[-2]
+
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            if token_idx is None:
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
+            else:
+                if reuse_cache:
+                    kv_seq_len = past_key_value[0][-2]
+                else:
+                    kv_seq_len = past_key_value[0].shape[-2]
+
+        cos, sin = self.rotary_emb(q_pe, seq_len=kv_seq_len)
+        q_pe = apply_rotary_pos_emb(q_pe, cos, sin, q_position_ids)
+        q_nope = torch.matmul(q_nope.transpose(0, 1), self.q_absorb).transpose(0, 1)
+        compressed_kv, k_pe = self.compress_kv(hidden_states_kv, kv_position_ids)
+
+        # update & get all compressed_kv, k_pe
+        if use_cache:
+            if reuse_cache:
+                if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
+                    # prefix tuning case. attach past_key_value to generate first token.
+                    compressed_kv = torch.cat((past_key_value[0], compressed_kv), -2)
+                    k_pe = torch.cat((past_key_value[1], k_pe), -2)
+
+                compressed_kv = self.k_cache(compressed_kv, 1, token_idx)
+
+                k_pe = self.v_cache(k_pe, 1, token_idx)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+
+            else:
+                if past_key_value is None:
+                    dtype_1 = hidden_states.dtype
+                    device_1 = hidden_states.device
+                    past_key = torch.zeros(compressed_kv.shape, dtype=dtype_1, device=device_1)
+                    past_value = torch.zeros(k_pe.shape, dtype=dtype_1, device=device_1)
+                    past_key_value = (past_key, past_value)
+                compressed_kv = self.k_cache.update(past_key_value[0], compressed_kv, 1, token_idx, self.inp_seq_len)
+
+                k_pe = self.v_cache.update(past_key_value[1], k_pe, 1, token_idx, self.inp_seq_len)
+
+                if token_idx is None:
+                    past_key_value = (compressed_kv, k_pe)
+
+            if cache_idx is not None and q_len == 1:
+                compressed_kv = compressed_kv[:, :cache_idx, :]
+
+                k_pe = k_pe[:, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
+
+                kv_seq_len = compressed_kv.shape[-2]
+        else:
+            past_key_value = None
+
+        kv_seq_len = compressed_kv.size(1)
+
+        k_pe = k_pe.view(bsz, 1, kv_seq_len, self.qk_rope_head_dim)
+
+        attn_weights = (
+            torch.matmul(q_pe, k_pe.mT) + torch.matmul(q_nope, compressed_kv.unsqueeze(-3).mT)
+        ) * self.softmax_scale
+
+        assert attention_mask is not None
+        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+
+        attn_weights = attn_weights + attention_mask
+
+        # upcast attention to fp32
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q_nope.dtype)
+
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        attn_output = torch.einsum("bhql,blc->bhqc", attn_weights, compressed_kv)
+
+        attn_output = torch.matmul(attn_output.permute(2, 1, 0, 3), self.out_absorb.mT).permute(2, 1, 0, 3)
+        return attn_output, attn_weights, past_key_value
 
     def forward(
         self,
@@ -1033,6 +1392,7 @@ class DeepseekV2Attention(nn.Module):
         flash_attention_fast_softmax: Optional[bool] = False,
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
+        first_token: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -1046,244 +1406,49 @@ class DeepseekV2Attention(nn.Module):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
-        if self.training:
-            if "padding_mask" in kwargs:
-                warnings.warn(
-                    "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-                )
-            bsz, q_len, _ = hidden_states.size()
-            if self.q_lora_rank is None:
-                q = self.q_proj(hidden_states)
-            else:
-                q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states)))
-            q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
-            q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
 
-            compressed_kv = self.kv_a_proj_with_mqa(hidden_states)
-            compressed_kv, k_pe = torch.split(compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
-            k_pe = k_pe.view(bsz, q_len, 1, self.qk_rope_head_dim).transpose(1, 2)
-            kv = (
-                self.kv_b_proj(self.kv_a_layernorm(compressed_kv))
-                .view(bsz, q_len, self.num_heads, self.qk_nope_head_dim + self.v_head_dim)
-                .transpose(1, 2)
+        bsz, q_len, _ = hidden_states.size()
+        if self.training:
+            attn_output, attn_weights, past_key_value = self.train_forward(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                token_idx=token_idx,
+                cache_position=cache_position,
+                attn_softmax_bf16=attn_softmax_bf16,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                flash_attention_fast_softmax=flash_attention_fast_softmax,
+                valid_sequence_lengths=valid_sequence_lengths,
+                num_virtual_tokens=num_virtual_tokens,
+                **kwargs,
             )
 
-            k_nope, value_states = torch.split(kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
-            kv_seq_len = value_states.shape[-2]
-            if past_key_value is not None:
-                if self.layer_idx is None:
-                    raise ValueError(
-                        f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                        "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                        "with a layer index."
-                    )
+        elif first_token:  # prefill MHA
+            attn_output, attn_weights, past_key_value = self.prefill_forward(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                use_cache=use_cache,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+            )
 
-                if token_idx is None:
-                    if hasattr(past_key_value, "get_usable_length"):
-                        kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-                    else:
-                        kv_seq_len += past_key_value[0].shape[-2]
-                else:
-                    if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
-                        kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
-                    else:
-                        kv_seq_len = past_key_value[0].shape[-2]
-
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-            q_pe, k_pe = apply_customized_rope(q_pe, k_pe, cos, sin, position_ids)
-
-            query_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
-            query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
-            query_states[:, :, :, self.qk_nope_head_dim :] = q_pe
-
-            key_states = k_pe.new_empty(bsz, self.num_heads, q_len, self.q_head_dim)
-            key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
-            key_states[:, :, :, self.qk_nope_head_dim :] = k_pe
-
-            if past_key_value is not None:
-                cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-                key_states, value_states = past_key_value.update(
-                    key_states, value_states, self.layer_idx, cache_kwargs
-                )
-            # optimization
-            if use_flash_attention and FusedSDPA is not None:
-                if q_len == 1:
-                    # next token
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states,
-                        key_states,
-                        value_states,
-                        attention_mask,
-                        0.0,
-                        False,
-                        None,
-                        "None",
-                        False,
-                        None,
-                        "None",
-                    )
-                else:
-                    # first token
-                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-                    if flash_attention_causal_mask:
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states,
-                            key_states,
-                            value_states,
-                            None,
-                            0.0,
-                            True,
-                            None,
-                            softmax_mode,
-                            flash_attention_recompute,
-                            valid_sequence_lengths,
-                            "left",
-                        )
-                    else:
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states,
-                            key_states,
-                            value_states,
-                            attention_mask,
-                            0.0,
-                            False,
-                            None,
-                            softmax_mode,
-                            flash_attention_recompute,
-                            None,
-                            "None",
-                        )
-
-            else:
-                query_states, key_states, value_states, attention_mask = gaudi_deepseekv2_repeat_kv(
-                    query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-                )
-
-                attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.softmax_scale
-                htcore.mark_step()
-
-                if attention_mask is not None:  # no matter the length, we just slice it
-                    causal_mask = attention_mask
-                    if cache_position is not None:
-                        causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                    attn_weights = attn_weights + causal_mask.float()
-
-                if attn_softmax_bf16:
-                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-                else:
-                    # upcast attention to fp32
-                    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                        query_states.dtype
-                    )
-                attn_weights = torch.nn.functional.dropout(
-                    attn_weights, p=self.attention_dropout, training=self.training
-                )
-                attn_output = self.matmul_av(attn_weights, value_states)
-        else:
-            hidden_states_q = hidden_states
-            hidden_states_kv = hidden_states
-            self.split_kv_b_proj()
-            q_position_ids = position_ids
-            kv_position_ids = position_ids
-            bsz, q_len, _ = hidden_states_q.size()
-
-            if self.q_lora_rank is None:
-                q = self.q_proj(hidden_states_q)
-            else:
-                q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states_q)))
-
-            q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
-
-            q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-
-            kv_seq_len = q_pe.shape[-2]
-
-            if past_key_value is not None:
-                if self.layer_idx is None:
-                    raise ValueError(
-                        f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                        "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                        "with a layer index."
-                    )
-                if token_idx is None:
-                    if hasattr(past_key_value, "get_usable_length"):
-                        kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-                    else:
-                        kv_seq_len += past_key_value[0].shape[-2]
-                else:
-                    if reuse_cache:
-                        kv_seq_len = past_key_value[0][-2]
-                    else:
-                        kv_seq_len = past_key_value[0].shape[-2]
-
-            cos, sin = self.rotary_emb(q_pe, seq_len=kv_seq_len)
-            q_pe = apply_rotary_pos_emb(q_pe, cos, sin, q_position_ids)
-            q_nope = torch.matmul(q_nope.transpose(0, 1), self.q_absorb).transpose(0, 1)
-            compressed_kv, k_pe = self.compress_kv(hidden_states_kv, kv_position_ids)
-
-            # update & get all compressed_kv, k_pe
-            if use_cache:
-                if reuse_cache:
-                    if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
-                        # prefix tuning case. attach past_key_value to generate first token.
-                        compressed_kv = torch.cat((past_key_value[0], compressed_kv), -2)
-                        k_pe = torch.cat((past_key_value[1], k_pe), -2)
-
-                    compressed_kv = self.k_cache(compressed_kv, 1, token_idx)
-
-                    k_pe = self.v_cache(k_pe, 1, token_idx)
-                    past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
-
-                else:
-                    if past_key_value is None:
-                        dtype_1 = hidden_states.dtype
-                        device_1 = hidden_states.device
-                        past_key = torch.zeros(compressed_kv.shape, dtype=dtype_1, device=device_1)
-                        past_value = torch.zeros(k_pe.shape, dtype=dtype_1, device=device_1)
-                        past_key_value = (past_key, past_value)
-                    compressed_kv = self.k_cache.update(
-                        past_key_value[0], compressed_kv, 1, token_idx, self.inp_seq_len
-                    )
-                    k_pe = self.v_cache.update(past_key_value[1], k_pe, 1, token_idx, self.inp_seq_len)
-
-                    if token_idx is None:
-                        past_key_value = (compressed_kv, k_pe)
-
-                if cache_idx is not None and q_len == 1:
-                    compressed_kv = compressed_kv[:, :cache_idx, :]
-
-                    k_pe = k_pe[:, :cache_idx, :]
-                    if attention_mask is not None:
-                        attention_mask = attention_mask[:, :, :, :cache_idx]
-
-                    kv_seq_len = compressed_kv.shape[-2]
-            else:
-                past_key_value = None
-
-            kv_seq_len = compressed_kv.size(1)
-
-            k_pe = k_pe.view(bsz, 1, kv_seq_len, self.qk_rope_head_dim)
-
-            attn_weights = (
-                torch.matmul(q_pe, k_pe.mT) + torch.matmul(q_nope, compressed_kv.unsqueeze(-3).mT)
-            ) * self.softmax_scale
-
-            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.size()}"
-                )
-            assert attention_mask is not None
-            if attention_mask is not None:
-                attn_weights = attn_weights + attention_mask
-
-            # upcast attention to fp32
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q_nope.dtype)
-
-            attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = torch.einsum("bhql,blc->bhqc", attn_weights, compressed_kv)
-
-            attn_output = torch.matmul(attn_output.permute(2, 1, 0, 3), self.out_absorb.mT).permute(2, 1, 0, 3)
+        else:  # decode MLA
+            attn_output, attn_weights, past_key_value = self.decode_forward(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                use_cache=use_cache,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+            )
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.v_head_dim):
             raise ValueError(
@@ -1350,6 +1515,7 @@ class DeepseekV2DecoderLayer(nn.Module):
         flash_attention_fast_softmax: Optional[bool] = False,
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
+        first_token: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -1393,6 +1559,7 @@ class DeepseekV2DecoderLayer(nn.Module):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             valid_sequence_lengths=valid_sequence_lengths,
             num_virtual_tokens=num_virtual_tokens,
+            first_token=first_token,
             **kwargs,
         )
         hidden_states = residual + hidden_states
@@ -1585,6 +1752,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         lazy_mode: Optional[bool] = True,
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         num_virtual_tokens: int = None,
+        first_token: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1722,6 +1890,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     flash_attention_fast_softmax=flash_attention_fast_softmax,
                     cache_idx=cache_idx,
                     num_virtual_tokens=num_virtual_tokens,
+                    first_token=first_token,
                 )
                 if (
                     lazy_mode
@@ -1881,6 +2050,7 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel, GenerationMixin):
         valid_sequence_lengths: torch.Tensor = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
+        first_token: Optional[bool] = True,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         r"""
         Args:
@@ -1931,6 +2101,7 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel, GenerationMixin):
             lazy_mode=lazy_mode,
             valid_sequence_lengths=valid_sequence_lengths,
             num_virtual_tokens=num_virtual_tokens,
+            first_token=first_token,
         )
 
         hidden_states = outputs[0]
@@ -2059,6 +2230,7 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel, GenerationMixin):
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
                 "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
+                "first_token": kwargs.get("first_token", True),
             }
         )
         return model_inputs

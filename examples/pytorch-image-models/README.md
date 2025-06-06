@@ -36,7 +36,7 @@ Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.
 ### Training with HPU graph mode
 
 ```bash
-python PT_HPU_LAZY_MODE=1 train_hpu_graph.py \
+PT_HPU_LAZY_MODE=1 python train_hpu_graph.py \
     --data-dir ./ \
     --dataset hfds/johnowhitaker/imagenette2-320 \
     --device 'hpu' \
@@ -79,3 +79,7 @@ PT_HPU_LAZY_MODE=1 python inference.py \
     --split train \
     --graph_mode
 ```
+
+
+
+

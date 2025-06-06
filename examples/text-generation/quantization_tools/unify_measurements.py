@@ -127,7 +127,7 @@ def parse_args(args):
         "--groups",
         type=list,
         nargs="+",
-        help="groups of cards we want to unify, each group should be seperated by whitespace \
+        help="groups of cards we want to unify, each group should be separated by whitespace \
                         - e.g. 01 23 45 67, card 0 measurement will be unified with card 1 measurement and so on",
     )
     parser.add_argument(

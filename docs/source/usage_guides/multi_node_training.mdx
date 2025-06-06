@@ -115,7 +115,7 @@ Evaluation is not performed in the same command because we do not recommend perf
 Once the model is trained, we can evaluate it with the following command.
 The argument `--model_name_or_path` should be equal to the argument `--output_dir` of the previous command.
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path /tmp/gpt2_xl_multi_node \
     --gaudi_config_name Habana/gpt2 \
     --dataset_name wikitext \

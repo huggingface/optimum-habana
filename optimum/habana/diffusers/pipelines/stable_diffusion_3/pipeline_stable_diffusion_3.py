@@ -32,8 +32,10 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from transformers import (
+    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
+    PreTrainedModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -175,7 +177,7 @@ class GaudiJointAttnProcessor2_0:
 
 class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.29.2/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py#L128
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.32.0/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py#L147
 
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -221,6 +223,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
+    _optional_components = ["image_encoder", "feature_extractor"]
+
     def __init__(
         self,
         transformer: SD3Transformer2DModel,
@@ -232,6 +236,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
+        image_encoder: PreTrainedModel = None,
+        feature_extractor: BaseImageProcessor = None,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
@@ -581,6 +587,15 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 max_sequence_length=max_sequence_length,
                 lora_scale=lora_scale,
             )
+
+            # Pad the prompt embeddings ( text prompt feature space ) to the nearest multiple of the alignment size, the value which is compatible with softmax_hf8 kernels
+            kernel_input_alignment_size = int(256 / prompt_embeds.element_size())
+
+            pad_size = (
+                ceil(prompt_embeds.shape[1] / kernel_input_alignment_size) * kernel_input_alignment_size
+            ) - prompt_embeds.shape[1]
+            prompt_embeds = torch.nn.functional.pad(prompt_embeds, (0, 0, 0, pad_size))
+            negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
 
             # 4. Prepare timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)

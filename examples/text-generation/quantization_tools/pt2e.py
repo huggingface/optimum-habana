@@ -50,9 +50,6 @@ def pt2e_prepare(model, qdtype_key, save, path, logger):
             exported_model = exported_model.module()
         config.logger.info("[pt2e_quant] Inserting observers for measurement")
         model.model = prepare_pt2e(exported_model, quantizer)
-        return model
-    else:
-        # Load model with quantization info --> return model for inference
         load_path = (
             config.model_path + "pt2e_quant_model.pt2" if os.path.isdir(config.model_path) else config.model_path
         )

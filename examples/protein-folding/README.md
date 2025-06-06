@@ -27,7 +27,7 @@ Note that all the code that follows will be running the model locally, rather th
 Here we show how to predict the folding of a single chain on HPU:
 
 ```bash
-python run_esmfold.py
+PT_HPU_LAZY_MODE=1 python run_esmfold.py
 ```
 The predicted protein structure will be stored in save-hpu.pdb file. We can use some tools like py3Dmol to visualize it.
 
@@ -45,7 +45,7 @@ pip install -r requirements.txt
 Here we show how to run zero shot evaluation of protein ST model on HPU:
 
 ```bash
-python run_zero_shot_eval.py --bf16 --max_seq_length 1024
+PT_HPU_LAZY_MODE=1 python run_zero_shot_eval.py --bf16 --max_seq_length 1024
 ```
 ## Multi-HPU finetune for sequence classification task
 

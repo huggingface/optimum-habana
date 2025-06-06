@@ -46,8 +46,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.45.0")
-check_optimum_habana_min_version("1.16.0")
+check_min_version("4.49.0")
+check_optimum_habana_min_version("1.18.0.dev0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 
@@ -432,7 +432,7 @@ def main():
         train_dataset=raw_datasets["train"] if training_args.do_train else None,
         eval_dataset=raw_datasets["eval"] if training_args.do_eval else None,
         compute_metrics=compute_metrics,
-        tokenizer=feature_extractor,
+        processing_class=feature_extractor,
     )
 
     # Training

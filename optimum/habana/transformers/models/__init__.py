@@ -57,9 +57,9 @@ from .codegen import (
     gaudi_codegen_model_forward,
 )
 from .cohere import (
+    GaudiCohereAttention,
     GaudiCohereDecoderLayer,
     GaudiCohereForCausalLM,
-    gaudi_cohere_attention_forward,
     gaudi_cohere_model_forward,
 )
 from .decilm import (
@@ -79,7 +79,6 @@ from .detr import (
     gaudi_DetrConvModel_forward,
     gaudi_DetrHungarianMatcher_forward,
     gaudi_DetrLoss_forward,
-    gaudi_DetrLoss_get_targets_without_no_objects,
     gaudi_DetrLoss_loss_boxes,
     gaudi_DetrLoss_loss_cardinality,
     gaudi_DetrLoss_loss_labels,
@@ -116,6 +115,12 @@ from .gemma2 import (
     GaudiGemma2MLP,
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
+)
+from .glm4v import (
+    ChatGLM4Tokenizer,
+    GLM4VConfig,
+    GLM4VForConditionalGeneration,
+    GLM4VForSequenceClassification,
 )
 from .gpt2 import (
     GaudiGPT2Attention,
@@ -158,9 +163,7 @@ from .idefics2 import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
@@ -169,6 +172,7 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
 from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
@@ -221,11 +225,11 @@ from .mpt import (
     GaudiMptModel,
 )
 from .opt import (
+    GaudiOPTDecoderLayer,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
-    gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
 from .owlvit import gaudi_owlvitclasspredictionhead_forward
@@ -260,13 +264,13 @@ from .qwen2_moe import (
     gaudi_qwen2moe_rmsnorm_forward,
 )
 from .qwen2_vl import (
-    GaudiQwen2VisionSdpaAttention,
     GaudiQwen2VisionTransformerPretrainedModel,
     GaudiQwen2VLDecoderLayer,
     GaudiQwen2VLForConditionalGeneration,
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiVisionSdpaAttention,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
@@ -279,6 +283,14 @@ from .seamless_m4t import (
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_SeamlessM4TTextToUnitModel_forward,
+)
+from .siglip import (
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
 )
 from .speecht5 import (
     gaudi_generate_speech,
@@ -308,7 +320,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration
+from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaProcessor
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )

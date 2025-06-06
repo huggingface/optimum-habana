@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.configuration_gpt_neox import GPTNeoXConfig
@@ -11,9 +10,11 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXLayer,
     GPTNeoXMLP,
     GPTNeoXModel,
+    KwargsForCausalLM,
     apply_rotary_pos_emb,
     logger,
 )
+from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ...modeling_rope_utils import GaudiRotaryEmbedding
@@ -28,10 +29,61 @@ except ImportError:
 from ..modeling_all_models import apply_customized_rope_module
 
 
+def gaudi_eager_attention_forward(
+    query, key, value, attention_mask, head_mask, norm_factor, attention_dropout, training, **_kwargs
+):
+    """
+    Copied from: https://github.com/huggingface/transformers/blob/v4.47.1/src/transformers/models/gpt_neox/modeling_gpt_neox.py#L98
+    Changes:
+    - transposition at the end is commented
+    """
+    # q, k, v: [bs, num_attention_heads, seq_len, attn_head_size]
+    batch_size, num_attention_heads, query_length, attn_head_size = query.size()
+    key_length = key.size(-2)
+
+    query = query.view(batch_size * num_attention_heads, query_length, attn_head_size)
+    key = key.view(batch_size * num_attention_heads, key_length, attn_head_size)
+    attn_scores = torch.zeros(
+        batch_size * num_attention_heads,
+        query_length,
+        key_length,
+        dtype=query.dtype,
+        device=key.device,
+    )
+    attn_scores = torch.baddbmm(
+        attn_scores,
+        query,
+        key.transpose(1, 2),
+        beta=1.0,
+        alpha=norm_factor,
+    )
+    attn_scores = attn_scores.view(batch_size, num_attention_heads, query_length, key_length)
+
+    if attention_mask is not None:  # no matter the length, we just slice it
+        causal_mask = attention_mask[:, :, :, : key.shape[-2]]
+        attn_scores = attn_scores + causal_mask
+
+    attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+    attn_weights = attn_weights.to(value.dtype)
+
+    # Mask heads if we want to
+    if head_mask is not None:
+        attn_weights = attn_weights * head_mask
+
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=attention_dropout, training=training)
+    attn_output = torch.matmul(attn_weights, value)
+
+    # # Reshape outputs
+    # attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+
 class GaudiGPTNeoXAttention(GPTNeoXAttention):
     def __init__(self, config: GPTNeoXConfig, layer_idx=None):
         super().__init__(config, layer_idx)
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
+        self.num_attention_heads = config.num_attention_heads
 
     def forward(
         self,
@@ -44,6 +96,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         output_attentions: Optional[bool] = False,
         padding_mask: Optional[torch.Tensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ):
         """
@@ -52,6 +105,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         - add new args token_idx
         - optimize KV cache
         """
+        bsz, seq_len, _ = hidden_states.shape
         has_layer_past = layer_past is not None
 
         # Compute QKV
@@ -101,9 +155,18 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         present = (key, value) if use_cache else None
 
         # Compute attention
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = gaudi_eager_attention_forward(
+            query,
+            key,
+            value,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            norm_factor=self.scaling,
+            attention_dropout=self.config.attention_dropout,
+            training=self.training,
+        )
 
-        # Reshape outputs
+        # Reshape outputs and final projection
         attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
         attn_output = self.dense(attn_output)
 
@@ -112,6 +175,18 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
             outputs += (attn_weights,)
 
         return outputs
+
+    @classmethod
+    def _merge_heads(cls, tensor, num_attention_heads, attn_head_size):
+        """
+        Merges attn_head_size dim and num_attn_heads dim into hidden dim
+        """
+        # tensor [bs, num_attention_heads, seq_len, attn_head_size]
+        tensor = tensor.permute(0, 2, 1, 3).contiguous()
+        # -> [bs, seq_len, num_attention_heads, attn_head_size]
+        tensor = tensor.view(tensor.size(0), tensor.size(1), num_attention_heads * attn_head_size)
+        # -> [bs, seq_len, hidden_size]
+        return tensor
 
 
 class GaudiGPTNeoXLayer(GPTNeoXLayer):
@@ -194,6 +269,7 @@ def gaudi_gpt_neox_model_forward(
     return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from GPTNeoxModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
@@ -208,7 +284,7 @@ def gaudi_gpt_neox_model_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
@@ -314,7 +390,7 @@ def gaudi_gpt_neox_model_forward(
 
 class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
     """
-    Inherits from GPTNeoXForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt_neox/modeling_gpt_neox.py
+    Inherits from GPTNeoXForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
     The only differences are:
     - add new args token_idx
     - add token_idx into model_inputs
@@ -347,6 +423,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -363,28 +441,25 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
+            **kwargs,
         )
 
         hidden_states = outputs[0]
-        lm_logits = self.embed_out(hidden_states)
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.embed_out(hidden_states[:, slice_indices, :])
 
-        lm_loss = None
+        loss = None
         if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(lm_logits.device)
-            # we are doing next-token prediction; shift prediction scores and input ids by one
-            shift_logits = lm_logits[:, :-1, :].contiguous()
-            labels = labels[:, 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
-            lm_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
-            output = (lm_logits,) + outputs[1:]
-            return ((lm_loss,) + output) if lm_loss is not None else output
+            output = (logits,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
 
         return CausalLMOutputWithPast(
-            loss=lm_loss,
-            logits=lm_logits,
+            loss=loss,
+            logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
@@ -455,6 +530,15 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         )
 
         return model_inputs
+
+    def _reorder_cache(self, past_key_values, beam_idx):
+        reordered_past = ()
+        for layer_past in past_key_values:
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past[:2])
+                + layer_past[2:],
+            )
+        return reordered_past
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):

@@ -24,7 +24,7 @@ from transformers.models.paligemma.modeling_paligemma import (
     PaliGemmaCausalLMOutputWithPast,
     PaliGemmaForConditionalGeneration,
 )
-from transformers.utils import logging
+from transformers.utils import is_torchdynamo_compiling, logging
 
 
 logger = logging.get_logger(__name__)
@@ -46,9 +46,9 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
-        **kwargs,
+        **lm_kwargs,
     ) -> Union[Tuple, PaliGemmaCausalLMOutputWithPast]:
         """
         Inherits from PaliGemmaForConditionalGeneration::forward https://github.com/huggingface/transformers/blob/v4.45.1/src/transformers/models/paligemma/modeling_paligemma.py#L402
@@ -57,9 +57,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         """
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if pixel_values is not None and inputs_embeds is not None:
             raise ValueError(
@@ -88,14 +86,11 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
 
         # Merge text and images
         if pixel_values is not None:
-            image_outputs = self.vision_tower(pixel_values.to(inputs_embeds.dtype))
-            selected_image_feature = image_outputs.last_hidden_state
-            image_features = self.multi_modal_projector(selected_image_feature)
-            image_features = image_features / (self.config.hidden_size**0.5)
+            image_features = self.get_image_features(pixel_values)
 
             special_image_mask = (input_ids == self.config.image_token_index).unsqueeze(-1)
             special_image_mask = special_image_mask.expand_as(inputs_embeds).to(inputs_embeds.device)
-            if inputs_embeds[special_image_mask].numel() != image_features.numel():
+            if not is_torchdynamo_compiling() and inputs_embeds[special_image_mask].numel() != image_features.numel():
                 image_tokens_in_text = torch.sum(input_ids == self.config.image_token_index)
                 raise ValueError(
                     f"Number of images does not match number of special image tokens in the input text. "
@@ -108,15 +103,14 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         # mask out pad-token-ids in labels for BC
         if labels is not None and self.pad_token_id in labels:
             logger.warning_once(
-                "`labels` contains `pad_token_id` which will be masked with `config.ignore_index`. ",
+                "`labels` contains `pad_token_id` which will be masked with `config.ignore_index`. "
                 "You have to mask out `pad_token_id` when preparing `labels`, this behavior will be removed in v.4.46.",
             )
             labels = torch.where(input_ids == self.pad_token_id, self.config.ignore_index, labels)
 
         causal_mask = self._update_causal_mask(
-            attention_mask, token_type_ids, inputs_embeds, past_key_values, cache_position, is_training
+            attention_mask, token_type_ids, past_key_values, cache_position, inputs_embeds, is_training
         )
-
         outputs = self.language_model(
             attention_mask=causal_mask,
             position_ids=position_ids,
@@ -128,19 +122,22 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             return_dict=return_dict,
             cache_position=cache_position,
             # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
-            # num_logits_to_keep=num_logits_to_keep,
+            # logits_to_keep=logits_to_keep,
             token_idx=token_idx,
+            **lm_kwargs,
         )
 
         logits = outputs.logits
-        logits = logits.float()
         loss = None
         if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
             shift_logits = logits[..., :-1, :]
             shift_labels = labels[..., 1:]
             if attention_mask is not None:
                 # we use the input attention mask to shift the logits and labels, because it is 2D.
-                shift_attention_mask = attention_mask[..., 1:]
+                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
+                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
                 shift_logits = shift_logits[shift_attention_mask.to(logits.device) != 0].contiguous()
                 shift_labels = shift_labels[shift_attention_mask.to(shift_labels.device) != 0].contiguous()
             else:

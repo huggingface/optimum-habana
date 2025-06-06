@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 from diffusers.utils.export_utils import export_to_video
 
-from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
+from optimum.habana.diffusers import GaudiCogVideoXPipeline, GaudiTextToVideoSDPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
@@ -37,7 +37,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.16.0")
+check_optimum_habana_min_version("1.18.0.dev0")
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,12 @@ def main():
         default="ali-vilab/text-to-video-ms-1.7b",
         type=str,
         help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--pipeline_type",
+        type=str,
+        default="stable_diffusion",
+        help="pipeline type:stable_diffusion or cogvideoX",
     )
     # Pipeline arguments
     parser.add_argument(
@@ -178,38 +184,61 @@ def main():
         kwargs["torch_dtype"] = torch.float32
 
     # Generate images
-    pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
-        args.model_name_or_path, **kwargs
-    )
-    set_seed(args.seed)
-    outputs = pipeline(
-        prompt=args.prompts,
-        num_videos_per_prompt=args.num_videos_per_prompt,
-        batch_size=args.batch_size,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        negative_prompt=args.negative_prompts,
-        eta=args.eta,
-        output_type="pil" if args.output_type == "mp4" else args.output_type,  # Naming inconsistency in base class
-        **kwargs_call,
-    )
+    if args.pipeline_type == "stable_diffusion":
+        pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
+            args.model_name_or_path, **kwargs
+        )
+    elif args.pipeline_type == "cogvideox":
+        pipeline: GaudiCogVideoXPipeline = GaudiCogVideoXPipeline.from_pretrained(args.model_name_or_path, **kwargs)
+        pipeline.vae.enable_tiling()
+        pipeline.vae.enable_slicing()
+    else:
+        logger.error(f"unsupported pipeline type {args.pipeline_type}")
+        return None
 
-    # Save the pipeline in the specified directory if not None
-    if args.pipeline_save_dir is not None:
-        pipeline.save_pretrained(args.pipeline_save_dir)
+    if args.pipeline_type == "stable_diffusion":
+        set_seed(args.seed)
+        outputs = pipeline(
+            prompt=args.prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            eta=args.eta,
+            output_type="pil" if args.output_type == "mp4" else args.output_type,  # Naming inconsistency in base class
+            **kwargs_call,
+        )
 
-    # Save images in the specified directory if not None and if they are in PIL format
-    if args.video_save_dir is not None:
-        if args.output_type == "mp4":
-            video_save_dir = Path(args.video_save_dir)
-            video_save_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Saving images in {video_save_dir.resolve()}...")
+        # Save the pipeline in the specified directory if not None
+        if args.pipeline_save_dir is not None:
+            pipeline.save_pretrained(args.pipeline_save_dir)
 
-            for i, video in enumerate(outputs.videos):
-                filename = video_save_dir / f"video_{i + 1}.mp4"
-                export_to_video(video, str(filename.resolve()))
-        else:
-            logger.warning("--output_type should be equal to 'mp4' to save images in --video_save_dir.")
+        # Save images in the specified directory if not None and if they are in PIL format
+        if args.video_save_dir is not None:
+            if args.output_type == "mp4":
+                video_save_dir = Path(args.video_save_dir)
+                video_save_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Saving images in {video_save_dir.resolve()}...")
+
+                for i, video in enumerate(outputs.videos):
+                    filename = video_save_dir / f"video_{i + 1}.mp4"
+                    export_to_video(video, str(filename.resolve()))
+            else:
+                logger.warning("--output_type should be equal to 'mp4' to save images in --video_save_dir.")
+    elif args.pipeline_type == "cogvideox":
+        video = pipeline(
+            prompt=args.prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            num_inference_steps=args.num_inference_steps,
+            num_frames=args.num_frames,
+            guidance_scale=args.guidance_scale,
+            generator=torch.Generator(device="cpu").manual_seed(42),
+        ).frames[0]
+        video_save_dir = Path(args.video_save_dir)
+        video_save_dir.mkdir(parents=True, exist_ok=True)
+        filename = video_save_dir / "cogvideoX_out.mp4"
+        export_to_video(video, str(filename.resolve()), fps=8)
 
 
 if __name__ == "__main__":

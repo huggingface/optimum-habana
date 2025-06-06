@@ -3,6 +3,16 @@
     "gaudi2": {
       "eval_accuracy": 0.7538,
       "train_samples_per_second": 12.373
+    },
+    "gaudi3": {
+      "eval_accuracy": 0.7538,
+      "train_samples_per_second": 12.373
+    }
+  },
+  "tests/test_fp8_examples.py::test_fp8_train[meta-llama/Meta-Llama-3.1-8B-tatsu-lab/alpaca--language-modeling-1-4-run_lora_clm.py]": {
+    "gaudi2": {
+      "eval_accuracy": 0.7121,
+      "train_samples_per_second": 22.594
     }
   }
 }

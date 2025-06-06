@@ -30,12 +30,12 @@ in order to request and utilize the accelerators in the Kubernetes job. Also, en
 
 The [Dockerfile](Dockerfile) and [docker-compose.yaml](docker-compose.yaml) build the following images:
 
-* An `optimum-habana` base image that uses the [PyTorch Docker images for Gaudi](https://developer.habana.ai/catalog/pytorch-container/) as it's base, and then installs
+* An `optimum-habana` base image that uses the [PyTorch Docker images for Gaudi](https://developer.habana.ai/catalog/pytorch-container/) as its base, and then installs
 optimum-habana and the Habana fork of Deep Speed.
 * An `optimum-habana-examples` image is built on top of the `optimum-habana` base to includes installations from
 `requirements.txt` files in the example directories and a clone of [this GitHub repository](https://github.com/huggingface/optimum-habana/) in order to run example scripts.
 
-Use the the following commands to build the containers:
+Use the following commands to build the containers:
 
 > Note that the `GAUDI_SW_VER`, `OS`, and `TORCH_VER` are used to
 > determine which [Intel Gaudi PyTorch base image](https://developer.habana.ai/catalog/pytorch-container/) to use. The
@@ -48,7 +48,7 @@ export OS=ubuntu22.04
 export TORCH_VER=2.6.0
 
 # Specify the version of optimum-habana to install in the container
-export OPTIMUM_HABANA_VER=1.16.0
+export OPTIMUM_HABANA_VER=1.17.0
 
 git clone https://github.com/huggingface/optimum-habana.git
 

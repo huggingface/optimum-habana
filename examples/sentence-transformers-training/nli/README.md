@@ -44,7 +44,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 4. Execute the script:
 
 ```bash
-python training_nli.py bert-base-uncased
+PT_HPU_LAZY_MODE=1 python training_nli.py bert-base-uncased
 ```
 If you want to save the checkpoints for the model you need using `--saving_model_checkpoints` in the command and same for all examples below.
 
@@ -53,7 +53,7 @@ If you want to save the checkpoints for the model you need using `--saving_model
 For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training.
 
 ```bash
-HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_nli.py bert-base-uncased
+HABANA_VISIBLE_MODULES="2,3" PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_nli.py bert-base-uncased
 ```
 
 
@@ -64,7 +64,7 @@ HABANA_VISIBLE_MODULES="2,3" python ../../gaudi_spawn.py --use_deepspeed --world
 Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 130GB of memory, which exceeds the capacity of a single HPU (Gaudi 2 with 98GB memory). To address this, we can utilize LoRA and gradient checkpointing techniques to reduce the memory requirements, making it feasible to train the model on a single HPU.
 
 ```bash
-python training_nli.py intfloat/e5-mistral-7b-instruct --peft --lora_target_module "q_proj" "k_proj" "v_proj" --learning_rate 1e-5
+PT_HPU_LAZY_MODE=1 python training_nli.py intfloat/e5-mistral-7b-instruct --peft --lora_target_module "q_proj" "k_proj" "v_proj" --learning_rate 1e-5
 ```
 
 ## Multi-card Training with Deepspeed Zero3
@@ -74,7 +74,7 @@ Pretraining the `intfloat/e5-mistral-7b-instruct` model requires approximately 1
 Our tests have shown that training this model requires at least four HPUs when using DeepSpeed Zero3.
 
 ```bash
-python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_nli.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 4 --use_deepspeed training_nli.py intfloat/e5-mistral-7b-instruct --deepspeed ds_config.json --bf16 --no-use_hpu_graphs_for_training --learning_rate 1e-7
 ```
 In the above command, we need to enable lazy mode with a learning rate of `1e-7` and configure DeepSpeed using the `ds_config.json` file. 
 

@@ -25,7 +25,7 @@ Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.
 To run Llama inference with SDPA, use the following command:
 
 ```bash
-python3 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 python3 run_pipeline.py \
     --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
     --use_hpu_graphs \
     --bf16 \
@@ -33,12 +33,22 @@ python3 run_pipeline.py \
 ```
 > SDPA may introduce [reduced precison](https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-reduction-for-fp16-and-bf16-in-scaled-dot-product-attention-sdpa)
 
+To run inference with THUDM/glm-4v-9b, use the following command (Note that you need to set the environment variable `GLM=4v` to distinguish between glm4v and chatglm, as these models are customized and share the same model type named "chatglm"):
+```bash
+PT_HPU_LAZY_MODE=1 GLM=4v python3 run_pipeline.py \
+    --model_name_or_path THUDM/glm-4v-9b \
+    --use_hpu_graphs \
+    --bf16 \
+    --sdp_on_bf16 \
+    --use_flash_attention \
+    --use_kv_cache
+```
 
 ### Multi-cards inference with BF16
 
 Use the following commands to run Llama-3.2-90B-Vision-Instruct BF16 inference with FusedSDPA on 8 HPUs:
 ```bash
-PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 PT_HPU_ENABLE_LAZY_COLLECTIVES=true python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
     --model_name_or_path meta-llama/Llama-3.2-90B-Vision-Instruct \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
@@ -56,7 +66,7 @@ More information on enabling FP8 in SynapseAI is available here:
 ### Single card inference with FP8
 Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b with SDPA:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
@@ -66,7 +76,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 
 Here is an example to quantize the model based on previous measurements for Llava-v1.6-vicuna-13b with SDPA:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python run_pipeline.py \
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
@@ -77,7 +87,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python r
 ### Multi-cards inference with FP8
 Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b with FusedSDPA on 8 HPUs:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
@@ -88,7 +98,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 
 Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b with FusedSDPA on 8 HPUs:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
@@ -102,7 +112,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python .
 Here are single-/multi-device command examples for meta-llama/Llama-3.2-11B-Vision-Instruct.
 
 ```bash
-python3 run_image2text_lora_finetune.py \
+PT_HPU_LAZY_MODE=1 python3 run_image2text_lora_finetune.py \
     --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
     --dataset_name nielsr/docvqa_1200_examples \
     --bf16 True \
@@ -135,7 +145,7 @@ python3 run_image2text_lora_finetune.py \
 ```
 
 ```bash
-python3 ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_image2text_lora_finetune.py \
     --model_name_or_path meta-llama/Llama-3.2-11B-Vision-Instruct \
     --dataset_name nielsr/docvqa_1200_examples \

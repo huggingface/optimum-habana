@@ -18,10 +18,14 @@ from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from diffusers import (
+    AutoencoderKL,
+    ControlNetModel,
+    MultiControlNetModel,
+    StableDiffusionControlNetPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.image_processor import PipelineImageInput
-from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
-from diffusers.pipelines.controlnet import StableDiffusionControlNetPipeline
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate

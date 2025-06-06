@@ -15,19 +15,18 @@ from unittest import TestCase
 
 import habana_frameworks.torch as ht
 import numpy as np
+import pytest
 import requests
-import timm
 import torch
 from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime
 
+from .utils import OH_DEVICE_CONTEXT
+
 
 adapt_transformers_to_gaudi()
-
-# For Gaudi 2
-LATENCY_FastViT_BF16_GRAPH_BASELINE = 2.5270626640319824
 
 
 class GaudiFastViTTester(TestCase):
@@ -35,7 +34,16 @@ class GaudiFastViTTester(TestCase):
     Tests for FastViT model
     """
 
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
     def prepare_model_and_processor(self):
+        import timm
+
         model = timm.create_model("timm/fastvit_t8.apple_in1k", pretrained=True)
         model.to("hpu")
         model = model.eval()
@@ -115,5 +123,80 @@ class GaudiFastViTTester(TestCase):
                     torch.hpu.synchronize()
                 total_model_time += timer.last_duration
 
-        latency = total_model_time * 1000 / iterations  # in terms of ms
-        self.assertLessEqual(latency, 1.05 * LATENCY_FastViT_BF16_GRAPH_BASELINE)
+        self.baseline.assertRef(
+            compare=lambda latency, expect: latency <= (1.05 * expect),
+            context=[OH_DEVICE_CONTEXT],
+            latency=total_model_time * 1000 / iterations,  # in terms of ms
+        )
+
+
+class GaudiSiglipTester(TestCase):
+    """
+    Tests for Sigclip
+    """
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
+    def prepare_model_and_processor(self):
+        from transformers import AutoImageProcessor, SiglipForImageClassification
+
+        torch.manual_seed(3)
+        # note: we are loading a `SiglipModel` from the hub here,
+        # so the head will be randomly initialized, hence the predictions will be random if seed is not set above.
+        image_processor = AutoImageProcessor.from_pretrained("google/siglip-base-patch16-224")
+        model_class = SiglipForImageClassification.from_pretrained("google/siglip-base-patch16-224").to("hpu")
+
+        return model_class, image_processor
+
+    def prepare_model_and_processor_prob(self):
+        from transformers import SiglipModel, SiglipProcessor
+
+        torch.manual_seed(3)
+        # note: we are loading a `SiglipModel` from the hub here,
+        # so the head will be randomly initialized, hence the predictions will be random if seed is not set above.
+        image_processor = SiglipProcessor.from_pretrained("google/siglip-so400m-patch14-384")
+        model = SiglipModel.from_pretrained(
+            "google/siglip-so400m-patch14-384",
+            torch_dtype=torch.bfloat16,
+            device_map="hpu",
+        )
+        return model, image_processor
+
+    def prepare_data(self):
+        url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        image = Image.open(requests.get(url, stream=True).raw)
+        return image
+
+    def test_inference_default(self):
+        # test classification
+        model_class, processor = self.prepare_model_and_processor()
+        image = self.prepare_data()
+        inputs = processor(images=image, return_tensors="pt").to("hpu")
+        outputs = model_class(**inputs)
+        logits = outputs.logits
+        # model predicts one of the two classes
+        predicted_class_idx = logits.argmax(-1).item()
+        self.assertEqual(model_class.config.id2label[predicted_class_idx], "LABEL_1")
+
+    def test_inference_prob(self):
+        # test probs
+        device = "hpu"
+        model_inf, processor = self.prepare_model_and_processor_prob()
+        image = self.prepare_data()
+        candidate_labels = ["2 cats", "2 dogs"]
+        texts = [f"This is a photo of {label}." for label in candidate_labels]
+        inputs = processor(text=texts, images=image, padding="max_length", return_tensors="pt").to("hpu")
+
+        with torch.no_grad():
+            with torch.autocast(device):
+                outputs = model_inf(**inputs)
+
+        logits_per_image = outputs.logits_per_image
+        probs = torch.sigmoid(logits_per_image).to("cpu").float()  # these are the probabilities
+        expected_scores = np.array([0.586])
+        self.assertLess(np.abs(probs[0][0] - expected_scores), 0.05)

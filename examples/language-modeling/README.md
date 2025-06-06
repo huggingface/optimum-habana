@@ -201,7 +201,7 @@ concatenates all texts and then splits them into blocks of the same length).
 
 ### Training in torch.compile mode
 RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,
-a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`.
+a) Set the following environment variable `PT_ENABLE_INT64_SUPPORT=1`.
 b) Run the above commands with `--model_name_or_path roberta-large`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
 
 
@@ -260,7 +260,7 @@ You can also use multicard version for Falcon-180B:
 
 - Single-card finetuning of Llama1-7B:
 ```bash
-python3 run_lora_clm.py \
+PT_HPU_LAZY_MODE=1 python3 run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
@@ -321,7 +321,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 - Multi-card finetuning of Falcon-40B:
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
@@ -356,12 +356,56 @@ PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=1 python3
     --validation_split_percentage 6
 ```
 
+- Multi-card finetuning of Llama3.1-8B with Deepspeed ZeRO-1 optimization, LoRA and FP8 precision:
+```bash
+PT_TE_CUSTOM_OP=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_clm.py \
+    --model_name_or_path meta-llama/Meta-Llama-3.1-8B \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 False \
+    --output_dir ./model_lora_llama_8B \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --eval_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 3e-4 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm 1.0 \
+    --logging_steps 10 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode False \
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 4096 \
+    --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
+    --deepspeed llama3_ds_zero1_config.json \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --fp8 \
+    --use_flash_attention True \
+    --flash_attention_causal_mask True  \
+    --per_device_eval_batch_size 4  \
+    --cache_size_limit 64 \
+    --use_regional_compilation \
+    --compile_from_sec_iteration \
+    --allow_unspec_int_on_nn_module True
+```
+
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization, LoRA and FP8 precision:
 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 \
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=10 \
 python3 ../gaudi_spawn.py --use_deepspeed --world_size 8 run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --deepspeed llama2_ds_zero3_config.json \
@@ -399,7 +443,7 @@ python3 ../gaudi_spawn.py --use_deepspeed --world_size 8 run_lora_clm.py \
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:
 
 ```bash
-PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
+PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST=ops_bf16.txt \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --dataset_name tatsu-lab/alpaca \
@@ -519,8 +563,8 @@ PT_HPU_LAZY_MODE=1 python3 ../text-generation/run_generation.py \
     --no-ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
-
 ```
+
 ### Multitask Prompt/Poly seq2seq tuning
 
 To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
@@ -569,11 +613,11 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_
 ```
 
 ### Training models with Long Sequence lengths
-We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below. 
+We have added support for [Deepspeed Ulysses](https://github.com/microsoft/DeepSpeed/blob/master/blogs/deepspeed-ulysses/README.md). This allows us to train large transformer models using very long sequence length inputs with limited HW resources. This feature has been tested using LLama3.1-8B & LLama3.1-70B fine-tuning with input sequence lengths of 32k on 8xGaudi3 cards. Reference command for LLama3.1-8B fine-tuning is shared below.
 
 `--context_parallel_size` sets the number of cards single input sequences will get mapped to, e.g., setting `context_parallel_size=4` with `max_seq_len=32k` will result in each card processing input chunks of length 8k each (thereby reducing memory requirement for activations). This feature can be combined with Zero-3 to enable scaling not only to large sequence lengths but also to large size models.
 
-> [!NOTE]  
+> [!NOTE]
 > This feature is still in beta version and may not work out of the box for all transformer model architectures and configurations.
 
 ```bash

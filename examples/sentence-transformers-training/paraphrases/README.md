@@ -6,7 +6,7 @@ To fine-tune on the paraphrase task:
 
 0. Install required packages
 
-    ```sh
+    ```bash
     pip install -r requirements.txt
     ```
 
@@ -49,7 +49,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 3. Run the training command:
 
 ```bash
-python training_paraphrases.py distilroberta-base
+PT_HPU_LAZY_MODE=1 python training_paraphrases.py distilroberta-base
 ```
 
 ## Paraphrase Dataset

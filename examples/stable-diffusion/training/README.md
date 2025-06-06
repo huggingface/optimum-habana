@@ -18,100 +18,24 @@ limitations under the License.
 
 This directory contains scripts that showcase how to perform training/fine-tuning of Stable Diffusion models on Habana Gaudi.
 
-## Textual Inversion
-
-[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
-
-The `textual_inversion.py` script shows how to implement the training procedure on Habana Gaudi.
-
-In the examples below, we will use a set of cat images from the following dataset:
-[https://huggingface.co/datasets/diffusers/cat_toy_example](https://huggingface.co/datasets/diffusers/cat_toy_example)
-
-To download this and other example training datasets locally, run:
-```bash
-python download_train_datasets.py
-```
-
-Now we can launch the training using:
-
-```bash
-python textual_inversion.py \
-    --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --train_data_dir ./cat \
-    --learnable_property object \
-    --placeholder_token "<cat-toy>" \
-    --initializer_token toy \
-    --resolution 512 \
-    --train_batch_size 4 \
-    --max_train_steps 3000 \
-    --learning_rate 5.0e-04 \
-    --scale_lr \
-    --lr_scheduler constant \
-    --lr_warmup_steps 0 \
-    --output_dir /tmp/textual_inversion_cat \
-    --save_as_full_pipeline \
-    --gaudi_config_name Habana/stable-diffusion \
-    --throughput_warmup_steps 3
-```
-
-> [!NOTE]
-> Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
-
-> [!NOTE]
-> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
-> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
-> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
-> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
-
-Once you have trained a model as described above, inference can be done using `GaudiStableDiffusionPipeline`.
-Please make sure to include the `placeholder_token` in your prompt so that textual inversion guided inference can take effect.
-
-You can use `text_to_image_generation.py` sample to run inference with the fine-tuned model:
-
-```bash
-python ../text_to_image_generation.py \
-    --model_name_or_path /tmp/textual_inversion_cat \
-    --prompts "A <cat-toy> backpack" \
-    --num_images_per_prompt 5 \
-    --batch_size 1 \
-    --image_save_dir /tmp/textual_inversion_cat_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --sdp_on_bf16 \
-    --bf16
-```
-
-Alternatively, you can run inference with the fine-tuned model using a simple Python script like this:
-
-```python
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
-import torch
-
-model_id = "/tmp/textual_inversion_cat"
-pipe = GaudiStableDiffusionPipeline.from_pretrained(
-    model_id,
-    torch_dtype=torch.bfloat16,
-    use_habana=True,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
-    sdp_on_bf16=True,
-)
-
-prompt = "A <cat-toy> backpack"
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save(f"cat-backpack.png")
-```
-
 ## Textual Inversion XL
 
 The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
 such as `stabilityai/stable-diffusion-xl-base-1.0` or `cagliostrolab/animagine-xl-3.1` for example.
 
+For this example we will use a set of cat toy images from the following dataset:
+[https://huggingface.co/datasets/diffusers/cat_toy_example](https://huggingface.co/datasets/diffusers/cat_toy_example).
+
+To download this and other example training datasets locally, run:
+
+```bash
+python download_train_datasets.py
+```
+
 Assuming the afforemenioned cat toy dataset has been obtained, we can launch textual inversion XL training using:
 
 ```bash
-python textual_inversion_sdxl.py \
+PT_HPU_LAZY_MODE=1 python textual_inversion_sdxl.py \
     --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --train_data_dir ./cat \
     --learnable_property object \
@@ -128,6 +52,7 @@ python textual_inversion_sdxl.py \
     --output_dir /tmp/textual_inversion_cat_sdxl \
     --save_as_full_pipeline \
     --gaudi_config_name Habana/stable-diffusion \
+    --sdp_on_bf16 \
     --throughput_warmup_steps 3
 ```
 
@@ -142,7 +67,7 @@ The script also supports training of both text encoders of SDXL, so inference ca
 For example, after training you can use `text_to_image_generation.py` sample to run inference with the fine-tuned model as follows:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path /tmp/textual_inversion_cat_sdxl \
     --prompts "A <cat-toy> backpack" \
     --num_images_per_prompt 5 \
@@ -153,36 +78,6 @@ python ../text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --sdp_on_bf16 \
     --bf16
-```
-
-Alternatively, you can run inference with the fine-tuned model using a simple standalone Python script.
-The following script can be used to run inference using the fine-tuned model with both text encoders,
-separately and in combination:
-
-```python
-from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
-import torch
-
-model_id = "/tmp/textual_inversion_cat_sdxl"
-pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
-    model_id,
-    torch_dtype=torch.bfloat16,
-    use_habana=True,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
-    sdp_on_bf16=True,
-)
-
-prompt = "A <cat-toy> backpack"
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save(f"cat-backpack.png")
-
-image = pipe(prompt="", prompt_2=prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save(f"cat-backpack_p2.png")
-
-prompt_2 = "A <cat-toy> colored backpack"
-image = pipe(prompt=prompt, prompt_2=prompt_2, num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save(f"cat-backpack_p1and2.png")
 ```
 
 ## ControlNet Training
@@ -199,9 +94,9 @@ python download_train_datasets.py
 Then proceed to training with command:
 
 ```bash
-python train_controlnet.py \
-   --pretrained_model_name_or_path=CompVis/stable-diffusion-v1-4\
-   --output_dir=/tmp/stable_diffusion1_4 \
+PT_HPU_LAZY_MODE=1 python train_controlnet.py \
+   --pretrained_model_name_or_path=stabilityai/stable-diffusion-2-1 \
+   --output_dir=/tmp/stable_diffusion2_1 \
    --dataset_name=fusing/fill50k \
    --resolution=512 \
    --learning_rate=1e-5 \
@@ -212,37 +107,21 @@ python train_controlnet.py \
    --use_hpu_graphs \
    --sdp_on_bf16 \
    --bf16 \
+   --max_train_steps 2500 \
    --trust_remote_code
 ```
 
-### Multi-Card Training
-
-You can run these fine-tuning scripts in a distributed fashion as follows:
-```bash
-python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
-    --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --output_dir=/tmp/stable_diffusion1_4 \
-    --dataset_name=fusing/fill50k \
-    --resolution=512 \
-    --learning_rate=1e-5 \
-    --validation_image "./cnet/conditioning_image_1.png" "./cnet/conditioning_image_2.png" \
-    --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
-    --train_batch_size=4 \
-    --throughput_warmup_steps 3 \
-    --use_hpu_graphs \
-    --sdp_on_bf16 \
-    --bf16 \
-    --trust_remote_code
-```
+You can run inference on multiple HPUs by replacing `python train_controlnet.py`
+with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_controlnet.py`.
 
 ### Inference
 
 After training completes, you can use `text_to_image_generation.py` sample to run inference with the fine-tuned ControlNet model:
 
 ```bash
-python ../text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
-    --controlnet_model_name_or_path /tmp/stable_diffusion1_4 \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path /tmp/stable_diffusion2_1 \
     --prompts "pale golden rod circle with old lace background" \
     --control_image "./cnet/conditioning_image_1.png" \
     --num_images_per_prompt 5 \
@@ -253,42 +132,6 @@ python ../text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --sdp_on_bf16 \
     --bf16
-```
-
-Alternatively, you can run inference using a simple standalone Python script, as shown below:
-
-```python
-from diffusers import ControlNetModel, UniPCMultistepScheduler
-from diffusers.utils import load_image
-import torch
-from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
-
-base_model_path = "CompVis/stable-diffusion-v1-4"
-controlnet_path = "/tmp/stable_diffusion1_4"
-
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
-pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
-    base_model_path,
-    controlnet=controlnet,
-    torch_dtype=torch.bfloat16,
-    use_habana=True,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
-    sdp_on_bf16=True,
-)
-
-# speed up diffusion process with faster scheduler and memory optimization
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-
-control_image = load_image("./cnet/conditioning_image_1.png")
-prompt = "pale golden rod circle with old lace background"
-
-# generate image
-generator = torch.manual_seed(0)
-image = pipe(
-    prompt, num_inference_steps=20, generator=generator, image=control_image
-).images[0]
-image.save("./output.png")
 ```
 
 ## Fine-Tuning for Stable Diffusion XL
@@ -305,8 +148,9 @@ pip install -r requirements.txt
 ### Single Card Training
 
 To train Stable Diffusion XL on a single Gaudi card, use:
+
 ```bash
-python train_text_to_image_sdxl.py \
+PT_HPU_LAZY_MODE=1 python train_text_to_image_sdxl.py \
     --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
     --dataset_name lambdalabs/naruto-blip-captions \
@@ -336,83 +180,18 @@ python train_text_to_image_sdxl.py \
     --adjust_throughput
 ```
 
-### Multi-Card Training
+> [!WARNING]
+> There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
 
-To train Stable Diffusion XL on a multi-card Gaudi system, use:
-```bash
-PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
-    --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-    --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
-    --dataset_name lambdalabs/naruto-blip-captions \
-    --resolution 512 \
-    --crop_resolution 512 \
-    --center_crop \
-    --random_flip \
-    --proportion_empty_prompts=0.2 \
-    --train_batch_size 16 \
-    --max_train_steps 336 \
-    --learning_rate 1e-05 \
-    --max_grad_norm 1 \
-    --lr_scheduler constant \
-    --lr_warmup_steps 0 \
-    --output_dir sdxl_model_output \
-    --gaudi_config_name Habana/stable-diffusion \
-    --throughput_warmup_steps 3 \
-    --dataloader_num_workers 8 \
-    --sdp_on_bf16 \
-    --bf16 \
-    --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference \
-    --validation_prompt="a cute naruto creature" \
-    --validation_epochs 48 \
-    --checkpointing_steps 336 \
-    --mediapipe dataset_sdxl_mediapipe \
-    --adjust_throughput
-```
-
-### Single Card Training on Gaudi1
-
-To train Stable Diffusion XL on a single Gaudi1 card, use:
-```bash
-python train_text_to_image_sdxl.py \
-    --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-    --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
-    --dataset_name lambdalabs/naruto-blip-captions \
-    --resolution 256 \
-    --center_crop \
-    --random_flip \
-    --proportion_empty_prompts=0.2 \
-    --train_batch_size 1 \
-    --gradient_accumulation_steps 4 \
-    --max_train_steps 3000 \
-    --learning_rate 1e-05 \
-    --max_grad_norm 1 \
-    --lr_scheduler constant \
-    --lr_warmup_steps 0 \
-    --output_dir sdxl_model_output \
-    --gaudi_config_name Habana/stable-diffusion \
-    --throughput_warmup_steps 3 \
-    --use_hpu_graphs_for_training \
-    --use_hpu_graphs_for_inference \
-    --checkpointing_steps 3000 \
-    --sdp_on_bf16 \
-    --bf16
-```
-
-> [!NOTE]
-> There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds.
-> This will be fixed in a future release.
-
-> [!NOTE]
-> `--mediapipe` only works on Gaudi2.
+You can run inference on multiple HPUs by replacing `python train_text_to_image_sdxl.py`
+with `PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024 python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sdxl.py`.
 
 ### Inference
 
 After training is finished, you can run inference using `text_to_image_generation.py` script as follows:
 
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path sdxl_model_output \
     --prompts "a cute naruto creature" \
     --num_images_per_prompt 5 \
@@ -436,6 +215,7 @@ For DreamBooth examples we will use a set of dog images from the following datas
 [https://huggingface.co/datasets/diffusers/dog-example](https://huggingface.co/datasets/diffusers/dog-example).
 
 To download this and other example training datasets locally, run:
+
 ```bash
 python download_train_datasets.py
 ```
@@ -443,9 +223,10 @@ python download_train_datasets.py
 ### Full Model Fine-Tuning
 
 To launch the multi-card Stable Diffusion training, use:
+
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -480,9 +261,10 @@ We provide DreamBooth examples demonstrating how to use LoRA, LoKR, LoHA, and OF
 UNet or text encoder.
 
 To run the multi-card training, use:
+
 ```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4"  \
+PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -504,6 +286,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
     --gaudi_config_name Habana/stable-diffusion \
     lora --unet_r 8 --unet_alpha 8
 ```
+
 > [!NOTE]
 > When using PEFT method we can use a much higher learning rate compared to vanilla dreambooth.
 > Here we use `1e-4` instead of the usual `5e-6`
@@ -513,17 +296,18 @@ Similar command could be applied with `loha`, `lokr`, or `oft` adapters.
 You could check each adapter's specific arguments with `--help`, for example:
 
 ```bash
-python3 train_dreambooth.py oft --help
+python train_dreambooth.py oft --help
 ```
-> [!NOTE]
+
+> [!WARNING]
 > Currently, the `oft` adapter is not supported in HPU graph mode, as it triggers `torch.inverse`,
 > causing a CPU fallback that is incompatible with HPU graph capturing.
 
 After training completes, you can use `text_to_image_generation.py` sample for inference as follows:
 
 ```bash
-python ../text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4  \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1  \
     --unet_adapter_name_or_path dog_sd/unet \
     --prompts "a sks dog" \
     --num_images_per_prompt 5 \
@@ -540,9 +324,10 @@ python ../text_to_image_generation.py \
 
 We can use the same `dog` dataset for the following examples.
 
-To launch Stable Diffusion XL LoRA training on a multi-card Gaudi system, use:"
+To launch Stable Diffusion XL LoRA training on a single card Gaudi system, use:
+
 ```bash
-python train_dreambooth_lora_sdxl.py \
+PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_sdxl.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"  \
     --instance_data_dir="dog" \
     --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
@@ -564,35 +349,15 @@ python train_dreambooth_lora_sdxl.py \
     --gaudi_config_name Habana/stable-diffusion
 ```
 
-To launch Stable Diffusion XL LoRA training on a multi-card Gaudi system, use:"
-```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.py \
-    --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"  \
-    --instance_data_dir="dog" \
-    --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
-    --output_dir="lora-trained-xl" \
-    --mixed_precision="bf16" \
-    --instance_prompt="a photo of sks dog" \
-    --resolution=1024 \
-    --train_batch_size=1 \
-    --gradient_accumulation_steps=4 \
-    --learning_rate=1e-4 \
-    --lr_scheduler="constant" \
-    --lr_warmup_steps=0 \
-    --max_train_steps=500 \
-    --validation_prompt="A photo of sks dog in a bucket" \
-    --validation_epochs=25 \
-    --seed=0 \
-    --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training \
-    --gaudi_config_name Habana/stable-diffusion
-```
 > [!NOTE]
-> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--deepspeed` in the previous example
+> You can run training on multiple HPUs by replacing `python train_dreambooth_lora_sdxl.py` with 
+> `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_sdxl.py`. To use MPI for multi-card training,
+> add `--use_mpi` after `--world_size <num-HPUs>`. To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
 
 After training is completed, you can directly use `text_to_image_generation.py` sample for inference, as shown below:
+
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0  \
     --lora_id lora-trained-xl \
     --prompts "A picture of a sks dog in a bucket" \
@@ -606,41 +371,14 @@ python ../text_to_image_generation.py \
     --bf16
 ```
 
-Alternatively, you can run inference with a simple Python script such as this:
-```python
-import torch
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
-
-pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.bfloat16,
-    use_hpu_graphs=True,
-    use_habana=True,
-    gaudi_config="Habana/stable-diffusion",
-    sdp_on_bf16=True,
-)
-pipe.load_lora_weights("lora-trained-xl")
-
-prompt = "A photo of sks dog in a bucket"
-image = pipe(
-    prompt,
-    height=1024,
-    width=1024,
-    guidance_scale=3.5,
-    num_inference_steps=30,
-    max_sequence_length=512,
-).images[0]
-image.save("sdxl-lora.png")
-```
-
 ### DreamBooth LoRA Fine-Tuning with FLUX.1-dev
 
 We can use the same `dog` dataset for the following examples.
 
-To launch FLUX.1-dev LoRA training on a single Gaudi card, use:"
+To launch FLUX.1-dev LoRA training on a single Gaudi card, use:
+
 ```bash
-python train_dreambooth_lora_flux.py \
+PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_flux.py \
     --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
     --dataset="dog" \
     --prompt="a photo of sks dog" \
@@ -665,38 +403,14 @@ python train_dreambooth_lora_flux.py \
     --gaudi_config_name="Habana/stable-diffusion"
 ```
 
-To launch FLUX.1-dev LoRA training on a multi-card Gaudi system, use:"
-```bash
-python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_flux.py \
-    --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
-    --dataset="dog" \
-    --prompt="a photo of sks dog" \
-    --output_dir="dog_lora_flux" \
-    --mixed_precision="bf16" \
-    --weighting_scheme="none" \
-    --resolution=1024 \
-    --train_batch_size=1 \
-    --learning_rate=1e-4 \
-    --guidance_scale=1 \
-    --report_to="tensorboard" \
-    --gradient_accumulation_steps=4 \
-    --gradient_checkpointing \
-    --lr_scheduler="constant" \
-    --lr_warmup_steps=0 \
-    --cache_latents \
-    --rank=4 \
-    --max_train_steps=500 \
-    --seed="0" \
-    --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training \
-    --gaudi_config_name="Habana/stable-diffusion"
-```
 > [!NOTE]
-> To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed` in the previous example
+> You can run training on multiple HPUs by replacing `python train_dreambooth_lora_flux.py` with 
+> `python ../../gaudi_spawn.py --world_size <num-HPUs> train_dreambooth_lora_flux.py`. To use MPI for multi-card training,
+> add `--use_mpi` after `--world_size <num-HPUs>`. To use DeepSpeed instead of MPI, replace `--use_mpi` with `--use_deepspeed`.
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path "black-forest-labs/FLUX.1-dev" \
     --lora_id dog_lora_flux \
     --prompts "A picture of a sks dog in a bucket" \
@@ -708,31 +422,4 @@ python ../text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --sdp_on_bf16 \
     --bf16
-```
-
-Alternatively, you can run inference on Gaudi system with a simple Python script like this:
-```python
-import torch
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiFluxPipeline
-
-pipe = GaudiFluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-    use_hpu_graphs=True,
-    use_habana=True,
-    gaudi_config="Habana/stable-diffusion",
-    sdp_on_bf16=True,
-)
-pipe.load_lora_weights("dog_lora_flux")
-
-prompt = "A photo of sks dog in a bucket"
-image = pipe(
-    prompt,
-    height=1024,
-    width=1024,
-    guidance_scale=3.5,
-    num_inference_steps=30,
-).images[0]
-image.save("flux-dev.png")
 ```
