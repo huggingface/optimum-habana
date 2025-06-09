@@ -61,7 +61,7 @@ if is_deepspeed_available():
     )
 
 from ..distributed import parallel_state
-from .utils import convert_model, get_fp8_recipe
+from .utils import convert_model
 
 
 logger = get_logger(__name__)
@@ -191,10 +191,8 @@ class GaudiAccelerator(Accelerator):
             deepspeed_plugins=deepspeed_plugins,
         )
 
-        # TODO: upstream this fp8_enabled attribute to accelerate (it should be true when fp8 is enabled, deepspeed or not)
+        # to handle deepspeed fp8
         self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
-        if self.fp8_enabled and self.fp8_recipe_handler is None:
-            self.fp8_recipe_handler = get_fp8_recipe(GaudiTERecipeKwargs())
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
