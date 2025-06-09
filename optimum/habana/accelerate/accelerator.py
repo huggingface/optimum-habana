@@ -168,7 +168,7 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
-        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
 
         super().__init__(
             device_placement=device_placement,
