@@ -17,6 +17,8 @@ DEFAULT_CLONE_URL := https://github.com/huggingface/optimum-habana.git
 # If CLONE_URL is empty, revert to DEFAULT_CLONE_URL
 REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
+export PT_HPU_LAZY_MODE=1
+# will be removed when lazy is disabled
 
 .PHONY:	style test
 
@@ -42,7 +44,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	python -m pytest tests/test_diffusers.py
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
@@ -103,10 +105,10 @@ slow_tests_diffusers: test_installs
 	python -m pip install -r examples/stable-diffusion/requirements.txt \
 	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion" || status1=$$?; \
 	python -m pip install peft==0.7.0 \
-	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
-	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
-	python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation" || status4=$$?; \
-	python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status5=$$?; \
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation" || status4=$$?; \
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status5=$$?; \
 	exit $$((status1 + status2 + status3 + status4 + status5))
 
 # Run all text-generation non-regression tests

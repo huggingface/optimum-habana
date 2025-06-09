@@ -88,7 +88,7 @@ def setup_lm_eval_parser():
         "--show_config",
         action="store_true",
         default=False,
-        help="If True, shows the the full config of all tasks at the end of the evaluation.",
+        help="If True, shows the full config of all tasks at the end of the evaluation.",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
@@ -287,6 +287,10 @@ def main() -> None:
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil

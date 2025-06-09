@@ -21,6 +21,7 @@ import os
 from dataclasses import make_dataclass
 from types import MethodType
 
+import accelerate.utils.other
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
@@ -66,7 +67,6 @@ from .utils import convert_model
 logger = get_logger(__name__)
 
 
-# TODO: Compare to fullgraph=False in torch.compile
 def compile_regions(model, compile_kwargs):
     if isinstance(model, torch.nn.ModuleList):
         for name, module in model.named_children():
@@ -76,7 +76,7 @@ def compile_regions(model, compile_kwargs):
     else:
         if model._modules:  # If model has submodules, recurse and reassign
             for name, module in model.named_children():
-                compiled_module = compile_regions(module, **compile_kwargs)
+                compiled_module = compile_regions(module, compile_kwargs)
                 if compiled_module is not None:  # Only reassign if something is returned
                     setattr(model, name, compiled_module)
         else:  # Leaf node
@@ -305,11 +305,11 @@ class GaudiAccelerator(Accelerator):
                     for module in FSDP.fsdp_modules(model):
                         # Referencing DeepSpeed Zero3
                         # - in Init, params are converted to 16bit while partitioning.
-                        # - in accelerator.prepare, deepspeed.initalize is called to:
-                        #   * creates the DeepSpeeedEngine.
+                        # - in accelerator.prepare, deepspeed.initialize is called to:
+                        #   * creates the DeepSpeedEngine.
                         #   * since zero_optimization() is True , calls engine._configure_zero_optimizer.
                         #
-                        # Inside the DeepSpeed Zero3 optimizer configuration, which initalizes
+                        # Inside the DeepSpeed Zero3 optimizer configuration, which initializes
                         # DeepSpeedZeroOptimizer_Stage3, during which:
                         #   * trainable_param_groups are obtained from the attached optimizer
                         #     (already partitioned in 16bit).
@@ -367,7 +367,7 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, **compile_kwargs)
+                compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
@@ -581,7 +581,7 @@ class GaudiAccelerator(Accelerator):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs=compile_kwargs)
+                    compile_regions(engine.module, compile_kwargs)
                 else:
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),
@@ -679,6 +679,13 @@ class GaudiAccelerator(Accelerator):
             process_index = int(process_index / parallel_state.get_sequence_parallel_world_size())
         ###############################################################################################################
 
+        # To avoid training crash issue SW-207456 when num_worker > 0 in multi-node training tasks
+        if int(os.environ.get("WORLD_SIZE", 1)) > 8 and data_loader.num_workers > 0:
+            import multiprocessing
+
+            multiprocessing_context = multiprocessing.get_context("spawn")
+            data_loader.multiprocessing_context = multiprocessing_context
+
         prepared_data_loader = prepare_data_loader(
             data_loader,
             self.device,
@@ -698,3 +705,10 @@ class GaudiAccelerator(Accelerator):
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader
+
+
+def patch_has_compiled_regions(*args, **kwargs):
+    return False
+
+
+accelerate.utils.other.has_compiled_regions = patch_has_compiled_regions

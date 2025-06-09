@@ -45,7 +45,7 @@ For the following cases, an example of a Gaudi configuration file is given
 The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
 
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
@@ -72,7 +72,7 @@ python run_glue.py \
 Here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using the `run_glue` script, with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_glue.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -101,7 +101,7 @@ python ../gaudi_spawn.py \
 Similarly to multi-card training, here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using DeepSpeed with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -152,7 +152,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with BERT on GLUE on 1 Gaudi card with the following command:
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
@@ -176,7 +176,7 @@ Llama Guard can be used for text classification. The Transformers library will c
 Llama Guard can be fine-tuned with DeepSpeed, here is how you would do it on the text classification MRPC task using DeepSpeed with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path meta-llama/LlamaGuard-7b \
     --gaudi_config Habana/llama \
@@ -207,7 +207,7 @@ You can look at the [documentation](https://huggingface.co/docs/optimum/habana/u
 You can run inference with Llama Guard on GLUE on 1 Gaudi card with the following command:
 
 ```bash
-python run_glue.py \
+PT_HPU_LAZY_MODE=1 python run_glue.py \
   --model_name_or_path meta-llama/LlamaGuard-7b \
   --gaudi_config Habana/llama \
   --task_name mrpc \

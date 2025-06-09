@@ -23,9 +23,11 @@ import json
 import logging
 import math
 import os
+import struct
 from itertools import cycle
 from pathlib import Path
 
+import pandas as pd
 import torch
 from transformers import BatchEncoding
 from utils import (
@@ -90,7 +92,15 @@ def setup_parser(parser):
         "--dataset_name",
         default=None,
         type=str,
-        help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+        help="Specify the dataset name from the Hugging Face Hub to evaluate your model on. "
+        "To run the benchmark on the MLCommons dataset, set this argument to `mlcommons`. "
+        "Use this in combination with `--mlcommons_dataset`.",
+    )
+    parser.add_argument(
+        "--mlcommons_dataset",
+        default=None,
+        type=str,
+        help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
     )
     parser.add_argument(
         "--column_name",
@@ -290,7 +300,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--book_source",
         action="store_true",
-        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lengths.",
     )
     parser.add_argument(
         "--torch_compile",
@@ -352,6 +362,24 @@ def setup_parser(parser):
         default="inc_quantized_model",
         help="A path to save quantized checkpoint.",
     )
+    parser.add_argument(
+        "--pt2e_save",
+        action="store_true",
+        help="run pt2e calibration and save. If this argument is not used, but pt2e_path argument is used, load and inference with pt2e quantization will run.",
+    )
+    parser.add_argument(
+        "--pt2e_path",
+        default=None,
+        type=str,
+        help="specify the path where pt2e quantization related information will be saved, or loaded from",
+    )
+    parser.add_argument(
+        "--pt2e_quant_dtype",
+        type=str,
+        choices=["int8", "fp8_143", "fp8_152"],
+        default="fp8_143",
+        help="Set pt2e quantization data type. Available options: int8, fp8_143 [default], fp8_152",
+    )
 
     quant_parser_group = parser.add_mutually_exclusive_group()
     quant_parser_group.add_argument(
@@ -386,6 +414,22 @@ def setup_parser(parser):
         type=int,
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
+    parser.add_argument(
+        "--regional_compile",
+        action="store_true",
+        help="Whether to enable regional compilation.",
+    )
+    parser.add_argument(
+        "--force_static_compile",
+        action="store_true",
+        help="Whether to force static compile.",
+    )
+    parser.add_argument(
+        "--cache_size_limit",
+        default=None,
+        type=int,
+        help="Overwrite torch._dynamo.config default cache size with user provided value",
+    )
 
     args = parser.parse_args()
 
@@ -413,6 +457,11 @@ def setup_parser(parser):
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
         )
+
+    if args.pt2e_path:
+        assert not args.torch_compile, "Expected --torch.compile to be False when using pt2e_path!"
+        assert not args.use_hpu_graphs, "Expected --use_hpu_graphs to be False when using pt2e_path!"
+
     return args
 
 
@@ -434,7 +483,7 @@ def main():
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile:
+    if args.torch_compile or args.pt2e_path:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
@@ -442,7 +491,161 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
-    if args.dataset_name is None:
+    if args.dataset_name == "mlcommons":
+        # Benchmark over the prompts below
+        def get_ds(args):
+            ds = pd.read_pickle(args.mlcommons_dataset)
+            return ds
+
+        def get_input(ds, batch_size):
+            queries = []
+            tok_input = ds["tok_input"].tolist()
+            for start in range(0, len(ds), batch_size):
+                end = start + batch_size
+                batch = tok_input[start:end]
+                input_ids = []
+                attention_mask = []
+                for query in batch:
+                    input_ids.append([0] * (args.max_input_tokens - len(query)) + query)
+                    attention_mask.append([0] * (args.max_input_tokens - len(query)) + [1] * len(query))
+                queries.append(
+                    {
+                        "input_ids": torch.tensor(input_ids, dtype=torch.int32),
+                        "attention_mask": torch.tensor(attention_mask, dtype=torch.int32),
+                    }
+                )
+            return queries
+
+        ds = get_ds(args)
+        input_sentences = get_input(ds, args.batch_size)
+
+        def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
+            """Generates sequences from the input sentences and returns them."""
+
+            timer = HabanaGenerationTime()
+            timer.start()
+            print(f"Starting time is {timer.start_time * 1000}", flush=True)
+            if size is not None:
+                input_tokens = adjust_batch(input_tokens, size)
+
+            if not reduce_recompile:
+                # Move inputs to target device(s)
+                for t in input_tokens:
+                    if torch.is_tensor(input_tokens[t]):
+                        input_tokens[t] = input_tokens[t].to(args.device)
+
+            outputs = model.generate(
+                **input_tokens,
+                generation_config=generation_config,
+                lazy_mode=use_lazy_mode,
+                hpu_graphs=args.use_hpu_graphs,
+                ignore_eos=args.ignore_eos,
+            ).cpu()
+            outputs = outputs.tolist()
+            for i in range(len(outputs)):
+                outputs[i] = outputs[i][args.max_input_tokens :]
+            timer.step()
+            duration = timer.last_duration
+            print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
+            return outputs
+
+        # Compilation
+        logger.info("Graph compilation...")
+        dyn_prompt_lens = args.simulate_dyn_prompt
+        timer = HabanaGenerationTime()
+        timer.start()
+        # The first three iterations take longer because of graph compilation
+        if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
+            for _ in range(args.warmup):
+                if dyn_prompt_lens is None:
+                    print("Warming up", flush=True)
+                    generate(input_sentences[0], None, args.reduce_recompile, disable_profiling=True)
+                else:
+                    print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+                    generate(input_sentences[0], dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
+        else:
+            if args.bucket_size > 0:
+                mn = min(dyn_prompt_lens)
+                mx = max(dyn_prompt_lens)
+
+                def rounder(x):
+                    return int(math.ceil(x / args.bucket_size) * args.bucket_size)
+
+                min_prompt_len = rounder(mn)
+                max_sentence_len = rounder(mx)
+                for _ in range(args.warmup):
+                    lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
+                    for sz in lst:
+                        print("Warming up for shape,", sz - 1, flush=True)
+                        generate(input_sentences[0], sz - 1, args.reduce_recompile, disable_profiling=True)
+        torch_hpu.synchronize()
+        timer.step()
+        compilation_duration = timer.last_duration
+        total_new_tokens_generated = 0
+        logger.info("Running generate...")
+        timer.step()
+        # Benchmark over n_iterations iterations
+        N = len(input_sentences)
+
+        if dyn_prompt_lens is None:
+            for i in range(args.n_iterations):
+                results = []
+                b = 1
+                for sentence in input_sentences:
+                    generated = generate(sentence, None, args.reduce_recompile)
+                    results.extend(generated)
+                    print(f"Generating batch {b}/{N}")
+                    b += 1
+        else:
+            repeated_prompt_len = cycle(dyn_prompt_lens)
+            for i in range(args.n_iterations):
+                prompt_len = next(repeated_prompt_len)
+                print("Generating for shape,", prompt_len)
+                results = []
+                for sentence in input_sentences:
+                    generated = generate(sentence, prompt_len, args.reduce_recompile)
+                    results.extend(generated)
+        timer.step()
+        duration = timer.last_duration
+        total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+        throughput = total_new_tokens_generated / duration
+
+        # Store results if necessary
+        if args.output_dir is not None and args.global_rank == 0:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            acc_file = []
+            num_token = 0
+            for i, idx in enumerate(ds.index):
+                pred = results[i]
+                eos_token_id = 2
+                try:
+                    ind_eos = pred.index(eos_token_id) + 1
+                except:  # noqa
+                    ind_eos = len(pred)
+                pred = pred[:ind_eos]
+                num_token += len(pred)
+                acc_file.append(
+                    {"seq_id": idx, "qsl_idx": idx, "data": bytes(struct.pack("L" * len(pred), *pred)).hex().upper()}
+                )
+            with open(output_dir / "accuracy.json", "w") as outfile:
+                outfile.write(json.dumps(acc_file))
+
+        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+        separator = "-" * len(stats)
+        print()
+        print("Stats:")
+        print(separator)
+        print(stats)
+        mem = get_hpu_memory_stats()
+        for k, v in mem.items():
+            print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(separator)
+        print()
+    elif args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
@@ -548,7 +751,6 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
             input_data = {}
             if args.input_embeds:
                 inputs_embeds = prepare_generation_embedding(model, args.model_name_or_path, input_tokens)
@@ -577,7 +779,7 @@ def main():
             timer.step()
             first_token_time = iteration_times[0] + encode_duration
             rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
-            e2e_latency = first_token_time + rest_token_time
+            e2e_latency = timer.total_time()
             logger.info(f"Time to first token = {first_token_time * 1000}ms")
             logger.info(f"Time to rest of tokens = {rest_token_time * 1000}ms")
             logger.info(f"End to end latency = {e2e_latency * 1000}ms")
@@ -864,6 +1066,10 @@ def main():
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 
