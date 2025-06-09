@@ -3,3 +3,4 @@ Levenshtein
 sentencepiece != 0.1.92
 tiktoken
 blobfile
+datasets
