@@ -64,7 +64,7 @@ import accelerate.utils.transformer_engine
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
-from .utils.transformer_engine import convert_model
+from .utils.transformer_engine import convert_model, get_fp8_recipe
 
 
 accelerate.utils.transformer_engine.convert_model = convert_model
@@ -131,7 +131,8 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
-        # will be fixed in upstream accelerate
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
+        # it will be fixed in upstream accelerate
         mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
 
         super().__init__(
@@ -157,11 +158,18 @@ class GaudiAccelerator(Accelerator):
             deepspeed_plugins=deepspeed_plugins,
         )
 
-        # will be added in upstream accelerate
+        # This attribute works as a single source of truth about fp8 usage with the accelerator.
+        # it will be added in upstream accelerate
         self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
 
         # will be fixed in upstream accelerate
         self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
+        # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
+        # we can clean this up later when the upstream accelerate is fixed
+        self.fp8_recipe = None
+        if self.has_fp8_handler:
+            self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
