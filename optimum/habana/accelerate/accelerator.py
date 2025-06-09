@@ -21,6 +21,7 @@ import os
 from dataclasses import dataclass, make_dataclass
 from types import MethodType
 
+import accelerate.utils
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
@@ -60,7 +61,7 @@ if is_deepspeed_available():
     )
 
 from ..distributed import parallel_state
-from .utils import convert_model, get_fp8_recipe
+from .utils import convert_model
 
 
 logger = get_logger(__name__)
@@ -129,6 +130,10 @@ class GaudiTERecipeKwargs(KwargsHandler):
         ), "Only max and most_recent `amax_compute_algo` modes are currently supported."
 
 
+accelerate.utils.TERecipeKwargs = GaudiTERecipeKwargs
+accelerate.utils.FP8RecipeKwargs = GaudiTERecipeKwargs
+
+
 class GaudiAccelerator(Accelerator):
     def __init__(
         self,
@@ -164,6 +169,8 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -186,10 +193,6 @@ class GaudiAccelerator(Accelerator):
             dynamo_plugin=dynamo_plugin,
             deepspeed_plugins=deepspeed_plugins,
         )
-
-        if self.state.mixed_precision == "fp8":
-            if self.fp8_recipe_handler is None:
-                self.fp8_recipe_handler = get_fp8_recipe(GaudiTERecipeKwargs())
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """

@@ -18,9 +18,7 @@ import os
 
 import torch
 from accelerate.utils import str_to_bool
-from transformers.utils import (
-    is_peft_available,
-)
+from transformers.utils import is_peft_available
 
 
 if is_peft_available():
@@ -170,21 +168,6 @@ def convert_model(model):
             _convert_model(model)
         model._converted_to_transformer_engine = True
     return model
-
-
-def get_fp8_recipe(fp8_recipe_handler):
-    """
-    Creates transformer engine FP8 recipe object.
-    Adapted from: https://github.com/huggingface/accelerate/blob/v0.27.2/src/accelerate/accelerator.py#L1309
-    """
-    if not is_fp8_available():
-        raise ImportError("Using `get_fp8_recipe` requires transformer_engine to be installed.")
-    kwargs = fp8_recipe_handler.to_dict() if fp8_recipe_handler is not None else {}
-    if "fp8_format" in kwargs:
-        kwargs["fp8_format"] = getattr(te.recipe.Format, kwargs["fp8_format"])
-    fp8_recipe_handler = te.recipe.DelayedScaling(**kwargs)
-    fp8_recipe_handler.backend = "TE"
-    return fp8_recipe_handler
 
 
 class FP8ContextWrapper:
