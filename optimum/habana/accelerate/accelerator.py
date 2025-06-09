@@ -61,7 +61,7 @@ if is_deepspeed_available():
     )
 
 from ..distributed import parallel_state
-from .utils import convert_model
+from .utils import convert_model, get_fp8_recipe
 
 
 logger = get_logger(__name__)
@@ -170,6 +170,8 @@ class GaudiAccelerator(Accelerator):
 
         mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
 
+        print("argument mixed precision:", mixed_precision)
+
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -192,6 +194,10 @@ class GaudiAccelerator(Accelerator):
             dynamo_plugin=dynamo_plugin,
             deepspeed_plugins=deepspeed_plugins,
         )
+
+        # TODO: investigate why the recipe handler is not initialized even though the mixed precision is set to fp8
+        if self.mixed_precision == "fp8" and self.fp8_recipe_handler is None:
+            self.fp8_recipe_handler = get_fp8_recipe(GaudiTERecipeKwargs())
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
