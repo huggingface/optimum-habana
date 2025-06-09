@@ -64,7 +64,7 @@ import accelerate.utils.transformer_engine
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
-from .utils.transformer_engine import convert_model, get_fp8_recipe
+from .utils.transformer_engine import convert_model
 
 
 accelerate.utils.transformer_engine.convert_model = convert_model
