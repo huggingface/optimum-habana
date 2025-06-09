@@ -295,6 +295,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        use_distributed_cfg: bool = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -389,6 +390,10 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            use_distributed_cfg (`bool`, *optional*, defaults to `False`):
+                Enables distributed CFG (classifier-free guidance) across 2 devices. Requires even number of devices.
+                Conditional and unconditional parts are processed separately (one on each device) if set to True.
+                Boosts performance close to 2x.
             profiling_warmup_steps (`int`, *optional*):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*):
@@ -404,16 +409,14 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
-        # Enable distributed CFG (classifier-free guidance) across 2 devices
-        # (conditional and unconditional parts are processed separately) if specified
-        use_distributed_cfg = kwargs.get("use_distributed_cfg", None)
         if use_distributed_cfg:
+            # Set distributed CFG (classifier-free guidance) across a pair of devices (requires even number of devices)
             import torch.distributed as dist
 
             rank = int(os.getenv("RANK", "0"))
             world_size = int(os.getenv("WORLD_SIZE", "0"))
             if world_size < 2:
-                raise ValueError(f"Error: Distributed CFG requires running with at least 2 devices")
+                raise ValueError("Error: Distributed CFG requires running with at least 2 devices")
             if not dist.is_initialized():
                 dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
             if dist.get_world_size() % 2 != 0:
