@@ -168,8 +168,6 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
-        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
-
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -193,8 +191,9 @@ class GaudiAccelerator(Accelerator):
             deepspeed_plugins=deepspeed_plugins,
         )
 
-        # TODO: investigate why the recipe handler is not initialized even though the mixed precision is set to fp8
-        if self.mixed_precision == "fp8" and self.fp8_recipe_handler is None:
+        # TODO: upstream this fp8_enabled attribute to accelerate (it should be true when fp8 is enabled, deepspeed or not)
+        self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+        if self.fp8_enabled and self.fp8_recipe_handler is None:
             self.fp8_recipe_handler = get_fp8_recipe(GaudiTERecipeKwargs())
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
@@ -251,7 +250,7 @@ class GaudiAccelerator(Accelerator):
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
 
-        if self.state.mixed_precision == "fp8":
+        if self.fp8_enabled:
             model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
@@ -438,7 +437,7 @@ class GaudiAccelerator(Accelerator):
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
             else convert_model(obj)
-            if isinstance(obj, torch.nn.Module) and self.state.mixed_precision == "fp8"
+            if isinstance(obj, torch.nn.Module) and self.fp8_enabled
             else obj
             for obj in args
         ]
