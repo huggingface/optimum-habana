@@ -170,8 +170,6 @@ class GaudiAccelerator(Accelerator):
 
         mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
 
-        print("argument mixed precision:", mixed_precision)
-
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
