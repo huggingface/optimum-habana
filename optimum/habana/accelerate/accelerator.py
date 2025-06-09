@@ -168,6 +168,9 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
+        # will be fixed in upstream accelerate
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
+
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -191,8 +194,16 @@ class GaudiAccelerator(Accelerator):
             deepspeed_plugins=deepspeed_plugins,
         )
 
-        # to handle deepspeed fp8
+        # will be added in upstream accelerate
         self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+
+        # will be fixed in upstream accelerate
+        self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
+        print("has_fp8_handler:", self.has_fp8_handler)
+        print("fp8_enabled:", self.fp8_enabled)
+        print("fp8_recipe_handler:", self.fp8_recipe_handler)
+        print("te_recipe_handler:", self.te_recipe_handler)
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """

@@ -1643,7 +1643,7 @@ class GaudiTrainer(Trainer):
                 # in backward does not automatically run with FP8 precision. In order to handle this,
                 # the backward is run in `fp8_autocast` context
                 with FP8ContextWrapper.create_fp8_context(
-                    self.accelerator.fp8_recipe_handler or self.accelerator.te_recipe_handler
+                    self.accelerator.te_recipe_handler or self.accelerator.fp8_recipe_handler
                 ):
                     self.accelerator.backward(loss, **kwargs)
             else:
