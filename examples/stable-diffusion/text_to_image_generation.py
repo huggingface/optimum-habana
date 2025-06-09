@@ -704,15 +704,22 @@ def main():
 
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
-            rank_ext = f"_rank{os.getenv('RANK')}" if int(os.getenv("WORLD_SIZE", "1")) > 1 else ""
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "1"))
+            rank_ext = f"_rank{rank}" if world_size > 1 else ""
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
                     rgb.save(image_save_dir / f"rgb_{i + 1}{rank_ext}.png")
                 for i, depth in enumerate(outputs.depth):
                     depth.save(image_save_dir / f"depth_{i + 1}{rank_ext}.png")
             else:
-                for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i + 1}{rank_ext}.png")
+                skip_rank = False
+                if args.use_distributed_cfg and world_size > 1:
+                    rank_ext += f"and{rank + 1}"
+                    skip_rank = rank % 2 == 1
+                if not skip_rank:
+                    for i, image in enumerate(outputs.images):
+                        image.save(image_save_dir / f"image_{i + 1}{rank_ext}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
