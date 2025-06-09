@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import inspect
 import math
 import warnings
@@ -2858,6 +2859,9 @@ class GaudiGenerationMixin(GenerationMixin):
             mask = torch.arange(max_length).expand(batch_size, max_length) > eos_positions.unsqueeze(1)
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
             input_ids[mask] = pad_token_id
+
+        # Trigger the garbage collector to make sure that unnecessary buffers are deallocated
+        gc.collect()
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
