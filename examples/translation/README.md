@@ -34,7 +34,7 @@ Here is an example of a translation fine-tuning with a T5 model.
 T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "translate {source_lang} to {target_lang}"`. For instance:
 
 ```bash
-python run_translation.py \
+PT_HPU_LAZY_MODE=1 python run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -69,7 +69,7 @@ And here is how you would use the translation finetuning on your own files, afte
 values for the arguments `--train_file`, `--validation_file` to match your setup:
 
 ```bash
-python run_translation.py \
+PT_HPU_LAZY_MODE=1 python run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -106,7 +106,7 @@ Here the languages are Romanian (`ro`) and English (`en`).
 If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as follows:
 
 ```bash
-python run_translation.py \
+PT_HPU_LAZY_MODE=1 python run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
     --do_eval \
@@ -135,7 +135,7 @@ python run_translation.py \
  Here is an example of distributing training on 8 HPUs:
 
  ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
@@ -167,7 +167,7 @@ python ../gaudi_spawn.py \
  Here is an example with DeepSpeed on 8 HPUs:
 
  ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_translation.py \
     --model_name_or_path t5-small \
     --do_train \
@@ -221,7 +221,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with BERT on GLUE on 1 Gaudi card with the following command:
 ```bash
-python run_translation.py \
+PT_HPU_LAZY_MODE=1 python run_translation.py \
     --model_name_or_path t5-small \
     --do_eval \
     --source_lang en \
