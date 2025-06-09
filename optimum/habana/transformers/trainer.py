@@ -108,7 +108,7 @@ from transformers.utils.deprecation import deprecate_kwarg
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import FP8ContextWrapper
+from ..accelerate.utils import FP8ContextWrapper, get_fp8_recipe
 from ..utils import (
     HabanaGenerationTime,
     HabanaProfile,
@@ -1568,7 +1568,10 @@ class GaudiTrainer(Trainer):
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
         if self.accelerator.fp8_enabled and self.model.training:
-            ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.te_recipe_handler)
+            ctx_manager = FP8ContextWrapper(
+                ctx_manager,
+                fp8_recipe=get_fp8_recipe(self.accelerator.te_recipe_handler or self.accelerator.fp8_recipe_handler),
+            )
 
         return ctx_manager
 
@@ -1643,7 +1646,7 @@ class GaudiTrainer(Trainer):
                 # in backward does not automatically run with FP8 precision. In order to handle this,
                 # the backward is run in `fp8_autocast` context
                 with FP8ContextWrapper.create_fp8_context(
-                    self.accelerator.te_recipe_handler or self.accelerator.fp8_recipe_handler
+                    get_fp8_recipe(self.accelerator.te_recipe_handler or self.accelerator.fp8_recipe_handler)
                 ):
                     self.accelerator.backward(loss, **kwargs)
             else:
