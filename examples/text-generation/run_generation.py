@@ -39,7 +39,11 @@ from utils import (
     save_model,
 )
 
-from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
+from optimum.habana.utils import (
+    HabanaGenerationTime,
+    HabanaProfile,
+    get_hpu_memory_stats,
+)
 
 
 logging.basicConfig(
@@ -90,8 +94,18 @@ def setup_parser(parser):
             if < 0, then do not truncate, use full input prompt",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
-    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
-    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=3,
+        help="Number of warmup iterations for benchmarking.",
+    )
+    parser.add_argument(
+        "--n_iterations",
+        type=int,
+        default=5,
+        help="Number of inference iterations for benchmarking.",
+    )
     parser.add_argument("--local_rank", type=int, default=0, metavar="N", help="Local process rank.")
     parser.add_argument(
         "--use_kv_cache",
@@ -283,7 +297,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
-    parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
+    parser.add_argument(
+        "--verbose_workers",
+        action="store_true",
+        help="Enable output from non-master workers",
+    )
     parser.add_argument(
         "--simulate_dyn_prompt",
         default=None,
@@ -348,8 +366,18 @@ def setup_parser(parser):
         action=argparse.BooleanOptionalAction,
         help="Whether to disable stopping with eos token when calling `generate`. --no-ignore_eos to disable it",
     )
-    parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
-    parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
+    parser.add_argument(
+        "--temperature",
+        default=1.0,
+        type=float,
+        help="Temperature value for text generation",
+    )
+    parser.add_argument(
+        "--top_p",
+        default=1.0,
+        type=float,
+        help="Top_p value for generating text via sampling",
+    )
     parser.add_argument(
         "--const_serialization_path",
         "--csp",
@@ -384,7 +412,9 @@ def setup_parser(parser):
         help="Run the inference with dataset for specified --n_iterations(default:5)",
     )
     parser.add_argument(
-        "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+        "--sdp_on_bf16",
+        action="store_true",
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
     )
     parser.add_argument(
         "--save_quantized_model_with_inc",
@@ -426,6 +456,11 @@ def setup_parser(parser):
         "--load_quantized_model_with_autoawq",
         action="store_true",
         help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+    )
+    quant_parser_group.add_argument(
+        "--load_quantized_model_with_bnb",
+        action="store_true",
+        help="Load an NF4 quantized checkpoint using BNB.",
     )
     quant_parser_group.add_argument(
         "--disk_offload",
@@ -500,6 +535,8 @@ def setup_parser(parser):
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
     if args.quant_config and args.load_quantized_model_with_autoawq:
         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
+    if args.quant_config and args.load_quantized_model_with_bnb:
+        raise RuntimeError("Setting both quant_config and load_quantized_model_with_bnb is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
@@ -628,10 +665,20 @@ def main():
             for _ in range(args.warmup):
                 if dyn_prompt_lens is None:
                     print("Warming up", flush=True)
-                    generate(input_sentences[0], None, args.reduce_recompile, disable_profiling=True)
+                    generate(
+                        input_sentences[0],
+                        None,
+                        args.reduce_recompile,
+                        disable_profiling=True,
+                    )
                 else:
                     print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
-                    generate(input_sentences[0], dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
+                    generate(
+                        input_sentences[0],
+                        dyn_prompt_lens[0],
+                        args.reduce_recompile,
+                        disable_profiling=True,
+                    )
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -646,7 +693,12 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
                         print("Warming up for shape,", sz - 1, flush=True)
-                        generate(input_sentences[0], sz - 1, args.reduce_recompile, disable_profiling=True)
+                        generate(
+                            input_sentences[0],
+                            sz - 1,
+                            args.reduce_recompile,
+                            disable_profiling=True,
+                        )
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
@@ -701,7 +753,11 @@ def main():
                 pred = pred[:ind_eos]
                 num_token += len(pred)
                 acc_file.append(
-                    {"seq_id": idx, "qsl_idx": idx, "data": bytes(struct.pack("L" * len(pred), *pred)).hex().upper()}
+                    {
+                        "seq_id": idx,
+                        "qsl_idx": idx,
+                        "data": bytes(struct.pack("L" * len(pred), *pred)).hex().upper(),
+                    }
                 )
             with open(output_dir / "accuracy.json", "w") as outfile:
                 outfile.write(json.dumps(acc_file))
@@ -876,8 +932,15 @@ def main():
                     print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
                     generate(None, args.reduce_recompile, disable_profiling=True)
                 else:
-                    print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
-                    generate(dyn_prompt_lens[0], args.reduce_recompile, disable_profiling=True)
+                    print(
+                        f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}",
+                        flush=True,
+                    )
+                    generate(
+                        dyn_prompt_lens[0],
+                        args.reduce_recompile,
+                        disable_profiling=True,
+                    )
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -891,7 +954,10 @@ def main():
                 for i in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
                     for sz in lst:
-                        print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
+                        print(
+                            f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}",
+                            flush=True,
+                        )
                         generate(sz - 1, args.reduce_recompile, disable_profiling=True)
         torch_hpu.synchronize()
         timer.step()
@@ -1047,7 +1113,8 @@ def main():
                     tensors = collect[k]
                     max_shape = max([item.shape[0] for item in tensors])
                     result[k] = torch.stack(
-                        [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0
+                        [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors],
+                        0,
                     )
                 return result
 

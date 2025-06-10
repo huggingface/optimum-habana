@@ -173,7 +173,9 @@ def setup_device(args):
 def patch_scoped_linear_all_reduce(model):
     from deepspeed.module_inject.layers import LinearAllreduce
 
-    from optimum.habana.transformers.models.modeling_all_models import ScopedLinearAllReduce
+    from optimum.habana.transformers.models.modeling_all_models import (
+        ScopedLinearAllReduce,
+    )
 
     for name, module in model.named_children():
         if type(module) is LinearAllreduce:
@@ -217,7 +219,10 @@ def get_torch_compiled_model(model, logger, args):
 
     compile_kwargs = {
         "backend": "hpu_backend",
-        "options": {"force_static_compile": args.force_static_compile, "keep_input_mutations": True},
+        "options": {
+            "force_static_compile": args.force_static_compile,
+            "keep_input_mutations": True,
+        },
     }
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
     if hasattr(model, "transformer"):
@@ -290,14 +295,37 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         quantization_config = GPTQConfig(bits=4, use_exllama=False)
         model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+            args.model_name_or_path,
+            torch_dtype=model_dtype,
+            quantization_config=quantization_config,
+            **model_kwargs,
         )
     elif args.load_quantized_model_with_autoawq:
         from transformers import AwqConfig
 
         quantization_config = AwqConfig(bits=4, version="hpu")
         model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+            args.model_name_or_path,
+            torch_dtype=model_dtype,
+            quantization_config=quantization_config,
+            **model_kwargs,
+        )
+    elif args.load_quantized_model_with_bnb:
+        from transformers import BitsAndBytesConfig
+
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_quant_storage=torch.bfloat16,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            quantization_config=nf4_config,
+            device_map={"": "hpu"},
+            torch_dtype=model_dtype,
+            **model_kwargs,
         )
     elif args.load_quantized_model_with_inc:
         # TODO: This will be removed in v1.20 Synapse release
@@ -308,7 +336,12 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         from neural_compressor.torch.quantization import load
 
-        model = load(model_name_or_path=args.model_name_or_path, format="huggingface", device="hpu", **model_kwargs)
+        model = load(
+            model_name_or_path=args.model_name_or_path,
+            format="huggingface",
+            device="hpu",
+            **model_kwargs,
+        )
     elif args.local_quantized_inc_model_path:
         org_model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
@@ -520,7 +553,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
             torch.distributed.barrier()
 
         write_checkpoints_json(
-            merged_model_dir if args.peft_model is not None else args.model_name_or_path,
+            (merged_model_dir if args.peft_model is not None else args.model_name_or_path),
             args.local_rank,
             checkpoints_json,
             token=args.token,
@@ -613,7 +646,10 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
             model = model.to(torch.bfloat16)
         return model
     else:
-        from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
+        from optimum.habana.peft.peft_model import (
+            gaudi_generate,
+            gaudi_prepare_inputs_for_generation,
+        )
 
         model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
@@ -805,11 +841,15 @@ def initialize_model(args, logger):
     model, assistant_model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed or args.load_quantized_model_with_inc
-        else setup_distributed_model(args, model_dtype, model_kwargs, logger)
-        if args.parallel_strategy == "none"
-        else setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
-        if args.parallel_strategy == "tp"
-        else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
+        else (
+            setup_distributed_model(args, model_dtype, model_kwargs, logger)
+            if args.parallel_strategy == "none"
+            else (
+                setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_dir)
+                if args.parallel_strategy == "tp"
+                else setup_distributed_model_ep(args, model_dtype, model_kwargs, logger)
+            )
+        )
     )
 
     tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model, logger)

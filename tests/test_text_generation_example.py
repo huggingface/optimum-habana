@@ -25,19 +25,36 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
             ("gpt2-xl", 1, False, False),
-            pytest.param("EleutherAI/gpt-j-6b", 1, False, False, marks=pytest.mark.skip("Deprecated in v1.20")),
+            pytest.param(
+                "EleutherAI/gpt-j-6b",
+                1,
+                False,
+                False,
+                marks=pytest.mark.skip("Deprecated in v1.20"),
+            ),
             ("EleutherAI/gpt-neox-20b", 1, False, False),
             ("meta-llama/Llama-2-7b-hf", 1, True, True),
             ("tiiuae/falcon-40b", 1, True, False),
             ("bigcode/starcoder", 256, True, True),
-            pytest.param("Salesforce/codegen2-1B", 1, False, False, marks=pytest.mark.skip("Deprecated")),
+            pytest.param(
+                "Salesforce/codegen2-1B",
+                1,
+                False,
+                False,
+                marks=pytest.mark.skip("Deprecated"),
+            ),
             ("mosaicml/mpt-30b", 1, False, False),
             ("mistralai/Mistral-7B-v0.1", 1, True, True),
             ("mistralai/Mixtral-8x7B-v0.1", 1, False, True),
             ("microsoft/phi-2", 1, False, False),
             ("meta-llama/Meta-Llama-3-8B", 1, True, False),
             ("meta-llama/Llama-2-7b-hf", 512, True, False),
-            ("meta-llama/Llama-2-7b-hf", 512, False, False),  # in some cases like TGI, reuse_cache isn't used
+            (
+                "meta-llama/Llama-2-7b-hf",
+                512,
+                False,
+                False,
+            ),  # in some cases like TGI, reuse_cache isn't used
             ("stabilityai/stablelm-2-12b", 1, False, False),
             ("codellama/CodeLlama-34b-hf", 1, True, False),
             ("bigcode/starcoder2-3b", 1, False, True),
@@ -46,7 +63,13 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("google/gemma-7b", 1, False, True),
             ("google/gemma-2-9b", 1, False, True),
             ("google/gemma-2-27b", 1, False, True),
-            pytest.param("state-spaces/mamba-130m-hf", 1536, False, False, marks=pytest.mark.skip("Deprecated")),
+            pytest.param(
+                "state-spaces/mamba-130m-hf",
+                1536,
+                False,
+                False,
+                marks=pytest.mark.skip("Deprecated"),
+            ),
             # ("Deci/DeciLM-7B", 1, False, False),
             ("Qwen/Qwen2-7B", 256, False, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, False),
@@ -69,19 +92,67 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048),
             ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128),
             ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048),
-            pytest.param("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, marks=pytest.mark.x4),
-            pytest.param("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, marks=pytest.mark.x4),
-            pytest.param("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, marks=pytest.mark.x4),
-            pytest.param("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, marks=pytest.mark.x8),
+            pytest.param(
+                "meta-llama/Llama-2-70b-hf",
+                4,
+                3042,
+                False,
+                128,
+                128,
+                marks=pytest.mark.x4,
+            ),
+            pytest.param(
+                "meta-llama/Llama-2-70b-hf",
+                4,
+                750,
+                False,
+                128,
+                2048,
+                marks=pytest.mark.x4,
+            ),
+            pytest.param(
+                "meta-llama/Llama-2-70b-hf",
+                4,
+                207,
+                False,
+                2048,
+                128,
+                marks=pytest.mark.x4,
+            ),
+            pytest.param(
+                "meta-llama/Llama-2-70b-hf",
+                8,
+                172,
+                False,
+                2048,
+                2048,
+                marks=pytest.mark.x8,
+            ),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048),
             # ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048),
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128),
-            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 768, True, 128, 128, marks=pytest.mark.x2),
+            pytest.param(
+                "mistralai/Mixtral-8x7B-v0.1",
+                2,
+                768,
+                True,
+                128,
+                128,
+                marks=pytest.mark.x2,
+            ),
             # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 128, 2048, marks=pytest.mark.x2),
             # pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 96, True, 2048, 128, marks=pytest.mark.x2),
-            pytest.param("mistralai/Mixtral-8x7B-v0.1", 2, 48, True, 2048, 2048, marks=pytest.mark.x2),
+            pytest.param(
+                "mistralai/Mixtral-8x7B-v0.1",
+                2,
+                48,
+                True,
+                2048,
+                2048,
+                marks=pytest.mark.x2,
+            ),
             ("microsoft/phi-2", 1, 1, True, 128, 128),
         ],
         "load_quantized_model_with_autogptq": [
@@ -89,6 +160,10 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
         ],
         "load_quantized_model_with_autoawq": [
             ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048),
+        ],
+        "load_quantized_model_with_bnb": [
+            ("hugging-quants/Meta-Llama-3.1-8B-BNB-NF4-BF16", 1, 1, False, 0, 20),
+            ("hugging-quants/Meta-Llama-3.1-70B-BNB-NF4-BF16", 1, 1, False, 0, 20),
         ],
         "deepspeed": [
             pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
@@ -141,6 +216,7 @@ else:
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
         "load_quantized_model_with_autoawq": [],
+        "load_quantized_model_with_bnb": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1),
         ],
@@ -166,6 +242,7 @@ def _test_text_generation(
     fp8: bool = False,
     load_quantized_model_with_autogptq: bool = False,
     load_quantized_model_with_autoawq: bool = False,
+    load_quantized_model_with_bnb: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -304,6 +381,8 @@ def _test_text_generation(
         command += ["--load_quantized_model_with_autogptq"]
     if load_quantized_model_with_autoawq:
         command += ["--load_quantized_model_with_autoawq"]
+    if load_quantized_model_with_bnb:
+        command += ["--load_quantized_model_with_bnb"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -324,7 +403,8 @@ def _test_text_generation(
             if measure_command is not None:
                 measure_command.append(f"--token {token.value}")
                 env_variables["QUANT_CONFIG"] = os.path.join(
-                    path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
+                    path_to_example_dir,
+                    "text-generation/quantization_config/maxabs_measure_include_outputs.json",
                 )
                 measure_command = [x for y in measure_command for x in re.split(pattern, y) if x]
                 print(f"\n\nMeasure Command to test: {' '.join(measure_command[:-2])}\n")
@@ -341,16 +421,19 @@ def _test_text_generation(
 
             if "Mixtral" in model_name:
                 env_variables["QUANT_CONFIG"] = os.path.join(
-                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant_mixtral.json"
+                    path_to_example_dir,
+                    "text-generation/quantization_config/maxabs_quant_mixtral.json",
                 )
             elif "falcon-180b" in model_name.lower():
                 env_variables["PT_HPU_DISABLE_ASYNC_COLLECTIVE"] = "1"
                 env_variables["QUANT_CONFIG"] = os.path.join(
-                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+                    path_to_example_dir,
+                    "text-generation/quantization_config/maxabs_quant.json",
                 )
             else:
                 env_variables["QUANT_CONFIG"] = os.path.join(
-                    path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+                    path_to_example_dir,
+                    "text-generation/quantization_config/maxabs_quant.json",
                 )
 
         command = [x for y in command for x in re.split(pattern, y) if x]
@@ -393,7 +476,12 @@ def _test_text_generation(
 
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, check_output", MODELS_TO_TEST["bf16_1x"])
 def test_text_generation_bf16_1x(
-    model_name: str, batch_size: int, reuse_cache: bool, check_output: bool, baseline, token
+    model_name: str,
+    batch_size: int,
+    reuse_cache: bool,
+    check_output: bool,
+    baseline,
+    token,
 ):
     _test_text_generation(
         model_name=model_name,
@@ -405,9 +493,13 @@ def test_text_generation_bf16_1x(
     )
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize(
-    "model_name, world_size, batch_size, reuse_cache, input_len, output_len", MODELS_TO_TEST["fp8"]
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
+    MODELS_TO_TEST["fp8"],
 )
 def test_text_generation_fp8(
     model_name: str,
@@ -434,7 +526,10 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
     MODELS_TO_TEST["load_quantized_model_with_autogptq"],
@@ -465,7 +560,10 @@ def test_text_generation_gptq(
     )
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize(
     "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
     MODELS_TO_TEST["load_quantized_model_with_autoawq"],
@@ -496,25 +594,82 @@ def test_text_generation_awq(
     )
 
 
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len",
+    MODELS_TO_TEST["load_quantized_model_with_bnb"],
+)
+def test_text_generation_bnb(
+    model_name: str,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    baseline,
+    token,
+):
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=False,
+        world_size=world_size,
+        torch_compile=True,
+        fp8=False,
+        load_quantized_model_with_bnb=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
 @pytest.mark.parametrize("model_name, world_size, batch_size", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, world_size: int, batch_size: int, baseline, token):
-    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=True,
+        world_size=world_size,
+        batch_size=batch_size,
+    )
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline, token):
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline, token):
     world_size = 8
-    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=True,
+        world_size=world_size,
+        torch_compile=True,
+    )
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize("model_name", MODELS_TO_TEST["distributed_tp"])
 def test_text_generation_distributed_tp(model_name: str, baseline, token):
     world_size = 8
@@ -542,11 +697,22 @@ def test_text_generation_contrastive_search(model_name: str, batch_size: int, re
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, contrastive_search=True)
 
 
-@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.skipif(
+    condition=bool("gaudi1" == OH_DEVICE_CONTEXT),
+    reason=f"Skipping test for {OH_DEVICE_CONTEXT}",
+)
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache", MODELS_TO_TEST["beam_search"])
 def test_text_generation_beam_search(model_name: str, batch_size: int, reuse_cache: bool, baseline, token):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3)
-    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache, num_beams=3, num_return_sequences=2)
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        batch_size,
+        reuse_cache,
+        num_beams=3,
+        num_return_sequences=2,
+    )
 
 
 class TextGenPipeline(TestCase):
