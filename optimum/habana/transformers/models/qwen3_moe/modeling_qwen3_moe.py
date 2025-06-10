@@ -19,16 +19,24 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
-import math
-import warnings
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
+from torch import nn
+
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
-from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    MoeCausalLMOutputWithPast,
+    MoeModelOutputWithPast,
+    QuestionAnsweringModelOutput,
+    SequenceClassifierOutputWithPast,
+    TokenClassifierOutput,
+)
 from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
 from transformers.models.qwen3_moe.modeling_qwen3_moe import (
     Qwen3MoeAttention,
@@ -40,13 +48,16 @@ from transformers.models.qwen3_moe.modeling_qwen3_moe import (
     Qwen3MoeSparseMoeBlock,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
+    logger,
 )
-from transformers.utils import logging
+from transformers.processing_utils import Unpack
 
+from ....distributed import parallel_state
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
@@ -71,37 +82,18 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
-logger = logging.get_logger(__name__)
+import habana_frameworks.torch.core as htcore
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         # keep the same implementation as Transformers v4.37.2
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
 def gaudi_qwen3moe_rmsnorm_forward(self, hidden_states):
-    """
-    Copied from MixtralRMSNorm.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-        - override RMSNorm with Habana fused RMSNorm
-    """
     if hidden_states.device.type == "hpu" and has_fused_rms_norm:
         # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
         if hidden_states.dtype != self.weight.dtype:
@@ -142,14 +134,6 @@ def gaudi_qwen3moe_repeat_kv(
     attention_mask: torch.Tensor,
     n_rep: int,
 ):
-    """
-    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-    - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
-    - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
-    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
-    The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
-    """
     batch, num_key_value_heads, kv_len, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
@@ -167,55 +151,6 @@ def gaudi_qwen3moe_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
-
-
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert self.inp_seq_len == inp_seq_len, (
-                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            )
-            self.cache.fill_(0)
-
-    @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
 #  FusedScaledDotProductAttention
@@ -257,6 +192,109 @@ class ModuleFusedSDPA(torch.nn.Module):
         )
 
 
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    attn_softmax_bf16: bool = False,
+    **kwargs,
+):
+    bsz, q_len = kwargs["input_shape"]
+    query_states, key_states, value_states, attention_mask = gaudi_qwen3moe_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    query_states = query_states * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
+    htcore.mark_step()
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+    else:
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
+
+    return attn_output, attn_weights
+
+
+class GaudiDistributedAttention(torch.nn.Module):
+    def __init__(
+        self, hpu_module_fsdpa: ModuleFusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8
+    ):
+        super().__init__()
+        self._hpu_module_fsdpa = hpu_module_fsdpa
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            from deepspeed.sequence.layer import DistributedAttention
+
+            self._hpu_module_fsdpa_distributed = DistributedAttention(
+                self._hpu_module_fsdpa, parallel_state.get_sequence_parallel_group(), 1, 2
+            )
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: torch.Tensor,
+        dropout_p: float,
+        is_casual,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths,
+        padding_side="left",
+    ):
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            return self._hpu_module_fsdpa_distributed(
+                query,
+                key,
+                value,
+                0,  # As the shape for inputs is [B, N, S, H]
+                None,
+                attn_mask,
+                dropout_p,
+                is_casual,
+                scale,
+                softmax_mode,
+                recompute_mode,
+                valid_sequence_lengths,
+                padding_side,
+            )
+        else:
+            return self._hpu_module_fsdpa(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_casual,
+                scale,
+                softmax_mode,
+                recompute_mode,
+                valid_sequence_lengths,
+                padding_side,
+            )
+
+
+def get_gaudi_distributed_attention(
+    fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed
+):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
+
+
 class GaudiQwen3MoeAttention(Qwen3MoeAttention):
     def __init__(self, config: Qwen3MoeConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -267,14 +305,13 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         self.v_cache = KVCache()
 
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
         self.fused_scaled_dot_product_attention = (
             ModuleFusedSDPA(
                 FusedSDPA,
-                scale=self.norm_factor,
+                scale=self.scaling,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
                 flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
@@ -282,10 +319,38 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
             if FusedSDPA
             else None
         )
+        self.fused_scaled_dot_product_attention_distributed = None
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            self.fused_scaled_dot_product_attention_distributed = (
+                GaudiDistributedAttention(
+                    self.fused_scaled_dot_product_attention,
+                    scale=self.scaling,
+                    attention_dropout=self.attention_dropout,
+                    enable_recompute=False,
+                    flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+                )
+                if FusedSDPA
+                else None
+            )
+
+        self.num_key_value_heads = config.num_key_value_heads
+
+    def get_k_proj_weight(self):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
+        if hasattr(self.k_proj, "qweight"):
+            return self.k_proj.qweight
+        return self.k_proj.weight
+
+    def get_k_proj_weight_dtype(self):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight.
+        Scales tensor gets the weight dtype."""
+        if hasattr(self.k_proj, "qweight"):
+            return self.k_proj.scales.dtype
+        return self.k_proj.weight.dtype
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        device = self.k_proj.weight.device
+        device = self.get_k_proj_weight().device
         dtype = self.config.torch_dtype
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
@@ -296,7 +361,7 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            _, _ = self.rotary_emb(self.get_k_proj_weight(), seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -315,13 +380,11 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -335,7 +398,6 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
-        Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
         - add new args token_idx
         - optimize KV cache
@@ -347,15 +409,13 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         - add new arg flash_attention_fast_softmax
         - add new arg num_virtual_tokens
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_norm(self.q_proj(hidden_states))
-        key_states = self.k_norm(self.k_proj(hidden_states))
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = self.q_norm(self.q_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+        key_states = self.k_norm(self.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -373,8 +433,25 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                     else:
                         kv_seq_len = past_key_value[0].shape[-2]
 
+        seq_len = kv_seq_len
+        if parallel_state.sequence_parallel_is_initialized():
+            seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
+
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
+        # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
+            position_ids = torch.arange(
+                kv_seq_len * parallel_state.get_sequence_parallel_rank(),
+                kv_seq_len * (parallel_state.get_sequence_parallel_rank() + 1),
+                dtype=torch.long,
+                device=query_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0)
+
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -418,8 +495,19 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
+        fused_scaled_dot_product_attention = get_gaudi_distributed_attention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
+        sliding_window = None
+        if (
+            self.config.use_sliding_window
+            and getattr(self.config, "sliding_window", None) is not None
+            and self.layer_idx >= self.config.max_window_layers
+        ):
+            sliding_window = self.config.sliding_window
 
         if use_flash_attention and FusedSDPA is not None:
+            attn_weights = None
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -468,45 +556,22 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                     )
 
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_qwen3moe_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-
-            query_states = query_states * self.norm_factor
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
-            htcore.mark_step()
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask.float()
-
-            if attn_softmax_bf16:
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-            else:
-                # upcast attention to fp32
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                    query_states.dtype
-                )
-            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                sliding_window=sliding_window,  # main diff with Llama
+                attn_softmax_bf16=attn_softmax_bf16,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(bsz, q_len, -1)
-
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
@@ -525,47 +590,38 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         return attn_output
 
 
-def gaudi_qwen3moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    - optimize expert forward, remove dynamic control and dynamic shape
-    """
-    batch_size, sequence_length, hidden_dim = hidden_states.shape
-    hidden_states = hidden_states.view(-1, hidden_dim)
+class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
+    def __init__(self, config: Qwen3MoeConfig):
+        super().__init__(config)
+        self.moe_intermediate_size = config.moe_intermediate_size
+        self.num_experts = config.num_experts
+        self.top_k = config.num_experts_per_tok
+        self.norm_topk_prob = config.norm_topk_prob
 
-    # router_logits: (batch * sequence_length, n_experts)
-    router_logits = self.gate(hidden_states)
-
-    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-
-    if self.norm_topk_prob:
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-    # we cast back to the input dtype
-    routing_weights = routing_weights.to(hidden_states.dtype)
-
-    if self.training:
-        final_hidden_states = torch.zeros(
-            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        # gating
+        self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
+        self.experts = nn.ModuleList(
+            [Qwen3MoeMLP(config, intermediate_size=config.moe_intermediate_size) for _ in range(self.num_experts)]
         )
 
-        padded_weights = torch.zeros(
-            (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
-        )
-        padded_weights.scatter_(-1, selected_experts, routing_weights)
-        padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
-        padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        - optimize expert forward, remove dynamic control and dynamic shape
+        """
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
 
-        # Loop over all available experts in the model and perform the computation on each expert
-        for expert_idx in range(self.num_experts):
-            expert_layer = self.experts[expert_idx]
-            padded_weight = padded_weights[expert_idx]
-            current_state_static = hidden_states.reshape(-1, hidden_dim)
-            current_hidden_states_static = (
-                expert_layer.pre_mlp_forward(current_state_static).reshape(-1, sequence_length, hidden_dim)
-                * padded_weight
-            )
-            final_hidden_states = final_hidden_states + current_hidden_states_static
-    else:
+        # router_logits: (batch * sequence_length, n_experts)
+        router_logits = self.gate(hidden_states)
+
+        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+
+        if self.norm_topk_prob:
+            routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
+
         experts_range = range(self.num_experts)
         w1_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
         w2_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
@@ -576,30 +632,23 @@ def gaudi_qwen3moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
             expert_routing_table=selected_experts,
             router_weights=routing_weights,
             w1=w1_list,
-            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+            w2=w3_list,
             w3=w2_list,
             permuted_weights=True,
             activation="silu",
             experts_min=0,
             experts_max=(self.num_experts - 1),
         )
-        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
+        htcore.mark_step()
 
-        if is_deepspeed_available():
+        if not self.training and is_deepspeed_available() and self.moe_intermediate_size != w1_list[0].size(0):
             from deepspeed import comm as dist
 
             if dist.is_initialized():
                 dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
-    shared_expert_output = self.shared_expert(hidden_states)
-
-    shared_expert_output = F.sigmoid(self.shared_expert_gate(hidden_states)) * shared_expert_output
-
-    shared_expert_output = shared_expert_output.reshape(-1, sequence_length, hidden_dim)
-
-    final_hidden_states = final_hidden_states + shared_expert_output
-
-    return final_hidden_states, router_logits
+        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
+        return final_hidden_states, router_logits
 
 
 class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
@@ -610,7 +659,7 @@ class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
         self.self_attn = GaudiQwen3MoeAttention(config=config, layer_idx=layer_idx)
 
         if config.num_experts > 0 and (layer_idx + 1) % config.decoder_sparse_step == 0:
-            self.mlp = Qwen3MoeSparseMoeBlock(config)
+            self.mlp = GaudiQwen3MoeSparseMoeBlock(config)
         else:
             self.mlp = GaudiQwen3MoeMLP(config, intermediate_size=config.intermediate_size)
 
@@ -649,17 +698,6 @@ class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
         num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-        The only differences are:
-        - add new args token_idx
-        - add new args attn_softmax_bf16
-        - add new args reuse_cache
-        - add new args use_flash_attention
-        - add new arg flash_attention_recompute
-        - add new arg flash_attention_causal_mask
-        - add new arg flash_attention_fast_softmax
-        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -673,6 +711,7 @@ class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -709,7 +748,7 @@ class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -806,7 +845,7 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -815,7 +854,6 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
@@ -828,7 +866,7 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-    ) -> Union[Tuple, MoeModelOutputWithPast]:
+    ) -> MoeModelOutputWithPast:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -849,7 +887,6 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -998,12 +1035,6 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
             next_cache = (
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
-        if not return_dict:
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
-                if v is not None
-            )
 
         return MoeModelOutputWithPast(
             last_hidden_state=hidden_states,
@@ -1036,7 +1067,7 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -1046,7 +1077,6 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -1062,7 +1092,7 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         **loss_kwargs,
-    ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
+    ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
@@ -1071,13 +1101,12 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: MoeModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -1087,7 +1116,6 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
@@ -1102,7 +1130,7 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
             num_virtual_tokens=num_virtual_tokens,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -1121,19 +1149,13 @@ class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
         aux_loss = None
         if output_router_logits:
             aux_loss = load_balancing_loss_func(
-                outputs.router_logits if return_dict else outputs[-1],
+                outputs.router_logits,
                 self.num_experts,
                 self.num_experts_per_tok,
                 attention_mask,
             )
             if labels is not None:
                 loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            if output_router_logits:
-                output = (aux_loss,) + output
-            return (loss,) + output if loss is not None else output
 
         return MoeCausalLMOutputWithPast(
             loss=loss,
