@@ -580,7 +580,7 @@ def main():
 
             timer = HabanaGenerationTime()
             timer.start()
-            print(f"Starting time is {timer.start_time * 1000}", flush=True)
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
 
@@ -774,6 +774,7 @@ def main():
             profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
+            print(f"Step4+ starting time is {timer.start_time * 1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:

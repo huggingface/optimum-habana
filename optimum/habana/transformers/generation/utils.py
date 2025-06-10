@@ -17,6 +17,7 @@
 import copy
 import inspect
 import math
+import time
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -2002,7 +2003,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 inc = iter(incrementor(bucket_size, cur_len))
             if bucket_size > 0:
                 assert "position_ids" not in model_kwargs, "Untested path"
-
+        greedy_first = True
         token_idx = model_kwargs.get("token_idx", None)
         top_k_ids = None
         if token_idx is not None:
@@ -2398,6 +2399,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
+            if greedy_first:
+                import habana_frameworks.torch.hpu as torch_hpu
+
+                torch_hpu.synchronize()
+                print(f"First Token time(greedy):{time.perf_counter() * 1000}")
+                greedy_first = False
+
             if (
                 not model_kwargs.get("pad_done", False)
                 and not model_kwargs.get("reuse_cache", False)
@@ -2589,6 +2597,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if profiler is not None:
             profiler.start()
 
+        sample_first = True
         if not bucket_internal:
             if bucket_size >= 0:
                 inc = iter(incrementor(bucket_size, cur_len))
@@ -2795,6 +2804,13 @@ class GaudiGenerationMixin(GenerationMixin):
             # This is needed to properly delete outputs.logits which may be very large for first iteration
             # Otherwise a reference to outputs is kept which keeps the logits alive in the next iteration
             del outputs
+
+            if sample_first:
+                import habana_frameworks.torch.hpu as torch_hpu
+
+                torch_hpu.synchronize()
+                print(f"First Token time(sample):{time.perf_counter() * 1000}")
+                sample_first = False
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
