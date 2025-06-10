@@ -1,4 +1,5 @@
-datasets>=1.14.0
-evaluate
+datasets >= 1.14.0, <= 2.19.2
+evaluate == 0.4.3
 numba==0.60.0
-librosa
+librosa == 0.10.2.post1
+
