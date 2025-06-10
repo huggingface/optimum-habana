@@ -118,6 +118,12 @@ def setup_parser(parser):
         help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
     )
     parser.add_argument(
+        "--dataset",
+        default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
+        type=str,
+        help="path of the dataset to run rouge evaluation and measurement for rouge",
+    )
+    parser.add_argument(
         "--column_name",
         default=None,
         type=str,
@@ -540,6 +546,7 @@ def main():
         per_sequence_profiler = disabled_profiler
         per_token_profiler = active_profiler
 
+    if args.dataset_name == "openorca" or args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
             ds = pd.read_pickle(args.mlcommons_dataset)
