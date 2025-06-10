@@ -31,8 +31,8 @@ INSTALL_REQUIRES = [
     "transformers >= 4.51.0, < 4.52.0",
     "optimum ~= 1.25",
     "torch",
-    "accelerate>=1.7.0",
-    "diffusers >= 0.32.0, < 0.32.1",
+    "accelerate @ git+https://github.com/huggingface/accelerate.git",
+    "diffusers >= 0.33.1, < 0.33.2",
     "huggingface_hub >= 0.24.7",
     "sentence-transformers == 3.3.1",
 ]
