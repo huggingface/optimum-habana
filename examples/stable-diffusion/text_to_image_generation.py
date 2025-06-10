@@ -318,8 +318,8 @@ def main():
 
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
-    sd3_models = ["stable-diffusion-3"]
-    flux_models = ["FLUX.1"]
+    sd3_models = ["stable-diffusion-3", "sd3"]
+    flux_models = ["FLUX.1", "flux"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
     flux = True if any(model in args.model_name_or_path for model in flux_models) else False
@@ -329,7 +329,7 @@ def main():
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
 
-    if flux or args.scheduler == "flow_match_euler_discrete":
+    if flux or sd3 or args.scheduler == "flow_match_euler_discrete":
         scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
@@ -644,7 +644,10 @@ def main():
         lines = [line.strip() for line in lines]
         args.prompts = lines
 
-    # Generate Images using a Stable Diffusion pipeline
+    # Generate images using auto-selected diffuser pipeline
+    logger.info(
+        f"Generating images using pipeline {pipeline.__class__.__name__} with scheduler {pipeline.scheduler.__class__.__name__}"
+    )
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
             if args.use_compel:

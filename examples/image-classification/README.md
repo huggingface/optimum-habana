@@ -33,7 +33,7 @@ pip install -r requirements.txt
 Here we show how to fine-tune a Vision Transformer (`ViT`) on Cifar10:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python run_image_classification.py \
+python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
@@ -94,7 +94,7 @@ root/cat/[...]/asd932_.png
 In other words, you need to organize your images in subfolders, based on their class. You can then run the script like this:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python run_image_classification.py \
+python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --train_dir <path-to-train-root> \
     --output_dir /tmp/outputs/ \
@@ -176,7 +176,7 @@ $ huggingface-cli login
 3. When running the script, pass the following arguments:
 
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=1 python run_image_classification.py \
     --push_to_hub \
     --push_to_hub_model_id <name-your-model> \
     ...
@@ -188,7 +188,7 @@ python run_image_classification.py \
 Here is how you would fine-tune ViT on Cifar10 using 8 HPUs:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
@@ -230,7 +230,7 @@ For Swin, you need to change/add the following arguments:
 Similarly to multi-HPU training, here is how you would fine-tune ViT on Cifar10 using 8 HPUs with DeepSpeed:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
@@ -288,7 +288,7 @@ To run only inference, you can start from the commands above and you just have t
 
 For instance, you can run inference with ViT on Cifar10 on 1 Gaudi card with the following command:
 ```bash
-python run_image_classification.py \
+PT_HPU_LAZY_MODE=1 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
@@ -312,7 +312,7 @@ This directory contains an example script that demonstrates using FastViT with g
 ### Single-HPU inference
 
 ```bash
-python3 run_timm_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_timm_example.py \
     --model_name_or_path "timm/fastvit_t8.apple_in1k" \
     --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png" \
     --warmup 3 \

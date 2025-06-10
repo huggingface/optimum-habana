@@ -92,7 +92,7 @@ To be able to run gated models like [Llama-2 7B](https://huggingface.co/meta-lla
 
 Run single Gaudi device (HPU) inference with Llama-2 7B model:
 ```bash
-python run_generation.py \
+PT_HPU_LAZY_MODE=1 python run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --use_hpu_graphs \
     --use_kv_cache \
@@ -121,7 +121,7 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 With DeepSpeed successfully installed we can now run a distributed GPT-2 inference on an 8 HPU system as follows:
 ```bash
 number_of_devices=8 \
-python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
 run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
     --use_hpu_graphs \
@@ -148,7 +148,7 @@ pip install -r requirements.txt
 
 To train GPT-2 model on a single card, use:
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
@@ -167,7 +167,7 @@ python run_clm.py \
 To train GPT-2 model using multi-card Gaudi system:
 ```bash
 number_of_devices=8 \
-python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size ${number_of_devices} \
 run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
@@ -200,7 +200,7 @@ pip install -r requirements.txt
 
 Here is an example of running Stable Diffusion text to image inference on Gaudi:
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path CompVis/stable-diffusion-v1-4 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
