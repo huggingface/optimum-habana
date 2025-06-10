@@ -634,6 +634,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 warmup=profiling_warmup_steps,
                 active=profiling_steps,
                 record_shapes=False,
+                name="stable_diffusion",
             )
 
             hb_profiler.start()
