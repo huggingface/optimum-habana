@@ -25,27 +25,19 @@ from accelerate.logging import get_logger
 from accelerate.utils import DistributedType
 
 from ..distributed import parallel_state
-from .utils import convert_model as gaudi_convert_model
+from .utils.dataclasses import GaudiTERecipeKwargs
+from .utils.transformer_engine import convert_model, get_fp8_recipe
+
+
+accelerate.utils.transformer_engine.convert_model = convert_model
+accelerate.accelerator.convert_model = convert_model
+accelerate.utils.convert_model = convert_model
+
+accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
+accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
 logger = get_logger(__name__)
-
-
-def patch_convert_model(func):
-    """
-    A decorator to patch the convert_model function in accelerate to use Gaudi specific conversion.
-    This is used to avoid the need to revert the patch after the function is called.
-    """
-
-    def wrapper(self, *args, **kwargs):
-        original_convert_model = accelerate.utils.convert_model
-        accelerate.utils.convert_model = gaudi_convert_model
-        result = func(self, *args, **kwargs)
-        accelerate.utils.convert_model = original_convert_model
-
-        return result
-
-    return wrapper
 
 
 class GaudiAccelerator(Accelerator):
@@ -67,7 +59,12 @@ class GaudiAccelerator(Accelerator):
         self.compiled_autograd_enabled = compiled_autograd_enabled
         self.native_amp = self.native_amp and self.force_autocast
 
-    @patch_convert_model
+        # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
+        # we can clean this up later when the upstream accelerate is fixed
+        self.fp8_recipe = None
+        if self.has_fp8_handler:
+            self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
+
     # TODO: Remove if ever Gaudi specific fp8 conversion is upstreamed in accelerate
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         if self.distribution_strategy == "fast_ddp":
@@ -75,11 +72,10 @@ class GaudiAccelerator(Accelerator):
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=True)
         else:
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=evaluation_mode)
+
         return model
 
-    @patch_convert_model
-    # TODO: Remove if ever Gaudi specific fp8 conversion is upstreamed in accelerate
-    # and compiled_autograd_enabled is upstreamed in deepspeed
+    # INFO: this adds support for autograd compilation to the deepspeed engine
     def _prepare_deepspeed(self, *args):
         orig_num_models = len(self._models)
         prepared_deepspeed = super()._prepare_deepspeed(*args)

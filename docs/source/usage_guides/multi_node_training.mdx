@@ -92,7 +92,7 @@ We are going to use the [causal language modeling example which is given in the 
 
 The first step consists in training the model on several nodes with this command:
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --hostfile path_to_hostfile --use_deepspeed run_clm.py \
     --model_name_or_path gpt2-xl \
     --gaudi_config_name Habana/gpt2 \
@@ -115,7 +115,7 @@ Evaluation is not performed in the same command because we do not recommend perf
 Once the model is trained, we can evaluate it with the following command.
 The argument `--model_name_or_path` should be equal to the argument `--output_dir` of the previous command.
 ```bash
-python run_clm.py \
+PT_HPU_LAZY_MODE=1 python run_clm.py \
     --model_name_or_path /tmp/gpt2_xl_multi_node \
     --gaudi_config_name Habana/gpt2 \
     --dataset_name wikitext \

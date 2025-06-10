@@ -738,7 +738,7 @@ class GaudiTrainer(Trainer):
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
 
             # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
-            if self.accelerator.state.mixed_precision == "fp8":
+            if self.accelerator.fp8_enabled:
                 FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
@@ -1567,8 +1567,8 @@ class GaudiTrainer(Trainer):
 
         # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
         # Currently FP8 is enabled only for training.
-        if self.accelerator.state.mixed_precision == "fp8" and self.model.training:
-            ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
+        if self.accelerator.fp8_enabled and self.model.training:
+            ctx_manager = FP8ContextWrapper(ctx_manager, fp8_recipe=self.accelerator.fp8_recipe)
 
         return ctx_manager
 
@@ -1625,7 +1625,7 @@ class GaudiTrainer(Trainer):
             kwargs["scale_wrt_gas"] = False
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
-            assert not (self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing), (
+            assert not (self.accelerator.fp8_enabled and self.args.gradient_checkpointing), (
                 "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             )
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
@@ -1636,12 +1636,12 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss, **kwargs)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            if self.accelerator.state.mixed_precision == "fp8" and self.args.gradient_checkpointing:
+            if self.accelerator.fp8_enabled and self.args.gradient_checkpointing:
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
                 # the backward is run in `fp8_autocast` context
-                with FP8ContextWrapper.create_fp8_context(self.accelerator.fp8_recipe_handler):
+                with FP8ContextWrapper.create_fp8_context(fp8_recipe=self.accelerator.fp8_recipe):
                     self.accelerator.backward(loss, **kwargs)
             else:
                 self.accelerator.backward(loss, **kwargs)
