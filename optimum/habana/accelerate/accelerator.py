@@ -15,47 +15,37 @@
 
 from __future__ import annotations
 
-import contextlib
 import functools
 import math
 import os
-import sys
-import warnings
-from collections import OrderedDict
-from contextlib import contextmanager
 from dataclasses import make_dataclass
 from types import MethodType
 
 import torch
 from accelerate import Accelerator
+from accelerate.accelerator import _split_batches
+from accelerate.data_loader import prepare_data_loader
 from accelerate.logging import get_logger
 from accelerate.scheduler import AcceleratedScheduler
-from accelerate.state import GradientState
-from accelerate.tracking import GeneralTracker, filter_trackers
+from accelerate.tracking import GeneralTracker
 from accelerate.utils import (
-    AutocastKwargs,
     DataLoaderConfiguration,
     DeepSpeedPlugin,
-    DistributedDataParallelKwargs,
     DistributedType,
+    DynamoBackend,
+    FullyShardedDataParallelPlugin,
     GradientAccumulationPlugin,
-    GradScalerKwargs,
-    InitProcessGroupKwargs,
     KwargsHandler,
     LoggerType,
     MegatronLMPlugin,
     PrecisionType,
-    ProfileKwargs,
     ProjectConfiguration,
     RNGType,
-    check_os_kernel,
+    TorchDynamoPlugin,
+    TorchTensorParallelPlugin,
     convert_outputs_to_fp32,
     is_deepspeed_available,
-    is_torch_version,
-    parse_choice_from_env,
 )
-from accelerate.utils.constants import FSDP_PYTORCH_VERSION
-from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -71,33 +61,43 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
-from .data_loader import gaudi_prepare_data_loader
-from .state import GaudiAcceleratorState, GaudiPartialState
-from .utils import (
-    GaudiDistributedType,
-    GaudiDynamoBackend,
-    GaudiFP8RecipeKwargs,
-    GaudiFullyShardedDataParallelPlugin,
-    GaudiTorchDynamoPlugin,
-    convert_model,
-    get_fp8_recipe,
-)
+
+import accelerate.utils.transformer_engine
+
+from .utils.dataclasses import GaudiTERecipeKwargs
+from .utils.transformer_engine import convert_model, get_fp8_recipe
+
+
+accelerate.utils.transformer_engine.convert_model = convert_model
+accelerate.accelerator.convert_model = convert_model
+accelerate.utils.convert_model = convert_model
+
+accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
+accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
 logger = get_logger(__name__)
 
-# Sentinel values for defaults
-_split_batches = object()
-_dispatch_batches = object()
-_even_batches = object()
-_use_seedable_sampler = object()
+
+def compile_regions(model, compile_kwargs):
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            module = torch.compile(module, **compile_kwargs)
+            module.__dict__.pop("_parameters", None)
+            setattr(model, name, module)
+    else:
+        if model._modules:  # If model has submodules, recurse and reassign
+            for name, module in model.named_children():
+                compiled_module = compile_regions(module, compile_kwargs)
+                if compiled_module is not None:  # Only reassign if something is returned
+                    setattr(model, name, compiled_module)
+        else:  # Leaf node
+            model = torch.compile(model, **compile_kwargs)
+            model.__dict__.pop("_parameters", None)
+            return model
 
 
 class GaudiAccelerator(Accelerator):
-    """
-    Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/accelerator.py#L145
-    """
-
     def __init__(
         self,
         device_placement: bool = True,
@@ -106,255 +106,71 @@ class GaudiAccelerator(Accelerator):
         gradient_accumulation_steps: int = 1,
         cpu: bool = False,
         dataloader_config: DataLoaderConfiguration | None = None,
-        deepspeed_plugin: DeepSpeedPlugin | None = None,
-        fsdp_plugin: GaudiFullyShardedDataParallelPlugin | None = None,
+        deepspeed_plugin: DeepSpeedPlugin | dict[str, DeepSpeedPlugin] | None = None,
+        fsdp_plugin: FullyShardedDataParallelPlugin | None = None,
+        torch_tp_plugin: TorchTensorParallelPlugin | None = None,
         megatron_lm_plugin: MegatronLMPlugin | None = None,
         rng_types: list[str | RNGType] | None = None,
         log_with: str | LoggerType | GeneralTracker | list[str | LoggerType | GeneralTracker] | None = None,
         project_dir: str | os.PathLike | None = None,
         project_config: ProjectConfiguration | None = None,
         gradient_accumulation_plugin: GradientAccumulationPlugin | None = None,
-        dispatch_batches: bool | None = _dispatch_batches,
-        even_batches: bool = _even_batches,
-        use_seedable_sampler: bool = _use_seedable_sampler,
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
-        dynamo_backend: GaudiDynamoBackend | str | None = None,
-        dynamic: bool | None = None,
-        distribution_strategy: str = None,
+        dynamo_backend: DynamoBackend | str | None = None,
+        dynamo_plugin: TorchDynamoPlugin | None = None,
+        deepspeed_plugins: DeepSpeedPlugin | dict[str, DeepSpeedPlugin] | None = None,
+        # TODO: remove these when the features are upstream or removed
         force_autocast: bool = False,
+        distribution_strategy: str = None,
         use_regional_compilation: bool | None = None,
         compiled_autograd_enable: bool = False,
     ):
-        self.trackers = []
-        self.mpu = parallel_state
-        if project_config is not None:
-            self.project_configuration = project_config
-        else:
-            self.project_configuration = ProjectConfiguration(project_dir=project_dir)
-        if project_dir is not None and self.project_dir is None:
-            self.project_configuration.set_directories(project_dir)
-        if mixed_precision is not None:
-            mixed_precision = str(mixed_precision)
-            if mixed_precision not in PrecisionType:
-                raise ValueError(
-                    f"Unknown mixed_precision mode: {mixed_precision}. Choose between {PrecisionType.list()}"
-                )
-            elif mixed_precision == "fp16":
-                raise ValueError("fp16 is not supported on Habana Gaudi.")
-
-        dynamo_plugin = (
-            GaudiTorchDynamoPlugin() if dynamo_backend is None else GaudiTorchDynamoPlugin(backend=dynamo_backend)
-        )
-
-        if deepspeed_plugin is None:  # init from env variables
-            deepspeed_plugin = (
-                DeepSpeedPlugin() if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" else None
-            )
-        else:
-            if not isinstance(deepspeed_plugin, DeepSpeedPlugin):
-                raise TypeError("`deepspeed_plugin` must be an `accelerate.utils.DeepSpeedPlugin` object.")
-            os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"  # use DeepSpeed if plugin is provided
-        if deepspeed_plugin:
-            if not is_deepspeed_available():
-                raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0`."
-                )
-
-            mixed_precision = (
-                os.environ.get("ACCELERATE_MIXED_PRECISION", "no") if mixed_precision is None else mixed_precision
-            )
-            deepspeed_plugin.set_mixed_precision(mixed_precision)
-            deepspeed_plugin.set_deepspeed_weakref()
-
-        if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" or isinstance(
-            fsdp_plugin, GaudiFullyShardedDataParallelPlugin
-        ):
-            import importlib.metadata
-
-            torch_version = importlib.metadata.version("torch")
-            torch_version = torch_version[5:]
-            if is_torch_version("<", FSDP_PYTORCH_VERSION + torch_version):
-                raise ValueError(f"FSDP requires PyTorch >= {FSDP_PYTORCH_VERSION}")
-
-        if fsdp_plugin is None:  # init from env variables
-            fsdp_plugin = (
-                GaudiFullyShardedDataParallelPlugin()
-                if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true"
-                else None
-            )
-        else:
-            if not isinstance(fsdp_plugin, GaudiFullyShardedDataParallelPlugin):
-                raise TypeError("`fsdp_plugin` must be a GaudiFullyShardedDataParallelPlugin object.")
-            os.environ["ACCELERATE_USE_FSDP"] = "true"  # use FSDP if plugin is provided
-
-        # Kwargs handlers
-        self.ddp_handler = None
-        self.scaler_handler = None
-        self.init_handler = None
-        self.fp8_recipe_handler = None
-        self.autocast_handler = None
-        self.profile_handler = None
-        self.has_lomo_optimizer = False
-
-        if kwargs_handlers is not None:
-            for handler in kwargs_handlers:
-                assert isinstance(handler, KwargsHandler), (
-                    f"Unsupported kwargs handler passed: {handler}, must be one that inherits `accelerate.utils.KwargsHandler`."
-                )
-                if isinstance(handler, DistributedDataParallelKwargs):
-                    if self.ddp_handler is not None:
-                        raise ValueError("You can only pass one `DistributedDataParallelKwargs` in `kwargs_handler`.")
-                    else:
-                        self.ddp_handler = handler
-                elif isinstance(handler, GradScalerKwargs):
-                    if self.scaler_handler is not None:
-                        raise ValueError("You can only pass one `GradScalerKwargs` in `kwargs_handler`.")
-                    else:
-                        self.scaler_handler = handler
-                elif isinstance(handler, InitProcessGroupKwargs):
-                    if self.init_handler is not None:
-                        raise ValueError("You can only pass one `InitProcessGroupKwargs` in `kwargs_handler`.")
-                    else:
-                        self.init_handler = handler
-                elif isinstance(handler, GaudiFP8RecipeKwargs):
-                    if self.fp8_recipe_handler is not None:
-                        raise ValueError("You can only pass one `GaudiFP8RecipeKwargs` in `kwargs_handler`.")
-                    else:
-                        self.fp8_recipe_handler = handler
-                elif isinstance(handler, AutocastKwargs):
-                    if self.autocast_handler is not None:
-                        raise ValueError("You can only pass one `AutocastKwargs` in `kwargs_handler`.")
-                    else:
-                        self.autocast_handler = handler
-                elif isinstance(handler, ProfileKwargs):
-                    if self.profile_handler is not None:
-                        raise ValueError("You can only pass one `ProfileKwargs` in `kwargs_handler`.")
-                    else:
-                        self.profile_handler = handler
-
-        kwargs = self.init_handler.to_kwargs() if self.init_handler is not None else {}
-        self.state = GaudiAcceleratorState(
-            mixed_precision=mixed_precision,
-            cpu=cpu,
-            dynamo_plugin=dynamo_plugin,
-            deepspeed_plugin=deepspeed_plugin,
-            fsdp_plugin=fsdp_plugin,
-            megatron_lm_plugin=megatron_lm_plugin,
-            _from_accelerator=True,
-            **kwargs,
-        )
-
-        self.delayed_fp8_autocast = False
-        if self.fp8_recipe_handler is not None:
-            # We already check if FP8 is available during `self.state`
-            if self.state.mixed_precision != "fp8":
-                raise ValueError("Passing in a `FP8RecipeKwargs` object requires setting `mixed_precision='fp8'`.")
-            self.delayed_fp8_autocast = self.fp8_recipe_handler.backend == "TE" and self.distributed_type in (
-                DistributedType.MULTI_GPU,
-                DistributedType.FSDP,
-            )
-
-        if self.state.is_fp8_enabled:
-            if self.fp8_recipe_handler is None:
-                self.fp8_recipe_handler = GaudiFP8RecipeKwargs()
-            # Handling FP8 recipe creation in init since both `prepare_model` and `_prepare_deepspeed` require it.
-            # (Base accelerator handles this in `prepare_model` function)
-            self.fp8_recipe_handler = get_fp8_recipe(self.fp8_recipe_handler)
-
-        trackers = filter_trackers(log_with, self.logging_dir)
-        if len(trackers) < 1 and log_with is not None:
-            warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")
-        self.log_with = trackers
-
-        if (
-            (mixed_precision != "bf16")
-            and getattr(self.state, "downcast_bfloat", False)
-            and (self.state.distributedType != DistributedType.TPU)
-        ):
-            raise ValueError("Can only use `downcast_bf16` when using `mixed_precision='bf16'` and on a TPU")
-
-        if gradient_accumulation_plugin is not None:
-            if gradient_accumulation_steps != 1:
-                raise ValueError(
-                    "You can only pass one of `gradient_accumulation_steps` and `gradient_accumulation_plugin`. Please only pass in the created `GradientAccumulationPlugin` object."
-                )
-        else:
-            gradient_accumulation_steps = int(
-                parse_choice_from_env("ACCELERATE_GRADIENT_ACCUMULATION_STEPS", gradient_accumulation_steps)
-            )
-            gradient_accumulation_plugin = GradientAccumulationPlugin(num_steps=gradient_accumulation_steps)
-        self.gradient_state = GradientState(
-            gradient_accumulation_plugin=gradient_accumulation_plugin,
-        )
-
-        self.device_placement = device_placement
-        if dataloader_config is None:
-            dataloader_config = DataLoaderConfiguration()
-        self.dataloader_config = dataloader_config
-        # Deal with deprecated args
-        # TODO: Remove in v1.0.0
-        deprecated_dl_args = {}
-        if dispatch_batches is not _dispatch_batches:
-            deprecated_dl_args["dispatch_batches"] = dispatch_batches
-            self.dataloader_config.dispatch_batches = dispatch_batches
-        if split_batches is not _split_batches:
-            deprecated_dl_args["split_batches"] = split_batches
-            self.dataloader_config.split_batches = split_batches
-        if even_batches is not _even_batches:
-            deprecated_dl_args["even_batches"] = even_batches
-            self.dataloader_config.even_batches = even_batches
-        if use_seedable_sampler is not _use_seedable_sampler:
-            deprecated_dl_args["use_seedable_sampler"] = use_seedable_sampler
-            self.dataloader_config.use_seedable_sampler = use_seedable_sampler
-        if len(deprecated_dl_args) > 0:
-            values = ", ".join([f"{k}={v}" for k, v in deprecated_dl_args.items()])
-            warnings.warn(
-                f"Passing the following arguments to `Accelerator` is deprecated and will be removed in version 1.0 of Accelerate: {deprecated_dl_args.keys()}. "
-                "Please pass an `accelerate.DataLoaderConfiguration` instead: \n"
-                f"dataloader_config = DataLoaderConfiguration({values})",
-                FutureWarning,
-            )
-        self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
-        self.dynamic = dynamic
         self.use_regional_compilation = use_regional_compilation
         self.compiled_autograd_enable = compiled_autograd_enable
-
-        # Mixed precision attributes
-        self.scaler = None
-        self.native_amp = self.state.mixed_precision == "bf16"
-
-        # Start of internal step tracking
-        self.step = 0
-
-        # Internal references to the training objects
-        self._optimizers = []
-        self._models = []
-        self._schedulers = []
-        self._dataloaders = []
-        self._custom_objects = []
-
-        # Hooks
-        self._load_model_state_pre_hook = OrderedDict()
-        self._save_model_state_pre_hook = OrderedDict()
-
-        # RNG Types
-        self.rng_types = rng_types
-        if self.rng_types is None:
-            self.rng_types = ["generator"]
-
-        # Set a flag tensor for early stopping and other breakpoints
-        self.flag_tensor = None
-
-        self._distribution_strategy = distribution_strategy
-
+        self.distribution_strategy = distribution_strategy
         self.force_autocast = force_autocast
+        self.mpu = parallel_state
 
-        check_os_kernel()
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
+        # it will be fixed in upstream accelerate
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
 
-    @property
-    def use_fp16(self):
-        raise ValueError("fp16 is not supported on Habana Gaudi.")
+        super().__init__(
+            device_placement=device_placement,
+            split_batches=split_batches,
+            mixed_precision=mixed_precision,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            cpu=cpu,
+            dataloader_config=dataloader_config,
+            deepspeed_plugin=deepspeed_plugin,
+            fsdp_plugin=fsdp_plugin,
+            torch_tp_plugin=torch_tp_plugin,
+            megatron_lm_plugin=megatron_lm_plugin,
+            rng_types=rng_types,
+            log_with=log_with,
+            project_dir=project_dir,
+            project_config=project_config,
+            gradient_accumulation_plugin=gradient_accumulation_plugin,
+            step_scheduler_with_optimizer=step_scheduler_with_optimizer,
+            kwargs_handlers=kwargs_handlers,
+            dynamo_backend=dynamo_backend,
+            dynamo_plugin=dynamo_plugin,
+            deepspeed_plugins=deepspeed_plugins,
+        )
+
+        # This attribute works as a single source of truth about fp8 usage with the accelerator.
+        # it will be added in upstream accelerate
+        self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+
+        # will be fixed in upstream accelerate
+        self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
+        # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
+        # we can clean this up later when the upstream accelerate is fixed
+        self.fp8_recipe = None
+        if self.has_fp8_handler:
+            self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
@@ -383,7 +199,7 @@ class GaudiAccelerator(Accelerator):
         """
         if device_placement is None:
             device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
-            if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if not evaluation_mode and self.distributed_type == DistributedType.MULTI_HPU:
                 device_placement = None
         self._models.append(model)
 
@@ -410,8 +226,8 @@ class GaudiAccelerator(Accelerator):
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
 
-        if self.state.is_fp8_enabled:
-            model = convert_model(model, _minimize_memory=GaudiPartialState().minimize_memory)
+        if self.fp8_enabled:
+            model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -444,13 +260,15 @@ class GaudiAccelerator(Accelerator):
         elif device_placement and not self.verify_device_map(model):
             model = model.to(self.device)
         if not evaluation_mode:
-            if self.distributed_type == GaudiDistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
+            ###############################################################################################################
+            if self.distributed_type == DistributedType.MULTI_HPU and self.distribution_strategy != "fast_ddp":
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
                     if self.ddp_handler is not None:
                         self.ddp_handler.register_comm_hook(model)
-            elif self.distributed_type == GaudiDistributedType.FSDP:
+            ###############################################################################################################
+            elif self.distributed_type == DistributedType.FSDP:
                 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 
                 # Check if the model is already a FSDP model due to `Manual Wrapping` and if so,
@@ -516,11 +334,11 @@ class GaudiAccelerator(Accelerator):
                     for module in FSDP.fsdp_modules(model):
                         # Referencing DeepSpeed Zero3
                         # - in Init, params are converted to 16bit while partitioning.
-                        # - in accelerator.prepare, deepspeed.initalize is called to:
-                        #   * creates the DeepSpeeedEngine.
+                        # - in accelerator.prepare, deepspeed.initialize is called to:
+                        #   * creates the DeepSpeedEngine.
                         #   * since zero_optimization() is True , calls engine._configure_zero_optimizer.
                         #
-                        # Inside the DeepSpeed Zero3 optimizer configuration, which initalizes
+                        # Inside the DeepSpeed Zero3 optimizer configuration, which initializes
                         # DeepSpeedZeroOptimizer_Stage3, during which:
                         #   * trainable_param_groups are obtained from the attached optimizer
                         #     (already partitioned in 16bit).
@@ -574,36 +392,17 @@ class GaudiAccelerator(Accelerator):
                     del self._models[-2]
                 self._models[-1] = model
         # torch.compile should be called last and only if the model isn't already compiled.
-        if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
-            if self.dynamic is not None:
-                model = torch.compile(model, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
+        if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
+            compile_kwargs = self.state.dynamo_plugin.to_kwargs()
+            ############################################################################################################
+            if self.use_regional_compilation:
+                compile_regions(model, compile_kwargs)
             else:
-                model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+                model = torch.compile(model, **compile_kwargs)
+            ############################################################################################################
         return model
 
-    def compile_regions(self, model):
-        if isinstance(model, torch.nn.ModuleList):
-            for name, module in model.named_children():
-                if self.dynamic is not None:
-                    module = torch.compile(module, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
-                else:
-                    module = torch.compile(module, **self.state.dynamo_plugin.to_kwargs())
-                module.__dict__.pop("_parameters", None)
-                setattr(model, name, module)
-        else:
-            if model._modules:  # If model has submodules, recurse and reassign
-                for name, module in model.named_children():
-                    compiled_module = self.compile_regions(module)
-                    if compiled_module is not None:  # Only reassign if something is returned
-                        setattr(model, name, compiled_module)
-            else:  # Leaf node
-                if self.dynamic is not None:
-                    compiled_model = torch.compile(model, dynamic=self.dynamic, **self.state.dynamo_plugin.to_kwargs())
-                else:
-                    compiled_model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
-                compiled_model.__dict__.pop("_parameters", None)
-                return compiled_model  # Return compiled leaf for reassignment
-
+    # TODO: Remove when compile_regions is removed
     def _prepare_deepspeed(self, *args):
         import deepspeed
 
@@ -613,8 +412,8 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else convert_model(obj, _minimize_memory=GaudiPartialState().minimize_memory)
-            if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
+            else convert_model(obj)
+            if isinstance(obj, torch.nn.Module) and self.fp8_enabled
             else obj
             for obj in args
         ]
@@ -807,16 +606,18 @@ class GaudiAccelerator(Accelerator):
                 os.environ["DEEPSPEED_USE_HPU"] = "true"
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
-            if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
-                kwargs["model"]
-            ):
+            if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
+                compile_kwargs = self.state.dynamo_plugin.to_kwargs()
+                ###############################################################################################################
                 if self.use_regional_compilation:
-                    self.compile_regions(engine.module)
+                    compile_regions(engine.module, compile_kwargs)
                 else:
                     engine.compile(
-                        compile_kwargs={"dynamic": self.dynamic},
+                        backend=compile_kwargs.pop("backend"),
+                        compile_kwargs=compile_kwargs,
                         compiled_autograd_enabled=self.compiled_autograd_enable,
                     )
+                ###############################################################################################################
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)
             if scheduler is not None:
@@ -840,18 +641,22 @@ class GaudiAccelerator(Accelerator):
                 ):
                     result[i] = scheduler
             # pointing for deepspeed_engine_wrapped.backward()
-            self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
+            if self.deepspeed_engine_wrapped is None:
+                self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
+            else:
+                logger.warning(
+                    "A wrapped DeepSpeed engine reference is currently tied for this `Accelerator()` instance. "
+                    "If you want to call `accelerator.backward()` referencing a new model/engine, "
+                    "please create a separate `Accelerator()` instance and call `accelerator.prepare()` on it."
+                )
             self._models.append(engine)
             if optimizer is not None:
                 self._optimizers.append(optimizer)
             if scheduler is not None:
                 self._schedulers.append(scheduler)
-            if len(self._models) > 1:
-                raise AssertionError(
-                    "You can't use same `Accelerator()` instance with multiple models when using DeepSpeed"
-                )
         return tuple(result)
 
+    # TODO: Remove when accelerate supports Sequence/Context parallelism
     def prepare_data_loader(
         self, data_loader: torch.utils.data.DataLoader, device_placement=None, slice_fn_for_dispatch=None
     ):
@@ -887,12 +692,34 @@ class GaudiAccelerator(Accelerator):
                 self._dataloaders.append(data_loader)
             return data_loader
         if device_placement is None:
-            device_placement = self.device_placement
-        prepared_data_loader = gaudi_prepare_data_loader(
+            device_placement = self.device_placement if self.distributed_type != DistributedType.XLA else False
+
+        ###############################################################################################################
+        # Patching the num_processes and process_index for sequence parallelism
+        num_processes = self.num_processes
+        process_index = self.process_index
+        if num_processes is None:
+            num_processes = self.state.num_processes
+        if process_index is None:
+            process_index = self.state.process_index
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            num_processes = int(num_processes / parallel_state.get_sequence_parallel_world_size())
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            process_index = int(process_index / parallel_state.get_sequence_parallel_world_size())
+        ###############################################################################################################
+
+        # To avoid training crash issue SW-207456 when num_worker > 0 in multi-node training tasks
+        if int(os.environ.get("WORLD_SIZE", 1)) > 8 and data_loader.num_workers > 0:
+            import multiprocessing
+
+            multiprocessing_context = multiprocessing.get_context("spawn")
+            data_loader.multiprocessing_context = multiprocessing_context
+
+        prepared_data_loader = prepare_data_loader(
             data_loader,
             self.device,
-            num_processes=self.num_processes,
-            process_index=self.process_index,
+            num_processes=num_processes,
+            process_index=process_index,
             split_batches=self.split_batches,
             put_on_device=device_placement,
             rng_types=self.rng_types.copy(),
@@ -900,128 +727,17 @@ class GaudiAccelerator(Accelerator):
             even_batches=self.even_batches,
             slice_fn_for_dispatch=slice_fn_for_dispatch,
             use_seedable_sampler=self.use_seedable_sampler,
+            data_seed=self.dataloader_config.data_seed,
             non_blocking=self.non_blocking,
+            use_stateful_dataloader=self.use_stateful_dataloader,
+            torch_device_mesh=self.state.torch_tp_plugin.torch_device_mesh if self.state.torch_tp_plugin else None,
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader
 
-    def gather(self, tensor):
-        """
-        Gather the values in *tensor* across all processes and concatenate them on the first dimension. Useful to
-        regroup the predictions from all processes when doing evaluation.
 
-        Note:
-            This gather happens in all processes.
+def patch_has_compiled_regions(*args, **kwargs):
+    return False
 
-        Args:
-            tensor (`torch.Tensor`, or a nested tuple/list/dictionary of `torch.Tensor`):
-                The tensors to gather across all processes.
 
-        Returns:
-            `torch.Tensor`, or a nested tuple/list/dictionary of `torch.Tensor`: The gathered tensor(s). Note that the
-            first dimension of the result is *num_processes* multiplied by the first dimension of the input tensors.
-
-        Example:
-
-        ```python
-        >>> # Assuming four processes
-        >>> import torch
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> process_tensor = torch.tensor([accelerator.process_index])
-        >>> gathered_tensor = accelerator.gather(process_tensor)
-        >>> gathered_tensor
-        tensor([0, 1, 2, 3])
-        ```
-        """
-        if GaudiPartialState().distributed_type in [
-            GaudiDistributedType.MULTI_HPU,
-            GaudiDistributedType.DEEPSPEED,
-            GaudiDistributedType.FSDP,
-        ]:
-            return _gpu_gather(tensor)
-        else:
-            return tensor
-
-    def get_state_dict(self, model, unwrap=True):
-        """
-        Returns the state dictionary of a model sent through [`Accelerator.prepare`] potentially without full
-        precision.
-
-        Args:
-            model (`torch.nn.Module`):
-                A PyTorch model sent through [`Accelerator.prepare`]
-            unwrap (`bool`, *optional*, defaults to `True`):
-                Whether to return the original underlying state_dict of `model` or to return the wrapped state_dict
-
-        Returns:
-            `dict`: The state dictionary of the model potentially without full precision.
-
-        Example:
-
-        ```python
-        >>> import torch
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> net = torch.nn.Linear(2, 2)
-        >>> net = accelerator.prepare(net)
-        >>> state_dict = accelerator.get_state_dict(net)
-        ```
-        """
-
-        if self.distributed_type == DistributedType.DEEPSPEED:
-            if self.deepspeed_config["zero_optimization"]["stage"] == 3:
-                if model.zero_gather_16bit_weights_on_model_save():
-                    state_dict = model._zero3_consolidated_16bit_state_dict()
-                else:
-                    raise ValueError(
-                        "Cannot get 16bit model weights because `stage3_gather_16bit_weights_on_model_save` in DeepSpeed config is False. "
-                        "To save the model weights in 16bit, set `stage3_gather_16bit_weights_on_model_save` to True in DeepSpeed config file or "
-                        "set `zero3_save_16bit_model` to True when using `accelerate config`. "
-                        "To save the full checkpoint, run `model.save_checkpoint(save_dir)` and use `zero_to_fp32.py` to recover weights."
-                    )
-            else:
-                from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
-
-                state_dict = clone_tensors_for_torch_save(self.unwrap_model(model).state_dict())
-        # copied from https://github.com/huggingface/accelerate/blob/6f05bbd41a179cc9a86238c7c6f3f4eded70fbd8/src/accelerate/accelerator.py#L3057
-        elif self.distributed_type == DistributedType.FSDP:
-            from torch.distributed.fsdp import FullStateDictConfig, StateDictType
-            from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-
-            full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-            with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, full_state_dict_config):
-                state_dict = model.state_dict()
-        else:
-            if unwrap:
-                model = self.unwrap_model(model)
-            state_dict = model.state_dict()
-
-        return state_dict
-
-    @contextmanager
-    def autocast(self, cache_enabled: bool = False):
-        """
-        Will apply automatic mixed-precision inside the block inside this context manager, if it is enabled. Nothing
-        different will happen otherwise.
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator(mixed_precision="fp16")
-        >>> with accelerator.autocast():
-        ...     train()
-        ```
-        """
-        if self.native_amp:
-            autocast_context = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)
-        else:
-            autocast_context = contextlib.nullcontext()
-
-        autocast_context.__enter__()
-        yield
-        autocast_context.__exit__(*sys.exc_info())
+accelerate.utils.other.has_compiled_regions = patch_has_compiled_regions

@@ -70,7 +70,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.16.0")
+check_optimum_habana_min_version("1.18.0.dev0")
 
 
 @dataclass
@@ -949,7 +949,7 @@ def main():
             args=training_args,
             train_dataset=train_dataset if training_args.do_train else None,
             eval_dataset=eval_dataset if training_args.do_eval else None,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             data_collator=data_collator,
             compute_metrics=compute_metrics if training_args.do_eval else None,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
@@ -962,7 +962,7 @@ def main():
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         if data_args.save_last_ckpt:
-            trainer.save_model()
+            trainer._save_checkpoint(trainer.model, None)
 
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)

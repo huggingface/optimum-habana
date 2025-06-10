@@ -20,8 +20,7 @@ import pytest
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-
-assert os.environ.get("GAUDI2_CI", "0") == "1", "Execution does not support on Gaudi1"
+from .utils import OH_DEVICE_CONTEXT
 
 
 def get_model(token: str, model_id: str):
@@ -42,7 +41,8 @@ def get_model(token: str, model_id: str):
 @pytest.mark.parametrize(
     "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
 )
-def test_nf4_quantization_inference(token: str, model_id: str, compile_on: bool):
+@pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
+def test_nf4_quantization_inference(token: str, baseline, model_id: str, compile_on: bool):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
@@ -65,4 +65,5 @@ def test_nf4_quantization_inference(token: str, model_id: str, compile_on: bool)
     torch.manual_seed(42)
     outputs = model.generate(**inputs, generation_config=generation_config, lazy_mode=False)
     decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    assert decoded_output == "Hello my name is Kelsey and I am a 16 year old girl who loves to draw and paint. I have"
+
+    baseline.assertEqual(output=decoded_output)

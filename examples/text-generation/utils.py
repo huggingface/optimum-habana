@@ -17,6 +17,7 @@
 # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
+import argparse
 import copy
 import glob
 import os
@@ -130,8 +131,8 @@ def setup_const_serialization(const_serialization_path):
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.34.0")
-    check_optimum_habana_min_version("1.16.0")
+    check_min_version("4.45.0")
+    check_optimum_habana_min_version("1.18.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -267,7 +268,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -494,13 +495,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                any(model_type in args.model_name_or_path.lower() for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
+                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -634,7 +635,7 @@ def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
-        "trust_remote_code": args.trust_remote_code,
+        "trust_remote_code": args.trust_remote_code or args.trust_remote_code_tokenizer,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -882,3 +883,46 @@ def local_split_rank_state_dict(model, gathered_state_dict):
         cur_accelerator.synchronize()
 
     return rank_state_dict
+
+
+class SetTrueOrFalseOrNone(argparse.Action):
+    """
+    Custom argparse action to handle a flag that can be set to True, False, or None.
+
+    This action allows an argument to be:
+    - Set to True if the flag is present without a value.
+    - Set to a boolean value (True or False) if explicitly provided.
+    - Set to None if the flag is not present.
+
+    The argument accepts the following values (case-insensitive):
+    - True values: 'true', '1', 't', 'y', 'yes'
+    - False values: 'false', '0', 'f', 'n', 'no'
+
+    If an invalid value is provided, an argparse.ArgumentTypeError is raised.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        value_map = {
+            "true": True,
+            "1": True,
+            "t": True,
+            "y": True,
+            "yes": True,
+            "false": False,
+            "0": False,
+            "f": False,
+            "n": False,
+            "no": False,
+        }
+        if values is None:
+            setattr(namespace, self.dest, True)
+        elif isinstance(values, bool):
+            setattr(namespace, self.dest, values)
+        else:
+            value_lower = values.lower()
+            if value_lower in value_map:
+                setattr(namespace, self.dest, value_map[value_lower])
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid value for {option_string}: {values}. Expected one of: {', '.join(value_map.keys())}."
+                )

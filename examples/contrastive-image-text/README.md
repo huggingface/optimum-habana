@@ -47,7 +47,7 @@ cd ..
 
 Having downloaded COCO dataset manually you should be able to load with the `ydshieh/coco_dataset_script` dataset loading script:
 
-```py
+```python
 import os
 import datasets
 
@@ -65,7 +65,7 @@ Next, we create a [VisionTextDualEncoderModel](https://huggingface.co/docs/trans
 The `VisionTextDualEncoderModel` class lets you load any vision and text encoder model to create a dual encoder.
 Here is an example of how to load the model using pre-trained vision and text models.
 
-```python3
+```python
 from transformers import (
     VisionTextDualEncoderModel,
     VisionTextDualEncoderProcessor,
@@ -96,7 +96,7 @@ Finally, we can run the example script to train the model.
 Run the following command for single-device training:
 
 ```bash
-PT_HPU_LAZY_MODE=0 python run_clip.py \
+python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
@@ -128,7 +128,7 @@ PT_HPU_LAZY_MODE=0 python run_clip.py \
 Run the following command for distributed training:
 
 ```bash
-PT_HPU_LAZY_MODE=0 PT_ENABLE_INT64_SUPPORT=1 \
+PT_ENABLE_INT64_SUPPORT=1 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir=/tmp/clip_roberta \
     --model_name_or_path=./clip-roberta \

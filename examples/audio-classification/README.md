@@ -27,6 +27,9 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
+> [!NOTE]
+> Please add the flags ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 and ENABLE_EXPERIMENTAL_FLAGS=1 for facebook/wav2vec2-base stability issues on gaudi3. Please note this is a workaround for release 1.20 only.
+
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
@@ -72,7 +75,7 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
-PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name common_language \
@@ -92,7 +95,7 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --seed 0 \
     --use_habana \
-    --use_lazy_mode False\
+    --use_lazy_mode False \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
     --sdp_on_bf16 \
