@@ -86,7 +86,7 @@ slow_tests_custom_file_input: test_installs
 slow_tests_1x: test_installs
 	@status1=0; status2=0; status3=0; \
 	python -m pytest tests/test_examples.py -v -s -k "single_card" || status1=$$?; \
-	python -m pip install peft==0.10.0 \
+	python -m pip install peft==0.10.0; \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
 	exit $$((status1 + status2 + status3))
@@ -102,9 +102,9 @@ slow_tests_deepspeed: test_installs
 
 slow_tests_diffusers: test_installs
 	@status1=0; status2=0; status3=0; status4=0; status5=0; \
-	python -m pip install -r examples/stable-diffusion/requirements.txt \
+	python -m pip install -r examples/stable-diffusion/requirements.txt; \
 	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion" || status1=$$?; \
-	python -m pip install peft==0.7.0 \
+	python -m pip install peft==0.7.0; \
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation" || status4=$$?; \
