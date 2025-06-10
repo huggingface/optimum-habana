@@ -193,6 +193,10 @@ class DataTrainingArguments:
     dataset_name: str = field(
         metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
+    dataset_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional path to a local dataset directory (e.g. extracted LibriSpeech)."},
+    )
     dataset_config_name: str = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
@@ -489,13 +493,18 @@ def main():
     # 1. First, let's load the dataset
     raw_datasets = DatasetDict()
 
-    raw_datasets["train"] = load_dataset(
-        data_args.dataset_name,
-        data_args.dataset_config_name,
-        split=data_args.train_split_name,
-        token=data_args.token,
-        trust_remote_code=data_args.trust_remote_code,
-    )
+    load_dataset_kwargs = {
+        "path": data_args.dataset_name,
+        "name": data_args.dataset_config_name,
+        "split": data_args.train_split_name,
+        "token": data_args.token,
+        "trust_remote_code": data_args.trust_remote_code,
+    }
+    if data_args.dataset_dir is not None:
+        load_dataset_kwargs["data_dir"] = data_args.dataset_dir
+        logger.info(f"Loading dataset from local cache directory: {data_args.dataset_dir}")
+
+    raw_datasets["train"] = load_dataset(**load_dataset_kwargs)
 
     if data_args.audio_column_name not in raw_datasets["train"].column_names:
         raise ValueError(
@@ -515,13 +524,8 @@ def main():
         raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
 
     if training_args.do_eval:
-        raw_datasets["eval"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.eval_split_name,
-            token=data_args.token,
-            trust_remote_code=data_args.trust_remote_code,
-        )
+        load_dataset_kwargs["split"] = data_args.eval_split_name
+        raw_datasets["eval"] = load_dataset(**load_dataset_kwargs)
 
         if data_args.max_eval_samples is not None:
             raw_datasets["eval"] = raw_datasets["eval"].select(range(data_args.max_eval_samples))
