@@ -21,7 +21,6 @@ import os
 from dataclasses import make_dataclass
 from types import MethodType
 
-import accelerate.utils.other
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
@@ -62,7 +61,19 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
-from .utils import convert_model
+
+import accelerate.utils.transformer_engine
+
+from .utils.dataclasses import GaudiTERecipeKwargs
+from .utils.transformer_engine import convert_model, get_fp8_recipe
+
+
+accelerate.utils.transformer_engine.convert_model = convert_model
+accelerate.accelerator.convert_model = convert_model
+accelerate.utils.convert_model = convert_model
+
+accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
+accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
 logger = get_logger(__name__)
@@ -121,6 +132,10 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
+        # it will be fixed in upstream accelerate
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
+
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -143,6 +158,19 @@ class GaudiAccelerator(Accelerator):
             dynamo_plugin=dynamo_plugin,
             deepspeed_plugins=deepspeed_plugins,
         )
+
+        # This attribute works as a single source of truth about fp8 usage with the accelerator.
+        # it will be added in upstream accelerate
+        self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+
+        # will be fixed in upstream accelerate
+        self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
+        # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
+        # we can clean this up later when the upstream accelerate is fixed
+        self.fp8_recipe = None
+        if self.has_fp8_handler:
+            self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
@@ -198,7 +226,7 @@ class GaudiAccelerator(Accelerator):
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
 
-        if self.state.mixed_precision == "fp8":
+        if self.fp8_enabled:
             model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
@@ -385,7 +413,7 @@ class GaudiAccelerator(Accelerator):
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
             else convert_model(obj)
-            if isinstance(obj, torch.nn.Module) and self.state.mixed_precision == "fp8"
+            if isinstance(obj, torch.nn.Module) and self.fp8_enabled
             else obj
             for obj in args
         ]
