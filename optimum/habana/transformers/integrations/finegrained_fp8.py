@@ -8,6 +8,7 @@ from transformers.utils import (
 )
 
 from optimum.utils import logging
+from neural_compressor.torch.algorithms.fp8_quant._core.utils import should_quantize
 
 
 if is_accelerate_available():
@@ -75,15 +76,7 @@ class GaudiFP8Linear(nn.Module):
         self.weight = weight
         self.orig_M = orig_M
         self.orig_N = orig_N
-        '''
-        self.register_buffer(
-            "orig_M", torch.tensor(orig_M, dtype=torch.int32, device=self.weight.device)
-        )
-        self.register_buffer(
-            "orig_N", torch.tensor(orig_N, dtype=torch.int32, device=self.weight.device)
-        )
-        '''
-
+        
     def get_dequant_weight(self):
         if self.weight.dtype == self.high_precision:
             return self.weight
@@ -111,7 +104,6 @@ class GaudiFP8Linear(nn.Module):
         if hasattr(layer, "updated_fp8_weight") and layer.updated_fp8_weight:
             return layer.weight
         dequant_weight = layer.get_dequant_weight()
-        layer.is_dequantized = True
         return dequant_weight
 
     def get_dequant_weights_func(
@@ -171,7 +163,7 @@ def replace_with_fp8_linear(
     quantization_config=None,
 ):
     """Helper function to replace model layers with FP8 versions."""
-    modules_to_not_convert = ["lm_head"] if modules_to_not_convert is None else modules_to_not_convert
+    modules_to_not_convert = ["lm_head", "kv_b_proj"] if modules_to_not_convert is None else modules_to_not_convert
 
     if quantization_config.modules_to_not_convert is not None:
         modules_to_not_convert.extend(quantization_config.modules_to_not_convert)
