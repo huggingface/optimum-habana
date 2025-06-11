@@ -27,6 +27,7 @@ from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
 from ....distributed.tp import TPModule
+from ....features import import_usable_component
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -43,20 +44,17 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-
-    has_fused_rms_norm = True
-except ImportError:
-    has_fused_rms_norm = False
-    print("Not using HPU fused kernel for RMSNorm")
-
-try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
+
+
+FusedRMSNorm, has_fused_rms_norm = import_usable_component(
+    "habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"
+)
 
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
