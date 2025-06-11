@@ -8,7 +8,7 @@
     },
     "blocklist": {
         "types": [],
-        "names": ["lm_head"]
+        "names": ["lm_head", "k_b_proj", "kv_b_proj", "k_cache", "v_cache"] 
     },
     "quantize_weight": false,
     "dump_stats_path": "./hqt_output/measure"
