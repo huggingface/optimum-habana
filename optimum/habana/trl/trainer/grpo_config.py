@@ -20,7 +20,7 @@ from ... import GaudiTrainingArguments
 
 
 ####this chat template is to keep <think></think> section for DeepSeek Distill model
-CHAT_TEMPLATE = """
+DEEPSEEK_CHAT_TEMPLATE = """
 {% if not add_generation_prompt is defined %}
   {% set add_generation_prompt = false %}
 {% endif %}
@@ -105,20 +105,20 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
         },
     )
     max_prompt_length: Optional[int] = field(
-        default=256,#128,#
+        default=512,#128,#
         metadata={
             "help": "Maximum length of the prompt. If the prompt is longer than this value, it will be truncated left."
         },
     )
     num_generations: Optional[int] = field(
-        default=16,#16,#8,#
+        default=4,#16,#8,#
         metadata={
             "help": "Number of generations to sample. The global batch size (num_processes * per_device_batch_size) "
             "must be divisible by this value."
         },
     )
     max_completion_length: Optional[int] = field(
-        default=512,#256,#
+        default=2048,#256,#
         metadata={"help": "Maximum length of the generated completion."},
     )
     ds3_gather_for_generation: bool = field(
@@ -137,7 +137,7 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
 
     # Parameters that control generation
     temperature: float = field(
-        default=0.7,#0.9,
+        default=0.9,#0.7for openr-1
         metadata={"help": "Temperature for sampling. The higher the temperature, the more random the completions."},
     )
     top_p: float = field(
@@ -322,7 +322,9 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
             "vLLM, you should now use the `enable_prefix_caching` parameter in the vLLM server configuration."
         },
     )
-    chat_template: Optional[str] = field(default=CHAT_TEMPLATE, metadata={"help": "chat_template"})
+    #chat_template: Optional[str] = field(default=DEEPSEEK_CHAT_TEMPLATE, metadata={"help": "chat_template"})
+    chat_template: Optional[str] = field(default=None, metadata={"help": "chat_template"})
+    
 
     def __post_init__(self):
         super().__post_init__()

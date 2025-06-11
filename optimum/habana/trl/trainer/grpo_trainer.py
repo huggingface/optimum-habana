@@ -74,6 +74,7 @@ from optimum.habana.transformers.trainer import _get_input_update_settings
 from optimum.habana.transformers.integrations.deepspeed import deepspeed_init
 from optimum.habana.trl.trainer.sft_trainer import BucketedDataCollatorForLanguageModeling
 from optimum.habana.utils import HabanaProfile, speed_metrics
+from habana_frameworks.torch.hpu import memory_stats
 
 from transformers.debug_utils import DebugOption
 from transformers.trainer_callback import ExportableState,TrainerState
@@ -327,7 +328,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         def data_collator(features):
             #batch = {key: [f[key] for f in features] for key in features[0]}
             #return batch
-            
             return features
 
         # Training arguments
@@ -384,7 +384,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Check if the per_device_train/eval_batch_size * num processes can be divided by the number of generations
         num_processes = self.accelerator.num_processes
-        global_batch_size = args.per_device_train_batch_size * num_processes
+        global_batch_size = args.per_device_train_batch_size * num_processes * args.gradient_accumulation_steps#args.per_device_train_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
         if self.num_generations not in possible_values:
             raise ValueError(
@@ -442,11 +442,15 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             self.generation_config.min_p=self.min_p
             self.generation_config.repetition_penalty=self.repetition_penalty
             self.generation_config.cache_implementation=args.cache_implementation
-            self.generation_config.use_cache=True
+            self.generation_config.use_cache=True #without kvcaching 107->4.22 with change 3.7
             self.generation_config.static_shapes=True
             self.generation_config.reuse_cache=True
-            self.generation_config.bucket_internal=False#True
-            self.generation_config.bucket_size=-1#128
+            self.generation_config.use_flash_attention = True
+            #self.generation_config.bucket_internal=False#True#
+            #self.generation_config.bucket_size=-1#128#
+            #self.generation_config.trim_logits=True
+            #self.generation_config.flash_attention_fast_softmax=True
+
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -471,19 +475,23 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
     def _get_buckets(self, train_dataset, tokenizer, num_buckets=5):
         #####sc get list of seq len here, because sentences get repeated later in trainer
-        #-> pass buckets to trainer
-        #num_buckets=10
+        # Collect all seq lens
         sentence_lengths = []
         for batch in train_dataset:
             formatted_prompt = maybe_apply_chat_template(batch, tokenizer)["prompt"]
             formatted_prompt_len = len(tokenizer(formatted_prompt)['input_ids']) #144
             sentence_lengths.append(formatted_prompt_len)
+
+        # Assign bucket labels to each sentence
         bucket_label_per_sentence = pd.qcut(sentence_lengths, q=num_buckets, labels=False)
+
+        # Get max len per bucket
         df = pd.DataFrame({'value': sentence_lengths, 'bucket': bucket_label_per_sentence})
         buckets = df.groupby('bucket')['value'].max().tolist()
-        #padded_length_per_sentence = [buckets[label] for label in bucket_label_per_sentence]
-        buckets = [b if b<self.max_prompt_length else self.max_prompt_length for b in buckets]
-        return buckets#, padded_length_per_sentence
+        # Make sure that no bucket exceeds self.max_prompt_length
+        buckets = [min(b, self.max_prompt_length) for b in buckets]
+        print("***************buckets", buckets)
+        return buckets
 
     def _inner_training_loop(
         self,
@@ -1128,16 +1136,31 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         return model
     """
-
+    def selective_log_softmax_sc(self, logits, index):
+        """
+        original
+        selected_logits = torch.gather(logits, dim=-1, index=index.unsqueeze(-1)).squeeze(-1)
+        # loop to reduce peak mem consumption
+        logsumexp_values = torch.stack([torch.logsumexp(lg, dim=-1) for lg in logits])
+        per_token_logps = selected_logits - logsumexp_values  # log_softmax(x_i) = x_i - logsumexp(x)
+        """
+        if logits.dtype in [torch.float32, torch.float64]:
+            #torch.logsumexp increases mem footprint from 12 to 70GB as it allocates a tensor of size batch_size * sequence_length * vocab_size
+            selected_logits = torch.gather(logits, dim=-1, index=index.unsqueeze(-1)).squeeze(-1)
+            # loop to reduce peak mem consumption
+            logsumexp_values = torch.stack([torch.logsumexp(lg, dim=-1) for lg in logits])
+            per_token_logps = selected_logits - logsumexp_values  # log_softmax(x_i) = x_i - logsumexp(x)
+            return per_token_logps
 
     ###this is required to pass use_flash_attention=True, otherwise getting NaN
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep): ###training added to enable gc
         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
-        #####should use_cache added for ref model?
-
-        logits = model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep + 1, use_flash_attention=True).logits
+        ###logits in fp32!!
+        logits = model(input_ids=input_ids, attention_mask=attention_mask, \
+                        logits_to_keep=logits_to_keep + 1, use_flash_attention=True).logits
+                        #flash_attention_fast_softmax=True).logits
 
         logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
 
@@ -1148,7 +1171,10 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         # Divide logits by sampling temperature.
         # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
         logits = logits / self.temperature
-        return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+        #print("***********mem",memory_stats('hpu')['MaxInUse'])
+        return selective_log_softmax(logits, input_ids)
+        #return self.selective_log_softmax_sc(logits, input_ids)  # compute logprobs for the input tokens
 
 
     """
@@ -1214,7 +1240,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
         
-        
         #prompts = inputs['prompt']
         #prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
         prompts = [x["prompt"] for x in inputs]
@@ -1237,18 +1262,20 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         ) #"input_ids": tensor([[]])
 
         """
-        #######bucketing
+
+        # Get unique seq len within a batch
         max_prompt_len_per_batch = 0
-        for prompt_idx in range(0, len(prompts_text), self.num_generations): #prompts are repeated self.num_generations times
-            prompt_len = len(self.processing_class(text=prompts_text[prompt_idx], return_tensors="pt", padding=False, add_special_tokens=False)["input_ids"][0])
+        for prompt_idx in range(0, len(prompts_text), self.num_generations): # Prompts are repeated self.num_generations times
+            prompt_len = len(self.processing_class(text=prompts_text[prompt_idx], return_tensors="pt", \
+                padding=False, add_special_tokens=False)["input_ids"][0])
             max_prompt_len_per_batch = max(max_prompt_len_per_batch, prompt_len)
 
+        # Search bucket and the tokenize prompts with padding
         bucket_indices = bisect.bisect_left(self.buckets, max_prompt_len_per_batch)
-        bucket_indices = min(bucket_indices, len(self.buckets)-1) #
-        print("bucket ", bucket_indices)
-        print("bucket_len ", self.buckets[bucket_indices])
+        bucket_indices = min(bucket_indices, len(self.buckets)-1)
         prompt_inputs = self.processing_class(
-            text=prompts_text, return_tensors="pt", padding="max_length", padding_side="left", max_length=self.buckets[bucket_indices], truncation=True, add_special_tokens=False
+            text=prompts_text, return_tensors="pt", padding="max_length", padding_side="left", \
+            max_length=self.buckets[bucket_indices], truncation=True, add_special_tokens=False
         )
      
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
@@ -1316,29 +1343,44 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
-                for layer in unwrapped_model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
-                    layer.self_attn.k_cache.cache = None
-                    layer.self_attn.v_cache.cache = None
+                #for layer in unwrapped_model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
+                #    layer.self_attn.k_cache.cache = None
+                #    layer.self_attn.v_cache.cache = None
 
-                unwrapped_model.gradient_checkpointing_disable()
-                unwrapped_model.config.use_cache = True
-                unwrapped_model.config.torch_dtype=torch.bfloat16
+                if self.args.gradient_checkpointing:
+                    unwrapped_model.gradient_checkpointing_disable()
+                    unwrapped_model.config.use_cache = True
+                    unwrapped_model.config.torch_dtype=torch.bfloat16
 
+                    unwrapped_model.eval()
+                with torch.no_grad():
+                    prompt_completion_ids = unwrapped_model.generate(
+                        prompt_ids, attention_mask=prompt_mask,
+                        #hpu_graphs=True,
+                        #use_flash_attention=True,
+                        generation_config=self.generation_config,
+                        lazy_mode=True,
+                        #ignore_eos=True,# <<<<<<<<<with true trl didn't converge
+                    )
+                if self.args.gradient_checkpointing:
+                    unwrapped_model.train()
 
-                prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask,
-                    use_flash_attention=True,
-                    generation_config=self.generation_config,
-                    lazy_mode=True,
-                    ignore_eos=True,
-                )
+                if is_peft_model(unwrapped_model):
+                    for layer in unwrapped_model.base_model.model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
+                        layer.self_attn.k_cache.cache = None
+                        layer.self_attn.v_cache.cache = None
+                else:
+                    
+                    for layer in unwrapped_model.model.layers: ###reset kv cache. previous kv cache shouldn't be reused in the next iter.
+                        layer.self_attn.k_cache.cache = None
+                        layer.self_attn.v_cache.cache = None
+
 
             # Compute prompt length and extract completion ids
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
             print("*******just generate time", time.time()-before_generate)
-            print("**********inside generate", time.time()-sc_start_time) ####1st iter takes 450 -> 164 -> 28 sec.. 
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
@@ -1382,6 +1424,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Decode the generated completions
         completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
+
         if is_conversational(inputs[0]):
             completions = []
             for prompt, completion in zip(prompts, completions_text):
@@ -1389,6 +1432,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 completions.append([{"role": "assistant", "content": bootstrap + completion}])
         else:
             completions = completions_text
+        print("**inf out: ", completions[0], "from worker", self.accelerator.process_index)
 
         rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
@@ -1415,7 +1459,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
                 else:
                     # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                    keys = [key for key in inputs[0] if key not in ["prompt", "completion", "completion_ids", "use_flash_attention", 'lazy_mode']]
+                    keys = [key for key in inputs[0] if key not in ["prompt", "completion", "completion_ids", "use_flash_attention", 'flash_attention_fast_softmax', 'lazy_mode']]
                     """
                     if "prompt" in inputs: #tldr dataset
                        keys = [key for key in inputs if key not in ["prompt", "completion", "use_flash_attention", 'lazy_mode']]
@@ -1527,7 +1571,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             "advantages": advantages,
         }
 
-
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
@@ -1540,7 +1583,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         if self.args.gradient_checkpointing:
             # distributed
             if hasattr(model, 'module'):
-                print("*************1556")
                 model.module.config.use_cache = False
                 if is_peft_model(model.module):
                     model.module.base_model.gradient_checkpointing_enable()
@@ -1560,7 +1602,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     model.enable_input_require_grads()
 
         # Compute the per-token log probabilities for the model
-
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
@@ -1568,6 +1609,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
 
         per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, logits_to_keep)
+        #print("***********mem after log softmax",memory_stats('hpu')['MaxInUse'])
+
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
             ref_per_token_logps = inputs["ref_per_token_logps"]
@@ -1579,12 +1622,14 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         advantages = inputs["advantages"]
         # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip it's computation (see
         # _generate_and_score_completions) and use per_token_logps.detach() instead.
+
         old_per_token_logps = inputs["old_per_token_logps"] if self.num_iterations > 1 else per_token_logps.detach()
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2) ####Maximize advantages
+
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()

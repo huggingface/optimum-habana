@@ -686,7 +686,7 @@ def main():
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {i + 1}.{j + 1}: {output}")
+                print(f"output {i + 1}.{j + 1}: {output[0][len(input_sentence[0]):]}")
                 all_outputs.append(output)
             print()
 

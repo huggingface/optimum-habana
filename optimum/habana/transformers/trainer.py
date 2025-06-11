@@ -1596,7 +1596,6 @@ class GaudiTrainer(Trainer):
         # TODO
         # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
         #     self.optimizer.train()
-
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
