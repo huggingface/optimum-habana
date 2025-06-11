@@ -68,7 +68,7 @@ All [our examples](https://github.com/huggingface/optimum-habana/tree/main/examp
 The reasoning is the same for every example: run the example script with `--do_eval` and `--per_device_eval_batch_size` and without `--do_train`.
 A simple template is the following:
 ```bash
-python path_to_the_example_script \
+PT_HPU_LAZY_MODE=1 python path_to_the_example_script \
   --model_name_or_path my_model_name \
   --gaudi_config_name my_gaudi_config_name \
   --dataset_name my_dataset_name \
