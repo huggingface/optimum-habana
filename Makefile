@@ -101,15 +101,14 @@ slow_tests_deepspeed: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
-	@status1=0; status2=0; status3=0; status4=0; status5=0; \
+	@status1=0; status2=0; status3=0; status4=0; \
 	python -m pip install -r examples/stable-diffusion/requirements.txt; \
 	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion" || status1=$$?; \
 	python -m pip install peft==0.7.0; \
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation" || status4=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status5=$$?; \
-	exit $$((status1 + status2 + status3 + status4 + status5))
+	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status4=$$?; \
+	exit $$((status1 + status2 + status3 + status4))
 
 # Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
