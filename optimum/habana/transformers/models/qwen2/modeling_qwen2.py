@@ -487,7 +487,7 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if use_flash_attention and FusedSDPA is not None:
             attn_weights = None
-            #Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
+            # Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
             softmax_mode = "None" if self.training else "fp32"
             if q_len == 1:
                 # next token
