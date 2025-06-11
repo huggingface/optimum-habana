@@ -1,3 +1,4 @@
+import os
 import importlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -173,21 +174,29 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
     """
     Rescale FP8 weights to float8_e4m3fnuz on Gaudi2 after loading
     and pads weights on Gaudi2/Gaudi3 to match block dimensions.
-    """
-    from optimum.habana.transformers.integrations.finegrained_fp8 import GaudiFP8Linear, pad_block_fp8_weight_naive
 
-    if current_key_name is None:
-        current_key_name = []
+    Also dequantizes layers in INC blocklist
+    """
+    
+    from optimum.habana.transformers.integrations.finegrained_fp8 import GaudiFP8Linear, pad_block_fp8_weight_naive
+    from neural_compressor.torch.algorithms.fp8_quant._quant_common.quant_config import get_hqt_config 
+    from neural_compressor.torch.algorithms.fp8_quant._core.utils import should_quantize, is_re_match
+    from neural_compressor.torch.quantization import FP8Config
+
+    quant_config = os.getenv("QUANT_CONFIG")
+    blocklist = []
+    if quant_config is not None:
+        fp8_config = FP8Config.from_json_file(quant_config)
+        if "names" in fp8_config.blocklist:
+            blocklist = fp8_config.blocklist["names"]
 
     rescale_factor = torch.finfo(torch.float8_e4m3fnuz).max / torch.finfo(torch.float8_e4m3fn).max
     rescale_factor_inv = 1.0 / rescale_factor
 
-    for name, module in model.named_children():
-        current_key_name.append(name)
-
+    for name, module in model.named_modules():
+        
         if isinstance(module, GaudiFP8Linear):
-            module = model._modules[name]
-
+            # module = model._modules[name]
             if ON_GAUDI2: # rescale scale and weight for Gaudi2
                 weight = module.weight.to(module.high_precision) * rescale_factor
                 scale = module.weight_scale_inv * rescale_factor_inv
@@ -196,12 +205,9 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
             
             module.pad_weight_naive()
 
-        if len(list(module.children())) > 0:
-            _ = _gaudi_rescale_pad_fp8_weights(
-                module,
-                current_key_name,
-            )
-
-        current_key_name.pop(-1)
+            if len(blocklist) > 0: 
+                mod_type = module.__class__.__name__
+                if is_re_match(blocklist, name):
+                    module.weight = module.get_dequant_weight()
 
     return model
