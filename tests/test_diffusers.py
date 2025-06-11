@@ -75,6 +75,7 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+from huggingface_hub.errors import OfflineModeIsEnabled
 from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
@@ -155,8 +156,6 @@ def check_gated_model_access(model):
     Skip test for a gated model if access is not granted; this occurs when an account
     with the required permissions is not logged into the HF Hub.
     """
-    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
-        return lambda func: func
 
     try:
         hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
@@ -164,6 +163,8 @@ def check_gated_model_access(model):
 
     except HfHubHTTPError:
         gated = True
+    except OfflineModeIsEnabled:
+        return pytest.mark.skip(reason=f"{model} is gated and offline mode is enabled")
 
     return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
 
@@ -1344,62 +1345,62 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             "gaudi_config": "Habana/stable-diffusion",
             "torch_dtype": torch.bfloat16,
         }
+        try:
+            os.environ["PATCH_SDPA"] = "1"
 
-        os.environ["PATCH_SDPA"] = "1"
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
 
-        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
-            StableDiffusionXLPipeline_HPU,
-        )
+            model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+            sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+                model_name_or_path,
+                **kwargs,
+            )
 
-        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
-            model_name_or_path,
-            **kwargs,
-        )
+            sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+            sd_pipe.to(torch.device("hpu"))
+            sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+            sd_pipe.set_progress_bar_config(disable=None)
 
-        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
-        sd_pipe.to(torch.device("hpu"))
-        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
-        sd_pipe.set_progress_bar_config(disable=None)
+            prompt = "A painting of a squirrel eating a burger"
 
-        prompt = "A painting of a squirrel eating a burger"
+            # Test num_images_per_prompt=1 (default)
+            images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
-        # Test num_images_per_prompt=1 (default)
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt=1 (default) for several prompts
+            num_prompts = 3
+            images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
 
-        # Test num_images_per_prompt=1 (default) for several prompts
-        num_prompts = 3
-        images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
+            self.assertEqual(len(images), num_prompts)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), num_prompts)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt for single prompt
+            num_images_per_prompt = 2
+            images = sd_pipe(
+                prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
+            ).images
 
-        # Test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        images = sd_pipe(
-            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
+            self.assertEqual(len(images), num_images_per_prompt)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt for several prompts
+            num_prompts = 2
+            images = sd_pipe(
+                [prompt] * num_prompts,
+                num_inference_steps=2,
+                output_type="np",
+                num_images_per_prompt=num_images_per_prompt,
+            ).images
 
-        # Test num_images_per_prompt for several prompts
-        num_prompts = 2
-        images = sd_pipe(
-            [prompt] * num_prompts,
-            num_inference_steps=2,
-            output_type="np",
-            num_images_per_prompt=num_images_per_prompt,
-        ).images
-
-        self.assertEqual(len(images), num_prompts * num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
-
-        os.environ.pop("PATCH_SDPA")
+            self.assertEqual(len(images), num_prompts * num_images_per_prompt)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
+        finally:
+            os.environ.pop("PATCH_SDPA")
 
     def test_stable_diffusion_xl_optimized_fp8(self):
         import habana_frameworks.torch.hpu as torch_hpu
@@ -1417,58 +1418,59 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             "torch_dtype": torch.bfloat16,
         }
 
-        os.environ["PATCH_SDPA"] = "1"
-        # Set QUANT_CONFIG environment variable
-        os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
+        try:
+            original_dir = os.getcwd()
+            os.environ["PATCH_SDPA"] = "1"
+            os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
 
-        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
-            StableDiffusionXLPipeline_HPU,
-        )
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
 
-        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+            model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
-            model_name_or_path,
-            **kwargs,
-        )
-        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
-        sd_pipe.to(torch.device("hpu"))
+            sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+                model_name_or_path,
+                **kwargs,
+            )
+            sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+            sd_pipe.to(torch.device("hpu"))
 
-        quant_config_path = os.getenv("QUANT_CONFIG")
+            quant_config_path = os.getenv("QUANT_CONFIG")
 
-        original_dir = os.getcwd()
-        config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
-        os.chdir(config_dir)
+            config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
+            os.chdir(config_dir)
 
-        if quant_config_path:
-            import habana_frameworks.torch.core as htcore
-            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
 
-            htcore.hpu_set_env()
+                htcore.hpu_set_env()
 
-            config = FP8Config.from_json_file(quant_config_path)
+                config = FP8Config.from_json_file(quant_config_path)
 
-            if config.measure:
-                print("Running measurements")
-                sd_pipe.unet = prepare(sd_pipe.unet, config)
-            elif config.quantize:
-                print("Running quantization")
-                sd_pipe.unet = convert(sd_pipe.unet, config)
-            htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
+                if config.measure:
+                    print("Running measurements")
+                    sd_pipe.unet = prepare(sd_pipe.unet, config)
+                elif config.quantize:
+                    print("Running quantization")
+                    sd_pipe.unet = convert(sd_pipe.unet, config)
+                htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
 
-        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
-        sd_pipe.set_progress_bar_config(disable=None)
+            sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+            sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
+            prompt = "A painting of a squirrel eating a burger"
 
-        # Test using quantization configuration
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+            # Test using quantization configuration
+            images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0].shape, (1024, 1024, 3))
-        os.chdir(original_dir)
-
-        os.environ.pop("PATCH_SDPA")
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0].shape, (1024, 1024, 3))
+        finally:
+            os.environ.pop("QUANT_CONFIG")
+            os.environ.pop("PATCH_SDPA")
+            os.chdir(original_dir)
 
     @slow
     def test_stable_diffusion_xl_generation_throughput(self):
