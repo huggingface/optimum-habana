@@ -85,7 +85,7 @@ slow_tests_custom_file_input: test_installs
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	@status1=0; status2=0; status3=0; \
-	python -m pytest tests/test_examples.py -v -s -k "single_card" || status1=$$?; \
+	python -m pytest tests/test_examples.py -v -s -k "single_card" --token $(TOKEN) || status1=$$?; \
 	python -m pip install peft==0.10.0; \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
