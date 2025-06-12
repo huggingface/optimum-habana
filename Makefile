@@ -44,7 +44,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py
+	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
@@ -85,7 +85,7 @@ slow_tests_custom_file_input: test_installs
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	@status1=0; status2=0; status3=0; \
-	python -m pytest tests/test_examples.py -v -s -k "single_card" --token $(TOKEN) || status1=$$?; \
+	python -m pytest tests/test_examples.py -v -s -k "single_card" || status1=$$?; \
 	python -m pip install peft==0.10.0; \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
@@ -93,7 +93,7 @@ slow_tests_1x: test_installs
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
-	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card"
+	python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
@@ -101,14 +101,8 @@ slow_tests_deepspeed: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
-	@status1=0; status2=0; status3=0; status4=0; \
 	python -m pip install -r examples/stable-diffusion/requirements.txt; \
-	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion" || status1=$$?; \
-	python -m pip install peft==0.7.0; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status4=$$?; \
-	exit $$((status1 + status2 + status3 + status4))
+	python -m pytest tests/test_diffusers.py -v -s
 
 # Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
