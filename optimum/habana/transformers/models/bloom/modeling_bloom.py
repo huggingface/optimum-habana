@@ -497,7 +497,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
                 idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
 
-            # the cache may be in the stardard format (e.g. in contrastive search), convert to bloom's format if needed
+            # the cache may be in the standard format (e.g. in contrastive search), convert to bloom's format if needed
             if past_key_values[0][0].shape[0] == input_ids.shape[0]:
                 past_key_values = self._convert_to_bloom_cache(past_key_values)
 
