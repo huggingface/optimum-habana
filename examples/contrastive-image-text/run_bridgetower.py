@@ -101,7 +101,7 @@ class ModelArguments:
         },
     )
     trust_remote_code: bool = field(
-        default=True,
+        default=False,
         metadata={
             "help": (
                 "Whether to trust the execution of code from datasets/models defined on the Hub."
