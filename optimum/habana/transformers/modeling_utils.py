@@ -305,6 +305,7 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+
     transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
     transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
     transformers.utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
