@@ -38,9 +38,7 @@ def get_model(token: str, model_id: str):
 
 
 @pytest.mark.parametrize("model_id", ["meta-llama/Llama-3.2-1B"])
-@pytest.mark.parametrize(
-    "compile_on", [pytest.param(True, marks=pytest.mark.skipif(True, reason="compile perf. not good")), False]
-)
+@pytest.mark.parametrize("compile_on", [True, False])
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
 def test_nf4_quantization_inference(token: str, baseline, model_id: str, compile_on: bool):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
@@ -57,7 +55,7 @@ def test_nf4_quantization_inference(token: str, baseline, model_id: str, compile
     generation_config.use_flash_attention = True
 
     if compile_on:
-        model.model = torch.compile(model.model, backend="hpu_backend")
+        model = torch.compile(model, backend="hpu_backend")
 
     input_text = "Hello my name is"
     inputs = tokenizer(input_text, return_tensors="pt").to(device="hpu")
