@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import inspect
 import math
 import time
@@ -2895,6 +2896,9 @@ class GaudiGenerationMixin(GenerationMixin):
             # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
             input_ids[mask] = pad_token_id
 
+        # Trigger the garbage collector to make sure that unnecessary buffers are deallocated
+        gc.collect()
+        
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
                 return GenerateEncoderDecoderOutput(
