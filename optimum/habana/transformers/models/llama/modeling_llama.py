@@ -598,15 +598,9 @@ class GaudiLlamaAttention(LlamaAttention):
             qkv_states = self.qkv_proj(hidden_states)
             query_states, key_states, value_states = torch.split(qkv_states, [self.dim1, self.dim2, self.dim2], dim=-1)
         else:
-            if hasattr(self.config, "fused_qkv") and self.config.fused_qkv:
-                qkv_states = self.qkv_proj(hidden_states)
-                query_states, key_states, value_states = torch.split(
-                    qkv_states, [self.dim1, self.dim2, self.dim2], dim=-1
-                )
-            else:
-                query_states = self.q_proj(hidden_states)
-                key_states = self.k_proj(hidden_states)
-                value_states = self.v_proj(hidden_states)
+            query_states = self.q_proj(hidden_states)
+            key_states = self.k_proj(hidden_states)
+            value_states = self.v_proj(hidden_states)
 
         # use -1 to infer num_heads and num_key_value_heads as they may vary if tensor parallel is used
         query_states = query_states.view(hidden_shape).transpose(1, 2)
@@ -1399,9 +1393,6 @@ class GaudiLlamaModel(LlamaModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-
-        if split_prompt:
-            hidden_states = torch.cat(hidden_states_split, dim=0)
 
         hidden_states = self.norm(hidden_states)
 

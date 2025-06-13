@@ -84,18 +84,18 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
+    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
     parser.add_argument(
         "--show_config",
         action="store_true",
-        default=True,
-        help="If True, shows the the full config of all tasks at the end of the evaluation.",
+        default=False,
+        help="If True, shows the full config of all tasks at the end of the evaluation.",
     )
     parser.add_argument(
         "--log_samples",
         action="store_true",
         help="If True, prints extra-logs for all tasks",
     )
-    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
