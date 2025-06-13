@@ -428,6 +428,11 @@ def setup_parser(parser):
         help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
     )
     quant_parser_group.add_argument(
+        "--quantize_with_bnb",
+        action="store_true",
+        help="Quantize model to NF4 using BnB and then use NF4 weights for text-generation",
+    )
+    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
