@@ -2898,7 +2898,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # Trigger the garbage collector to make sure that unnecessary buffers are deallocated
         gc.collect()
-        
+
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
                 return GenerateEncoderDecoderOutput(
