@@ -59,7 +59,14 @@ class GaudiGRPOConfig(GaudiTrainingArguments):
             "must be divisible by this value."
         },
     )
-    max_completion_length: Optional[int] = field(
+    max_input_tokens: Optional[int] = field(
+        default=0,
+        metadata={
+            "help": "If > 0 then pad and truncate the input sequences to this specified length of tokens. "
+            "if <= 0, then do not truncate, use full input prompt"
+        },
+    )
+    max_new_tokens: Optional[int] = field(
         default=256,
         metadata={"help": "Maximum length of the generated completion."},
     )

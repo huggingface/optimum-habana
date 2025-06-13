@@ -33,13 +33,14 @@ from transformers import (
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizerBase,
+    Trainer,
     TrainerCallback,
     is_wandb_available,
-    Trainer,
 )
 from optimum.habana.transformers.generation import GaudiGenerationConfig
 from transformers.utils import is_peft_available
 
+from trl.data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
 from trl.extras.profiling import profiling_context, profiling_decorator
 from trl.extras.vllm_client import VLLMClient
 from transformers.integrations.deepspeed import (
@@ -50,13 +51,10 @@ from trl.import_utils import is_deepspeed_available, is_rich_available, is_vllm_
 from trl.models import create_reference_model, prepare_deepspeed, unwrap_model_for_generation
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.utils import (
-    # generate_model_card,
-    # get_comet_experiment_url,
     pad,
     print_prompt_completions_sample,
     selective_log_softmax,
 )
-from trl.data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
 from trl import GRPOTrainer
 from ... import GaudiConfig, GaudiTrainer
 from .grpo_config import GaudiGRPOConfig
@@ -166,8 +164,6 @@ class RepeatRandomSampler(Sampler):
 
 
 class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
-    _tag_names = ["trl", "grpo"]
-
     def __init__(
         self,
         model: Union[str, PreTrainedModel],
@@ -183,8 +179,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         peft_config: Optional["PeftConfig"] = None,
     ):
         """
-        Copied from GRPOTrainer.__init__: https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L276
-        The only differences are:
+        Copied from GRPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.16.0/trl/trainer/grpo_trainer.py#L257
+        The changes are:
         - add new args gaudi_config
         - use GaudiTrainer instead of Trainer
         """
@@ -299,7 +295,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Training arguments
         self.max_prompt_length = args.max_prompt_length
-        self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
+        self.max_new_tokens = args.max_new_tokens  # = |o_i| in the GRPO paper
         self.num_generations = args.num_generations  # = G in the GRPO paper
         self.temperature = args.temperature
         self.top_p = args.top_p
@@ -307,6 +303,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         self.min_p = args.min_p
         self.repetition_penalty = args.repetition_penalty
         self.use_vllm = args.use_vllm
+        self.max_input_tokens = args.max_input_tokens
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -393,7 +390,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             self.accelerator.wait_for_everyone()
         else:
             self.generation_config = GaudiGenerationConfig(
-                max_new_tokens=self.max_completion_length,
+                max_new_tokens=self.max_new_tokens,
                 do_sample=True,
                 pad_token_id=processing_class.pad_token_id,
                 bos_token_id=processing_class.bos_token_id,
@@ -426,14 +423,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-
-    def _set_signature_columns_if_needed(self):
-        # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
-        # By default, this method sets `self._signature_columns` to the model's expected inputs.
-        # In GRPOTrainer, we preprocess data, so using the model's signature columns doesn't work.
-        # Instead, we set them to the columns expected by the `training_step` method, hence the override.
-        if self._signature_columns is None:
-            self._signature_columns = ["prompt"]
 
     def _get_train_sampler(self) -> Sampler:
         # Returns a sampler that
@@ -581,11 +570,30 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
     def _generate_and_score_completions(
         self, inputs: dict[str, Union[torch.Tensor, Any]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
+        """
+        Copied from GRPOTrainer._generate_and_score_completions: https://github.com/huggingface/trl/blob/v0.16.0/trl/trainer/grpo_trainer.py#L657
+        The changes are:
+        - pad to max_input_tokens to get static shape for generation acceleration
+        """
         device = self.accelerator.device
         prompts = inputs["prompt"]
         prompts_text = maybe_apply_chat_template(inputs, self.processing_class)["prompt"]
+
+        if self.max_input_tokens > 0:
+            padding = "max_length"
+            truncation = True
+        else:
+            padding = "longest"
+            truncation = False
+
         prompt_inputs = self.processing_class(
-            text=prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+            text=prompts_text,
+            padding=padding,
+            max_length=self.max_input_tokens,
+            return_tensors="pt",
+            padding_side="left",
+            truncation=truncation,
+            add_special_tokens=False
         )
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
@@ -617,7 +625,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         top_p=self.top_p,
                         top_k=-1 if self.top_k is None else self.top_k,
                         min_p=0.0 if self.min_p is None else self.min_p,
-                        max_tokens=self.max_completion_length,
+                        max_tokens=self.max_new_tokens,
                         guided_decoding_regex=self.guided_decoding_regex,
                     )
             else:
@@ -639,7 +647,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             # Regular generation path
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
-            ) as unwrapped_model:
+            ) as unwrapped_model:                
                 prompt_completion_ids = unwrapped_model.generate(
                     prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config
                 )
@@ -711,7 +719,13 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     else:
                         texts = [p + c for p, c in zip(prompts, completions)]
                     reward_inputs = reward_processing_class(
-                        text=texts, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
+                        text=texts,
+                        padding=padding,
+                        max_length=self.max_input_tokens,
+                        return_tensors="pt",
+                        padding_side="right",
+                        truncation=truncation,
+                        add_special_tokens=False
                     )
                     reward_inputs = Trainer._prepare_inputs(self, reward_inputs)
                     with torch.inference_mode():
