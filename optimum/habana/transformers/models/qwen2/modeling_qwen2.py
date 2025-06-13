@@ -1225,7 +1225,8 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
             batch_size = inputs_embeds.shape[0]
 
         if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+#           raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+            self.config.pad_token_id = self.config.eos_token_id
         if self.config.pad_token_id is None:
             sequence_lengths = -1
         else:
