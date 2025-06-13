@@ -21,7 +21,6 @@ import os
 from dataclasses import make_dataclass
 from types import MethodType
 
-import accelerate.utils.other
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
@@ -47,8 +46,9 @@ from accelerate.utils import (
     convert_outputs_to_fp32,
     is_deepspeed_available,
 )
-from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
+
+from .utils.other import compile_regions, compile_regions_deepspeed, is_compiled_module
 
 
 if is_deepspeed_available():
@@ -60,29 +60,23 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
+
+import accelerate.utils.transformer_engine
+
 from ..distributed import parallel_state
-from .utils import convert_model
+from .utils.dataclasses import GaudiTERecipeKwargs
+from .utils.transformer_engine import convert_model, get_fp8_recipe
+
+
+accelerate.utils.transformer_engine.convert_model = convert_model
+accelerate.accelerator.convert_model = convert_model
+accelerate.utils.convert_model = convert_model
+
+accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
+accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
 logger = get_logger(__name__)
-
-
-def compile_regions(model, compile_kwargs):
-    if isinstance(model, torch.nn.ModuleList):
-        for name, module in model.named_children():
-            module = torch.compile(module, **compile_kwargs)
-            module.__dict__.pop("_parameters", None)
-            setattr(model, name, module)
-    else:
-        if model._modules:  # If model has submodules, recurse and reassign
-            for name, module in model.named_children():
-                compiled_module = compile_regions(module, compile_kwargs)
-                if compiled_module is not None:  # Only reassign if something is returned
-                    setattr(model, name, compiled_module)
-        else:  # Leaf node
-            model = torch.compile(model, **compile_kwargs)
-            model.__dict__.pop("_parameters", None)
-            return model
 
 
 class GaudiAccelerator(Accelerator):
@@ -120,6 +114,10 @@ class GaudiAccelerator(Accelerator):
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
+        # it will be fixed in upstream accelerate
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
+
         super().__init__(
             device_placement=device_placement,
             split_batches=split_batches,
@@ -142,6 +140,19 @@ class GaudiAccelerator(Accelerator):
             dynamo_plugin=dynamo_plugin,
             deepspeed_plugins=deepspeed_plugins,
         )
+
+        # This attribute works as a single source of truth about fp8 usage with the accelerator.
+        # it will be added in upstream accelerate
+        self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+
+        # will be fixed in upstream accelerate
+        self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
+        # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
+        # we can clean this up later when the upstream accelerate is fixed
+        self.fp8_recipe = None
+        if self.has_fp8_handler:
+            self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
@@ -197,7 +208,7 @@ class GaudiAccelerator(Accelerator):
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
 
-        if self.state.mixed_precision == "fp8":
+        if self.fp8_enabled:
             model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
@@ -367,7 +378,7 @@ class GaudiAccelerator(Accelerator):
             compile_kwargs = self.state.dynamo_plugin.to_kwargs()
             ############################################################################################################
             if self.use_regional_compilation:
-                compile_regions(model, compile_kwargs)
+                model = compile_regions(model, compile_kwargs)
             else:
                 model = torch.compile(model, **compile_kwargs)
             ############################################################################################################
@@ -384,7 +395,7 @@ class GaudiAccelerator(Accelerator):
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
             else convert_model(obj)
-            if isinstance(obj, torch.nn.Module) and self.state.mixed_precision == "fp8"
+            if isinstance(obj, torch.nn.Module) and self.fp8_enabled
             else obj
             for obj in args
         ]
@@ -581,7 +592,7 @@ class GaudiAccelerator(Accelerator):
                 compile_kwargs = self.state.dynamo_plugin.to_kwargs()
                 ###############################################################################################################
                 if self.use_regional_compilation:
-                    compile_regions(engine.module, compile_kwargs)
+                    compile_regions_deepspeed(engine.module, compile_kwargs)
                 else:
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),
@@ -705,10 +716,3 @@ class GaudiAccelerator(Accelerator):
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader
-
-
-def patch_has_compiled_regions(*args, **kwargs):
-    return False
-
-
-accelerate.utils.other.has_compiled_regions = patch_has_compiled_regions
