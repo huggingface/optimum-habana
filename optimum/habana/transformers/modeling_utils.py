@@ -770,8 +770,10 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
-    transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
-    transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    # transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
+    # transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
+    transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer

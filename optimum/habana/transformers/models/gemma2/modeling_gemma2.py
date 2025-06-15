@@ -16,6 +16,7 @@
 """PyTorch Gemma2 model."""
 
 import math
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -682,7 +683,7 @@ class GaudiGemma2Model(Gemma2Model):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -690,7 +691,6 @@ class GaudiGemma2Model(Gemma2Model):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         last_cache_position: Optional[int] = None,
         token_idx: Optional[torch.Tensor] = None,
@@ -702,7 +702,8 @@ class GaudiGemma2Model(Gemma2Model):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        **kwargs,
+    ) -> BaseModelOutputWithPast:
         """
         Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
@@ -714,7 +715,6 @@ class GaudiGemma2Model(Gemma2Model):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         self._attn_implementation = "eager"
 
@@ -809,7 +809,7 @@ class GaudiGemma2Model(Gemma2Model):
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
+                    partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
                     causal_mask,
                     position_ids,
@@ -866,8 +866,6 @@ class GaudiGemma2Model(Gemma2Model):
             next_cache = (
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -888,7 +886,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -897,7 +895,6 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -911,7 +908,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         **loss_kwargs,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> CausalLMOutputWithPast:
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
@@ -921,10 +918,9 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -933,7 +929,6 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
@@ -947,7 +942,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             **loss_kwargs,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
 
         if seq_len > 1 and trim_logits and not self.training:
@@ -966,10 +961,6 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,
