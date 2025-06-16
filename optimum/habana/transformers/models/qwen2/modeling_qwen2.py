@@ -1170,11 +1170,11 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def get_input_embeddings(self):
-        return self.model.embed_tokens
+#   def get_input_embeddings(self):
+#       return self.model.embed_tokens
 
-    def set_input_embeddings(self, value):
-        self.model.embed_tokens = value
+#   def set_input_embeddings(self, value):
+#       self.model.embed_tokens = value
 
     def forward(
         self,
@@ -1274,11 +1274,11 @@ class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def get_input_embeddings(self):
-        return self.model.embed_tokens
-
-    def set_input_embeddings(self, value):
-        self.model.embed_tokens = value
+#   def get_input_embeddings(self):
+#       return self.model.embed_tokens
+#
+#   def set_input_embeddings(self, value):
+#       self.model.embed_tokens = value
 
     def forward(
         self,
