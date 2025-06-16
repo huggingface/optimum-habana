@@ -1266,32 +1266,14 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
 class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
     def __init__(self, config):
         super().__init__(config)
-        self.num_labels = config.num_labels
         self.model = GaudiQwen2Model(config)
-        if getattr(config, "classifier_dropout", None) is not None:
-            classifier_dropout = config.classifier_dropout
-        elif getattr(config, "hidden_dropout", None) is not None:
-            classifier_dropout = config.hidden_dropout
-        else:
-            classifier_dropout = 0.1
-        self.dropout = nn.Dropout(classifier_dropout)
-        self.score = nn.Linear(config.hidden_size, config.num_labels)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def get_input_embeddings(self):
-        return self.model.embed_tokens
-
-    def set_input_embeddings(self, value):
-        self.model.embed_tokens = value
 
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -1301,17 +1283,15 @@ class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
         flash_attention_fast_softmax: Optional[bool] = False,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, TokenClassifierOutput]:
+    ) -> TokenClassifierOutput:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -1324,20 +1304,14 @@ class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
         )
-        sequence_output = outputs[0]
+        sequence_output = outputs.last_hidden_state
         sequence_output = self.dropout(sequence_output)
         logits = self.score(sequence_output)
 
         loss = None
         if labels is not None:
-            loss_function = ForTokenClassification
-            loss = loss_function(logits, labels, self.config)
-
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
+            loss = self.loss_function(logits, labels, self.config)
 
         return TokenClassifierOutput(
             loss=loss,
@@ -1346,41 +1320,41 @@ class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
             attentions=outputs.attentions,
         )
 
-def fixed_cross_entropy(source, target, num_items_in_batch: int = None, ignore_index: int = -100, **kwargs):
-    reduction = "sum" if num_items_in_batch is not None else "mean"
-    loss = nn.functional.cross_entropy(source, target, ignore_index=ignore_index, reduction=reduction)
-    if reduction == "sum":
-        loss = loss / num_items_in_batch
-    return loss
-
-def ForSequenceClassificationLoss(labels, pooled_logits, config, **kwargs):
-    num_labels = config.num_labels
-    if config.problem_type is None:
-        if num_labels == 1:
-            config.problem_type = "regression"
-        elif num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-            config.problem_type = "single_label_classification"
-        else:
-            config.problem_type = "multi_label_classification"
-
-    labels = labels.to(pooled_logits.device)
-    if config.problem_type == "regression":
-        loss_fct = MSELoss()
-        if num_labels == 1:
-            loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-        else:
-            loss = loss_fct(pooled_logits, labels)
-    elif config.problem_type == "single_label_classification":
-        loss = fixed_cross_entropy(pooled_logits.view(-1, num_labels), labels.view(-1), **kwargs)
-    elif config.problem_type == "multi_label_classification":
-        loss_fct = BCEWithLogitsLoss()
-        loss = loss_fct(pooled_logits, labels)
-    return loss
-
-def ForTokenClassification(logits, labels, config, **kwargs):
-    # Upcast to float if we need to compute the loss to avoid potential precision issues
-    logits = logits.view(-1, config.num_labels)
-    labels = labels.view(-1).to(logits.device)
-    logits = logits.float()
-    # Flatten the tokens
-    return fixed_cross_entropy(logits, labels, **kwargs)
+#   def fixed_cross_entropy(source, target, num_items_in_batch: int = None, ignore_index: int = -100, **kwargs):
+#   reduction = "sum" if num_items_in_batch is not None else "mean"
+#   loss = nn.functional.cross_entropy(source, target, ignore_index=ignore_index, reduction=reduction)
+#   if reduction == "sum":
+#       loss = loss / num_items_in_batch
+#   return loss
+#
+#   def ForSequenceClassificationLoss(labels, pooled_logits, config, **kwargs):
+#   num_labels = config.num_labels
+#   if config.problem_type is None:
+#       if num_labels == 1:
+#           config.problem_type = "regression"
+#       elif num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+#           config.problem_type = "single_label_classification"
+#       else:
+#           config.problem_type = "multi_label_classification"
+#
+#   labels = labels.to(pooled_logits.device)
+#   if config.problem_type == "regression":
+#       loss_fct = MSELoss()
+#       if num_labels == 1:
+#           loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
+#       else:
+#           loss = loss_fct(pooled_logits, labels)
+#   elif config.problem_type == "single_label_classification":
+#       loss = fixed_cross_entropy(pooled_logits.view(-1, num_labels), labels.view(-1), **kwargs)
+#   elif config.problem_type == "multi_label_classification":
+#       loss_fct = BCEWithLogitsLoss()
+#       loss = loss_fct(pooled_logits, labels)
+#   return loss
+#
+#   def ForTokenClassification(logits, labels, config, **kwargs):
+#       # Upcast to float if we need to compute the loss to avoid potential precision issues
+#   logits = logits.view(-1, config.num_labels)
+#   labels = labels.view(-1).to(logits.device)
+#   logits = logits.float()
+#   # Flatten the tokens
+#   return fixed_cross_entropy(logits, labels, **kwargs)
