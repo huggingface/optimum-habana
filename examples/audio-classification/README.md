@@ -95,7 +95,7 @@ python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --seed 0 \
     --use_habana \
-    --use_lazy_mode False\
+    --use_lazy_mode False \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
     --sdp_on_bf16 \

@@ -236,6 +236,7 @@ The following example shows how to fine-tune the [Whisper small](https://hugging
 PT_HPU_LAZY_MODE=1 python run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-small" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --trust_remote_code \
     --dataset_config_name="hi" \
     --language="hindi" \
     --task="transcribe" \
@@ -282,6 +283,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-large" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --trust_remote_code \
     --dataset_config_name="hi" \
     --language="hindi" \
     --task="transcribe" \
@@ -321,6 +323,7 @@ The following example shows how to do inference with the [Whisper small](https:/
 PT_HPU_LAZY_MODE=1 python run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-small" \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --trust_remote_code \
     --dataset_config_name="hi" \
     --language="hindi" \
     --task="transcribe" \
