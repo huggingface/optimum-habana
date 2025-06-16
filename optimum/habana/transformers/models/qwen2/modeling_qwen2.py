@@ -1160,6 +1160,9 @@ def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
 
 
 
+
+
+
 class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
     def __init__(self, config):
         super().__init__(config)
@@ -1168,7 +1171,7 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
 #       self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
 
         # Initialize weights and apply final processing
-#       self.post_init()
+        self.post_init()
 
 #   def get_input_embeddings(self):
 #       return self.model.embed_tokens
@@ -1245,6 +1248,8 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
 
         loss = None
         if labels is not None:
+#           loss_function = ForSequenceClassificationLoss
+#           loss = loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
             loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
 
 #       if not return_dict:
