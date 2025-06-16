@@ -1,7 +1,7 @@
 {
     "gaudi2": {
         "common_language": {
-            "num_train_epochs": 5,
+            "num_train_epochs": 10,
             "eval_batch_size": 64,
             "distribution": {
                 "multi_card": {

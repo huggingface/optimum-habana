@@ -449,13 +449,6 @@ def setup_parser(parser):
         type=int,
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
-
-    parser.add_argument(
-        "--use_mark_dynamic",
-        action="store_true",
-        help="Mark the required tensor(s) as dynamic with min/max tensor shape derived from input and output tokens. Only applicable in Dynamic Mode execution.",
-    )
-
     parser.add_argument(
         "--regional_compile",
         action="store_true",
@@ -504,11 +497,6 @@ def setup_parser(parser):
     if args.quant_config == "" and args.disk_offload:
         logger.warning(
             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
-        )
-
-    if args.use_mark_dynamic:
-        assert args.max_input_tokens == -1, (
-            "--use_mark_dynamic should be used only with Dynamic Mode aka max_input_tokens == -1."
         )
 
     if args.pt2e_path:
@@ -664,7 +652,7 @@ def main():
                 for sentence in input_sentences:
                     generated = generate(sentence, None, args.reduce_recompile)
                     results.extend(generated)
-                    print(f"Generatig batch {b}/{N}")
+                    print(f"Generating batch {b}/{N}")
                     b += 1
                 per_sequence_profiler.step()
         else:
@@ -688,7 +676,6 @@ def main():
             output_dir = Path(args.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # TODO dump in hex format
             acc_file = []
             num_token = 0
             for i, idx in enumerate(ds.index):
@@ -1084,8 +1071,6 @@ def main():
         for i, batch in enumerate(dataloader):
             timer.step()
             generate_dataset(batch, disable_profiling=True)
-            if generation_config.use_mark_dynamic:
-                generation_config.use_mark_dynamic = False
             timer.step()
             duration = timer.last_duration
             # The first three iterations take longer because of graph compilation

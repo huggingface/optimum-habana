@@ -489,7 +489,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
     load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
@@ -736,17 +735,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
-    generation_config.use_mark_dynamic = args.use_mark_dynamic
     generation_config.attn_batch_split = args.attn_batch_split
-    if generation_config.use_mark_dynamic:
-        mark_dynamic_config = get_mark_dynamic_min_max(args)
-        if mark_dynamic_config.get("dim_0") is not None:
-            generation_config.mark_dyn_dim_0_min = mark_dynamic_config["dim_0"]["min"]
-            generation_config.mark_dyn_dim_0_max = mark_dynamic_config["dim_0"]["max"]
-
-        if mark_dynamic_config.get("dim_1") is not None:
-            generation_config.mark_dyn_dim_1_min = mark_dynamic_config["dim_1"]["min"]
-            generation_config.mark_dyn_dim_1_max = mark_dynamic_config["dim_1"]["max"]
 
     return generation_config
 
@@ -832,27 +821,6 @@ def save_model(model, tokenizer, save_path):
 
     save(model, save_path, format="huggingface")
     tokenizer.save_pretrained(save_path)
-
-
-def get_mark_dynamic_min_max(args):
-    """
-    min and max should be determined based on the dataset's min and max seq length.
-    """
-    assert args.max_input_tokens == -1, "get_mark_dynamic_min_max() should be called only for dynamic mode execution."
-
-    # default values
-    min_val = 128
-    max_val = min_val + 128
-
-    if args.dataset_name == "tatsu-lab/alpaca":
-        # have a single bucket of dynamic compilation
-        min_val = args.max_new_tokens
-        max_val = 128 + args.max_new_tokens  # derived from compilation stats
-
-    return {
-        "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
-        "dim_1": {"min": min_val, "max": max_val},
-    }
 
 
 # TODO: This will be removed in v1.20 Synapse release

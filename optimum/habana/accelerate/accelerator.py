@@ -49,8 +49,6 @@ from accelerate.utils import (
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
-from ..distributed import parallel_state
-
 
 if is_deepspeed_available():
     from accelerate.utils import (
@@ -64,6 +62,7 @@ if is_deepspeed_available():
 
 import accelerate.utils.transformer_engine
 
+from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
 from .utils.transformer_engine import convert_model, get_fp8_recipe
 
