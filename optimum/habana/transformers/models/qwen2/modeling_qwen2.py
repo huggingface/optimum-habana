@@ -1153,29 +1153,7 @@ def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
-
-
-
-
-
-
-
 class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
-    def __init__(self, config):
-        super().__init__(config)
-#       self.num_labels = config.num_labels
-        self.model = GaudiQwen2Model(config)
-#       self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
-
-        # Initialize weights and apply final processing
-#       self.post_init()
-
-#   def get_input_embeddings(self):
-#       return self.model.embed_tokens
-#
-#   def set_input_embeddings(self, value):
-#       self.model.embed_tokens = value
-
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -1199,7 +1177,6 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-#       return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         transformer_outputs: BaseModelOutputWithPast = self.model(
             input_ids,
@@ -1214,7 +1191,6 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-#           return_dict=return_dict,
         )
         hidden_states = transformer_outputs.last_hidden_state
         logits = self.score(hidden_states)
@@ -1244,13 +1220,7 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
 
         loss = None
         if labels is not None:
-#           loss_function = ForSequenceClassificationLoss
-#           loss = loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
             loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
-
-#       if not return_dict:
-#           output = (pooled_logits,) + transformer_outputs[1:]
-#           return ((loss,) + output) if loss is not None else output
 
         return SequenceClassifierOutputWithPast(
             loss=loss,
@@ -1260,11 +1230,8 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
             attentions=transformer_outputs.attentions,
         )
 
-class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
-    def __init__(self, config):
-        super().__init__(config)
-        self.model = GaudiQwen2Model(config)
 
+class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
