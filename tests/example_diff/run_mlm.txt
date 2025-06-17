@@ -1,27 +1,29 @@
-17,19c17,18
+1a2
+> # coding=utf-8
+16,18c17,18
 < Fine-tuning the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 < 
 < Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 ---
 > Training the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-35,36d33
+34,35d33
 < from datasets import load_dataset
 < 
-37a35
+36a35
 > from datasets import load_dataset
-46,49d43
+45,48d43
 <     Trainer,
 <     TrainingArguments,
 <     is_torch_xla_available,
 <     set_seed,
-54a49,50
+53a49,50
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-56,57d51
+55,56d51
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-59c53,59
+< check_min_version("4.52.0.dev0")
+58c53,59
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
@@ -31,32 +33,32 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-61a62,69
+60a62,69
 > 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
 > 
-137c145
+136c145
 <             "choices": ["auto", "bfloat16", "float16", "float32"],
 ---
 >             "choices": ["auto", "bfloat16", "float32"],
-145c153
+144c153
 <                 "set True will benefit LLM loading time and RAM consumption."
 ---
 >                 "Setting it to True will benefit LLM loading time and RAM consumption."
-230c238
+229c238
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-254c262
+253c262
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-283a292,298
+282a292,298
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -64,28 +66,24 @@
 >         token=model_args.token,
 >     )
 > 
-284a300
+283a300
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-286,287c302,304
+285,286c302,304
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-289d305
+288d305
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-620c636
+619c636
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-621a638
+620a638
 >         gaudi_config=gaudi_config,
-625c642
-<         processing_class=tokenizer,
----
->         tokenizer=tokenizer,
-627,630c644,645
+626,629c644,645
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_xla_available()
@@ -93,7 +91,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-644,647c659,665
+643,646c659,665
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -106,9 +104,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-656d673
+655d673
 < 
-659,660c676,681
+658,659c676,681
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -118,7 +116,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-683,687d703
+682,686d703
 < 
 < 
 < def _mp_fn(index):

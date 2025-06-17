@@ -29,21 +29,6 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
-from optimum.habana.checkpoint_utils import (
-    get_ds_injection_policy,
-    get_repo_root,
-    model_is_optimized,
-    model_on_meta,
-    write_checkpoints_json,
-)
-from optimum.habana.utils import (
-    HabanaGenerationTime,
-    check_habana_frameworks_version,
-    check_optimum_habana_min_version,
-    get_habana_frameworks_version,
-    set_seed,
-)
-
 
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
@@ -105,6 +90,8 @@ def setup_distributed(args):
 def setup_inference(args, model):
     import habana_frameworks.torch.core as htcore
 
+    from optimum.habana.utils import get_habana_frameworks_version
+
     habana_version = get_habana_frameworks_version()
 
     print("Initializing inference mode")
@@ -130,9 +117,6 @@ def setup_const_serialization(const_serialization_path):
 
 
 def setup_env(args):
-    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.45.0")
-    check_optimum_habana_min_version("1.18.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -148,6 +132,13 @@ def setup_env(args):
         # Based upon above conditions and below env variable,
         # we can call HPU graphs clear_inputs().
         os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
+
+    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+    check_min_version("4.51.0")
+
+    from optimum.habana.utils import check_optimum_habana_min_version
+
+    check_optimum_habana_min_version("1.18.0.dev0")
 
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -339,11 +330,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         from optimum.habana.transformers.trainer import _is_peft_model
 
-        if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
-            model = wrap_in_hpu_graph(model, hash_with_views=False)
-        else:
-            max_graphs = getattr(args, "max_graphs", None)
-            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
+        max_graphs = getattr(args, "max_graphs", None)
+        model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -474,6 +462,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
+
+    from optimum.habana.checkpoint_utils import get_ds_injection_policy, model_on_meta, write_checkpoints_json
 
     # List of model types that need max position embeddings capped at 8192
     MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
@@ -697,6 +687,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
+    from optimum.habana.checkpoint_utils import model_is_optimized
+
     is_optimized = model_is_optimized(model.config)
 
     # Generation configuration
@@ -750,8 +742,6 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    timer = HabanaGenerationTime()
-    timer.start()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -761,10 +751,19 @@ def initialize_model(args, logger):
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)
+
+    from optimum.habana.utils import HabanaGenerationTime, set_seed
+
+    timer = HabanaGenerationTime()
+    timer.start()
     set_seed(args.seed)
+
+    from optimum.habana.checkpoint_utils import get_repo_root
+
     cache_dir = get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
+
     use_deepspeed = args.world_size > 0
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16

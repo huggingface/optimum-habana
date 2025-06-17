@@ -78,7 +78,7 @@
       "throughput": 44.25834541569395
     },
     "gaudi3": {
-      "throughput": 179.15343204459856
+      "throughput": 143.5977987468177
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen2-7B-256-False-True]": {
@@ -209,7 +209,7 @@
       "throughput": 35
     },
     "gaudi3": {
-      "throughput": 149.2189570033595
+      "throughput": 95.405132122058
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[facebook/xglm-1.7B-1-False-False]": {
@@ -415,7 +415,7 @@
       "throughput": 51.61471298016438
     },
     "gaudi3": {
-      "throughput": 69.74689153288725
+      "throughput": 48.4989896475782
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[Qwen/Qwen2.5-72B-2-1]": {
@@ -436,7 +436,7 @@
       "throughput": 36.77314954096159
     },
     "gaudi3": {
-      "throughput": 42.964481338739304
+      "throughput": 34.82088387988216
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[facebook/opt-66b-2-1]": {
@@ -452,7 +452,7 @@
       "throughput": 87.578709544111
     },
     "gaudi3": {
-      "throughput": 107.59395201764178
+      "throughput": 60.55676566393658
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[google/gemma-2-9b-8-1]": {
@@ -460,7 +460,7 @@
       "throughput": 110.12610917383735
     },
     "gaudi3": {
-      "throughput": 123.69992293361813
+      "throughput": 68.9805898434787
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[meta-llama/Llama-2-70b-hf-8-1]": {
@@ -476,7 +476,7 @@
       "throughput": 64
     },
     "gaudi3": {
-      "throughput": 75.6224035651044
+      "throughput": 40.96632613314894
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_distributed_tp[meta-llama/Llama-2-7b-hf]": {
@@ -516,7 +516,7 @@
       "throughput": 4656.2
     },
     "gaudi3": {
-      "throughput": 6968.716105590979
+      "throughput": 6059.088893259565
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_fp8[meta-llama/Llama-2-7b-hf-1-1230-False-128-128]": {
