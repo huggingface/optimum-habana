@@ -342,6 +342,7 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         interpolate_pos_encoding: bool = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        return_dict: Optional[bool] = None,
     ) -> BaseModelOutputWithPooling:
         """
         Copied from CLIPVisionModel.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py

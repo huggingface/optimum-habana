@@ -40,6 +40,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
+from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -178,6 +179,7 @@ from .models import (
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
@@ -738,6 +740,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
+    transformers.models.video_llava.processing_video_llava.VideoLlavaProcessor = GaudiVideoLlavaProcessor
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
@@ -832,3 +835,6 @@ def adapt_transformers_to_gaudi():
     transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
+
+    # Optimization for RT-DETR model on Gaudi
+    transformers.loss.loss_rt_detr.RTDetrHungarianMatcher.forward = gaudi_RTDetrHungarianMatcher_forward
