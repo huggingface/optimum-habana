@@ -19,10 +19,15 @@
 
 from .sft_trainer import GaudiSFTTrainer
 from .dpo_trainer import GaudiDPOTrainer
-from .ppo_config import GaudiPPOConfig
-from .ppo_trainer import GaudiPPOTrainer
+
+# TODO: resolve import issues and uncomment the following lines
+# from .ppo_config import GaudiPPOConfig
+# from .ppo_trainer import GaudiPPOTrainer
+
 from .reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
 
 from .ddpo_trainer import GaudiDDPOTrainer
 from .dpo_config import GaudiDPOConfig
 from .sft_config import GaudiSFTConfig
+from .grpo_trainer import GaudiGRPOTrainer
+from .grpo_config import GaudiGRPOConfig
