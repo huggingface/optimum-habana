@@ -19,9 +19,6 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-from torch.nn import BCEWithLogitsLoss, MSELoss
-
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast, TokenClassifierOutput
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
@@ -1319,42 +1316,3 @@ class GaudiQwen2ForTokenClassification(Qwen2ForTokenClassification):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
-#   def fixed_cross_entropy(source, target, num_items_in_batch: int = None, ignore_index: int = -100, **kwargs):
-#   reduction = "sum" if num_items_in_batch is not None else "mean"
-#   loss = nn.functional.cross_entropy(source, target, ignore_index=ignore_index, reduction=reduction)
-#   if reduction == "sum":
-#       loss = loss / num_items_in_batch
-#   return loss
-#
-#   def ForSequenceClassificationLoss(labels, pooled_logits, config, **kwargs):
-#   num_labels = config.num_labels
-#   if config.problem_type is None:
-#       if num_labels == 1:
-#           config.problem_type = "regression"
-#       elif num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-#           config.problem_type = "single_label_classification"
-#       else:
-#           config.problem_type = "multi_label_classification"
-#
-#   labels = labels.to(pooled_logits.device)
-#   if config.problem_type == "regression":
-#       loss_fct = MSELoss()
-#       if num_labels == 1:
-#           loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-#       else:
-#           loss = loss_fct(pooled_logits, labels)
-#   elif config.problem_type == "single_label_classification":
-#       loss = fixed_cross_entropy(pooled_logits.view(-1, num_labels), labels.view(-1), **kwargs)
-#   elif config.problem_type == "multi_label_classification":
-#       loss_fct = BCEWithLogitsLoss()
-#       loss = loss_fct(pooled_logits, labels)
-#   return loss
-#
-#   def ForTokenClassification(logits, labels, config, **kwargs):
-#       # Upcast to float if we need to compute the loss to avoid potential precision issues
-#   logits = logits.view(-1, config.num_labels)
-#   labels = labels.view(-1).to(logits.device)
-#   logits = logits.float()
-#   # Flatten the tokens
-#   return fixed_cross_entropy(logits, labels, **kwargs)
