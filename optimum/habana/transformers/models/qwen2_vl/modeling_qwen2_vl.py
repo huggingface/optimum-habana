@@ -88,8 +88,8 @@ class GaudiVisionSdpaAttention(VisionSdpaAttention):
                 "removed and `position_embeddings` will be mandatory."
             )
             emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
-            cos = emb.cos().float()
-            sin = emb.sin().float()
+            cos = emb.cos()
+            sin = emb.sin()
         else:
             cos, sin = position_embeddings
         q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
@@ -102,11 +102,15 @@ class GaudiVisionSdpaAttention(VisionSdpaAttention):
         v = v.transpose(0, 1)
 
         if FusedSDPA is not None and use_flash_attention:
-            attn_output = self.fused_scaled_dot_product_attention(q, k, v, attention_mask, 0.0, False, None, "None")
+            attn_output = self.fused_scaled_dot_product_attention(
+                q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, 0.0, False, None, "None"
+            )
         else:
-            attn_output = F.scaled_dot_product_attention(q, k, v, attention_mask, dropout_p=0.0)
+            attn_output = F.scaled_dot_product_attention(
+                q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), attention_mask, dropout_p=0.0
+            )
 
-        attn_output = attn_output.transpose(0, 1)
+        attn_output = attn_output.squeeze(0).transpose(0, 1)
         attn_output = attn_output.reshape(seq_length, -1)
         attn_output = self.proj(attn_output)
         del attention_mask
