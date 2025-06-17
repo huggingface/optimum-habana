@@ -196,7 +196,8 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
   --sdp_on_bf16
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
 
 
 ## Inference
@@ -227,4 +228,5 @@ python run_clip.py \
     --trust_remote_code
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
