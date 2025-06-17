@@ -226,7 +226,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
 
 def gaudi_SeamlessM4TDecoder_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -446,7 +446,7 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
 
 def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -599,7 +599,7 @@ def gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths(self, input_lengths:
 
 def gaudi_SeamlessM4TForTextToSpeech_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,

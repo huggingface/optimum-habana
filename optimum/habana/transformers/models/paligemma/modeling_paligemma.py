@@ -20,6 +20,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.paligemma.modeling_paligemma import (
     PaliGemmaCausalLMOutputWithPast,
     PaliGemmaForConditionalGeneration,
@@ -33,8 +34,8 @@ logger = logging.get_logger(__name__)
 class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
-        pixel_values: torch.FloatTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[List[torch.FloatTensor], Cache]] = None,
@@ -58,11 +59,6 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
-
-        if pixel_values is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
-            )
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -111,7 +107,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         causal_mask = self._update_causal_mask(
             attention_mask, token_type_ids, past_key_values, cache_position, inputs_embeds, is_training
         )
-        outputs = self.language_model(
+        outputs: CausalLMOutputWithPast = self.language_model(
             attention_mask=causal_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
@@ -119,7 +115,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            return_dict=True,
             cache_position=cache_position,
             # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
             # logits_to_keep=logits_to_keep,
@@ -127,7 +123,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             **lm_kwargs,
         )
 
-        logits = outputs.logits
+        logits = outputs[0]
         loss = None
         if labels is not None:
             # Upcast to float if we need to compute the loss to avoid potential precision issues
@@ -149,11 +145,8 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             flat_logits = shift_logits.view(-1, self.config.text_config.vocab_size)
             flat_labels = shift_labels.view(-1).to(shift_logits.device)
             loss = loss_fct(flat_logits, flat_labels)
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
-        return PaliGemmaCausalLMOutputWithPast(
+        output = PaliGemmaCausalLMOutputWithPast(
             loss=loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
@@ -161,3 +154,4 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
             attentions=outputs.attentions,
             image_hidden_states=image_features if pixel_values is not None else None,
         )
+        return output if return_dict else output.to_tuple()
