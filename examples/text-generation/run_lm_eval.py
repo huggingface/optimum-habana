@@ -21,14 +21,13 @@ import argparse
 import json
 import multiprocessing as mp
 import os
-from typing import Literal, Optional
+from typing import Literal, Optional, List, Tuple
 
 import psutil
 import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import stop_sequences_criteria
 
 # Local imports
 from run_generation import setup_parser
@@ -120,6 +119,7 @@ class HabanaModelAdapter(HFLM):
     ) -> None:
         # To skip cuda code of the HFLM init
         TemplateLM.__init__(self)
+        self.args = args
         self.tokenizer = tokenizer
         self._model = model
         self._config = self._model.config
@@ -230,48 +230,92 @@ class HabanaModelAdapter(HFLM):
         logits = logits.to(torch.float32)
         return logits
 
-    def _model_generate(self, context, max_length, stop, **generation_kwargs):
-        """
-        Patched method
-        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L858
-        """
+    def tok_batch_encode(
+        self,
+        strings: List[str],
+        padding_side: str = "left",
+        left_truncate_len: int = None,
+        truncation: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # encode a batch of strings. converts to tensors and pads automatically, unlike tok_encode.
+        old_padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = padding_side
 
-        # temperature = 0.0 if not set
-        # if do_sample is false and temp==0.0:
-        # remove temperature, as do_sample=False takes care of this
-        # and we don't want a warning from HF
-        generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
-        do_sample = generation_kwargs.get("do_sample", None)
+        add_special_tokens = {}
+        if self.backend == "causal":
+            add_special_tokens = {"add_special_tokens": False or self.add_bos_token}
 
-        # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
-        if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
-            generation_kwargs["do_sample"] = do_sample = False
-
-        if do_sample is False and generation_kwargs.get("temperature") == 0.0:
-            generation_kwargs.pop("temperature")
-        # build stopping criteria
-        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
-        # to avoid graph recompilation
-        if self.options.static_shapes:
-            # Filter buckets greater than or equal to the given number
-            greater_or_equal = [x for x in self.buckets if x >= context.shape[1]]
-            # Return the smallest value from the filtered list, or the context shape, if no such value exists
-            bucket = min(greater_or_equal, default=context.shape[1])
-            max_gen_toks = max_length - context.shape[1]
-            max_length = max(max_length, max_gen_toks + bucket)
-        # move context & attention_mask to hpu
-        context = context.to("hpu")
-        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
-        return self.model.generate(
-            input_ids=context,
-            max_length=max_length,
-            stopping_criteria=stopping_criteria,
-            pad_token_id=self.tokenizer.pad_token_id,
-            use_cache=True,
-            hpu_graphs=self.hpu_graphs,
-            lazy_mode=self.use_lazy_mode,
-            **generation_kwargs,
+        encoding = self.tokenizer(
+            strings,
+            truncation=truncation,
+            padding="max_length",
+            max_length=self.args.max_input_tokens,
+            return_tensors="pt",
+            **add_special_tokens,
         )
+        if left_truncate_len:
+            encoding["input_ids"] = encoding["input_ids"][:, -left_truncate_len:]
+            encoding["attention_mask"] = encoding["attention_mask"][
+                :, -left_truncate_len:
+            ]
+        self.tokenizer.padding_side = old_padding_side
+
+        return encoding["input_ids"], encoding["attention_mask"]
+
+
+    def _model_generate(self, context, max_length, stop, **generation_kwargs):
+        inputs = {}
+        inputs["input_ids"] = context.to("hpu")
+        inputs["attention_mask"] = generation_kwargs.get("attention_mask", None).to("hpu")
+        def compute_valid_sequence_lengths_tensor(input_tokens):
+            attn_mask = input_tokens["attention_mask"]
+            return torch.sum(attn_mask, dim=1, dtype=torch.int32)
+
+        valid_sequence_lengths = compute_valid_sequence_lengths_tensor(inputs).to("hpu")
+        self.options.valid_sequence_lengths = valid_sequence_lengths
+
+        with HabanaGenerationTime() as timer:
+            result = self.model.generate(
+                **inputs,
+                # max_new_tokens=1,
+                generation_config=self.options,
+                hpu_graphs=self.args.use_hpu_graphs,
+                lazy_mode=self.use_lazy_mode,
+                ignore_eos=self.args.ignore_eos,
+            ).cpu()
+
+        with HabanaGenerationTime() as timer:
+            trimmed_results = []
+            for seq in result:
+                seq = seq.tolist() 
+                stop_found = False
+                for stop_seq in stop:
+                    stop_seq_ids = self.tokenizer.encode(stop_seq, add_special_tokens=False)
+                    start_from = self.args.max_input_tokens
+                    while True:
+                        try:
+                            first_occurence_of_stop_sequence = seq[start_from:].index(stop_seq_ids[0])
+                            if seq[start_from + first_occurence_of_stop_sequence : start_from + first_occurence_of_stop_sequence + len(stop_seq_ids)] == stop_seq_ids:
+                                trimmed_results.append(seq[: start_from + first_occurence_of_stop_sequence])
+                                stop_found = True
+                                break
+                            else:
+                                start_from += first_occurence_of_stop_sequence + 1
+                        except ValueError:
+                            break
+                    if stop_found:
+                        break
+                
+                if not stop_found:
+                    trimmed_results.append(seq)           
+
+            max_len = max(len(s) for s in trimmed_results)
+            pad_token_id = self.tokenizer.pad_token_id or 0
+            trimmed_tensor = torch.full((len(trimmed_results), max_len), pad_token_id, dtype=torch.long)
+            for i, s in enumerate(trimmed_results):
+                trimmed_tensor[i, :len(s)] = torch.tensor(s, dtype=torch.long)
+        
+        return trimmed_tensor
 
     def get_model_info(self) -> dict:
         """
