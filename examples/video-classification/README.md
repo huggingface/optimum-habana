@@ -30,7 +30,7 @@ pip install -r requirements.txt
 ### Single video example
 
 ```bash
-python3 run_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_example.py \
     --model_name_or_path MCG-NJU/videomae-base-finetuned-kinetics \
     --video_paths "https://ak.picdn.net/shutterstock/videos/21179416/preview/stock-footage-aerial-shot-winter-forest.mp4" \
     --use_hpu_graphs \
@@ -45,7 +45,7 @@ Predicted class for stock-footage-aerial-shot-winter-forest.mp4 is sled dog raci
 ### Multi-video example
 
 ```bash
-python3 run_example.py \
+PT_HPU_LAZY_MODE=1 python3 run_example.py \
     --model_name_or_path MCG-NJU/videomae-base-finetuned-kinetics \
     --use_hpu_graphs \
     --bf16 \
@@ -57,7 +57,7 @@ python3 run_example.py \
     "https://ak.picdn.net/shutterstock/videos/9607838/preview/stock-footage-zrenjanin-serbia-march-fans-watching-live-concert-bokeh-blur-urban-background-x.mp4"
 ```
 
-Outputs: 
+Outputs:
 ```
 Predicted class for stock-footage-senior-couple-looking-through-binoculars-on-sailboat-together-shot-on-red-epic-for-high-quality-k.mp4 is sailing and took 3.372e-01 seconds
 Predicted class for stock-footage-aerial-shot-winter-forest.mp4 is sled dog racing and took 3.360e-01 seconds

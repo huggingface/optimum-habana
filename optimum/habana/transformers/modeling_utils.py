@@ -40,6 +40,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
+from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -832,3 +833,6 @@ def adapt_transformers_to_gaudi():
     transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
+
+    # Optimization for RT-DETR model on Gaudi
+    transformers.loss.loss_rt_detr.RTDetrHungarianMatcher.forward = gaudi_RTDetrHungarianMatcher_forward
