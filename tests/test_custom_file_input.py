@@ -143,7 +143,7 @@ def _test_custom_file_inputs(model_name: str, test_commands: list):
         "--per_device_train_batch_size 2",
         "--per_device_eval_batch_size 2",
         "--gradient_accumulation_steps 4",
-        "--evaluation_strategy no",
+        "--eval_strategy no",
         "--save_strategy steps ",
         "--save_steps 2000",
         "--save_total_limit 1",

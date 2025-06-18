@@ -2006,7 +2006,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer = get_regression_trainer(
             output_dir=tmp_dir,
             save_steps=5,
-            evaluation_strategy="steps",
+            eval_strategy="steps",
             eval_steps=5,
             max_steps=9,
         )
@@ -2027,7 +2027,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer = get_regression_trainer(
             output_dir=tmp_dir,
             save_steps=5,
-            evaluation_strategy="steps",
+            eval_strategy="steps",
             eval_steps=5,
             load_best_model_at_end=True,
             save_total_limit=2,
