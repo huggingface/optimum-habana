@@ -1153,6 +1153,14 @@ def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
+"""
+Inherits from Qwen2ForSequenceClassification: https://github.com/huggingface/transformers/blob/v4.51.3/src/transformers/models/qwen2/modeling_qwen2.py#L869
+The only differences are:
+- add new args use_flash_attention,
+- add new args flash_attention_recompute
+- add new args flash_attention_causal_mask
+- add new args flash_attention_fast_softmax
+"""
 class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
     def forward(
         self,
