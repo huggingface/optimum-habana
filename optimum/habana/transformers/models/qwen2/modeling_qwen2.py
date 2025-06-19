@@ -1169,7 +1169,6 @@ class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
         flash_attention_fast_softmax: Optional[bool] = False,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-#       return_dict: Optional[bool] = None,
     ) -> SequenceClassifierOutputWithPast:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
