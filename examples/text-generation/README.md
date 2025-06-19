@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 ```
 
 
@@ -817,11 +817,11 @@ pip install -r requirements_lm_eval.txt
 
 > [!NOTE]
 > Please add the flags for following models to improve accuracy when using lm_eval on gaudi2. Please note this is a workaround for 1.20 release only.
-> 
+>
 > ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for llama-2-70b-hf[PTQ fp8]
 >
 > COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
-> 
+>
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
 
 
