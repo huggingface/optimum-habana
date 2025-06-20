@@ -266,6 +266,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
 
+        self.max_position_embeddings = config.max_position_embeddings
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -420,6 +421,8 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
+            # Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
+            softmax_mode = "None" if self.training else "fp32"
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -430,14 +433,13 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                     0.0,
                     False,
                     None,
-                    "None",
+                    softmax_mode,
                     False,
                     None,
                     "None",
                 )
             else:
                 # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states,
