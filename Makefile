@@ -44,7 +44,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py
+	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
@@ -97,25 +97,18 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
-	@status1=0; status2=0; status3=0; status4=0; status5=0; \
 	python -m pip install -r examples/stable-diffusion/requirements.txt; \
-	python -m pytest tests/test_diffusers.py -v -s -k "textual_inversion" || status1=$$?; \
-	python -m pip install peft==0.7.0; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_" || status2=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet" || status3=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation" || status4=$$?; \
-	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status5=$$?; \
-	exit $$((status1 + status2 + status3 + status4 + status5))
+	python -m pytest tests/test_diffusers.py -v -s
 
 # Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
 	python -m pip install -r examples/text-generation/requirements_awq.txt
 	BUILD_CUDA_EXT=0 python -m pip install -vvv --no-build-isolation git+https://github.com/HabanaAI/AutoGPTQ.git
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 	python -m pip install tiktoken blobfile
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
@@ -127,17 +120,17 @@ slow_tests_text_generation_example_1x: test_installs
 
 # Run subset of text-generation non-regression tests that require 2 Gaudi cards
 slow_tests_text_generation_example_2x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 	python -m pytest tests/test_text_generation_example.py -m x2 -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 4 Gaudi cards
 slow_tests_text_generation_example_4x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 	python -m pytest tests/test_text_generation_example.py -m x4 -v -s --token $(TOKEN)
 
 # Run subset of text-generation non-regression tests that require 8 Gaudi cards
 slow_tests_text_generation_example_8x: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 	python -m pytest tests/test_text_generation_example.py -m x8 -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests

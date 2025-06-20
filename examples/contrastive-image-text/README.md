@@ -158,7 +158,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --trust_remote_code
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
 
 
 ### DeepSpeed
@@ -195,7 +196,8 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridget
   --sdp_on_bf16
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
 
 
 ## Inference
@@ -226,4 +228,5 @@ PT_HPU_LAZY_MODE=1 python run_clip.py \
     --trust_remote_code
 ```
 
-> `--mediapipe_dataloader` only works on Gaudi2.
+> [!NOTE]
+> Please note `--mediapipe_dataloader` is not supported on Gaudi1.
