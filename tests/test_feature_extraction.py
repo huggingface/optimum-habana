@@ -134,9 +134,9 @@ class GaudiFeatureExtractionTester(TestCase):
                     outputs = self.model_hpu_graph(**batch_dict)
                     embeddings(outputs, batch_dict)
             torch.hpu.synchronize()
-            time_per_iter = elapsed_time.last_duration * 1000 / test_iters  # time in ms
-            self.baseline.assertRef(
-                compare=lambda actual, ref: actual < (1.05 * ref),
-                context=[OH_DEVICE_CONTEXT],
-                time_per_iter=time_per_iter,
-            )
+        time_per_iter = elapsed_time.last_duration * 1000 / test_iters  # time in ms
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual < (1.05 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            time_per_iter=time_per_iter,
+        )
