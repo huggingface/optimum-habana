@@ -112,6 +112,9 @@ slow_tests_diffusers: test_installs
 	PT_HPU_LAZY_MODE=1 python -m pytest tests/test_diffusers.py -v -s -k "test_no_" || status5=$$?; \
 	exit $$((status1 + status2 + status3 + status4 + status5))
 
+slow_tests_sentence_transformers: test_installs
+	python -m pytest tests/test_sentence_transformers.py -v -s
+
 # Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
 	python -m pip install -r examples/text-generation/requirements_awq.txt
