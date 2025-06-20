@@ -65,7 +65,7 @@ class GaudiAccelerator(Accelerator):
         if self.has_fp8_handler:
             self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
-    # TODO: Remove if ever Gaudi specific fp8 conversion is upstreamed in accelerate
+    # INFO: this adds support for fast_ddp by not applying DDP wrapper
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         if self.distribution_strategy == "fast_ddp":
             # with fast_ddp, we just skip ddp and fsdp model preparation
@@ -86,7 +86,6 @@ class GaudiAccelerator(Accelerator):
 
         return prepared_deepspeed
 
-    # INFO: this adds support for sequence/context parallelism to the dataloader
     def prepare_data_loader(
         self, data_loader: torch.utils.data.DataLoader, device_placement=None, slice_fn_for_dispatch=None
     ):
