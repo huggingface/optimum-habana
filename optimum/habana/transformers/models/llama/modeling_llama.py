@@ -941,6 +941,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         num_virtual_tokens: int = None,
         attn_batch_split: int = 1,
         prev_layer_residual: Optional[torch.Tensor] = None,
+        lazy_mode: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -973,7 +974,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
             for i in range(attn_batch_split):
                 split_hidden_states[i] = hidden_states[i]
-                if self.self_attn.layer_idx != 0:
+                if lazy_mode and self.self_attn.layer_idx != 0:
                     # Add the residual from the previous layer
                     split_hidden_states[i] = self.post_mlp(hidden_states[i], prev_layer_residual[i])
 
@@ -1014,7 +1015,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                 self.mlp.mlp_all_reduce(split_hidden_states[i])
                 int_residual_splits.append(int_residual)
 
-            if self.self_attn.layer_idx == (self.self_attn.config.num_hidden_layers - 1):
+            if not lazy_mode or self.self_attn.layer_idx == (self.self_attn.config.num_hidden_layers - 1):
                 for i in range(attn_batch_split):
                     split_hidden_states[i] = self.post_mlp(split_hidden_states[i], int_residual_splits[i])
 
@@ -1377,6 +1378,7 @@ class GaudiLlamaModel(LlamaModel):
                     num_virtual_tokens,
                     attn_batch_split,
                     layer_prev_layer_residual,
+                    lazy_mode,
                 )
                 if use_prev_layer_residual:
                     index = 1 + int(use_cache) + int(output_attentions)
