@@ -4,4 +4,4 @@ datasets == 3.0.0
 tyro
 evaluate
 scikit-learn == 1.5.2
-accelerate == 0.34.0
+accelerate >= 1.7.0
