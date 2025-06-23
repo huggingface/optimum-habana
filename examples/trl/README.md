@@ -1,11 +1,11 @@
 # Examples
 
-
 ## Requirements
 
 First, you should install the requirements:
-```bash
-$ pip install -U -r requirements.txt
+
+```sh
+pip install -U -r requirements.txt
 ```
 
 ## GRPO Training
@@ -13,46 +13,59 @@ $ pip install -U -r requirements.txt
 Installing DeepSpeed
 
 ```sh
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 ```
 
 Running single card training
 
-```sh
-python3 grpo.py \
-    --model_name_or_path trl-internal-testing/tiny-Qwen2ForCausalLM-2.5 \
-    --reward_model_name_or_path trl-internal-testing/tiny-Qwen2ForSequenceClassification-2.5 \
-    --dataset_name trl-internal-testing/zen \
-    --subset standard_prompt_only \
+```bash
+PT_HPU_LAZY_MODE=1 python3 grpo.py \
+    --model_name_or_path "Qwen/Qwen2-0.5B-Instruct" \
+    --reward_model_name_or_path "weqweasdas/RM-Gemma-2B" \
+    --dataset_name "trl-lib/tldr" \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
+    --logging_steps 1 \
     --do_train \
     --do_eval \
     --use_habana \
+    --use_hpu_graphs \
     --use_lazy_mode \
-    --bf16 True
+    --bf16 True \
+    --use_peft True \
+    --learning_rate 2e-6 \
+    --gradient_accumulation_steps 16 \
+    --max_input_tokens 128 \
+    --max_new_tokens 128 \
+    --use_flash_attention \
+    --max_steps 500
 ```
-
 
 Runnig multi-card training
 
-```sh
-python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
+// FIXME: bf16 doesn't work with deepspeed
+
+```bash
+PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
     --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
     --model_name_or_path Qwen/Qwen2-0.5B-Instruct \
+    --reward_model_name_or_path weqweasdas/RM-Gemma-2B \
     --dataset_name trl-lib/tldr \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
+    --logging_steps 1 \
     --do_train \
     --do_eval \
     --use_habana \
+    --use_hpu_graphs \
     --use_lazy_mode \
-    --bf16 True \
-    --max_steps=500 \
-    --logging_steps=10 \
-    --save_steps=100
+    --use_peft True \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 16 \
+    --use_flash_attention \
+    --throughput_warmup_steps 3 \
+    --max_steps 500
 ```
-
 
 ## Supervised Finetuning
 
@@ -94,8 +107,8 @@ python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
 
     ```bash
     PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
-        --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
-        --dataset_name "philschmid/dolly-15k-oai-style" \
+        --model_name_or_path "Qwen/Qwen2-0.5B-Instruct" \
+        --dataset_name "trl-lib/tldr" \
         --subset 'data/' \
         --streaming False \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
