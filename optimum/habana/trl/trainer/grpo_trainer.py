@@ -644,12 +644,22 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
             prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         else:
+            # from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            # model = self.accelerator.unwrap_model(self.model_wrapped)
+            # model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
+
             # Regular generation path
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
-            ) as unwrapped_model:                
+            ) as unwrapped_model:
+                unwrapped_model.gradient_checkpointing_disable()
+                unwrapped_model.config.use_cache = True
+                unwrapped_model.config.torch_dtype=torch.bfloat16
+
                 prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config
+                    prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config,
+                    lazy_mode=self.args.use_lazy_mode,
+                    ignore_eos=self.args.ignore_eos,
                 )
 
             # Compute prompt length and extract completion ids

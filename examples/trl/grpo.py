@@ -11,8 +11,6 @@ from transformers.integrations.deepspeed import (
 from dataclasses import dataclass, field
 from typing import List, Optional
 from peft import LoraConfig
-# from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
 
 ideal_length = 50
 
@@ -86,19 +84,22 @@ if __name__ == "__main__":
         if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False
 
-    # adapt_transformers_to_gaudi()
-
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
         low_cpu_mem_usage=low_cpu_mem_usage,
         torch_dtype=torch.bfloat16,
     )
 
-    model.config.use_cache = False
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
+    if getattr(tokenizer, "pad_token", None) is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model.config.use_cache = True
     if not script_args.use_flash_attention and (
-        script_args.flash_attention_recompute or script_args.flash_attention_recompute
+        script_args.flash_attention_recompute or script_args.flash_attention_causal_mask
     ):
         assert "Need to enable use_flash_attention"
+
     model.generation_config.use_flash_attention = script_args.use_flash_attention
     model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
     model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
@@ -108,11 +109,9 @@ if __name__ == "__main__":
         reward_funcs = AutoModelForSequenceClassification.from_pretrained(
             script_args.reward_model_name_or_path,
             trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
-
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
-    if getattr(tokenizer, "pad_token", None) is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True
@@ -130,5 +129,3 @@ if __name__ == "__main__":
     )
 
     trainer.train()
-
-    print("Done!")
