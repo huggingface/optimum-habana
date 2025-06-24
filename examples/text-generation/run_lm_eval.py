@@ -19,6 +19,7 @@
 
 import argparse
 import json
+import logging
 import multiprocessing as mp
 import os
 from typing import Literal, Optional
@@ -40,7 +41,7 @@ from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-logger = utils.eval_logger
+logger = logging.getLogger(__name__)
 
 # This hack is a workaround to limitations of lm_eval which always allocates
 # mp.Pool with max cpu count which explodes on multinode scenarios and for hpu
