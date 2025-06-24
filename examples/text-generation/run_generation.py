@@ -103,19 +103,20 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
     )
-    # Add mutually exclusive group for --dataset and --mlcommons_dataset
-    dataset_group = parser.add_mutually_exclusive_group()
-    dataset_group.add_argument(
-        "--mlcommons_dataset",
+    parser.add_argument(
+        "--dataset_name",
         default=None,
         type=str,
-        help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
+        help="Specify the dataset name from the Hugging Face Hub to evaluate your model on. "
+        "To run the benchmark on the MLCommons dataset, set this argument to `mlcommons`. "
+        "Use this in combination with `--mlcommons_dataset`.",
     )
-    dataset_group.add_argument(
+    parser.add_argument(
         "--dataset",
+        aliases=["--mlcommons_dataset"],
         default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
         type=str,
-        help="Path of the dataset to run rouge evaluation and measurement for rouge.",
+        help="path of the dataset to run rouge evaluation and measurement for rouge",
     )
     parser.add_argument(
         "--column_name",
@@ -502,12 +503,6 @@ def setup_parser(parser):
         assert not args.torch_compile, "Expected --torch.compile to be False when using pt2e_path!"
         assert not args.use_hpu_graphs, "Expected --use_hpu_graphs to be False when using pt2e_path!"
 
-    # Unify dataset path selection
-    if args.mlcommons_dataset is not None:
-        args.selected_dataset_path = args.mlcommons_dataset
-    else:
-        args.selected_dataset_path = args.dataset
-
     return args
 
 
@@ -554,7 +549,7 @@ def main():
     if args.dataset_name == "openorca" or args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
-            ds = pd.read_pickle(args.selected_dataset_path)
+            ds = pd.read_pickle(args.dataset)
             return ds
 
         def get_input(ds, batch_size):
