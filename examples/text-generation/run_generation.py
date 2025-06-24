@@ -112,7 +112,7 @@ def setup_parser(parser):
         "Use this in combination with `--mlcommons_dataset`.",
     )
     parser.add_argument(
-        "--dataset", 
+        "--dataset",
         "--mlcommons_dataset",
         default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
         type=str,
