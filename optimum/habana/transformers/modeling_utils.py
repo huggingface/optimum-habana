@@ -19,11 +19,7 @@ import transformers
 import transformers.utils.fx
 
 from ..quantizers.bitsandbytes import (
-    gaudi_bitsandbytesconfig_post_init,
-    gaudi_create_quantized_param,
-    gaudi_is_bitsandbytes_available,
     gaudi_validate_bnb_backend_availability,
-    gaudi_validate_environment,
 )
 from .generation import (
     GaudiGenerationConfig,
@@ -305,13 +301,7 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
-    transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
-    transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
-    transformers.utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
-    transformers.quantizers.quantizer_bnb_4bit.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
     transformers.integrations.bitsandbytes.validate_bnb_backend_availability = gaudi_validate_bnb_backend_availability
-    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.validate_environment = gaudi_validate_environment
-    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.create_quantized_param = gaudi_create_quantized_param
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []

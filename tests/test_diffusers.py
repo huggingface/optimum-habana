@@ -670,22 +670,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         CLIP_SCORE_THRESHOLD = 30.0
         self.assertGreaterEqual(clip_score_avg, CLIP_SCORE_THRESHOLD)
 
-        n = 0
-        clip_score_avg = 0.0
-        for i in range(len(outputs.images)):
-            # Check expected shape for each output image
-            self.assertEqual(outputs.images[i].shape, (512, 512, 3))
-
-            if np.any(outputs.images[i] != 0):
-                clip_score = calculate_clip_score(np.expand_dims(outputs.images[i], axis=0), prompts)
-                clip_score_avg += clip_score
-                n += 1
-
-        # Quality test (check that the average CLIP score of valid output images is well in the 30s range)
-        clip_score_avg /= n
-        CLIP_SCORE_THRESHOLD = 30.0
-        self.assertGreaterEqual(clip_score_avg, CLIP_SCORE_THRESHOLD)
-
     @custom_bf16_ops
     @slow
     @legacy

@@ -1484,7 +1484,6 @@ class GaudiGenerationMixin(GenerationMixin):
             True if generation_config.flash_attention_fast_softmax else False
         )
         model_kwargs["num_virtual_tokens"] = num_virtual_tokens
-        model_kwargs["use_mark_dynamic"] = generation_config.use_mark_dynamic
         if generation_config.valid_sequence_lengths is not None:
             model_kwargs["valid_sequence_lengths"] = generation_config.valid_sequence_lengths
 
@@ -2346,7 +2345,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # contrastive_search main logic end
 
             if synced_gpus and this_peer_finished:
-                continue  # don't waste resources running the code we don't need
+                continue
 
             # finished sentences should have their next token be a padding token
             if not ignore_eos and has_eos_stopping_criteria:
@@ -2637,53 +2636,6 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-
-            if generation_config.use_mark_dynamic:
-                if generation_config.mark_dyn_dim_0_min and generation_config.mark_dyn_dim_0_max:
-                    # batch dimension as dynamic
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["input_ids"],
-                        0,
-                        min=generation_config.mark_dyn_dim_0_min,
-                        max=generation_config.mark_dyn_dim_0_max,
-                    )
-
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["attention_mask"],
-                        0,
-                        min=generation_config.mark_dyn_dim_0_min,
-                        max=generation_config.mark_dyn_dim_0_max,
-                    )
-
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["position_ids"],
-                        0,
-                        min=generation_config.mark_dyn_dim_0_min,
-                        max=generation_config.mark_dyn_dim_0_max,
-                    )
-
-                if generation_config.mark_dyn_dim_1_min and generation_config.mark_dyn_dim_1_max:
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["input_ids"],
-                        1,
-                        min=generation_config.mark_dyn_dim_1_min,
-                        max=generation_config.mark_dyn_dim_1_max,
-                    )
-
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["attention_mask"],
-                        1,
-                        min=generation_config.mark_dyn_dim_1_min,
-                        max=generation_config.mark_dyn_dim_1_max,
-                    )
-
-                    torch._dynamo.mark_dynamic(
-                        model_inputs["position_ids"],
-                        1,
-                        min=generation_config.mark_dyn_dim_1_min,
-                        max=generation_config.mark_dyn_dim_1_max,
-                    )
-                generation_config.use_mark_dynamic = False
 
             # forward pass to get next token
             outputs = self(
