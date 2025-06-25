@@ -220,4 +220,6 @@ jobs:
         with:
           repository: 'UKPLab/sentence-transformers'
       - name: Install sentence-transformers and run tests
-        run: pip install . && cd tests && pytest test_cmnrl.py test_multi_process.py test_compute_embeddings.py test_model_card_data.py test_util.py
+        run: |
+          pip install . && cd tests
+          PT_HPU_LAZY_MODE=1 pytest test_cmnrl.py test_multi_process.py test_compute_embeddings.py test_model_card_data.py test_util.py
