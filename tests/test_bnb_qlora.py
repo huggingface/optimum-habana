@@ -56,7 +56,7 @@ def get_data(tokenizer, dataset_name, max_seq_length=1024):
     data = dataset.map(
         lambda example: tokenizer(example["text"], max_length=max_seq_length, padding="max_length"), batched=True
     )
-    split_data = data["train"].train_test_split(test_size=0.04, seed=42)
+    split_data = data["train"].train_test_split(test_size=0.01, seed=42)
 
     return split_data
 
@@ -78,6 +78,7 @@ def get_model(token: str, model_id: str):
 modeldata = [
     ("meta-llama/Llama-3.2-1B", 8, 8),
     ("meta-llama/Llama-3.1-8B", 4, 4),
+    ("meta-llama/Llama-3.1-70B", 1, 1),
 ]
 
 
@@ -103,6 +104,7 @@ def test_nf4_quantization_finetuning(
     model.generation_config.flash_attention_causal_mask = True
     model.generation_config.attn_softmax_bf16 = True
     model.generation_config.use_fused_rope = True
+    is_large_model = "70B" in model_id
     print_model_size(model)
 
     model = prepare_model_for_kbit_training(model)
@@ -145,9 +147,10 @@ def test_nf4_quantization_finetuning(
         use_lazy_mode=False,
         adjust_throughput=True,
         throughput_warmup_steps=3,
-        gradient_checkpointing=False,
         torch_compile=compile_on,
         torch_compile_backend="hpu_backend" if compile_on else None,
+        gradient_checkpointing=is_large_model,
+        use_regional_compilation=compile_on and is_large_model,
     )
 
     trainer = GaudiTrainer(
@@ -163,7 +166,7 @@ def test_nf4_quantization_finetuning(
     trainer.train()
 
     baseline.assertRef(
-        compare=lambda actual, ref: abs(actual - ref) < 5e2,
+        compare=lambda actual, ref: abs(actual - ref) < 5e-2,
         context=[OH_DEVICE_CONTEXT],
         eval_loss=trainer.evaluate()["eval_loss"],
     )
