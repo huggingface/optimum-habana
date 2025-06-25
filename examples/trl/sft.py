@@ -186,7 +186,7 @@ if __name__ == "__main__":
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             peft_config=peft_config,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             args=training_args,
             formatting_func=formatting_func,
             num_buckets=script_args.num_buckets,
