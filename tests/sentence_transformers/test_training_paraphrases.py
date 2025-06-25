@@ -109,7 +109,7 @@ def test_training_paraphrase():
         # use round robin, which samples the same amount of batches from each dataset, until one dataset is empty
         multi_dataset_batch_sampler=MultiDatasetBatchSamplers.ROUND_ROBIN,
         # Optional tracking/debugging parameters:
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=1000,
         save_strategy="steps",
         save_steps=1000,
