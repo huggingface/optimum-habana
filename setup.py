@@ -52,6 +52,8 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "tiktoken",
+    "blobfile",
 ]
 
 QUALITY_REQUIRES = [
