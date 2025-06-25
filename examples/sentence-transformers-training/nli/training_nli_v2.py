@@ -84,7 +84,7 @@ def main():
         # sdp_on_bf16=True, #Set to True for better performance (but this setting can affect accuracy)
         batch_sampler=BatchSamplers.NO_DUPLICATES,
         # Optional tracking/debugging parameters:
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=10,
         save_strategy="steps",
         save_steps=10,
