@@ -76,6 +76,7 @@ if is_wandb_available():
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
 
+
 def grpo_get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
     # For GRPOTrainer, skip input update in the _inner_training_loop()
     # because it expects a dict type input, but the GRPOTrainer input is a list of dict.
@@ -273,7 +274,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         # This acts as a flag to indicate that the warning has already been issued.
         model.warnings_issued["estimate_tokens"] = True
 
-
         GaudiTrainer.__init__(
             self,
             model=model,
@@ -356,21 +356,20 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             self.accelerator.wait_for_everyone()
         else:
             self.generation_config = copy.deepcopy(model.generation_config)
-            self.generation_config.max_new_tokens=self.max_completion_length
-            self.generation_config.do_sample=True
-            self.generation_config.pad_token_id=processing_class.pad_token_id
-            self.generation_config.bos_token_id=processing_class.bos_token_id
-            self.generation_config.eos_token_id=processing_class.eos_token_id
-            self.generation_config.temperature=self.temperature
-            self.generation_config.top_p=self.top_p
-            self.generation_config.top_k=self.top_k
-            self.generation_config.min_p=self.min_p
-            self.generation_config.repetition_penalty=self.repetition_penalty
-            self.generation_config.cache_implementation=args.cache_implementation
-            self.generation_config.use_cache=True
-            self.generation_config.static_shapes=True
-            self.generation_config.reuse_cache=True
-
+            self.generation_config.max_new_tokens = self.max_completion_length
+            self.generation_config.do_sample = True
+            self.generation_config.pad_token_id = processing_class.pad_token_id
+            self.generation_config.bos_token_id = processing_class.bos_token_id
+            self.generation_config.eos_token_id = processing_class.eos_token_id
+            self.generation_config.temperature = self.temperature
+            self.generation_config.top_p = self.top_p
+            self.generation_config.top_k = self.top_k
+            self.generation_config.min_p = self.min_p
+            self.generation_config.repetition_penalty = self.repetition_penalty
+            self.generation_config.cache_implementation = args.cache_implementation
+            self.generation_config.use_cache = True
+            self.generation_config.static_shapes = True
+            self.generation_config.reuse_cache = True
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -401,19 +400,18 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
         sentence_lengths = []
         for batch in train_dataset:
             formatted_prompt = maybe_apply_chat_template(batch, tokenizer)["prompt"]
-            formatted_prompt_len = len(tokenizer(formatted_prompt)['input_ids'])
+            formatted_prompt_len = len(tokenizer(formatted_prompt)["input_ids"])
             sentence_lengths.append(formatted_prompt_len)
 
         # Assign bucket labels to each sentence
         bucket_label_per_sentence = pd.qcut(sentence_lengths, q=num_buckets, labels=False)
 
         # Get max len per bucket
-        df = pd.DataFrame({'value': sentence_lengths, 'bucket': bucket_label_per_sentence})
-        buckets = df.groupby('bucket')['value'].max().tolist()
+        df = pd.DataFrame({"value": sentence_lengths, "bucket": bucket_label_per_sentence})
+        buckets = df.groupby("bucket")["value"].max().tolist()
         # Make sure that no bucket exceeds self.max_prompt_length
         buckets = [min(b, self.max_prompt_length) for b in buckets]
         return buckets
-
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
@@ -425,7 +423,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             "logits_to_keep": logits_to_keep + 1,
         }
 
-        if hasattr(model, 'module'):
+        if hasattr(model, "module"):
             # For distributed
             should_update_inputs, input_updates = _get_input_update_settings(model.module)
             inputs.update(input_updates)
@@ -448,7 +446,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         return selective_log_softmax(logits, input_ids)
 
-
     def _generate_and_score_completions(
         self, inputs: dict[str, Union[torch.Tensor, Any]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
@@ -459,17 +456,27 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
         # Get unique seq len within a batch
         max_prompt_len_per_batch = 0
-        for prompt_idx in range(0, len(prompts_text), self.num_generations): # Prompts are repeated self.num_generations times
-            prompt_len = len(self.processing_class(text=prompts_text[prompt_idx], return_tensors="pt", \
-                padding=False, add_special_tokens=False)["input_ids"][0])
+        for prompt_idx in range(
+            0, len(prompts_text), self.num_generations
+        ):  # Prompts are repeated self.num_generations times
+            prompt_len = len(
+                self.processing_class(
+                    text=prompts_text[prompt_idx], return_tensors="pt", padding=False, add_special_tokens=False
+                )["input_ids"][0]
+            )
             max_prompt_len_per_batch = max(max_prompt_len_per_batch, prompt_len)
 
         # Search bucket and the tokenize prompts with padding
         bucket_indices = bisect.bisect_left(self.buckets, max_prompt_len_per_batch)
-        bucket_indices = min(bucket_indices, len(self.buckets)-1)
+        bucket_indices = min(bucket_indices, len(self.buckets) - 1)
         prompt_inputs = self.processing_class(
-            text=prompts_text, return_tensors="pt", padding="max_length", padding_side="left", \
-            max_length=self.buckets[bucket_indices], truncation=True, add_special_tokens=False
+            text=prompts_text,
+            return_tensors="pt",
+            padding="max_length",
+            padding_side="left",
+            max_length=self.buckets[bucket_indices],
+            truncation=True,
+            add_special_tokens=False,
         )
 
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs)
@@ -524,7 +531,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
-
                 if self.args.gradient_checkpointing:
                     unwrapped_model.gradient_checkpointing_disable()
                     unwrapped_model.config.use_cache = True
@@ -533,7 +539,8 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
 
                 with torch.no_grad():
                     prompt_completion_ids = unwrapped_model.generate(
-                        prompt_ids, attention_mask=prompt_mask,
+                        prompt_ids,
+                        attention_mask=prompt_mask,
                         hpu_graphs=True,
                         generation_config=self.generation_config,
                         lazy_mode=True,
@@ -551,12 +558,10 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         layer.self_attn.k_cache.cache = None
                         layer.self_attn.v_cache.cache = None
 
-
             # Compute prompt length and extract completion ids
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
-
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
@@ -639,7 +644,19 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                         rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
                 else:
                     # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                    keys = [key for key in inputs[0] if key not in ["prompt", "completion", "completion_ids", "use_flash_attention", 'flash_attention_fast_softmax', 'lazy_mode']]
+                    keys = [
+                        key
+                        for key in inputs[0]
+                        if key
+                        not in [
+                            "prompt",
+                            "completion",
+                            "completion_ids",
+                            "use_flash_attention",
+                            "flash_attention_fast_softmax",
+                            "lazy_mode",
+                        ]
+                    ]
 
                     reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
                     output_reward_func = reward_func(
@@ -751,7 +768,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             raise ValueError("The GRPOTrainer does not support returning outputs")
 
         if self.args.gradient_checkpointing:
-            if hasattr(model, 'module'):
+            if hasattr(model, "module"):
                 # Distributed
                 model.module.config.use_cache = False
                 if is_peft_model(model.module):
@@ -771,7 +788,6 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                     # Enable gradient checkpointing for non-PEFT models
                     model.gradient_checkpointing_enable()
                     model.enable_input_require_grads()
-
 
         # Compute the per-token log probabilities for the model
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]

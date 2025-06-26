@@ -39,8 +39,6 @@ from utils import (
     save_model,
 )
 
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -491,6 +489,8 @@ def main():
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
+    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
+
     if args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
@@ -764,7 +764,6 @@ def main():
                 input_data.update(input_tokens)
 
             iteration_times = []
-            sc_start_time = time.time()
             outputs = model.generate(
                 **input_data,
                 generation_config=generation_config,
@@ -777,9 +776,7 @@ def main():
                 iteration_times=iteration_times,
                 profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
-            print("******generate time", time.time()-sc_start_time)
             timer.step()
-            import pdb;pdb.set_trace()
             first_token_time = iteration_times[0] + encode_duration
             rest_token_time = sum(iteration_times[1:]) / (len(iteration_times) - 1) if len(iteration_times) > 1 else 0
             e2e_latency = timer.total_time()
@@ -872,7 +869,7 @@ def main():
             for j, output in enumerate(
                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
             ):
-                print(f"output {i + 1}.{j + 1}: {output[0][len(input_sentence[0]):]}")
+                print(f"output {i + 1}.{j + 1}: {output}")
                 all_outputs.append(output)
             print()
 

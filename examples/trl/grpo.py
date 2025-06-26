@@ -43,7 +43,7 @@ ideal_length = 50
 
 
 def reward_len(completions, **kwargs):
-    return [-abs(ideal_length - len(completion)) for completion in completions]  #penalize response when len!=50
+    return [-abs(ideal_length - len(completion)) for completion in completions]  # penalize response when len!=50
 
 
 def format_reward(completions, **kwargs):
@@ -52,7 +52,6 @@ def format_reward(completions, **kwargs):
     pattern = r"^<think>.*?</think>\s*<answer>.*?</answer>$"
     completion_contents = [completion[0]["content"] for completion in completions]
     matches = [re.match(pattern, content) for content in completion_contents]
-    rewards_list = [1.0 if match else 0.0 for match in matches]
     return [1.0 if match else 0.0 for match in matches]
 
 
@@ -152,9 +151,9 @@ if __name__ == "__main__":
         script_args.dataset_name,
         data_dir=None if script_args.subset == "None" else script_args.subset,
         num_proc=script_args.num_workers if not script_args.streaming else None,
-        split=[script_args.dataset_train_split, script_args.dataset_test_split]
+        split=[script_args.dataset_train_split, script_args.dataset_test_split],
     )
-    
+
     train_dataset = train_dataset.map(make_conversation)
     test_dataset = test_dataset.map(make_conversation)
     train_dataset = train_dataset.remove_columns(["messages", "problem"])
@@ -162,7 +161,7 @@ if __name__ == "__main__":
     low_cpu_mem_usage = True
     if is_deepspeed_available() and use_deepspeed:
         from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-        
+
         if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False
 

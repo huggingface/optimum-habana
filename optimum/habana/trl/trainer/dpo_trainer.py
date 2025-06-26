@@ -29,13 +29,14 @@ from transformers import (
     DataCollator,
     PreTrainedModel,
     PreTrainedTokenizerBase,
+    is_wandb_available,
 )
 from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 from transformers.utils import is_peft_available
-from transformers import is_wandb_available
 from trl import DPOTrainer, create_reference_model
+from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.dpo_config import FDivergenceConstants
 from trl.trainer.utils import (
     DPODataCollatorWithPadding,
@@ -43,7 +44,6 @@ from trl.trainer.utils import (
     disable_dropout_in_model,
     pad_to_length,
 )
-from trl.trainer.callbacks import SyncRefModelCallback
 
 from ... import GaudiConfig, GaudiTrainer
 from .dpo_config import GaudiDPOConfig

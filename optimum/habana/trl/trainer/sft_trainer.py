@@ -34,14 +34,11 @@ from transformers import (
 from transformers.data.data_collator import pad_without_fast_tokenizer_warning
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
+from transformers.utils import is_peft_available
 from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
-from transformers.utils import is_peft_available
-from trl.trainer.utils import (
-    ConstantLengthDataset,
-    DataCollatorForCompletionOnlyLM
-)
 from trl.trainer.callbacks import RichProgressCallback
+from trl.trainer.utils import ConstantLengthDataset, DataCollatorForCompletionOnlyLM
 
 
 if is_peft_available():
