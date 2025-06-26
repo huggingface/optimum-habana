@@ -105,6 +105,7 @@ from .models import (
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
+    GaudiLlama4TextAttention,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
@@ -250,6 +251,8 @@ from .models import (
     gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_invert_attention_mask,
+    gaudi_llama4_rotary_embedding_forward,
+    gaudi_llama4_text_model_forward,
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
@@ -498,6 +501,13 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
     transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
+
+    # Optimization for llama4 on Gaudi
+    transformers.models.llama4.modeling_llama4.Llama4TextAttention = GaudiLlama4TextAttention
+    transformers.models.llama4.modeling_llama4.Llama4TextRotaryEmbedding.forward = (
+        gaudi_llama4_rotary_embedding_forward
+    )
+    transformers.models.llama4.modeling_llama4.Llama4TextModel.forward = gaudi_llama4_text_model_forward
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
