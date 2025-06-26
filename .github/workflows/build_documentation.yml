@@ -53,6 +53,7 @@ jobs:
         shell: bash
         run: |
           make doc BUILD_DIR=habana-doc-build VERSION=${{ env.VERSION }}
+          sudo chmod -R ugo+rwx habana-doc-build
           cd habana-doc-build
           sudo mv optimum.habana optimum-habana
           doc-builder push optimum-habana --doc_build_repo_id "hf-doc-build/doc-build" --token "${{ secrets.HF_DOC_BUILD_PUSH }}" --commit_msg "Updated with commit $COMMIT_SHA See: https://github.com/huggingface/optimum-habana/commit/$COMMIT_SHA" --n_retries 5
