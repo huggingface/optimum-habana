@@ -1,5 +1,6 @@
-imagesize
-peft == 0.10.0
-sentencepiece
 compel
 datasets
+imagesize
+opencv-python
+peft==0.10.0
+sentencepiece

@@ -30,7 +30,7 @@ except Exception as error:
 
 INSTALL_REQUIRES = [
     "transformers >= 4.49.0, < 4.50.0",
-    "optimum",
+    "optimum ~= 1.25",
     "torch",
     "accelerate >= 1.7.0",
     "diffusers >= 0.33.1, < 0.33.2",
@@ -56,7 +56,7 @@ TESTS_REQUIRE = [
 
 QUALITY_REQUIRES = [
     "ruff",
-    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
+    "hf_doc_builder",
 ]
 
 EXTRAS_REQUIRE = {

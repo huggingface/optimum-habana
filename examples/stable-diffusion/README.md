@@ -41,7 +41,7 @@ by the Stability AI team.
 Here is how to generate SDXL images with a single prompt:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
     --num_images_per_prompt 28 \
@@ -84,6 +84,7 @@ Stable Diffusion 3 was introduced by Stability AI [here](https://stability.ai/ne
 It uses Diffusion Transformer instead of UNet for denoising, which yields improved image quality.
 
 ```bash
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers \
     --prompts "Sailing ship painting by Van Gogh" \
@@ -120,7 +121,7 @@ FLUX.1 was introduced by Black Forest Labs [here](https://blackforestlabs.ai/ann
 Here is how to run FLUX.1-dev model:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path black-forest-labs/FLUX.1-dev \
     --prompts "A cat holding a sign that says hello world" \
     --num_images_per_prompt 10 \
@@ -159,7 +160,7 @@ pose, depth, and more.
 Here is how to generate images conditioned by Canny edge model:
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stable-diffusion-v1-5/stable-diffusion-v1-5 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
     --prompts "futuristic-looking woman" \
@@ -188,7 +189,7 @@ please refer to [Hugging Face Diffusers doc](https://huggingface.co/docs/diffuse
 ### Stable Diffusion XL Inpainting
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path diffusers/stable-diffusion-xl-1.0-inpainting-0.1 \
     --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
     --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
@@ -216,7 +217,7 @@ Here is an example of how to control brightness. For more information, please re
 section in the Hugging Face documentation.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python text_to_image_generation.py \
     --model_name_or_path ptx0/pseudo-journey-v2 \
     --prompts "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k" \
@@ -238,7 +239,7 @@ Here is an example of how to run prompt weighting. For more information, please 
 section in the Hugging Face documentation.
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "a red cat--- playing with a ball+++" "a red cat+++ playing with a ball---" \
     --num_images_per_prompt 4 \
@@ -259,7 +260,7 @@ Here is an example of how to improve image quality. For more details, please ref
 section in the Hugging Face documentation.
 
 ```bash
-python text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "A squirrel eating a burger" \
     --num_images_per_prompt 4 \
@@ -281,7 +282,7 @@ Images can also be generated using initial input images to guide the diffusion-b
 Here is how to refine SDXL images using a single image and prompt:
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
     --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
     --prompts "turn him into cyborg" \
@@ -302,7 +303,7 @@ python image_to_image_generation.py \
 Here is how to generate a FLUX.1 image using a single input image and prompt:
 
 ```bash
-python image_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_image_generation.py \
     --model_name_or_path "black-forest-labs/FLUX.1-dev" \
     --src_image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png" \
     --prompts "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k" \
@@ -325,7 +326,7 @@ This section demonstrates how to use the `GaudiTextToVideoSDPipeline` for text-t
 The pipeline employs a UNet3D structure and generates videos through an iterative denoising process.
 
 ```bash
-python text_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_video_generation.py \
     --model_name_or_path ali-vilab/text-to-video-ms-1.7b \
     --prompts "An astronaut riding a horse" \
     --use_habana \
@@ -346,7 +347,7 @@ Script `image_to_video_generation.py` showcases how to perform image-to-video ge
 Here is how to generate video with one image prompt:
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
     --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
@@ -371,7 +372,7 @@ You can pass multiple image prompts strings separated via space, i.e.
 Here is how to generate video conditioned by depth:
 
 ```bash
-python image_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python image_to_video_generation.py \
     --model_name_or_path "stabilityai/stable-video-diffusion-img2vid" \
     --controlnet_model_name_or_path "CiaraRowles/temporal-controlnet-depth-svd-v1" \
     --control_image_path \
@@ -402,13 +403,14 @@ python image_to_video_generation.py \
     --width=512 \
     --height=512
 ```
+
 ### Image-to-Video with I2vgen-xl
 I2vgen-xl is high quality Image-to-Video synthesis via cascaded diffusion models. Please refer to  [Huggingface i2vgen-xl doc](https://huggingface.co/ali-vilab/i2vgen-xl).
 
 Here is how to generate video with one image and text prompt:
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
+PT_HPU_LAZY_MODE=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 \
 python image_to_video_generation.py \
     --model_name_or_path "ali-vilab/i2vgen-xl" \
     --image_path "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png" \
@@ -432,7 +434,7 @@ python image_to_video_generation.py \
 CogVideoX is an open-source version of the video generation model originating from QingYing, unveiled in https://huggingface.co/THUDM/CogVideoX-5b.
 
 ```bash
-python text_to_video_generation.py \
+PT_HPU_LAZY_MODE=1 python text_to_video_generation.py \
     --model_name_or_path "THUDM/CogVideoX-2b" \
     --pipeline_type "cogvideox" \
     --prompts "An astronaut riding a horse" \
