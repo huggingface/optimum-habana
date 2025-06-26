@@ -21,7 +21,7 @@ $ pip install -U -r requirements.txt
         --subset '' \
         --output_dir ./model_qwen \
         --num_train_epochs 1 \
-        --per_device_train_batch_size 16 \
+        --per_device_train_batch_size 8 \
         --eval_strategy "no" \
         --save_strategy "no" \
         --learning_rate 3e-4 \
@@ -39,7 +39,7 @@ $ pip install -U -r requirements.txt
         --lora_alpha=16 \
         --lora_dropout=0.05 \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
-        --max_seq_length 512 \
+        --max_length 512 \
         --adam_epsilon 1e-08 \
         --use_flash_attention
     ```
@@ -69,7 +69,7 @@ $ pip install -U -r requirements.txt
         --lora_target_modules "q_proj" "v_proj" \
         --bf16 \
         --remove_unused_columns=False \
-        --max_seq_length 512 \
+        --max_length 512 \
         --run_name="sft_mixtral" \
         --report_to=none \
         --use_habana \

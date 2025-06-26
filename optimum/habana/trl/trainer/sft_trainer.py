@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2020-2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import dataclasses
 import os
 import warnings
@@ -43,13 +44,6 @@ from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
 from transformers.utils import is_peft_available
 
-from trl.data_utils import (
-    apply_chat_template,
-    is_conversational,
-    maybe_convert_to_chatml,
-    pack_dataset,
-    truncate_dataset,
-)
 from .sft_config import GaudiSFTConfig
 from trl.trainer.utils import (
     ConstantLengthDataset,
@@ -66,7 +60,9 @@ from ... import GaudiConfig, GaudiTrainer
 @dataclass
 class DataCollatorForLanguageModeling(DataCollatorMixin):
     """
-
+    Copied from DataCollatorForLanguageModeling: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/sft_trainer.py#L73
+    The differences are:
+        - Bucketing added. Buckets: None or emtpy list means means no bucketing
     """
     pad_token_id: int
     completion_only_loss: bool = True
@@ -149,10 +145,10 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         """
         Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/sft_trainer.py#L218
         The differences are:
-        - add new args gaudi_config
-        - use GaudiTrainer instead of Trainer
-        - cast peft model to bf16
-        - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
+            - add new args gaudi_config
+            - use GaudiTrainer instead of Trainer
+            - cast peft model to bf16
+            - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
         """
         if num_buckets > 0:
             assert data_collator is None, (
@@ -311,39 +307,12 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         if hasattr(self.model, "add_model_tags"):
             self.model.add_model_tags(self._tag_names)
 
-    def _create_model_from_path(self, model_path: str, args: GaudiSFTConfig) -> PreTrainedModel:
-        """
-        Copied from SFTTrainer._create_model_from_path:  https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/sft_trainer.py#L377
-        The differences are:
-        - use GaudiSFTConfig instead of GaudiSFTConfig
-        """
-        model_init_kwargs = args.model_init_kwargs or {}
-        # Handle torch dtype
-        torch_dtype = model_init_kwargs.get("torch_dtype")
-        if isinstance(torch_dtype, torch.dtype) or torch_dtype == "auto" or torch_dtype is None:
-            pass  # torch_dtype is already a torch.dtype or "auto" or None
-        elif isinstance(torch_dtype, str):  # it's a str, but not "auto"
-            torch_dtype = getattr(torch, torch_dtype)
-            model_init_kwargs["torch_dtype"] = torch_dtype
-        else:
-            raise ValueError(
-                "Invalid `torch_dtype` passed to `GaudiSFTConfig`. Expected either 'auto' or a string representing "
-                f"a `torch.dtype` (e.g., 'float32'), but got {torch_dtype}."
-            )
-        # Disable caching if gradient checkpointing is enabled (not supported)
-        # if args.gradient_checkpointing:
-        #     model_init_kwargs["use_cache"] = False
-
-        # Create model
-        model = AutoModelForCausalLM.from_pretrained(model_path, **model_init_kwargs)
-        return model
-
     def _prepare_peft_model(self, model: PreTrainedModel, peft_config: Any, args: GaudiSFTConfig) -> PreTrainedModel:
         """
         Copied from SFTTrainer._prepare_peft_model: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/sft_trainer.py#L400
         The differences are:
-        - use GaudiSFTConfig instead of GaudiSFTConfig
-        - cast peft model to bf16.
+            - use GaudiSFTConfig instead of GaudiSFTConfig
+            - cast peft model to bf16.
         """
         if not is_peft_available():
             raise ImportError("To use PeftModel, you need to install the `peft` library.")
