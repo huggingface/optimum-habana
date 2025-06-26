@@ -80,6 +80,41 @@ deepspeed_available = is_deepspeed_available()
 logger = logging.get_logger(__name__)
 
 
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths=None,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
+
+
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and FusedRoPE is not None:
         return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
@@ -279,7 +314,7 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
 
 class GaudiMixtralAttentionLongSequence:
     @staticmethod
-    def forward(q, k, v, mask, causal, q_block_size):
+    def forward(fsdpa, q, k, v, mask, causal, q_block_size):
         """
         Support long sequence at prompt phase
         """
@@ -295,7 +330,7 @@ class GaudiMixtralAttentionLongSequence:
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = q[:, :, s:e, :]
             row_mask = mask[:, :, s:e, :]
-            attn_output[:, :, s:e, :] = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
+            attn_output[:, :, s:e, :] = fsdpa(row_q, k, v, row_mask, 0.0, causal, None)
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -338,6 +373,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.config = config
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.block_size = 1024
@@ -431,7 +467,7 @@ class GaudiMixtralAttention(MixtralAttention):
         else:
             past_key_value = None
 
-        if FusedSDPA is not None:
+        if self.fused_scaled_dot_product_attention is not None:
             attn_weights = None
             if query_states.dtype != key_states.dtype:
                 key_states = key_states.type(query_states.dtype)
@@ -440,6 +476,7 @@ class GaudiMixtralAttention(MixtralAttention):
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
                 attn_output = GaudiMixtralAttentionLongSequence.forward(
+                    self.fused_scaled_dot_product_attention,
                     query_states,
                     key_states,
                     value_states,
@@ -449,7 +486,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                attn_output = FusedSDPA.apply(
+                attn_output = self.fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,

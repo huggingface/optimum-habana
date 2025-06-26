@@ -186,8 +186,14 @@ def compile_regions(model, **kwargs):
             module = torch.compile(module, **kwargs)
             setattr(model, name, module)
     else:
-        for _, module in model.named_children():
-            compile_regions(module, **kwargs)
+        if model._modules:  # If model has submodules, recurse and reassign
+            for name, module in model.named_children():
+                compiled_module = compile_regions(module, **kwargs)
+                if compiled_module is not None:  # Only reassign if something is returned
+                    setattr(model, name, compiled_module)
+        else:  # Leaf node
+            compiled_model = torch.compile(model, **kwargs)
+            return compiled_model
     return model
 
 
