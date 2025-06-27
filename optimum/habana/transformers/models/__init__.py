@@ -170,6 +170,7 @@ from .llama import (
     LlamaConfig,
     gaudi_llama_rmsnorm_forward,
 )
+from .llama4 import GaudiLlama4TextAttention, gaudi_llama4_rotary_embedding_forward, gaudi_llama4_text_model_forward
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
 from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
