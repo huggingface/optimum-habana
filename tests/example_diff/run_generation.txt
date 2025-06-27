@@ -1,27 +1,25 @@
-17c17,19
+1a2
+> # coding=utf-8
+16c17,19
 < """Conditional text generation with the auto-regressive models of the library (GPT/GPT-2/CTRL/Transformer-XL/XLNet)"""
 ---
 > """
 > Conditional text generation on Habana Gaudi/Gaudi2.
 > """
-20c22
+19c22
 < import inspect
 ---
 > import json
-22c24,28
-< from typing import Tuple
----
+20a24,28
 > import math
 > import os
 > import time
 > from itertools import cycle
 > from pathlib import Path
-25,26c31
+23,46c31,38
 < from accelerate import PartialState
 < from accelerate.utils import set_seed
----
-> from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
-28,50c33
+< 
 < from transformers import (
 <     AutoTokenizer,
 <     BloomForCausalLM,
@@ -43,11 +41,21 @@
 <     XLMWithLMHeadModel,
 <     XLNetLMHeadModel,
 <     XLNetTokenizer,
-< )
+---
+> from transformers import BatchEncoding
+> from utils import (
+>     SetTrueOrFalseOrNone,
+>     adjust_batch,
+>     count_hpu_graphs,
+>     finalize_quantization,
+>     initialize_model,
+>     save_model,
+48c40,41
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
+> 
 > from optimum.habana.utils import get_hpu_memory_stats
-60,216d42
+58,280d50
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -205,7 +213,7 @@
 <             for _ in range(num_block_layers)
 <         )
 <     return past_key_values
-218,285c44,46
+< 
 < 
 < def prepare_jit_inputs(inputs, model, tokenizer):
 <     batch_size = len(inputs)
@@ -262,8 +270,8 @@
 <         )
 < 
 <     def _reorder_cache(
-<         self, past_key_values: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor
-<     ) -> Tuple[Tuple[torch.Tensor]]:
+<         self, past_key_values: tuple[tuple[torch.Tensor]], beam_idx: torch.Tensor
+<     ) -> tuple[tuple[torch.Tensor]]:
 <         """
 <         This function is used to re-order the `past_key_values` cache if [`~PretrainedModel.beam_search`] or
 <         [`~PretrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
@@ -271,22 +279,22 @@
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
 < 
-< 
+282,283c52,54
 < def main():
 <     parser = argparse.ArgumentParser()
 ---
 > def setup_parser(parser):
 >     # Arguments management
 >     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
-287c48
+285c56
 <         "--model_type",
 ---
 >         "--model_name_or_path",
-291c52
+289c60
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Path to pre-trained model (on the HF Hub or locally).",
-294c55,83
+292c63,91
 <         "--model_name_or_path",
 ---
 >         "--bf16",
@@ -318,7 +326,7 @@
 >     )
 >     parser.add_argument(
 >         "--dataset_name",
-297,298c86,97
+295,296c94,117
 <         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
@@ -334,15 +342,8 @@
 >         "--do_sample",
 >         action="store_true",
 >         help="Whether to use sampling for generation.",
-300,304d98
-< 
-<     parser.add_argument("--prompt", type=str, default="")
-<     parser.add_argument("--length", type=int, default=20)
-<     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
-< 
-306c100,113
-<         "--temperature",
----
+>     )
+>     parser.add_argument(
 >         "--num_beams",
 >         default=1,
 >         type=int,
@@ -353,16 +354,23 @@
 >         default=None,
 >         type=int,
 >         help="Size of candidate set used for re-ranking in contrastive search. top_k > 1 enables contrastive search.",
->     )
->     parser.add_argument(
+298,302d118
+< 
+<     parser.add_argument("--prompt", type=str, default="")
+<     parser.add_argument("--length", type=int, default=20)
+<     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
+< 
+304c120,121
+<         "--temperature",
+---
 >         "--penalty_alpha",
 >         default=None,
-308,309c115
+306,307c123
 <         default=1.0,
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
 >         help="Degeneration penalty for contrastive search. penalty_alpha > 0 enables contrastive search.",
-312c118,249
+310c126,146
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
 >         "--trim_logits",
@@ -386,13 +394,28 @@
 >         default=0,
 >         type=int,
 >         help="Number of steps to capture for profiling.",
->     )
->     parser.add_argument(
+312,319d147
+<     parser.add_argument("--k", type=int, default=0)
+<     parser.add_argument("--p", type=float, default=0.9)
+< 
+<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
+<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
+<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
+< 
+<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
+321c149
+<         "--use_cpu",
+---
 >         "--profiling_record_shapes",
->         action="store_true",
+323c151
+<         help="Whether or not to use cpu. If set to False, we will use gpu/npu or mps device if available",
+---
 >         help="Record shapes when enabling profiling.",
->     )
->     parser.add_argument(
+325d152
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+327c154,201
+<         "--fp16",
+---
 >         "--prompt",
 >         default=None,
 >         type=str,
@@ -441,7 +464,9 @@
 >     )
 >     parser.add_argument(
 >         "--attn_softmax_bf16",
->         action="store_true",
+329c203,349
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
 >         help="Whether to run attention softmax layer in lower precision provided that the model supports it and "
 >         "is also running in lower precision.",
 >     )
@@ -476,6 +501,11 @@
 >         help="Skip HPU Graph usage for first token to save memory",
 >     )
 >     parser.add_argument(
+>         "--clear_hpu_graphs_cache",
+>         action="store_true",
+>         help="Clear HPU graphs cache",
+>     )
+>     parser.add_argument(
 >         "--show_graphs_count",
 >         action="store_true",
 >         help="Show statistics of HPU graph compilation.",
@@ -497,18 +527,13 @@
 >         "--reduce_recompile",
 >         action="store_true",
 >         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
-314,319d250
-<     parser.add_argument("--k", type=int, default=0)
-<     parser.add_argument("--p", type=float, default=0.9)
-< 
-<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
-<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
-<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-321d251
-<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-323c253,263
-<         "--use_cpu",
----
+>     )
+>     parser.add_argument(
+>         "--use_chat_template",
+>         action="store_true",
+>         help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
+>     )
+>     parser.add_argument(
 >         "--use_flash_attention",
 >         action="store_true",
 >         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
@@ -520,19 +545,14 @@
 >     )
 >     parser.add_argument(
 >         "--flash_attention_causal_mask",
-325c265
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
-327d266
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-329c268
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--flash_attention_fast_softmax",
-331c270,294
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         nargs="?",
+>         const=None,
+>         action=SetTrueOrFalseOrNone,
 >         help="Whether to enable Habana Flash Attention in fast softmax mode.",
 >     )
 >     parser.add_argument(
@@ -558,13 +578,6 @@
 >         "--csp",
 >         type=str,
 >         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
-333c296,323
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
----
->     parser.add_argument(
->         "--disk_offload",
->         action="store_true",
->         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
 >     )
 >     parser.add_argument(
 >         "--trust_remote_code",
@@ -572,41 +585,83 @@
 >         help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
 >     )
 >     parser.add_argument(
->         "--load_quantized_model",
->         action="store_true",
->         help="Whether to load model from hugging face checkpoint.",
->     )
->     parser.add_argument(
 >         "--parallel_strategy",
 >         type=str,
->         choices=["tp", "none"],  # Add other strategies as needed
+>         choices=["tp", "ep", "none"],  # Add other strategies as needed
 >         default="none",
->         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
+>         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'ep' for Expert Parallel Strategy or 'none'.",
 >     )
 >     parser.add_argument(
 >         "--input_embeds",
 >         action="store_true",
 >         help="Whether to enable inputs_embeds or not.",
 >     )
-> 
-336,337c326,327
+>     parser.add_argument(
+>         "--run_partial_dataset",
+>         action="store_true",
+>         help="Run the inference with dataset for specified --n_iterations(default:5)",
+>     )
+>     parser.add_argument(
+>         "--sdp_on_bf16", action="store_true", help="Allow pyTorch to use reduced precision in the SDPA math backend"
+>     )
+>     parser.add_argument(
+>         "--save_quantized_model_with_inc",
+>         action="store_true",
+>         help="Save quantized Huggingface checkpoint using INC.",
+>     )
+>     parser.add_argument(
+>         "--saved_model_path",
+>         type=str,
+>         default="inc_quantized_model",
+>         help="A path to save quantized checkpoint.",
+331,335d350
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+<     args = parser.parse_args()
+< 
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
----
->     if args.torch_compile:
->         args.use_hpu_graphs = False
-339c329,330
+337c352,384
 <     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
->     if not args.use_hpu_graphs:
->         args.limit_hpu_graphs = False
-341,342c332,333
+>     quant_parser_group = parser.add_mutually_exclusive_group()
+>     quant_parser_group.add_argument(
+>         "--load_quantized_model_with_autogptq",
+>         action="store_true",
+>         help="Load an AutoGPTQ quantized checkpoint using AutoGPTQ.",
+>     )
+>     quant_parser_group.add_argument(
+>         "--load_quantized_model_with_autoawq",
+>         action="store_true",
+>         help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
+>     )
+>     quant_parser_group.add_argument(
+>         "--disk_offload",
+>         action="store_true",
+>         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+>     )
+>     quant_parser_group.add_argument(
+>         "--load_quantized_model_with_inc",
+>         action="store_true",
+>         help="Load a quantized Huggingface checkpoint using INC.",
+>     )
+>     quant_parser_group.add_argument(
+>         "--local_quantized_inc_model_path",
+>         type=str,
+>         default=None,
+>         help="Path to neural-compressor quantized model, if set, the checkpoint will be loaded.",
+>     )
+>     parser.add_argument(
+>         "--attn_batch_split",
+>         default=1,
+>         type=int,
+>         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
+>     )
+339,340c386
 <     if args.seed is not None:
 <         set_seed(args.seed)
 ---
->     if args.use_flash_attention and not args.flash_attention_fast_softmax:
->         args.flash_attention_fast_softmax = True
-344,371c335,340
+>     args = parser.parse_args()
+342,369c388,389
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -636,26 +691,48 @@
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
 ---
+>     if args.torch_compile:
+>         args.use_hpu_graphs = False
+371,374c391,392
+<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
+<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
+<         else:
+<             tokenizer_kwargs = {}
+---
+>     if not args.use_hpu_graphs:
+>         args.limit_hpu_graphs = False
+376,377c394,396
+<         encoded_prompt = tokenizer.encode(
+<             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
+---
+>     if args.use_flash_attention and args.flash_attention_fast_softmax is None:
+>         logger.warning(
+>             "`--flash_attention_fast_softmax` was not set; defaulting to True due to `--use_flash_attention` being enabled."
+378a398
+>         args.flash_attention_fast_softmax = True
+380,382c400
+<         prefix = args.prefix if args.prefix else args.padding_text
+<         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
+<     encoded_prompt = encoded_prompt.to(distributed_state.device)
+---
+>         args.flash_attention_fast_softmax = False
+384,385c402,668
+<     if encoded_prompt.size()[-1] == 0:
+<         input_ids = None
+---
 >     args.quant_config = os.getenv("QUANT_CONFIG", "")
+>     if args.quant_config and args.load_quantized_model_with_autogptq:
+>         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autogptq is unsupported. ")
+>     if args.quant_config and args.load_quantized_model_with_autoawq:
+>         raise RuntimeError("Setting both quant_config and load_quantized_model_with_autoawq is unsupported. ")
+> 
 >     if args.quant_config == "" and args.disk_offload:
 >         logger.warning(
 >             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
 >         )
 >     return args
-373,376d341
-<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
-<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
-<         else:
-<             tokenizer_kwargs = {}
-378,384c343,349
-<         encoded_prompt = tokenizer.encode(
-<             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
-<         )
-<     else:
-<         prefix = args.prefix if args.prefix else args.padding_text
-<         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
-<     encoded_prompt = encoded_prompt.to(distributed_state.device)
----
+> 
+> 
 > def prepare_generation_embedding(model, model_name, input_tokens):
 >     batch_size = input_tokens["input_ids"].size(0)
 > 
@@ -663,10 +740,7 @@
 > 
 >     if inputs_embeds.size(0) != batch_size:
 >         inputs_embeds = inputs_embeds.expand(batch_size, -1, -1)
-386,387c351,570
-<     if encoded_prompt.size()[-1] == 0:
-<         input_ids = None
----
+> 
 >     attention_mask = input_tokens["attention_mask"]
 >     return {"inputs_embeds": inputs_embeds, "attention_mask": attention_mask}
 > 
@@ -681,6 +755,9 @@
 >         use_lazy_mode = False
 > 
 >     import habana_frameworks.torch.hpu as torch_hpu
+> 
+>     if args.sdp_on_bf16:
+>         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 > 
 >     if args.dataset_name is None:
 >         # Benchmark over the prompts below
@@ -750,13 +827,31 @@
 >             encode_t0 = time.perf_counter()
 >             # Tokenization
 >             if args.max_input_tokens > 0:
+>                 if hasattr(model.config, "type_vocab_size") and model.config.type_vocab_size > 0:
+>                     return_token_type_ids = True
+>                 else:
+>                     return_token_type_ids = False
+> 
 >                 input_tokens = tokenizer.batch_encode_plus(
 >                     input_sentences,
 >                     return_tensors="pt",
 >                     padding="max_length",
 >                     max_length=args.max_input_tokens,
 >                     truncation=True,
+>                     return_token_type_ids=return_token_type_ids,
 >                 )
+> 
+>                 def compute_valid_sequence_lengths_tensor(input_tokens):
+>                     attn_mask = input_tokens["attention_mask"]
+>                     return torch.sum(attn_mask, dim=1, dtype=torch.int32)
+> 
+>                 valid_sequence_lengths = compute_valid_sequence_lengths_tensor(input_tokens).to(args.device)
+>                 generation_config.valid_sequence_lengths = valid_sequence_lengths
+>             elif args.use_chat_template:
+>                 input_messages = [{"role": "user", "content": sentence} for sentence in input_sentences]
+>                 input_ids = tokenizer.apply_chat_template(input_messages, return_tensors="pt", padding=True)
+>                 attention_mask = torch.ones_like(input_ids)
+>                 input_tokens = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
 >             else:
 >                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 >             encode_duration = time.perf_counter() - encode_t0
@@ -795,7 +890,7 @@
 >                 profiling_record_shapes=args.profiling_record_shapes,
 >             ).cpu()
 >             first_token_time = iteration_times[0] + encode_duration
->             logger.info(f"Time to first token = {first_token_time*1000}ms")
+>             logger.info(f"Time to first token = {first_token_time * 1000}ms")
 >             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 > 
 >         from optimum.habana.utils import HabanaProfile
@@ -810,10 +905,10 @@
 >         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
 >             for i in range(args.warmup):
 >                 if dyn_prompt_lens is None:
->                     print(f"Warming up iteration {i+1}/{args.warmup}", flush=True)
+>                     print(f"Warming up iteration {i + 1}/{args.warmup}", flush=True)
 >                     generate(None, args.reduce_recompile)
 >                 else:
->                     print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i+1}/{args.warmup}", flush=True)
+>                     print(f"Warming up for shape {dyn_prompt_lens[0]} iteration {i + 1}/{args.warmup}", flush=True)
 >                     generate(dyn_prompt_lens[0], args.reduce_recompile)
 >         else:
 >             if args.bucket_size > 0:
@@ -828,7 +923,7 @@
 >                 for i in range(args.warmup):
 >                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
 >                     for sz in lst:
->                         print(f"Warming up for shape {sz - 1} iteration {i+1}/{args.warmup}", flush=True)
+>                         print(f"Warming up for shape {sz - 1} iteration {i + 1}/{args.warmup}", flush=True)
 >                         generate(sz - 1, args.reduce_recompile)
 >         torch_hpu.synchronize()
 >         compilation_duration = time.perf_counter() - t0
@@ -852,12 +947,16 @@
 > 
 >         print()
 >         print("Input/outputs:")
+>         all_inputs = []
+>         all_outputs = []
 >         for i, input_sentence in enumerate(zip(input_sentences)):
->             print(f"input {i+1}: {input_sentence}")
+>             print(f"input {i + 1}: {input_sentence}")
+>             all_inputs.append(input_sentence)
 >             for j, output in enumerate(
 >                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
 >             ):
->                 print(f"output {j+1}: {output}")
+>                 print(f"output {i + 1}.{j + 1}: {output}")
+>                 all_outputs.append(output)
 >             print()
 > 
 >         # Store results if necessary
@@ -867,7 +966,8 @@
 > 
 >             results = {
 >                 "throughput": throughput,
->                 "output": output,
+>                 "input": all_inputs,
+>                 "output": all_outputs,
 >             }
 >             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
 >                 json.dump(results, f, ensure_ascii=False, indent=4)
@@ -887,7 +987,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-389c572,589
+387c670,687
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -896,7 +996,7 @@
 > 
 >         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 > 
->         raw_dataset = load_dataset(args.dataset_name)
+>         raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
 >         if "test" in raw_dataset:
 >             split = "test"
 >         elif "validation" in raw_dataset:
@@ -908,7 +1008,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-391,397c591,598
+389,395c689,696
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -925,7 +1025,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-399,437c600,620
+397,435c698,718
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -987,7 +1087,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-438a622,704
+436a720,743
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -1012,7 +1112,10 @@
 >             collate_fn = None
 > 
 >         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
-> 
+438,439c745,822
+<         generated_sequences.append(total_sequence)
+<         print(total_sequence)
+---
 >         def generate_dataset(batch):
 >             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
 >             # Move inputs to target device(s)
@@ -1033,22 +1136,21 @@
 >             return prompt, outputs
 > 
 >         # warmup
->         if prompt_length > 0:
->             from optimum.habana.utils import HabanaProfile
+>         from optimum.habana.utils import HabanaProfile
 > 
->             # compilation stage disable profiling
->             HabanaProfile.disable()
->             # Compilation
->             logger.info("Graph compilation...")
->             t0 = time.perf_counter()
->             for i, batch in enumerate(dataloader):
->                 generate_dataset(batch)
->                 # The first three iterations take longer because of graph compilation
->                 if (i + 1) == 3:
->                     break
->             torch_hpu.synchronize()
->             compilation_duration = time.perf_counter() - t0
->             HabanaProfile.enable()
+>         # compilation stage disable profiling
+>         HabanaProfile.disable()
+>         # Compilation
+>         logger.info("Graph compilation...")
+>         t0 = time.perf_counter()
+>         for i, batch in enumerate(dataloader):
+>             generate_dataset(batch)
+>             # The first three iterations take longer because of graph compilation
+>             if (i + 1) == 3:
+>                 break
+>         torch_hpu.synchronize()
+>         compilation_duration = time.perf_counter() - t0
+>         HabanaProfile.enable()
 > 
 >         total_new_tokens_generated = 0
 >         duration = 0
@@ -1061,20 +1163,19 @@
 >             duration += time.perf_counter() - t0
 >             total_new_tokens_generated += args.batch_size * args.max_new_tokens
 >             print(separator)
->             print(f"Batch n°{i+1}")
->             print(f"Input: {prompt[:args.batch_size]}")
+>             print(f"Batch n°{i + 1}")
+>             print(f"Input: {prompt[: args.batch_size]}")
 >             print(
->                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+>                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[: args.batch_size * args.num_return_sequences]}"
 >             )
 >             print(separator)
+>             if args.run_partial_dataset and args.n_iterations == i + 1:
+>                 break
 >         t_end = time.time()
 > 
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-440,441c706,722
-<         generated_sequences.append(total_sequence)
-<         print(total_sequence)
----
+> 
 >         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
 >         separator = "-" * len(stats)
 >         print()
@@ -1085,14 +1186,15 @@
 >         mem = get_hpu_memory_stats()
 >         for k, v in mem.items():
 >             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
->         if prompt_length > 0:
->             print(f"Graph compilation duration          = {compilation_duration} seconds")
+>         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >     if args.quant_config:
 >         finalize_quantization(model)
+>     if args.save_quantized_model_with_inc:
+>         save_model(model, tokenizer, args.saved_model_path)
 >     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
 >         import shutil
-443c724
+441c824
 <     return generated_sequences
 ---
 >         shutil.rmtree(args.const_serialization_path)
