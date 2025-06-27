@@ -785,6 +785,11 @@ class GaudiTrainer(Trainer):
             # In this case we are in DDP + LOMO, which should be supported
             self.optimizer = self.accelerator.prepare(self.optimizer)
 
+        # needed to cover torch.compile() case which return a copy of compiled model (but not update self.model as compiled)
+        # NB: --use_regional_compilation update self.model with compiled model.
+        if self.args.torch_compile and not self.args.use_regional_compilation:
+            self.model = model
+
         if self.is_fsdp_enabled:
             self.model = self.model_wrapped = model
 
