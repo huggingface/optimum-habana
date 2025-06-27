@@ -120,7 +120,7 @@ For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset
 ```bash
 PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb  \
+    --dataset_name superb \
     --dataset_config_name ks \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \

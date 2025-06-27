@@ -162,9 +162,9 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
-        pixel_values_images: torch.FloatTensor = None,
-        pixel_values_videos: torch.FloatTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
+        pixel_values_images: Optional[torch.FloatTensor] = None,
+        pixel_values_videos: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -198,6 +198,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         outputs = self.language_model(
             attention_mask=attention_mask,
             position_ids=position_ids,

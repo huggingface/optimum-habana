@@ -29,21 +29,6 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
-from optimum.habana.checkpoint_utils import (
-    get_ds_injection_policy,
-    get_repo_root,
-    model_is_optimized,
-    model_on_meta,
-    write_checkpoints_json,
-)
-from optimum.habana.utils import (
-    HabanaGenerationTime,
-    check_habana_frameworks_version,
-    check_optimum_habana_min_version,
-    get_habana_frameworks_version,
-    set_seed,
-)
-
 
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
@@ -105,6 +90,8 @@ def setup_distributed(args):
 def setup_inference(args, model):
     import habana_frameworks.torch.core as htcore
 
+    from optimum.habana.utils import get_habana_frameworks_version
+
     habana_version = get_habana_frameworks_version()
 
     print("Initializing inference mode")
@@ -130,9 +117,6 @@ def setup_const_serialization(const_serialization_path):
 
 
 def setup_env(args):
-    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.45.0")
-    check_optimum_habana_min_version("1.18.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -148,6 +132,13 @@ def setup_env(args):
         # Based upon above conditions and below env variable,
         # we can call HPU graphs clear_inputs().
         os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
+
+    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+    check_min_version("4.51.0")
+
+    from optimum.habana.utils import check_optimum_habana_min_version
+
+    check_optimum_habana_min_version("1.18.0.dev0")
 
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -299,6 +290,22 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
         )
+    elif args.quantize_with_bnb:
+        from transformers import BitsAndBytesConfig
+
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            quantization_config=nf4_config,
+            device_map={"": "hpu"},
+            torch_dtype=model_dtype,
+            **model_kwargs,
+        )
     elif args.load_quantized_model_with_inc:
         # TODO: This will be removed in v1.20 Synapse release
         # Override neural_compressor split_rank_state_dict for loading neural_magic models on multi-cards.
@@ -347,11 +354,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         from optimum.habana.transformers.trainer import _is_peft_model
 
-        if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
-            model = wrap_in_hpu_graph(model, hash_with_views=False)
-        else:
-            max_graphs = getattr(args, "max_graphs", None)
-            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
+        max_graphs = getattr(args, "max_graphs", None)
+        model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -483,13 +487,14 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
+    from optimum.habana.checkpoint_utils import get_ds_injection_policy, model_on_meta, write_checkpoints_json
+
     # List of model types that need max position embeddings capped at 8192
     MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
-
     load_to_meta = model_on_meta(config)
 
     if args.assistant_model is None:
@@ -706,6 +711,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
+    from optimum.habana.checkpoint_utils import model_is_optimized
+
     is_optimized = model_is_optimized(model.config)
 
     # Generation configuration
@@ -736,17 +743,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
-    generation_config.use_mark_dynamic = args.use_mark_dynamic
     generation_config.attn_batch_split = args.attn_batch_split
-    if generation_config.use_mark_dynamic:
-        mark_dynamic_config = get_mark_dynamic_min_max(args)
-        if mark_dynamic_config.get("dim_0") is not None:
-            generation_config.mark_dyn_dim_0_min = mark_dynamic_config["dim_0"]["min"]
-            generation_config.mark_dyn_dim_0_max = mark_dynamic_config["dim_0"]["max"]
-
-        if mark_dynamic_config.get("dim_1") is not None:
-            generation_config.mark_dyn_dim_1_min = mark_dynamic_config["dim_1"]["min"]
-            generation_config.mark_dyn_dim_1_max = mark_dynamic_config["dim_1"]["max"]
 
     return generation_config
 
@@ -769,8 +766,6 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    timer = HabanaGenerationTime()
-    timer.start()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -780,10 +775,19 @@ def initialize_model(args, logger):
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)
+
+    from optimum.habana.utils import HabanaGenerationTime, set_seed
+
+    timer = HabanaGenerationTime()
+    timer.start()
     set_seed(args.seed)
+
+    from optimum.habana.checkpoint_utils import get_repo_root
+
     cache_dir = get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
+
     use_deepspeed = args.world_size > 0
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
@@ -832,27 +836,6 @@ def save_model(model, tokenizer, save_path):
 
     save(model, save_path, format="huggingface")
     tokenizer.save_pretrained(save_path)
-
-
-def get_mark_dynamic_min_max(args):
-    """
-    min and max should be determined based on the dataset's min and max seq length.
-    """
-    assert args.max_input_tokens == -1, "get_mark_dynamic_min_max() should be called only for dynamic mode execution."
-
-    # default values
-    min_val = 128
-    max_val = min_val + 128
-
-    if args.dataset_name == "tatsu-lab/alpaca":
-        # have a single bucket of dynamic compilation
-        min_val = args.max_new_tokens
-        max_val = 128 + args.max_new_tokens  # derived from compilation stats
-
-    return {
-        "dim_0": {"min": 0, "max": 0},  # 0 mean don't set dynamic
-        "dim_1": {"min": min_val, "max": max_val},
-    }
 
 
 # TODO: This will be removed in v1.20 Synapse release

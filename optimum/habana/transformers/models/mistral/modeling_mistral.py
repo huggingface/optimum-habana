@@ -20,6 +20,7 @@
 """PyTorch Mistral model."""
 
 import os
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -438,7 +439,7 @@ class GaudiMistralModel(MistralModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -446,7 +447,6 @@ class GaudiMistralModel(MistralModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
@@ -456,7 +456,8 @@ class GaudiMistralModel(MistralModel):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        **kwargs,
+    ) -> BaseModelOutputWithPast:
         """
         Copied from MistralModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
         The only differences are:
@@ -468,8 +469,6 @@ class GaudiMistralModel(MistralModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -541,7 +540,7 @@ class GaudiMistralModel(MistralModel):
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
+                    partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
                     causal_mask,
                     position_ids,
@@ -597,8 +596,6 @@ class GaudiMistralModel(MistralModel):
                 else (next_decoder_cache.to_legacy_cache() if return_legacy_cache else next_decoder_cache)
             )
 
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -619,7 +616,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -628,7 +625,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -641,7 +637,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         **kwargs: Unpack[KwargsForCausalLM],
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> CausalLMOutputWithPast:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
         The only differences are:
@@ -652,14 +648,13 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -668,7 +663,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
@@ -679,7 +673,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
         )
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -693,10 +687,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,

@@ -226,7 +226,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
 
 def gaudi_SeamlessM4TDecoder_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -446,7 +446,7 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
 
 def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -599,7 +599,7 @@ def gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths(self, input_lengths:
 
 def gaudi_SeamlessM4TForTextToSpeech_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -754,7 +754,7 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
 
     # overwrite text_decoder_input_ids if tgt_lang is passed. The latter gets priority over decoder_input_ids.
     text_tgt_lang_id = self.generation_config.text_decoder_lang_to_code_id.get(tgt_lang)
-    text_decoder_input_ids = torch.tensor([[text_tgt_lang_id]] * batch_size).to(self.device)
+    text_decoder_input_ids = torch.tensor([[text_tgt_lang_id]] * batch_size, device=self.device)
 
     kwargs_text["decoder_input_ids"] = text_decoder_input_ids
 
@@ -775,7 +775,7 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
         idx_most_probable_sequences_per_batch = text_generation_output.sequences_scores.view(batch_size, -1)
         idx_most_probable_sequences_per_batch = idx_most_probable_sequences_per_batch.argmax(-1)
         idx_most_probable_sequences_per_batch = (
-            idx_most_probable_sequences_per_batch + torch.arange(batch_size).to(self.device) * num_return_sequences
+            idx_most_probable_sequences_per_batch + torch.arange(batch_size, device=self.device) * num_return_sequences
         )
         sequences = sequences[idx_most_probable_sequences_per_batch]
 
@@ -796,8 +796,8 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
     # Compute t2u decoder_input_ids
     t2u_decoder_input_ids = kwargs_speech.get("decoder_input_ids")
     t2u_tgt_lang_id = self.generation_config.t2u_lang_code_to_id.get(tgt_lang)
-    t2u_decoder_input_ids = torch.tensor([[self.config.t2u_eos_token_id, t2u_tgt_lang_id]] * batch_size).to(
-        self.device
+    t2u_decoder_input_ids = torch.tensor(
+        [[self.config.t2u_eos_token_id, t2u_tgt_lang_id]] * batch_size, device=self.device
     )
     kwargs_speech["decoder_input_ids"] = t2u_decoder_input_ids
 
@@ -815,9 +815,9 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
     unit_ids = torch.where(unit_ids == self.config.t2u_pad_token_id, unit_ids, unit_ids - self.config.vocoder_offset)
 
     vocoder_tgt_lang_id = self.generation_config.vocoder_lang_code_to_id.get(tgt_lang)
-    vocoder_tgt_lang_id = torch.tensor([[vocoder_tgt_lang_id]] * len(unit_ids)).to(self.device)
+    vocoder_tgt_lang_id = torch.tensor([[vocoder_tgt_lang_id]] * len(unit_ids), device=self.device)
 
-    spkr_id = torch.tensor([[spkr_id]] * len(unit_ids)).to(self.device)
+    spkr_id = torch.tensor([[spkr_id]] * len(unit_ids), device=self.device)
 
     waveform, waveform_lengths = self.vocoder(input_ids=unit_ids, spkr_id=spkr_id, lang_id=vocoder_tgt_lang_id)
 
