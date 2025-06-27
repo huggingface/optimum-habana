@@ -113,7 +113,7 @@ def _prepare_cross_attention_mask(
     cross_attention_mask: torch.Tensor,
     num_vision_tokens: int,
     dtype: str,
-    token_idx: Optional[int] = None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from _prepare_cross_attention_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L99
@@ -166,7 +166,7 @@ class GaudiMllamaVisionSdpaAttention(MllamaVisionAttention):
         self,
         hidden_state: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = None,
+        output_attentions: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -222,7 +222,7 @@ class GaudiMllamaVisionEncoderLayer(MllamaVisionEncoderLayer):
         self,
         hidden_state: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = None,
+        output_attentions: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ):
         """
@@ -325,7 +325,7 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-        use_cache: bool = None,
+        use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
@@ -898,7 +898,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
 class GaudiMllamaForCausalLM(MllamaForCausalLM):
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         cross_attention_states: Optional[torch.LongTensor] = None,
@@ -1017,8 +1017,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        token_idx_cpu: Optional[int] = None,
-        **kwargs,
+        **loss_kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2077
@@ -1066,7 +1065,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 cross_attention_mask,
                 num_vision_tokens=self.vision_model.num_patches,
                 dtype=self.dtype,
-                token_idx=token_idx_cpu,
+                token_idx=token_idx,
             )
         else:
             full_text_row_masked_out_mask = None
@@ -1084,6 +1083,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 else:
                     cross_attention_mask = cross_attention_mask[:, :, -1:]
                     full_text_row_masked_out_mask = full_text_row_masked_out_mask[:, :, -1:]
+
         outputs = self.language_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1105,6 +1105,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
+            **loss_kwargs,
         )
 
         return outputs
@@ -1133,7 +1134,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             - add use_flash_attention and flash_attention_recompute
         """
         token_idx = kwargs.get("token_idx", None)
-        token_idx_cpu = kwargs.get("token_idx_cpu", None)
         bucket_internal = kwargs.get("bucket_internal", None)
         if past_key_values is not None:
             if token_idx is not None:
@@ -1185,7 +1185,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "attention_mask": attention_mask,
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
-                "token_idx_cpu": token_idx_cpu,
                 "trim_logits": kwargs.get("trim_logits"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
