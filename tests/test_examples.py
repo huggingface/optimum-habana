@@ -515,9 +515,25 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
-            if os.environ.get("DATA_CACHE", "") != "" and self.EXAMPLE_NAME == "run_clip":
-                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
 
+            config_str = os.environ.get("DATASET_CONFIG")
+            if config_str:
+                try:
+                    dataset_config = json.loads(config_str)
+                except json.JSONDecodeError as e:
+                    raise RuntimeError("Invalid JSON in DATASET_CONFIG") from e
+
+                example_paths = {
+                    "run_clip": "coco",
+                    "run_speech_recognition_ctc": "libri"
+                }
+
+                dataset_key = example_paths.get(self.EXAMPLE_NAME)
+                dataset_path = dataset_config.get(dataset_key)
+
+                if dataset_path:
+                    extra_command_line_arguments[0] = f"--{'data_dir' if dataset_key == 'coco' else 'dataset_dir'} {dataset_path}"
+        
             if torch_compile and (
                 model_name == "bert-large-uncased-whole-word-masking"
                 or model_name == "roberta-large"
@@ -870,7 +886,6 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-    DATASET_NAME = os.environ.get("DATA_CACHE")
 
 
 class MultiCardSummarizationExampleTester(
