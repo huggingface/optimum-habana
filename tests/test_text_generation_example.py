@@ -179,6 +179,7 @@ def _test_text_generation(
     num_beams: int = 1,
     num_return_sequences: int = 1,
     check_output: bool = False,
+    regional_compile: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -243,6 +244,8 @@ def _test_text_generation(
         if parallel_strategy == "tp":
             command += ["--use_flash_attention"]
             command += ["--flash_attention_recompute"]
+        if regional_compile:
+            command += ["--regional_compile"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
@@ -524,6 +527,7 @@ def test_text_generation_bnb(
         token,
         world_size=world_size,
         torch_compile=True,
+        regional_compile=True,
         quantize_with_bnb=quantize_with_bnb,
         max_output_tokens=output_len,
         check_output=check_output,

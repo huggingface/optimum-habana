@@ -1067,8 +1067,6 @@ def main():
             ).cpu()
             return prompt, outputs
 
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         timer = HabanaGenerationTime()

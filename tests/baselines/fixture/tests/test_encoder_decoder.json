@@ -10,7 +10,7 @@
     },
     "gaudi3": {
       "predict_rougeLsum": 15.618,
-      "predict_samples_per_second": 1.091
+      "predict_samples_per_second": 0.894
     }
   },
   "tests/test_encoder_decoder.py::TestEncoderDecoderModels::test_text_summarization_bf16[t5-3b-Habana/t5-2-1]": {
@@ -38,7 +38,7 @@
     },
     "gaudi3": {
       "predict_bleu": 11.7168,
-      "predict_samples_per_second": 13.581
+      "predict_samples_per_second": 10.944
     }
   }
 }

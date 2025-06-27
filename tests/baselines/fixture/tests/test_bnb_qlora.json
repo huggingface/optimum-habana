@@ -30,5 +30,21 @@
     "gaudi3": {
       "eval_loss": 1.044
     }
+  },
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[True-meta-llama/Llama-3.1-70B-1-1]": {
+    "gaudi2": {
+      "eval_loss": 0.961
+    },
+    "gaudi3": {
+      "eval_loss": 0.961
+    }
+  },
+  "tests/test_bnb_qlora.py::test_nf4_quantization_finetuning[False-meta-llama/Llama-3.1-70B-1-1]": {
+    "gaudi2": {
+      "eval_loss": 0.961
+    },
+    "gaudi3": {
+      "eval_loss": 0.961
+    }
   }
 }

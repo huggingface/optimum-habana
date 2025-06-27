@@ -167,7 +167,7 @@ def gaudi_opt_attention_forward(
 
 
 class GaudiOPTDecoderLayer(torch.nn.Module):
-    def __init__(self, config: OPTConfig, layer_idx: int = None):
+    def __init__(self, config: OPTConfig, layer_idx: Optional[int] = None):
         """
         Attention implementation is set to "eager" (default in Transformers is "sdpa").
         """
@@ -262,7 +262,7 @@ class GaudiOPTDecoderLayer(torch.nn.Module):
 
 def gaudi_opt_decoder_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -418,7 +418,7 @@ def gaudi_opt_decoder_forward(
 
 def gaudi_opt_model_forward(
     self,
-    input_ids: torch.LongTensor = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -479,7 +479,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,

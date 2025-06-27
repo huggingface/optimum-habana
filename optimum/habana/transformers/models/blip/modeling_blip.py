@@ -37,7 +37,7 @@ def gaudi_BlipForConditionalGeneration_generate(
 
     image_embeds = vision_outputs[0]
 
-    image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
+    image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
 
     if isinstance(input_ids, list):
         input_ids = torch.LongTensor(input_ids)
@@ -96,7 +96,7 @@ def gaudi_BlipForQuestionAnswering_generate(
 
     image_embeds = vision_outputs[0]
 
-    image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image_embeds.device)
+    image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
 
     if isinstance(input_ids, list):
         input_ids = torch.LongTensor(input_ids)
@@ -111,7 +111,7 @@ def gaudi_BlipForQuestionAnswering_generate(
 
     question_embeds = question_outputs[0]
 
-    question_attention_mask = torch.ones(question_embeds.size()[:-1], dtype=torch.long).to(question_embeds.device)
+    question_attention_mask = torch.ones(question_embeds.size()[:-1], dtype=torch.long, device=question_embeds.device)
 
     bos_ids = torch.full(
         (question_embeds.size(0), 1),
