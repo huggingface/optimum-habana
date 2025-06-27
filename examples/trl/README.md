@@ -4,6 +4,13 @@
 ## Requirements
 
 First, you should install the requirements:
+
+- For **GRPO example**:
+```bash
+$ pip install -U -r requirements_grpo.txt
+```
+
+- For **all other examples**:
 ```bash
 $ pip install -U -r requirements.txt
 ```
@@ -59,7 +66,7 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --wo
     --num_generations 4 \
     --max_completion_length 64 \
     --use_peft True \
-    --lora_target_modules q_proj, k_proj
+    --lora_target_modules q_proj, k_proj \
     --max_steps=500 \
     --logging_steps=10 \
     --save_steps=100
