@@ -18,19 +18,13 @@ limitations under the License.
 
 ## Table of Contents
 
-- [Automatic Speech Recognition Examples](#automatic-speech-recognition-examples)
-  - [Table of Contents](#table-of-contents)
-  - [Requirements](#requirements)
-  - [Connectionist Temporal Classification](#connectionist-temporal-classification)
-    - [Single-HPU CTC](#single-hpu-ctc)
-    - [Multi-HPU CTC](#multi-hpu-ctc)
-  - [DeepSpeed](#deepspeed)
-  - [Inference](#inference)
-  - [Sequence to Sequence](#sequence-to-sequence)
-    - [Whisper Model](#whisper-model)
-    - [Single HPU Whisper Fine tuning with Seq2Seq](#single-hpu-whisper-fine-tuning-with-seq2seq)
-    - [Multi HPU Whisper Training with Seq2Seq](#multi-hpu-whisper-training-with-seq2seq)
-      - [Single HPU Seq2Seq Inference](#single-hpu-seq2seq-inference)
+- [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
+	- [Single HPU example](#single-hpu-ctc)
+	- [Multi HPU example](#multi-hpu-ctc)
+- [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
+	- [Whisper Model](#whisper-model)
+	- [Fine tuning](#single-hpu-whisper-fine-tuning-with-seq2seq)
+	- [Inference](#single-hpu-seq2seq-inference)
 
 
 ## Requirements

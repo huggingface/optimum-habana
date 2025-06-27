@@ -138,6 +138,7 @@ def gaudi_DetrLoss_loss_boxes(self, outputs, targets, indices, num_boxes):
 
     losses = {}
     losses["loss_bbox"] = loss_bbox.sum() / num_boxes
+
     loss_giou = 1 - torch.diag(
         generalized_box_iou(center_to_corners_format(source_boxes), center_to_corners_format(target_boxes))
     )
