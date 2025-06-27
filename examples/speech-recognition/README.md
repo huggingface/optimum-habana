@@ -78,7 +78,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --text_column_name="text" \
     --layerdrop="0.0" \
     --freeze_feature_encoder \
-    --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -122,7 +122,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --text_column_name text \
     --layerdrop 0.0 \
     --freeze_feature_encoder \
-    --chars_to_ignore '",?.!-;:\"“%‘”"' \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -147,7 +147,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -175,7 +175,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --text_column_name text \
     --layerdrop 0.0 \
     --freeze_feature_encoder \
-    --chars_to_ignore '",?.!-;:\"“%‘”"' \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_train \
     --do_eval \
     --use_habana \
@@ -211,7 +211,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --text_column_name="text" \
-    --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \
+    --chars_to_ignore '",?.!-;:“%‘”' \
     --do_eval \
     --use_habana \
     --use_lazy_mode \

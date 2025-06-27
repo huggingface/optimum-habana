@@ -39,8 +39,6 @@ from utils import (
     save_model,
 )
 
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -496,6 +494,8 @@ def main():
 
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+
+    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     if args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
