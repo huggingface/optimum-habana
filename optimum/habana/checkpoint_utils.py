@@ -4,7 +4,6 @@ from pathlib import Path
 
 import torch
 from huggingface_hub import list_repo_files, snapshot_download
-from transformers import modeling_utils
 from transformers.utils import is_offline_mode
 
 
@@ -63,6 +62,8 @@ def get_checkpoint_files(model_name_or_path, local_rank, token=None):
 
     # Extensions: .bin | .safetensors | .pt
     # Creates a list of paths from all downloaded files in cache dir
+
+    from transformers import modeling_utils
 
     if any(file.suffix == ".bin" for file in Path(cached_repo_dir).rglob("*")):
         (name, ext) = os.path.splitext(modeling_utils.WEIGHTS_NAME)
