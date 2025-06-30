@@ -442,9 +442,11 @@ def main():
         padding = False
 
     if model_args.add_pad_token:
-        if not model.config.pad_token_id and not tokenizer.pad_token:
-            tokenizer.pad_token = tokenizer.eos_token
-            model.config.pad_token_id = tokenizer.eos_token_id
+        pad_id = getattr(model.config, "pad_token_id", None)
+        if pad_id is None or pad_id < 0:
+            tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
+            model.config.pad_token_id = tokenizer.pad_token_id
+            model.resize_token_embeddings(len(tokenizer))
 
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None
