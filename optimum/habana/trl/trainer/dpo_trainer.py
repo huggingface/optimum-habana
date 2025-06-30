@@ -40,28 +40,28 @@ from transformers import (
     is_comet_available,
     is_wandb_available,
 )
-from transformers.data.data_collator import DataCollatorMixin
 from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 from transformers.utils import is_peft_available, is_torch_xpu_available
 
+from trl import DPOTrainer
 from trl.data_utils import maybe_apply_chat_template, maybe_extract_prompt
 from trl.models import create_reference_model
 from trl.models.utils import prepare_fsdp
-from trl.callbacks import SyncRefModelCallback
-from trl.dpo_config import FDivergenceConstants
+from trl.trainer.callbacks import SyncRefModelCallback
+from trl.trainer.dpo_config import FDivergenceConstants
 from trl.trainer.utils import (
     RunningMoments,
     disable_dropout_in_model,
     flush_left,
-    pad,
     pad_to_length,
     selective_log_softmax,
 )
 
 from ... import GaudiConfig, GaudiTrainer
 from .dpo_config import GaudiDPOConfig
+from .utils import BaseDataCollatorForLanguageModeling, pad
 
 
 if is_peft_available():
@@ -76,23 +76,14 @@ if is_deepspeed_available():
 
 
 @dataclass
-class DataCollatorForPreference(DataCollatorMixin):
+class DataCollatorForPreference(BaseDataCollatorForLanguageModeling):
     """
-    
+    Copied from DataCollatorForLanguageModeling: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/dpo_trainer.py#L88
+    The differences are:
+        - Bucketing added. Buckets: None or emtpy list means means no bucketing
     """
-
-    pad_token_id: int
-    return_tensors: str = "pt"
-    buckets: Optional[list[int]] = None
-
-    def _get_bucketed_len(self, examples):
-        max_sentence_len = max([len(k["input_ids"]) for k in examples])
-        if max_sentence_len > self.buckets[-1]:
-            self.buckets = np.append(self.buckets, max_sentence_len)
-            curr_bucket = max_sentence_len
-        else:
-            curr_bucket = self.buckets[np.argmin(np.where(max_sentence_len <= self.buckets))]
-        return curr_bucket
+    def __init__(self, pad_token_id: int, return_tensors: str = "pt", buckets: Optional[list[int]] = None):
+        super().__init__(pad_token_id=pad_token_id, return_tensors="pt", buckets=buckets)
 
     def torch_call(self, examples: list[Union[list[int], Any, dict[str, Any]]]) -> dict[str, Any]:
         # Convert to tensor
@@ -110,18 +101,22 @@ class DataCollatorForPreference(DataCollatorMixin):
             ref_chosen_logps = torch.tensor([example["ref_chosen_logps"] for example in examples])
             ref_rejected_logps = torch.tensor([example["ref_rejected_logps"] for example in examples])
 
+        bucket_size = 0
+        if self.buckets is not None and len(self.buckets) > 0:
+            bucket_size = self._get_bucketed_len(examples)
+
         # Pad
         output = {}
-        output["prompt_input_ids"] = pad(prompt_input_ids, padding_value=self.pad_token_id, padding_side="left")
-        output["prompt_attention_mask"] = pad(prompt_attention_mask, padding_value=0, padding_side="left")
-        output["chosen_input_ids"] = pad(chosen_input_ids, padding_value=self.pad_token_id)
-        output["chosen_attention_mask"] = pad(chosen_attention_mask, padding_value=0)
-        output["rejected_input_ids"] = pad(rejected_input_ids, padding_value=self.pad_token_id)
-        output["rejected_attention_mask"] = pad(rejected_attention_mask, padding_value=0)
+        output["prompt_input_ids"] = pad(prompt_input_ids, padding_value=self.pad_token_id, padding_side="left", bucket_size=bucket_size)
+        output["prompt_attention_mask"] = pad(prompt_attention_mask, padding_value=0, padding_side="left", bucket_size=bucket_size)
+        output["chosen_input_ids"] = pad(chosen_input_ids, padding_value=self.pad_token_id, bucket_size=bucket_size)
+        output["chosen_attention_mask"] = pad(chosen_attention_mask, padding_value=0, bucket_size=bucket_size)
+        output["rejected_input_ids"] = pad(rejected_input_ids, padding_value=self.pad_token_id, bucket_size=bucket_size)
+        output["rejected_attention_mask"] = pad(rejected_attention_mask, padding_value=0, bucket_size=bucket_size)
         if "pixel_values" in examples[0]:
-            output["pixel_values"] = pad(pixel_values, padding_value=0.0)
+            output["pixel_values"] = pad(pixel_values, padding_value=0.0, bucket_size=bucket_size)
         if "pixel_attention_mask" in examples[0]:
-            output["pixel_attention_mask"] = pad(pixel_attention_mask, padding_value=0)
+            output["pixel_attention_mask"] = pad(pixel_attention_mask, padding_value=0, bucket_size=bucket_size)
         if "image_sizes" in examples[0]:
             output["image_sizes"] = torch.tensor([example["image_sizes"] for example in examples])
         if "ref_chosen_logps" in examples[0] and "ref_rejected_logps" in examples[0]:
@@ -719,6 +714,11 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         return_outputs=False,
         num_items_in_batch=None,
     ) -> Union[torch.Tensor, tuple[torch.Tensor, dict[str, torch.Tensor]]]:
+        """
+        Copied from DPOTrainer.compute_loss: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/dpo_trainer.py#L1343
+        The differences are:
+            - use hpu autocast
+        """
         compute_loss_context_manager = (
             partial(torch.autocast, device_type="hpu", dtype=torch.bfloat16)
             if self._peft_has_been_casted_to_bf16

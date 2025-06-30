@@ -38,17 +38,13 @@ from transformers import (
     ProcessorMixin,
     TrainingArguments,
 )
-from transformers.data.data_collator import DataCollatorMixin
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
 from transformers.utils import is_peft_available
 
 from .sft_config import GaudiSFTConfig
-from trl.trainer.utils import (
-    ConstantLengthDataset,
-    pad,
-)
+from .utils import BaseDataCollatorForLanguageModeling, pad
 
 if is_peft_available():
     import peft
@@ -58,25 +54,16 @@ from ... import GaudiConfig, GaudiTrainer
 
 
 @dataclass
-class DataCollatorForLanguageModeling(DataCollatorMixin):
+class DataCollatorForLanguageModeling(BaseDataCollatorForLanguageModeling):
     """
     Copied from DataCollatorForLanguageModeling: https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/sft_trainer.py#L73
     The differences are:
         - Bucketing added. Buckets: None or emtpy list means means no bucketing
     """
-    pad_token_id: int
-    completion_only_loss: bool = True
-    return_tensors: str = "pt"
-    buckets: Optional[list[int]] = None
 
-    def _get_bucketed_len(self, examples):
-        max_sentence_len = max([len(k["input_ids"]) for k in examples])
-        if max_sentence_len > self.buckets[-1]:
-            self.buckets = np.append(self.buckets, max_sentence_len)
-            curr_bucket = max_sentence_len
-        else:
-            curr_bucket = self.buckets[np.argmin(np.where(max_sentence_len <= self.buckets))]
-        return curr_bucket
+    def __init__(self, pad_token_id: int, completion_only_loss: bool = True, return_tensors: str = "pt", buckets: Optional[list[int]] = None):
+        super().__init__(pad_token_id=pad_token_id, return_tensors="pt", buckets=buckets)
+        self.completion_only_loss = completion_only_loss
 
     def torch_call(self, examples: list[Union[list[int], Any, dict[str, Any]]]) -> dict[str, Any]:
         # Convert to tensor
@@ -86,36 +73,18 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
         if self.completion_only_loss and "completion_mask" in examples[0]:
             completion_mask = [torch.tensor(example["completion_mask"]) for example in examples]
 
+        bucket_size = 0
         if self.buckets is not None and len(self.buckets) > 0:
-            bucket_len = self._get_bucketed_len(examples)
+            bucket_size = self._get_bucketed_len(examples)
 
-            def pad_to_bucket(tensors, pad_value):
-                padded = []
-                for t in tensors:
-                    pad_size = bucket_len - t.shape[0]
-                    if pad_size > 0:
-                        padding = torch.full((pad_size,), pad_value, dtype=t.dtype, device=t.device)
-                        t = torch.cat([t, padding], dim=0)
-                    padded.append(t)
-                return torch.stack(padded)
-
-            output = {
-                "input_ids": pad_to_bucket(input_ids, self.pad_token_id),
-                "attention_mask": pad_to_bucket(attention_mask, 0),
-                "labels": pad_to_bucket(labels, -100),
-            }
-
-            if self.completion_only_loss and "completion_mask" in examples[0]:
-                padded_completion = pad_to_bucket(completion_mask, 0)
-                output["labels"][padded_completion == 0] = -100 # mask everything that is not in the completion
-        else:
-            output = {}
-            output["input_ids"] = pad(input_ids, padding_value=self.pad_token_id, padding_side="right")
-            output["attention_mask"] = pad(attention_mask, padding_value=0, padding_side="right")
-            output["labels"] = pad(labels, padding_value=-100, padding_side="right")
-            if self.completion_only_loss and "completion_mask" in examples[0]:
-                completion_mask = pad(completion_mask, padding_value=0, padding_side="right")
-                output["labels"][completion_mask == 0] = -100  # mask everything that is not in the completion
+        # Pad
+        output = {}
+        output["input_ids"] = pad(input_ids, padding_value=self.pad_token_id, padding_side="right", bucket_size=bucket_size)
+        output["attention_mask"] = pad(attention_mask, padding_value=0, padding_side="right", bucket_size=bucket_size)
+        output["labels"] = pad(labels, padding_value=-100, padding_side="right", bucket_size=bucket_size)
+        if self.completion_only_loss and "completion_mask" in examples[0]:
+            completion_mask = pad(completion_mask, padding_value=0, padding_side="right", bucket_size=bucket_size)
+            output["labels"][completion_mask == 0] = -100  # mask everything that is not in the completion
 
         return output
 
