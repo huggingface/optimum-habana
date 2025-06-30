@@ -271,6 +271,23 @@ from .qwen2_vl import (
     GaudiQwen2VLVisionBlock,
     GaudiVisionSdpaAttention,
 )
+from .qwen3 import (
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
+    gaudi_qwen3_rmsnorm_forward,
+)
+from .qwen3_moe import (
+    GaudiQwen3MoeAttention,
+    GaudiQwen3MoeDecoderLayer,
+    GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeMLP,
+    GaudiQwen3MoeModel,
+    GaudiQwen3MoeSparseMoeBlock,
+    gaudi_qwen3moe_rmsnorm_forward,
+)
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
     gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
