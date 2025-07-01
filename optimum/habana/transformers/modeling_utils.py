@@ -719,7 +719,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
         GaudiQwen2VLForConditionalGeneration
     )
-    
+
     # Optimization for qwen3 on Gaudi
     transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
     transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
@@ -736,7 +736,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeDecoderLayer = GaudiQwen3MoeDecoderLayer
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeSparseMoeBlock = GaudiQwen3MoeSparseMoeBlock
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeRMSNorm.forward = gaudi_qwen3moe_rmsnorm_forward
-    
+
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
