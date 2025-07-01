@@ -501,6 +501,7 @@ def main():
     }
     if data_args.dataset_dir is not None:
         load_dataset_kwargs["data_dir"] = data_args.dataset_dir
+        logger.info(f"Loading dataset from local cache directory: {data_args.dataset_dir}")
 
     raw_datasets["train"] = load_dataset(**load_dataset_kwargs)
 
