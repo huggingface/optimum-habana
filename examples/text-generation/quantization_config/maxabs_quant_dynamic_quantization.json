@@ -1,0 +1,12 @@
+{
+    "mode": "QUANTIZE",
+    "scale_method": "MAXABS_POW2_DYNAMIC",
+    "scale_format": "CONST",
+    "allowlist": {
+        "types": [],
+        "names": [
+            "mlp"
+        ]
+    },
+    "dump_stats_path": "./hqt_output/measure"
+}
