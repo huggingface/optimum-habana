@@ -203,6 +203,8 @@ def get_torch_compiled_model(model, logger, args):
     compile_fn = torch.compile
     if args.regional_compile:
         compile_fn = compile_regions
+    if args.dynamo_specialize_float:
+        torch._dynamo.config.specialize_float = True
 
     compile_kwargs = {
         "backend": "hpu_backend",
