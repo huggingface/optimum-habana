@@ -19,23 +19,16 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
-from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutputWithPast,
-    TokenClassifierOutput,
 )
 from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
 from transformers.models.qwen3_moe.modeling_qwen3_moe import (
@@ -50,7 +43,6 @@ from transformers.models.qwen3_moe.modeling_qwen3_moe import (
     load_balancing_loss_func,
     logger,
 )
-from transformers.processing_utils import Unpack
 
 from ....distributed import parallel_state
 from ...modeling_attn_mask_utils import (
