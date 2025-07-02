@@ -1,5 +1,5 @@
 lm-eval==0.4.8
-datasets==2.21.0
+datasets>=3.0.2
 evaluate == 0.4.3
 rouge_score == 0.1.2
 accelerate
