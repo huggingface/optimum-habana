@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2025 Intel Corporation and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,4 +14,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "1.19.0.dev0"
+from .loss_rt_detr import gaudi_RTDetrHungarianMatcher_forward
