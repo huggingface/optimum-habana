@@ -500,6 +500,7 @@ def main():
         "trust_remote_code": data_args.trust_remote_code,
     }
     if data_args.dataset_dir is not None:
+        load_dataset_kwargs["path"] = os.path.join(data_args.dataset_dir, "librispeech_asr.py")
         load_dataset_kwargs["data_dir"] = data_args.dataset_dir
         logger.info(f"Loading dataset from local cache directory: {data_args.dataset_dir}")
 
