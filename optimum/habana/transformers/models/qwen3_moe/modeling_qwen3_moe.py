@@ -19,6 +19,7 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -53,7 +54,7 @@ from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
     has_fused_rope = True
 except ImportError:
@@ -134,7 +135,7 @@ def gaudi_qwen3moe_repeat_kv(
     key_states = key_states.reshape(new_kv_shape)
     value_states = value_states.reshape(new_kv_shape)
 
-    batch, q_heads, q_len, head_dim = query_states.shape
+    batch, _, q_len, head_dim = query_states.shape
     new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
     query_states = query_states.reshape(new_q_shape)
 
@@ -145,7 +146,7 @@ def gaudi_qwen3moe_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-#  FusedScaledDotProductAttention
+# FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -429,7 +430,7 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         if parallel_state.sequence_parallel_is_initialized():
             seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=seq_len)
         # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
         # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
         if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
@@ -457,9 +458,11 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                    )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
@@ -502,7 +505,7 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
             attn_weights = None
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -519,7 +522,7 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                 # first token
                 softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -533,7 +536,7 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
