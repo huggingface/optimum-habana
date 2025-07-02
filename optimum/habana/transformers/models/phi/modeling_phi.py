@@ -99,7 +99,7 @@ def gaudi_eager_attention_forward(
         query, key, value, attention_mask, module.num_key_value_groups
     )
 
-    attn_weights = module.matmul_qk(query_states.to(torch.float32), key_states.to(torch.float32).transpose(2, 3)) * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(2, 3)) * scaling
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
