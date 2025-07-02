@@ -1,3 +1,3 @@
-datasets
+datasets>=3.0.2
 peft
 sentencepiece
