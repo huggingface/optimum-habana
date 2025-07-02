@@ -221,45 +221,6 @@ class ExampleTestMeta(type):
     models.
     """
 
-    def _load_dataset_config(self) -> dict:
-        config_str = os.environ.get("DATASET_CONFIG")
-        if not config_str:
-            return {}
-        try:
-            return json.loads(config_str)
-        except json.JSONDecodeError as e:
-            raise RuntimeError("Invalid JSON in DATASET_CONFIG") from e
-
-    def _get_dataset_args(self) -> List[str]:
-        dataset_config = self._load_dataset_config()
-        if not dataset_config:
-            return []
-
-        example_paths = {
-            "run_clip": "coco",
-            "run_speech_recognition_ctc": "libri",
-        }
-
-        dataset_key = example_paths.get(self.EXAMPLE_NAME)
-        dataset_info = dataset_config.get(dataset_key)
-        if not dataset_info:
-            return []
-
-        if dataset_key == "coco":
-            return self._get_clip_dataset_args(dataset_info)
-        elif dataset_key == "libri":
-            return self._get_speech_dataset_args(dataset_info)
-        return []
-
-    def _get_clip_dataset_args(self, dataset_info: dict) -> List[str]:
-        return [f"--data_dir {dataset_info['dataset_dir']}"]
-
-    def _get_speech_dataset_args(self, dataset_info: dict) -> List[str]:
-        return [
-            f"--dataset_name {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_script'])}",
-            f"--dataset_dir {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_data'])}",
-        ]
-
     @staticmethod
     def to_test(
         model_name: str,
@@ -826,6 +787,45 @@ class ExampleTesterBase(TestCase):
                 passed = False
 
         assert passed, "One or more metrics failed"
+
+    def _load_dataset_config(self) -> dict:
+        config_str = os.environ.get("DATASET_CONFIG")
+        if not config_str:
+            return {}
+        try:
+            return json.loads(config_str)
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Invalid JSON in DATASET_CONFIG") from e
+
+    def _get_dataset_args(self) -> List[str]:
+        dataset_config = self._load_dataset_config()
+        if not dataset_config:
+            return []
+
+        example_paths = {
+            "run_clip": "coco",
+            "run_speech_recognition_ctc": "libri",
+        }
+
+        dataset_key = example_paths.get(self.EXAMPLE_NAME)
+        dataset_info = dataset_config.get(dataset_key)
+        if not dataset_info:
+            return []
+
+        if dataset_key == "coco":
+            return self._get_clip_dataset_args(dataset_info)
+        elif dataset_key == "libri":
+            return self._get_speech_dataset_args(dataset_info)
+        return []
+
+    def _get_clip_dataset_args(self, dataset_info: dict) -> List[str]:
+        return [f"--data_dir {dataset_info['dataset_dir']}"]
+
+    def _get_speech_dataset_args(self, dataset_info: dict) -> List[str]:
+        return [
+            f"--dataset_name {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_script'])}",
+            f"--dataset_dir {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_data'])}",
+        ]
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
