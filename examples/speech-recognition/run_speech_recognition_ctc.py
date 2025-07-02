@@ -501,7 +501,7 @@ def main():
     }
     if data_args.dataset_dir is not None:
         load_dataset_kwargs["path"] = os.path.join(data_args.dataset_dir, "librispeech_asr.py")
-        load_dataset_kwargs["data_dir"] = data_args.dataset_dir
+        load_dataset_kwargs["data_dir"] = os.path.join(data_args.dataset_dir, "LibriSpeech")
         logger.info(f"Loading dataset from local cache directory: {data_args.dataset_dir}")
 
     raw_datasets["train"] = load_dataset(**load_dataset_kwargs)
