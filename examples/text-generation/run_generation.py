@@ -39,6 +39,7 @@ from utils import (
     save_model,
 )
 
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
