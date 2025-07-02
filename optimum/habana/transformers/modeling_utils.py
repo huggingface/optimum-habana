@@ -183,7 +183,6 @@ from .models import (
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
     GaudiVideoLlavaForConditionalGeneration,
-    GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
@@ -757,7 +756,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
-    transformers.models.video_llava.processing_video_llava.VideoLlavaProcessor = GaudiVideoLlavaProcessor
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
