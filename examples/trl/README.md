@@ -41,7 +41,7 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 grpo.py \
     --num_generations 4 \
     --max_completion_length 64 \
     --use_peft True \
-    --lora_target_modules q_proj, k_proj \
+    --lora_target_modules q_proj k_proj \
     --num_train_epochs 1 \
     --save_strategy="epoch"
 ```
