@@ -1,5 +1,5 @@
 lm-eval==0.4.7
-datasets==2.21.0
+datasets>=3.0.2
 tiktoken
 blobfile
 sentencepiece
