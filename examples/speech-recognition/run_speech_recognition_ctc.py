@@ -194,7 +194,8 @@ class DataTrainingArguments:
         metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     dataset_dir: Optional[str] = field(
-        default=None, metadata={"help": "Optional path to a local dataset directory (e.g. extracted LibriSpeech)."},
+        default=None,
+        metadata={"help": "Optional path to a local dataset directory (e.g. extracted LibriSpeech)."},
     )
     dataset_config_name: str = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}

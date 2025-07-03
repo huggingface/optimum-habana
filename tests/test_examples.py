@@ -451,9 +451,11 @@ class ExampleTestMeta(type):
 
                 if not coco_config.get("dataset_dir"):
                     from .clip_coco_utils import COCO_URLS, download_files
+
                     download_files(COCO_URLS)
 
                 from .clip_coco_utils import create_clip_roberta_model
+
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
@@ -518,7 +520,7 @@ class ExampleTestMeta(type):
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
 
             extra_command_line_arguments += self._get_dataset_args()
-                        
+
             if torch_compile and (
                 model_name == "bert-large-uncased-whole-word-masking"
                 or model_name == "roberta-large"
@@ -799,33 +801,41 @@ class ExampleTesterBase(TestCase):
 
     def _get_dataset_args(self) -> List[str]:
         dataset_config = self._load_dataset_config()
-        if not dataset_config:
-            return []
-
         example_paths = {
             "run_clip": "coco",
             "run_speech_recognition_ctc": "libri",
         }
 
         dataset_key = example_paths.get(self.EXAMPLE_NAME)
+        if dataset_key is None:
+            raise RuntimeError(f"Unsupported EXAMPLE_NAME: {self.EXAMPLE_NAME}")
+
         dataset_info = dataset_config.get(dataset_key)
         if not dataset_info:
-            return []
+            raise RuntimeError(f"No dataset_info found for EXAMPLE_NAME: {self.EXAMPLE_NAME}")
 
-        if dataset_key == "coco":
-            return self._get_clip_dataset_args(dataset_info)
-        elif dataset_key == "libri":
-            return self._get_speech_dataset_args(dataset_info)
-        return []
+        handler_map = {
+            "coco": self._get_clip_dataset_args,
+            "libri": self._get_speech_dataset_args,
+        }
+
+        return handler_map[dataset_key](dataset_info)
 
     def _get_clip_dataset_args(self, dataset_info: dict) -> List[str]:
-        return [f"--data_dir {dataset_info['dataset_dir']}"]
+        try:
+            return [f"--data_dir {dataset_info['dataset_dir']}"]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
 
     def _get_speech_dataset_args(self, dataset_info: dict) -> List[str]:
-        return [
-            f"--dataset_name {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_script'])}",
-            f"--dataset_dir {os.path.join(dataset_info['dataset_dir'], dataset_info['dataset_data'])}",
-        ]
+        try:
+            base_dir = dataset_info["dataset_dir"]
+            return [
+                f"--dataset_name {os.path.join(base_dir, dataset_info['dataset_script'])}",
+                f"--dataset_dir {os.path.join(base_dir, dataset_info['dataset_data'])}",
+            ]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
