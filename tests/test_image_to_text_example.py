@@ -32,8 +32,8 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
             # ("llava-hf/llava-1.5-13b-hf", 1),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            pytest.param("llava-hf/llava-v1.6-mistral-7b-hf", 1, marks=pytest.mark.x2),
+            pytest.param("llava-hf/llava-v1.6-vicuna-7b-hf", 1, marks=pytest.mark.x2),
             pytest.param("llava-hf/llava-v1.6-vicuna-13b-hf", 1, marks=pytest.mark.x8),
         ],
     }
