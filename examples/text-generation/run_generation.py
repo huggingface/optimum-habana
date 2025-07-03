@@ -39,8 +39,6 @@ from utils import (
     save_model,
 )
 
-from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -527,6 +525,8 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
+
+    from optimum.habana.utils import HabanaGenerationTime, HabanaProfile, get_hpu_memory_stats
 
     use_lazy_mode = True
     if args.torch_compile or args.pt2e_path:
