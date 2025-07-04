@@ -801,6 +801,9 @@ class ExampleTesterBase(TestCase):
 
     def _get_dataset_args(self) -> List[str]:
         dataset_config = self._load_dataset_config()
+        if not dataset_config:
+            return []
+
         example_paths = {
             "run_clip": "coco",
             "run_speech_recognition_ctc": "libri",
@@ -808,7 +811,7 @@ class ExampleTesterBase(TestCase):
 
         dataset_key = example_paths.get(self.EXAMPLE_NAME)
         if dataset_key is None:
-            raise RuntimeError(f"Unsupported EXAMPLE_NAME: {self.EXAMPLE_NAME}")
+            return []
 
         dataset_info = dataset_config.get(dataset_key)
         if not dataset_info:
