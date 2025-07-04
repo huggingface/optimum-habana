@@ -132,7 +132,7 @@ def test_nf4_quantization_finetuning(
     )
 
     training_args = GaudiTrainingArguments(
-        evaluation_strategy="no",
+        eval_strategy="no",
         per_device_train_batch_size=train_bs,
         per_device_eval_batch_size=eval_bs,
         gradient_accumulation_steps=2,

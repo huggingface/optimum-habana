@@ -18,9 +18,6 @@ import os
 import transformers
 import transformers.utils.fx
 
-from ..quantizers.bitsandbytes import (
-    gaudi_validate_bnb_backend_availability,
-)
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
@@ -301,7 +298,6 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
-    transformers.integrations.bitsandbytes.validate_bnb_backend_availability = gaudi_validate_bnb_backend_availability
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []
