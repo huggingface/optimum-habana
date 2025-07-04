@@ -510,7 +510,6 @@ def main():
         per_sequence_profiler = disabled_profiler
         per_token_profiler = active_profiler
 
-
     if args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
