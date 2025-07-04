@@ -2,6 +2,7 @@ import os
 
 from optimum.utils import logging
 
+from .utils import get_device_name
 
 logger = logging.get_logger(__name__)
 
@@ -13,16 +14,11 @@ def get_hw():
     Returns:
         str: The type of Habana device ('gaudi', 'gaudi2', 'gaudi3') or None if unknown.
     """
-    import habana_frameworks.torch.utils.experimental as htexp
-
-    device_type = htexp._get_device_type()
-    match device_type:
-        case htexp.synDeviceType.synDeviceGaudi2:
-            return "gaudi2"
-        case htexp.synDeviceType.synDeviceGaudi3:
-            return "gaudi3"
-    logger.warning(f"Unknown device type: {device_type}")
-    return None
+    try:
+        return get_device_name()
+    except ValueError as e:
+        logger.warning(f"Unknown device type: {e}")
+        return None
 
 
 def get_build():
