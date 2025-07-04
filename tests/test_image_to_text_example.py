@@ -32,8 +32,8 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
         "fp8": [
             # ("llava-hf/llava-1.5-7b-hf", 1),
             # ("llava-hf/llava-1.5-13b-hf", 1),
-            ("llava-hf/llava-v1.6-mistral-7b-hf", 1),
-            ("llava-hf/llava-v1.6-vicuna-7b-hf", 1),
+            pytest.param("llava-hf/llava-v1.6-mistral-7b-hf", 1, marks=pytest.mark.x2),
+            pytest.param("llava-hf/llava-v1.6-vicuna-7b-hf", 1, marks=pytest.mark.x2),
             pytest.param("llava-hf/llava-v1.6-vicuna-13b-hf", 1, marks=pytest.mark.x8),
         ],
     }
@@ -67,22 +67,13 @@ def _test_image_to_text(
         f"--batch_size {batch_size}",
         "--max_new_tokens 20",
         "--ignore_eos",
+        "--use_hpu_graphs",
+        "--bf16",
+        "--sdp_on_bf16",
     ]
 
     if model_name == "THUDM/glm-4v-9b":
         env_variables["GLM"] = "4v"
-
-    command += [
-        "--use_hpu_graphs",
-    ]
-
-    if "meta-llama/Llama-3.2-11B-Vision-Instruct" in model_name or "tiiuae/falcon-11B-vlm" in model_name:
-        command += [
-            "--sdp_on_bf16",
-        ]
-
-    command.append("--bf16")
-    command.append("--sdp_on_bf16")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")

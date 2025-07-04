@@ -53,6 +53,8 @@ TESTS_REQUIRE = [
     "timm",
     "peft",
     "bitsandbytes",
+    "tiktoken",
+    "blobfile",
 ]
 
 QUALITY_REQUIRES = [
