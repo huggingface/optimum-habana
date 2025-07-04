@@ -433,7 +433,7 @@
       "throughput": 26.576383087436586
     },
     "gaudi3": {
-      "throughput": 32.54000413829271
+      "throughput": 30.37192754244313
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_deepspeed[bigscience/bloomz-7b1-8-1]": {
