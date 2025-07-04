@@ -209,6 +209,7 @@ from .models import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
     gaudi_BertModel_forward,
+    gaudi_Bert_Sdpa_SelfAttention_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
@@ -420,6 +421,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertSdpaSelfAttention.forward = gaudi_Bert_Sdpa_SelfAttention_forward
     transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
 
     # Optimization for codegen generation on Gaudi
