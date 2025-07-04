@@ -135,6 +135,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_vl",
     "qwen3",
     "qwen3_moe",
+    "arctic",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
