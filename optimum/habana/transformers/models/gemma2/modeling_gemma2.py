@@ -787,7 +787,7 @@ class GaudiGemma2Model(Gemma2Model):
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
-        position_embeddings = self.rotary_emb(hidden_states, seq_len=hidden_states.shape[1])
+        position_embeddings = None
 
         normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
         hidden_states = hidden_states * normalizer
