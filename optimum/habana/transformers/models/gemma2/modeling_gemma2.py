@@ -152,7 +152,6 @@ class GaudiGemma2RotaryEmbedding(torch.nn.Module):
     @torch.no_grad()
     def forward(self, x, seq_len=None):
         # x: [bs, num_attention_heads, seq_len, head_size]
-
         if "dynamic" in self.rope_type:
             self._dynamic_frequency_update(seq_len, device=x.device)
 
@@ -601,7 +600,6 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         - add new args token_idx
         """
         residual = hidden_states
-
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states,
             position_embeddings,
@@ -670,6 +668,9 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
 
 
 class GaudiGemma2Model(Gemma2Model):
+    # used in Trainer to avoid passing `loss_kwargs` to model forward
+    accepts_loss_kwargs = False
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -785,6 +786,9 @@ class GaudiGemma2Model(Gemma2Model):
         # embed positions
         hidden_states = inputs_embeds
 
+        # create position embeddings to be shared across the decoder layers
+        position_embeddings = None
+
         normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
         hidden_states = hidden_states * normalizer
 
@@ -811,6 +815,7 @@ class GaudiGemma2Model(Gemma2Model):
                 layer_outputs = self._gradient_checkpointing_func(
                     partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
+                    position_embeddings,
                     causal_mask,
                     position_ids,
                     past_key_values,
@@ -830,6 +835,7 @@ class GaudiGemma2Model(Gemma2Model):
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
+                    position_embeddings=position_embeddings,
                     attention_mask=causal_mask,
                     position_ids=position_ids,
                     past_key_value=None if past_key_values is None else past_key_values[layer_idx],
