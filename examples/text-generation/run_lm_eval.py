@@ -22,12 +22,13 @@ import json
 import logging
 import multiprocessing as mp
 import os
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 import psutil
 import torch
 import torch.nn.functional as F
 from lm_eval import evaluator, utils
+from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
 from lm_eval.models.utils import stop_sequences_criteria
 
@@ -207,10 +208,19 @@ class HabanaModelAdapter(HFLM):
         return self._model.config.eos_token_id
 
     @property
+    def max_length(self) -> int:
+        # Legacy
+        return self._max_length if self._max_length else self.buckets[-2]
+
+    @property
     def device(self):
         # We need to do padding ourselves, otherwise we'll end up with recompilations
         # Returning 'cpu' to keep tensors on CPU in lm_eval code
         return "cpu"
+
+    @max_length.setter
+    def max_length(self, value: int) -> None:
+        self._max_length = value
 
     def find_bucket(self, length: int) -> list[int]:
         return [b for b in self.buckets if b >= length][0]
@@ -229,7 +239,19 @@ class HabanaModelAdapter(HFLM):
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
+
         return logits
+
+    def generate_until(self, requests: List[Instance], disable_tqdm: bool = False) -> List[str]:
+        """
+        Override to change only max_length property
+        """
+        legacy_max_length = self.max_length
+        self.max_length = super().max_length
+        # Call the parent class's implementation for the unchanged parts
+        res = super().generate_until(requests, disable_tqdm)
+        self.max_length = legacy_max_length
+        return res
 
     def _model_generate(self, context, max_length, stop, **generation_kwargs):
         """
