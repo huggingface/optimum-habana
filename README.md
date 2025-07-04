@@ -48,7 +48,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 > Tests should be run in a Docker container based on Intel Gaudi's official images. Instructions to
 > obtain the latest containers from the Intel Gaudi Vault are available
 > [here](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html#use-intel-gaudi-containers).
-> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.20 stack.
+> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.21 stack.
 
 
 ## Install the library and get example scripts
@@ -65,9 +65,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 ```bash
 git clone https://github.com/huggingface/optimum-habana
-cd optimum-habana && git checkout v1.17.0
+cd optimum-habana && git checkout v1.18.0
 ```
-with `v1.17.0` being the latest Optimum for Intel Gaudi release version.
+with `v1.18.0` being the latest Optimum for Intel Gaudi release version.
 
 ### Option 2: Use the latest main branch under development
 
@@ -95,7 +95,7 @@ git clone -b transformers_future https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 ```
 
 To install the requirements for every example:
@@ -284,7 +284,7 @@ The following model architectures, tasks and device distributions have been vali
 | ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/main/examples/video-comprehension)</li> |
-| GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> 
+| GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li>
 
 </div>
 
@@ -296,7 +296,7 @@ The following model architectures, tasks and device distributions have been vali
 | Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#image-to-image-generation)</li> |
 | Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-refiner)</li> |
 | Stable Diffusion Depth2img |         | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
-| Stable Diffusion 3  |            | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
+| Stable Diffusion 3  | :heavy_check_mark: | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
 | LDM3D            |               | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-image-generation)</li> |
 | FLUX.1           | <li>LoRA</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#flux1-image-to-image)</li> |
 | Text to Video    |               | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-video-generation)</li> |
