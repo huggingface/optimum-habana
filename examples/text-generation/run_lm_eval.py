@@ -90,6 +90,11 @@ def setup_lm_eval_parser():
         default=False,
         help="If True, shows the full config of all tasks at the end of the evaluation.",
     )
+    parser.add_argument(
+        "--log_samples",
+        action="store_true",
+        help="If True, prints extra-logs for all tasks",
+    )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
@@ -262,7 +267,8 @@ def main() -> None:
 
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
-            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=False)
+            log_samples = args.log_samples
+            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=log_samples)
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
 
@@ -287,6 +293,10 @@ def main() -> None:
         finalize_quantization(model)
     if args.save_quantized_model_with_inc:
         save_model(model, tokenizer, args.saved_model_path)
+    if args.pt2e_save and args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_save
+
+        pt2e_save(model)
 
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil

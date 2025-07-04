@@ -1,22 +1,24 @@
-30,31d29
+1a2
+> # coding=utf-8
+29,30d29
 < from datasets import load_dataset
 < 
-32a31
+31a31
 > from datasets import load_dataset
-44,45c43
+43,44c43
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 ---
 >     NllbTokenizerFast,
-47d44
+46d44
 <     set_seed,
-52a50,51
+51a50,51
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-54,55d52
+53,54d52
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-57c54,60
+< check_min_version("4.52.0.dev0")
+56c54,60
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 ---
 > try:
@@ -26,14 +28,14 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-60a64,69
+59a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 > 
-62c71,78
+61c71,78
 < MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast, M2M100Tokenizer]
 ---
 > MULTILINGUAL_TOKENIZERS = [
@@ -44,7 +46,7 @@
 >     M2M100Tokenizer,
 >     NllbTokenizerFast,
 > ]
-110a127,135
+109a127,135
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -54,15 +56,15 @@
 >             )
 >         },
 >     )
-181c206
+180c206
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-266c291
+265c291
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-295a321,327
+294a321,327
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -70,32 +72,28 @@
 >         token=model_args.token,
 >     )
 > 
-296a329
+295a329
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-298,299c331,333
+297,298c331,333
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-385a420
+384a420
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-457c492
+456c492
 <     # Check the whether the source target length fits in the model, if it has absolute positional embeddings
 ---
 >     # Check whether the source target length fits in the model, if it has absolute positional embeddings
-595c630
+594c630
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-596a632
+595a632
 >         gaudi_config=gaudi_config,
-600c636
-<         processing_class=tokenizer,
----
->         tokenizer=tokenizer,
-689,693d724
+688,692d724
 < 
 < 
 < def _mp_fn(index):
