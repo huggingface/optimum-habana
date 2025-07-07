@@ -84,12 +84,13 @@ slow_tests_custom_file_input: test_installs
 
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
-	@status1=0; status2=0; status3=0; \
-	python -m pytest tests/test_examples.py -v -s -k "single_card" || status1=$$?; \
+	@status1=0; status2=0; status3=0; status4=0;\
+	python -m pytest tests/test_examples.py -v -s -k "single_card" --token $(TOKEN)  || status1=$$?; \
 	python -m pip install peft==0.10.0; \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
-	exit $$((status1 + status2 + status3))
+	python -m pytest tests/test_habana_profiler_integration.py -v -s -m "not x8"  || status4=$$?; \
+	exit $$((status1 + status2 + status3 + status4))
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
