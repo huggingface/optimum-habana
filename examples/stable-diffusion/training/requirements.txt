@@ -1,6 +1,6 @@
 compel
 datasets
-imagesize
+imagesize == 1.4.1
 opencv-python
 peft==0.10.0
 sentencepiece
