@@ -458,7 +458,7 @@ class GaudiTrainer(Trainer):
 
     def _wrap_model(self, model, training=True, dataloader=None):
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
-        if self.accelerator.unwrap_model(model) is not model:
+        if self.accelerator.unwrap_model(model, keep_torch_compile=False) is not model:
             return model
 
         # Note: in torch.distributed mode, there's no point in wrapping the model
@@ -1432,12 +1432,18 @@ class GaudiTrainer(Trainer):
             else:
                 self.model_wrapped.save_checkpoint(output_dir)
         elif self.is_fsdp_enabled:
+            if isinstance(self.model, torch._dynamo.eval_frame.OptimizedModule):
+                # TODO: for some reason the fsdp model is not unwrapped correctly here, the self.mode
+                # shouldn't be an OptimizedModule at this point.
+                model = self.model._orig_mod
+            else:
+                model = self.model
             # save fsdp specific ckpt for resuming from ckpt
             save_fsdp_model(
-                self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir, **_get_fsdp_ckpt_kwargs()
+                self.accelerator.state.fsdp_plugin, self.accelerator, model, output_dir, **_get_fsdp_ckpt_kwargs()
             )
             save_fsdp_optimizer(
-                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
+                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, model, output_dir
             )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
@@ -1730,8 +1736,8 @@ class GaudiTrainer(Trainer):
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
         if not isinstance(self.model, supported_classes):
-            if isinstance(self.accelerator.unwrap_model(self.model), supported_classes):
-                self.accelerator.unwrap_model(self.model).save_pretrained(
+            if isinstance(self.accelerator.unwrap_model(self.model, keep_torch_compile=False), supported_classes):
+                self.accelerator.unwrap_model(self.model, keep_torch_compile=False).save_pretrained(
                     output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
                 )
             else:
@@ -1909,7 +1915,8 @@ class GaudiTrainer(Trainer):
             start_time = time.time()
             model = (
                 self.accelerator.prepare(model)
-                if self.is_deepspeed_enabled or (self.is_fsdp_enabled and self.accelerator.mixed_precision != "fp8")
+                if self.is_deepspeed_enabled
+                or (self.is_fsdp_enabled and self.accelerator.mixed_precision != "fp8" and not self.args.torch_compile)
                 else self.accelerator.prepare_model(model, evaluation_mode=True)
             )
             self.model_preparation_time = round(time.time() - start_time, 4)
