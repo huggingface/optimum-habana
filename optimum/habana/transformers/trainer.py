@@ -2690,3 +2690,13 @@ class GaudiTrainer(Trainer):
             num_items_in_batch = num_items_in_batch.to(device)
 
         return batch_samples, num_items_in_batch
+
+    @property
+    def tokenizer(self) -> Optional[PreTrainedTokenizerBase]:
+        # Removed warning about usage of Trainer.tokenizer
+        return self.processing_class
+
+    @tokenizer.setter
+    def tokenizer(self, processing_class) -> None:
+        # Removed warning about usage of Trainer.tokenizer
+        self.processing_class = processing_class
