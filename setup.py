@@ -52,6 +52,7 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "bitsandbytes",
     "tiktoken",
     "blobfile",
 ]
