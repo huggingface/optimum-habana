@@ -163,10 +163,9 @@ def create_unet_adapter_config(
             boft_dropout=args.unet_dropout,
             bias=args.unet_bias,
         )
-        from optimum.habana.peft.layer import GaudiBoftConv2dForward, GaudiBoftLinearForward
+        from optimum.habana.peft.layer import GaudiBoftLinearForward
 
         tuners.boft.layer.Linear.forward = GaudiBoftLinearForward
-        tuners.boft.layer.Conv2d.forward = GaudiBoftConv2dForward
         tuners.boft.layer._FBD_CUDA = False
 
     else:
@@ -228,10 +227,9 @@ def create_text_encoder_adapter_config(
             boft_dropout=args.te_dropout,
             bias=args.te_bias,
         )
-        from optimum.habana.peft.layer import GaudiBoftConv2dForward, GaudiBoftLinearForward
+        from optimum.habana.peft.layer import GaudiBoftLinearForward
 
         tuners.boft.layer.Linear.forward = GaudiBoftLinearForward
-        tuners.boft.layer.Conv2d.forward = GaudiBoftConv2dForward
         tuners.boft.layer._FBD_CUDA = False
     else:
         raise ValueError(f"Unknown adapter type {args.adapter}")
