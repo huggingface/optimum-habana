@@ -21,7 +21,12 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast, TokenClassifierOutput
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    SequenceClassifierOutputWithPast,
+    TokenClassifierOutput,
+)
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 from transformers.models.qwen2.modeling_qwen2 import (
     KwargsForCausalLM,
@@ -1151,6 +1156,8 @@ The only differences are:
 - add new args flash_attention_causal_mask
 - add new args flash_attention_fast_softmax
 """
+
+
 class GaudiQwen2ForSequenceClassification(Qwen2ForSequenceClassification):
     def forward(
         self,
