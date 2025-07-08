@@ -16,8 +16,8 @@ from .bart import (
     gaudi_BartModel_forward,
 )
 from .bert import (
-    gaudi_BertModel_forward,
     gaudi_Bert_Sdpa_SelfAttention_forward,
+    gaudi_BertModel_forward,
 )
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,

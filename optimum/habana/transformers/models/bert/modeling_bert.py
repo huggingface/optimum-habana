@@ -1,9 +1,9 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
+from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions
 
 from optimum.utils import logging
 
