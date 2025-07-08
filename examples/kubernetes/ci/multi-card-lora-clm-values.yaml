@@ -97,7 +97,7 @@ command:
   - "3"
   - --per_device_train_batch_size
   - "12"
-  - --evaluation_strategy
+  - --eval_strategy
   - "no" 
   - --save_strategy
   - "no" 

@@ -77,7 +77,7 @@ def main():
         # bf16=False,  # Set to True if you have a GPU that supports BF16
         # sdp_on_bf16=True, #Set to True for better performance (but this setting can affect accuracy)
         # Optional tracking/debugging parameters:
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=100,
         save_strategy="steps",
         save_steps=100,

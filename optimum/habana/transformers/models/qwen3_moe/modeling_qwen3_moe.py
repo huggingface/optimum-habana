@@ -17,40 +17,44 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch Qwen2MoE model."""
+"""PyTorch Qwen3MoE model."""
 
-import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
+from torch import nn
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
-from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
-from transformers.models.qwen2_moe.configuration_qwen2_moe import Qwen2MoeConfig
-from transformers.models.qwen2_moe.modeling_qwen2_moe import (
-    Qwen2MoeAttention,
-    Qwen2MoeDecoderLayer,
-    Qwen2MoeForCausalLM,
-    Qwen2MoeMLP,
-    Qwen2MoeModel,
-    Qwen2MoeRMSNorm,
-    Qwen2MoeSparseMoeBlock,
+from transformers.modeling_outputs import (
+    MoeCausalLMOutputWithPast,
+    MoeModelOutputWithPast,
+)
+from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
+from transformers.models.qwen3_moe.modeling_qwen3_moe import (
+    Qwen3MoeAttention,
+    Qwen3MoeDecoderLayer,
+    Qwen3MoeForCausalLM,
+    Qwen3MoeMLP,
+    Qwen3MoeModel,
+    Qwen3MoeRMSNorm,
+    Qwen3MoeSparseMoeBlock,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
+    logger,
 )
-from transformers.utils import logging
 
+from ....distributed import parallel_state
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 
 
 try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
 
     has_fused_rope = True
 except ImportError:
@@ -71,37 +75,18 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
-logger = logging.get_logger(__name__)
+import habana_frameworks.torch.core as htcore
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
+def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        if k.dtype == torch.bfloat16:
-            return FusedRoPE.apply(
-                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-            ), FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
-                position_ids,
-            )
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+        return apply_customized_rope_module(q, k, cos, sin, position_ids, training)
     else:
         # keep the same implementation as Transformers v4.37.2
         return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
 
 
-def gaudi_qwen2moe_rmsnorm_forward(self, hidden_states):
-    """
-    Copied from MixtralRMSNorm.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-        - override RMSNorm with Habana fused RMSNorm
-    """
+def gaudi_qwen3moe_rmsnorm_forward(self, hidden_states):
     if hidden_states.device.type == "hpu" and has_fused_rms_norm:
         # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
         if hidden_states.dtype != self.weight.dtype:
@@ -119,7 +104,7 @@ def gaudi_qwen2moe_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
-class GaudiQwen2MoeMLP(Qwen2MoeMLP):
+class GaudiQwen3MoeMLP(Qwen3MoeMLP):
     def pre_mlp_forward(self, x):
         input = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
         output = self.down_proj(input)
@@ -135,21 +120,13 @@ class GaudiQwen2MoeMLP(Qwen2MoeMLP):
         return x
 
 
-def gaudi_qwen2moe_repeat_kv(
+def gaudi_qwen3moe_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
     value_states: torch.Tensor,
     attention_mask: torch.Tensor,
     n_rep: int,
 ):
-    """
-    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-    - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
-    - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
-    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
-    The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
-    """
     batch, num_key_value_heads, kv_len, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
@@ -158,7 +135,7 @@ def gaudi_qwen2moe_repeat_kv(
     key_states = key_states.reshape(new_kv_shape)
     value_states = value_states.reshape(new_kv_shape)
 
-    batch, q_heads, q_len, head_dim = query_states.shape
+    batch, _, q_len, head_dim = query_states.shape
     new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
     query_states = query_states.reshape(new_q_shape)
 
@@ -169,56 +146,7 @@ def gaudi_qwen2moe_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert self.inp_seq_len == inp_seq_len, (
-                f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            )
-            self.cache.fill_(0)
-
-    @staticmethod
-    def update(prev, cur, dim, idx, inp_seq_len):
-        orig_cur = cur
-        if prev.shape == cur.shape:
-            prev.copy_(cur)
-            return orig_cur
-        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-            # Initialize
-            prev[:, :, :inp_seq_len, :].copy_(cur)
-            return orig_cur
-        if idx is not None:
-            prev.index_copy_(dim, idx - 1, cur)
-            return prev
-        else:
-            return torch.cat((prev, cur), dim=dim)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-
-#  FusedScaledDotProductAttention
+# FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8):
         super().__init__()
@@ -257,8 +185,111 @@ class ModuleFusedSDPA(torch.nn.Module):
         )
 
 
-class GaudiQwen2MoeAttention(Qwen2MoeAttention):
-    def __init__(self, config: Qwen2MoeConfig, layer_idx: Optional[int] = None):
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    attn_softmax_bf16: bool = False,
+    **kwargs,
+):
+    bsz, q_len = kwargs["input_shape"]
+    query_states, key_states, value_states, attention_mask = gaudi_qwen3moe_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    query_states = query_states * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
+    htcore.mark_step()
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+    else:
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = module.matmul_av(attn_weights, value_states)
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
+
+    return attn_output, attn_weights
+
+
+class GaudiDistributedAttention(torch.nn.Module):
+    def __init__(
+        self, hpu_module_fsdpa: ModuleFusedSDPA, scale, attention_dropout, enable_recompute, flash_attention_fp8
+    ):
+        super().__init__()
+        self._hpu_module_fsdpa = hpu_module_fsdpa
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            from deepspeed.sequence.layer import DistributedAttention
+
+            self._hpu_module_fsdpa_distributed = DistributedAttention(
+                self._hpu_module_fsdpa, parallel_state.get_sequence_parallel_group(), 1, 2
+            )
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: torch.Tensor,
+        dropout_p: float,
+        is_casual,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths,
+        padding_side="left",
+    ):
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            return self._hpu_module_fsdpa_distributed(
+                query,
+                key,
+                value,
+                0,  # As the shape for inputs is [B, N, S, H]
+                None,
+                attn_mask,
+                dropout_p,
+                is_casual,
+                scale,
+                softmax_mode,
+                recompute_mode,
+                valid_sequence_lengths,
+                padding_side,
+            )
+        else:
+            return self._hpu_module_fsdpa(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_casual,
+                scale,
+                softmax_mode,
+                recompute_mode,
+                valid_sequence_lengths,
+                padding_side,
+            )
+
+
+def get_gaudi_distributed_attention(
+    fused_scaled_dot_product_attention, fused_scaled_dot_product_attention_distributed
+):
+    if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+        return fused_scaled_dot_product_attention_distributed
+    else:
+        return fused_scaled_dot_product_attention
+
+
+class GaudiQwen3MoeAttention(Qwen3MoeAttention):
+    def __init__(self, config: Qwen3MoeConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
 
         self.matmul_qk = Matmul()
@@ -267,14 +298,13 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         self.v_cache = KVCache()
 
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
 
         self.fused_scaled_dot_product_attention = (
             ModuleFusedSDPA(
                 FusedSDPA,
-                scale=self.norm_factor,
+                scale=self.scaling,
                 attention_dropout=self.attention_dropout,
                 enable_recompute=False,
                 flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
@@ -282,10 +312,38 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             if FusedSDPA
             else None
         )
+        self.fused_scaled_dot_product_attention_distributed = None
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_world_size() > 1:
+            self.fused_scaled_dot_product_attention_distributed = (
+                GaudiDistributedAttention(
+                    self.fused_scaled_dot_product_attention,
+                    scale=self.scaling,
+                    attention_dropout=self.attention_dropout,
+                    enable_recompute=False,
+                    flash_attention_fp8=getattr(config, "flash_attention_fp8", False),
+                )
+                if FusedSDPA
+                else None
+            )
+
+        self.num_key_value_heads = config.num_key_value_heads
+
+    def get_k_proj_weight(self):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight."""
+        if hasattr(self.k_proj, "qweight"):
+            return self.k_proj.qweight
+        return self.k_proj.weight
+
+    def get_k_proj_weight_dtype(self):
+        """4bit quantization in GPTQ replaces the k_proj.weight with qweight.
+        Scales tensor gets the weight dtype."""
+        if hasattr(self.k_proj, "qweight"):
+            return self.k_proj.scales.dtype
+        return self.k_proj.weight.dtype
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        device = self.k_proj.weight.device
+        device = self.get_k_proj_weight().device
         dtype = self.config.torch_dtype
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
@@ -296,7 +354,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            _, _ = self.rotary_emb(self.get_k_proj_weight(), seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -315,13 +373,11 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -335,7 +391,6 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
-        Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
         - add new args token_idx
         - optimize KV cache
@@ -347,15 +402,13 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         - add new arg flash_attention_fast_softmax
         - add new arg num_virtual_tokens
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = self.q_norm(self.q_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+        key_states = self.k_norm(self.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -373,8 +426,25 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                     else:
                         kv_seq_len = past_key_value[0].shape[-2]
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        seq_len = kv_seq_len
+        if parallel_state.sequence_parallel_is_initialized():
+            seq_len = kv_seq_len * parallel_state.get_sequence_parallel_world_size()
+
+        cos, sin = self.rotary_emb(value_states, seq_len=seq_len)
+        # If sequence parallel in enabled, position_ids should be based on which part of the sequence is present in the rank
+        # As we divide the inputs based on ranks, position_ids are generated to suit that part of the sequence
+        if parallel_state.sequence_parallel_is_initialized() and parallel_state.get_sequence_parallel_rank() > 0:
+            position_ids = torch.arange(
+                kv_seq_len * parallel_state.get_sequence_parallel_rank(),
+                kv_seq_len * (parallel_state.get_sequence_parallel_rank() + 1),
+                dtype=torch.long,
+                device=query_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0)
+
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -388,9 +458,11 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
+                    )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
@@ -418,11 +490,22 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
+        fused_scaled_dot_product_attention = get_gaudi_distributed_attention(
+            self.fused_scaled_dot_product_attention, self.fused_scaled_dot_product_attention_distributed
+        )
+        sliding_window = None
+        if (
+            self.config.use_sliding_window
+            and getattr(self.config, "sliding_window", None) is not None
+            and self.layer_idx >= self.config.max_window_layers
+        ):
+            sliding_window = self.config.sliding_window
 
         if use_flash_attention and FusedSDPA is not None:
+            attn_weights = None
             if q_len == 1:
                 # next token
-                attn_output = self.fused_scaled_dot_product_attention(
+                attn_output = fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -439,7 +522,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                 # first token
                 softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -453,7 +536,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                         "left",
                     )
                 else:
-                    attn_output = self.fused_scaled_dot_product_attention(
+                    attn_output = fused_scaled_dot_product_attention(
                         query_states,
                         key_states,
                         value_states,
@@ -468,45 +551,22 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                     )
 
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_qwen2moe_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
-
-            query_states = query_states * self.norm_factor
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)).float()
-            htcore.mark_step()
-
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask
-                if cache_position is not None:
-                    causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask.float()
-
-            if attn_softmax_bf16:
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
-            else:
-                # upcast attention to fp32
-                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                    query_states.dtype
-                )
-            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
-            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                sliding_window=sliding_window,  # main diff with Llama
+                attn_softmax_bf16=attn_softmax_bf16,
+                input_shape=input_shape,
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(bsz, q_len, -1)
-
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
@@ -525,47 +585,38 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         return attn_output
 
 
-def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    - optimize expert forward, remove dynamic control and dynamic shape
-    """
-    batch_size, sequence_length, hidden_dim = hidden_states.shape
-    hidden_states = hidden_states.view(-1, hidden_dim)
+class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
+    def __init__(self, config: Qwen3MoeConfig):
+        super().__init__(config)
+        self.moe_intermediate_size = config.moe_intermediate_size
+        self.num_experts = config.num_experts
+        self.top_k = config.num_experts_per_tok
+        self.norm_topk_prob = config.norm_topk_prob
 
-    # router_logits: (batch * sequence_length, n_experts)
-    router_logits = self.gate(hidden_states)
-
-    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-
-    if self.norm_topk_prob:
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-    # we cast back to the input dtype
-    routing_weights = routing_weights.to(hidden_states.dtype)
-
-    if self.training:
-        final_hidden_states = torch.zeros(
-            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        # gating
+        self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
+        self.experts = nn.ModuleList(
+            [Qwen3MoeMLP(config, intermediate_size=config.moe_intermediate_size) for _ in range(self.num_experts)]
         )
 
-        padded_weights = torch.zeros(
-            (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
-        )
-        padded_weights.scatter_(-1, selected_experts, routing_weights)
-        padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
-        padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        - optimize expert forward, remove dynamic control and dynamic shape
+        """
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
 
-        # Loop over all available experts in the model and perform the computation on each expert
-        for expert_idx in range(self.num_experts):
-            expert_layer = self.experts[expert_idx]
-            padded_weight = padded_weights[expert_idx]
-            current_state_static = hidden_states.reshape(-1, hidden_dim)
-            current_hidden_states_static = (
-                expert_layer.pre_mlp_forward(current_state_static).reshape(-1, sequence_length, hidden_dim)
-                * padded_weight
-            )
-            final_hidden_states = final_hidden_states + current_hidden_states_static
-    else:
+        # router_logits: (batch * sequence_length, n_experts)
+        router_logits = self.gate(hidden_states)
+
+        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+
+        if self.norm_topk_prob:
+            routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
+
         experts_range = range(self.num_experts)
         w1_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
         w2_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
@@ -576,46 +627,39 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
             expert_routing_table=selected_experts,
             router_weights=routing_weights,
             w1=w1_list,
-            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+            w2=w3_list,
             w3=w2_list,
             permuted_weights=True,
             activation="silu",
             experts_min=0,
             experts_max=(self.num_experts - 1),
         )
-        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
+        htcore.mark_step()
 
-        if is_deepspeed_available():
+        if not self.training and is_deepspeed_available() and self.moe_intermediate_size != w1_list[0].size(0):
             from deepspeed import comm as dist
 
             if dist.is_initialized():
                 dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
-    shared_expert_output = self.shared_expert(hidden_states)
-
-    shared_expert_output = F.sigmoid(self.shared_expert_gate(hidden_states)) * shared_expert_output
-
-    shared_expert_output = shared_expert_output.reshape(-1, sequence_length, hidden_dim)
-
-    final_hidden_states = final_hidden_states + shared_expert_output
-
-    return final_hidden_states, router_logits
+        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
+        return final_hidden_states, router_logits
 
 
-class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
-    def __init__(self, config: Qwen2MoeConfig, layer_idx: int):
-        super(Qwen2MoeDecoderLayer, self).__init__()
+class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
+    def __init__(self, config: Qwen3MoeConfig, layer_idx: int):
+        super(Qwen3MoeDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
 
-        self.self_attn = GaudiQwen2MoeAttention(config=config, layer_idx=layer_idx)
+        self.self_attn = GaudiQwen3MoeAttention(config=config, layer_idx=layer_idx)
 
         if config.num_experts > 0 and (layer_idx + 1) % config.decoder_sparse_step == 0:
-            self.mlp = Qwen2MoeSparseMoeBlock(config)
+            self.mlp = GaudiQwen3MoeSparseMoeBlock(config)
         else:
-            self.mlp = GaudiQwen2MoeMLP(config, intermediate_size=config.intermediate_size)
+            self.mlp = GaudiQwen3MoeMLP(config, intermediate_size=config.intermediate_size)
 
-        self.input_layernorm = Qwen2MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = Qwen2MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = Qwen3MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = Qwen3MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -649,17 +693,6 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-        The only differences are:
-        - add new args token_idx
-        - add new args attn_softmax_bf16
-        - add new args reuse_cache
-        - add new args use_flash_attention
-        - add new arg flash_attention_recompute
-        - add new arg flash_attention_causal_mask
-        - add new arg flash_attention_fast_softmax
-        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -673,6 +706,7 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
+            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -709,7 +743,7 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -777,17 +811,17 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         return hidden_states
 
 
-class GaudiQwen2MoeModel(Qwen2MoeModel):
-    def __init__(self, config: Qwen2MoeConfig):
-        super(Qwen2MoeModel, self).__init__(config)
+class GaudiQwen3MoeModel(Qwen3MoeModel):
+    def __init__(self, config: Qwen3MoeConfig):
+        super(Qwen3MoeModel, self).__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = torch.nn.ModuleList(
-            [GaudiQwen2MoeDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+            [GaudiQwen3MoeDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-        self.norm = Qwen2MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = Qwen3MoeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
@@ -1006,9 +1040,9 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         )
 
 
-class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
+class GaudiQwen3MoeForCausalLM(Qwen3MoeForCausalLM):
     """
-    Inherits from Qwen2MoeForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1231
+    Inherits from Qwen3MoeForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1231
     The only differences are:
     - add new args token_idx
     - add token_idx into model_inputs

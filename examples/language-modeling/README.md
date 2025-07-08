@@ -310,7 +310,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --pipelining_fwd_bwd \
     --bf16 \
     --logging_strategy epoch \
-    --evaluation_strategy epoch \
+    --eval_strategy epoch \
     --lora_target_modules "q_proj" "o_proj" "k_proj" "v_proj" "gate_proj" "up_proj" "down_proj" \
     --lora_rank=8 \
     --lora_alpha=16 \
@@ -578,7 +578,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multit
     --output_dir out_multi_peft \
     --use_habana \
     --use_lazy_mode \
-    --evaluation_strategy "steps" \
+    --eval_strategy "steps" \
     --eval_steps 500 \
     --save_strategy "no" \
     --learning_rate 1e-4  \
@@ -600,7 +600,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_
     --output_dir out_poly \
     --use_habana \
     --use_lazy_mode \
-    --evaluation_strategy "epoch" \
+    --eval_strategy "epoch" \
     --logging_strategy "epoch" \
     --save_strategy "no" \
     --learning_rate 5e-5  \
@@ -644,7 +644,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py  \
         --attn_softmax_bf16 True \
         --validation_split_percentage 4 \
         --flash_attention_causal_mask True \
-        --evaluation_strategy epoch \
+        --eval_strategy epoch \
         --pipelining_fwd_bwd \
         --use_lazy_mode \
         --use_flash_attention True \
