@@ -340,13 +340,9 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         elif adapter == "boft":
             from peft import tuners
 
-            from optimum.habana.peft.layer import GaudiBoftGetDeltaWeight
-
-            tuners.boft.layer.Linear.get_delta_weight = GaudiBoftGetDeltaWeight
-            tuners.boft.layer.Conv2d.get_delta_weight = GaudiBoftGetDeltaWeight
             tuners.boft.layer._FBD_CUDA = False
             config = BOFTConfig(
-                boft_block_size=1,
+                boft_block_size=8,
                 boft_block_num=0,
                 boft_n_butterfly_factor=1,
                 target_modules=target_modules,
@@ -715,18 +711,10 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
-        if peft_adapter not in ["boft", "oft"]:
-            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
-                pipeline.unet = self.merge_peft_adapter(pipeline.unet, peft_adapter)
-                pipeline.text_encoder = self.merge_peft_adapter(pipeline.text_encoder, peft_adapter)
-        else:
-            # WA torch.inverse issue in Synapse AI 1.17 for oft and boft
-            pipeline.unet = pipeline.unet.to(torch.float32)
+
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
             pipeline.unet = self.merge_peft_adapter(pipeline.unet, peft_adapter)
-            pipeline.unet = pipeline.unet.to(torch.bfloat16)
-            pipeline.text_encoder = pipeline.text_encoder.to(torch.float32)
             pipeline.text_encoder = self.merge_peft_adapter(pipeline.text_encoder, peft_adapter)
-            pipeline.text_encoder = pipeline.text_encoder.to(torch.bfloat16)
 
         set_seed(27)
         outputs = pipeline(
