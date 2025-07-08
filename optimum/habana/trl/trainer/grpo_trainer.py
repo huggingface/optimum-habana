@@ -49,11 +49,11 @@ from trl.trainer.utils import (
     selective_log_softmax,
 )
 
-from optimum.habana.transformers import trainer as habana_trainer
-from optimum.habana.transformers.trainer import _get_input_update_settings
 from optimum.utils import logging
 
 from ... import GaudiConfig, GaudiTrainer
+from ...transformers import trainer as habana_trainer
+from ...transformers.trainer import _get_input_update_settings
 from .grpo_config import GaudiGRPOConfig
 
 

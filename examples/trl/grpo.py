@@ -79,7 +79,7 @@ class ScriptArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-0.5B-Instruct", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(default=None, metadata={"help": "the dataset name"})
     use_peft: Optional[bool] = field(default=False, metadata={"help": "whether to use peft"})
-    num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
+    num_workers: Optional[int] = field(default=1, metadata={"help": "the number of workers"})
     subset: Optional[str] = field(default=None, metadata={"help": "the subset to use"})
     streaming: Optional[bool] = field(default=False, metadata={"help": "whether to stream the dataset"})
     dataset_train_split: str = field(default="train[:5%]", metadata={"help": "Dataset split to use for training."})
