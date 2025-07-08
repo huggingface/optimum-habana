@@ -1222,7 +1222,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "token_idx_cpu", None
             )  # returns an integer so following slicing ops happen using int instead of tensor
             if token_idx is not None:
-                mask = cross_attention_mask_prev[:, token_idx_cpu - 2 : token_idx_cpu - 1, ...]
+                mask = cross_attention_mask_prev[:, token_idx_cpu - 2 : token_idx_cpu - 1, ...].clone()
                 cross_attention_mask_prev.index_copy_(1, token_idx - 1, mask)
                 model_kwargs["cross_attention_mask"] = cross_attention_mask_prev
             else:
