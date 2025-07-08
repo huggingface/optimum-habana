@@ -110,11 +110,10 @@ def setup_parser(parser):
         "Use this in combination with `--mlcommons_dataset`.",
     )
     parser.add_argument(
-        "--dataset",
         "--mlcommons_dataset",
-        default="/mnt/weka/data/mlperf_inference/llama2/processed-data.pkl",
+        default=None,
         type=str,
-        help="path of the dataset to run rouge evaluation and measurement for rouge",
+        help="Path of the dataset from mlcommons repository to run rouge evaluation and measurement for rouge score.",
     )
     parser.add_argument(
         "--column_name",
@@ -549,7 +548,7 @@ def main():
     if args.dataset_name == "openorca" or args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
-            ds = pd.read_pickle(args.dataset)
+            ds = pd.read_pickle(args.mlcommons_dataset)
             return ds
 
         def get_input(ds, batch_size):
