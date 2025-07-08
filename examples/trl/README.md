@@ -21,7 +21,7 @@ $ pip install -U -r requirements.txt
         --subset '' \
         --output_dir ./model_qwen \
         --num_train_epochs 1 \
-        --per_device_train_batch_size 8 \
+        --per_device_train_batch_size 4 \
         --eval_strategy "no" \
         --save_strategy "no" \
         --learning_rate 3e-4 \
@@ -44,10 +44,10 @@ $ pip install -U -r requirements.txt
         --use_flash_attention
     ```
 
-2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
+2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 8 cards:
 
     ```bash
-    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
