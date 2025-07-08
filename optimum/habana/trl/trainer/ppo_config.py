@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2020-2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,69 +11,86 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import warnings
-from dataclasses import dataclass
 
-import numpy as np
-from trl import PPOConfig, is_wandb_available
-from trl.trainer.utils import exact_div
+import os
+from dataclasses import dataclass, field
+from typing import Literal, Optional
+
+from trl.trainer.utils import OnPolicyConfig
+
+from ... import GaudiTrainingArguments
 
 
 @dataclass
-class GaudiPPOConfig(PPOConfig):
+class GaudiPPOConfig(OnPolicyConfig, GaudiTrainingArguments):
+    r"""
+    Initialize GaudiPPOConfig.
+    Adapted from https://github.com/huggingface/trl/blob/v0.17.0/trl/trainer/ppo_config.py#L23
+        - inherit from GaudiTrainingArguments
     """
-    Configuration class for GaudiPPOTrainer
-    """
 
-    use_habana: bool = False
-    """Indicate if habana is used"""
-    pad_for_acceleration: bool = False
-    """Indicate if padding is used for acceleration. """
-    pad_max_len: int = 0
-    """max total length including padding. Only applicable if pad_for_acceleration is True"""
-    pad_max_input_len: int = 0
-    """max input length including padding. Only applicable if pad_for_acceleration is True"""
-
-    def __post_init__(self):
-        """
-        Copied from PPOConfig.__post_init__: https://github.com/huggingface/trl/blob/v0.9.6/trl/trainer/ppo_config.py#L152
-        The only differences are:
-        - add adapt_transformers_to_gaudi for habana
-        """
-        if self.forward_batch_size is not None:
-            warnings.warn(
-                "Note that using `forward_batch_size` is deprecated, use `mini_batch_size` instead. By setting it you overwrite `mini_batch_size` which affects both the batch size during forward passes and also the mini batch size for PPO optimization."
-            )
-            self.mini_batch_size = self.forward_batch_size
-        self.backward_batch_size = self.mini_batch_size * self.gradient_accumulation_steps
-        exact_div(
-            self.batch_size,
-            self.backward_batch_size,
-            "`batch_size` must be a multiple of `mini_batch_size * gradient_accumulation_steps`",
-        )
-        self.total_ppo_epochs = int(np.ceil(self.steps / self.batch_size))
-
-        # check if wandb is installed
-        if self.log_with == "wandb":
-            # raise error if wandb is not installed
-            if not is_wandb_available():
-                raise ImportError(
-                    "Please install wandb to use wandb logging. You can do this by running `pip install wandb`."
-                )
-        self.pad_for_acceleration = (self.pad_max_len > 0) and (self.pad_max_input_len > 0)
-
-        if self.pad_for_acceleration:
-            if self.pad_max_input_len >= self.pad_max_len:
-                raise AssertionError(
-                    "pad_max_input_len ({self.pad_max_input_len}) must be smaller "
-                    " then pad_max_len ({self.pad_max_len})"
-                )
-
-        if self.use_habana:
-            from ...transformers.modeling_utils import (
-                adapt_transformers_to_gaudi,
-            )
-
-            adapt_transformers_to_gaudi()
-
-        assert self.kl_penalty in ["kl", "abs", "mse", "full"]
+    exp_name: str = field(
+        default=os.path.basename(__file__)[:-3],
+        metadata={"help": "Name of this experiment."},
+    )
+    reward_model_path: str = field(
+        default="EleutherAI/pythia-160m",
+        metadata={"help": "Path to the reward model."},
+    )
+    model_adapter_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "Name of the train target PEFT adapter, when using LoRA with multiple adapters."},
+    )
+    ref_adapter_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "Name of the reference PEFT adapter, when using LoRA with multiple adapters."},
+    )
+    num_ppo_epochs: int = field(
+        default=4,
+        metadata={"help": "Number of epochs to train."},
+    )
+    whiten_rewards: bool = field(
+        default=False,
+        metadata={"help": "Whether to whiten the rewards."},
+    )
+    kl_coef: float = field(
+        default=0.05,
+        metadata={"help": "KL coefficient."},
+    )
+    kl_estimator: Literal["k1", "k3"] = field(
+        default="k1",
+        metadata={
+            "help": "Which estimator for KL-Divergence to use from Approximating KL Divergence "
+            "(http://joschu.net/blog/kl-approx.html). Defaults to 'k1', a straightforward, unbiased estimator. Can be "
+            "set to 'k3', an unbiased estimator with lower variance which 'appears to be a strictly better "
+            "estimator'. Cannot be set to 'k2', as it is used for logging purposes."
+        },
+    )
+    cliprange: float = field(
+        default=0.2,
+        metadata={"help": "Clip range."},
+    )
+    vf_coef: float = field(
+        default=0.1,
+        metadata={"help": "Value function coefficient."},
+    )
+    cliprange_value: float = field(
+        default=0.2,
+        metadata={"help": "Clip range for the value function."},
+    )
+    gamma: float = field(
+        default=1.0,
+        metadata={"help": "Discount factor."},
+    )
+    lam: float = field(
+        default=0.95,
+        metadata={"help": "Lambda value for GAE."},
+    )
+    ds3_gather_for_generation: bool = field(
+        default=True,
+        metadata={
+            "help": "This setting applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for "
+            "generation, improving generation speed. However, disabling this option allows training models that "
+            "exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation."
+        },
+    )
