@@ -373,11 +373,11 @@ class GaudiMixtralAttention(MixtralAttention):
         self.config = config
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.block_size = 1024
         self.num_key_value_heads = config.num_key_value_heads
-        self.fsdpa = ModuleFusedSDPA(FusedSDPA)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -467,7 +467,7 @@ class GaudiMixtralAttention(MixtralAttention):
         else:
             past_key_value = None
 
-        if FusedSDPA is not None:
+        if self.fused_scaled_dot_product_attention is not None:
             attn_weights = None
             if query_states.dtype != key_states.dtype:
                 key_states = key_states.type(query_states.dtype)
@@ -476,7 +476,7 @@ class GaudiMixtralAttention(MixtralAttention):
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
                 attn_output = GaudiMixtralAttentionLongSequence.forward(
-                    self.fsdpa,
+                    self.fused_scaled_dot_product_attention,
                     query_states,
                     key_states,
                     value_states,
@@ -486,7 +486,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                attn_output = self.fsdpa(
+                attn_output = self.fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -851,7 +851,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
 
         loss = None
         if labels is not None:
