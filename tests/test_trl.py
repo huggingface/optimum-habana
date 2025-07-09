@@ -13,24 +13,32 @@
 # limitations under the License.
 
 import gc
+import importlib.metadata
 import tempfile
 import unittest
 
 import torch
 from datasets import load_dataset
+from packaging import version
 from parameterized import parameterized
 from transformers.testing_utils import require_peft, slow
 from transformers.utils import is_peft_available
 from trl import DDPOConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.trl import (
-    GaudiDDPOTrainer,
-    GaudiDefaultDDPOStableDiffusionPipeline,
-    GaudiGRPOConfig,
-    GaudiGRPOTrainer,
-)
 
+
+trl_version = importlib.metadata.version("trl")
+if version.parse(trl_version) < version.parse("0.17.0"):
+    from optimum.habana.trl import (
+        GaudiDDPOTrainer,
+        GaudiDefaultDDPOStableDiffusionPipeline,
+    )
+else:
+    from optimum.habana.trl import (
+        GaudiGRPOConfig,
+        GaudiGRPOTrainer,
+    )
 
 if is_peft_available():
     from peft import LoraConfig, PeftModel
