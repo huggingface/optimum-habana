@@ -21,7 +21,6 @@ import os
 from dataclasses import make_dataclass
 from types import MethodType
 
-import accelerate.utils.other
 import torch
 from accelerate import Accelerator
 from accelerate.accelerator import _split_batches
