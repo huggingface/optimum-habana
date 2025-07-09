@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 
 def setup_parser(parser):
-
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
     parser.add_argument(
