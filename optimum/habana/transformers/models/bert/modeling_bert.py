@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
-from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions
+from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions, BertSdpaSelfAttention
 
 from optimum.utils import logging
 
@@ -151,7 +151,8 @@ def gaudi_Bert_Sdpa_SelfAttention_forward(
             "Transformers version v5.0.0 onwards. This warning can be removed using the argument "
             '`attn_implementation="eager"` when loading the model.'
         )
-        return super().forward(
+        return BertSdpaSelfAttention.forward(
+            self,
             hidden_states,
             attention_mask,
             head_mask,
