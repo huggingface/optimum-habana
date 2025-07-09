@@ -404,7 +404,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
             sentence_lengths.append(formatted_prompt_len)
 
         # Assign bucket labels to each sentence
-        bucket_label_per_sentence = pd.qcut(sentence_lengths, q=num_buckets, labels=False)
+        bucket_label_per_sentence = pd.qcut(sentence_lengths, q=num_buckets, labels=False, duplicates="drop")
 
         # Get max len per bucket
         df = pd.DataFrame({"value": sentence_lengths, "bucket": bucket_label_per_sentence})
@@ -631,7 +631,7 @@ class GaudiGRPOTrainer(GRPOTrainer, GaudiTrainer):
                 if isinstance(
                     reward_func, nn.Module
                 ):  # Module instead of PretrainedModel for compat with compiled models
-                    if is_conversational(inputs):
+                    if is_conversational(inputs[0]):
                         messages = [{"messages": p + c} for p, c in zip(prompts, completions)]
                         texts = [apply_chat_template(x, reward_processing_class)["text"] for x in messages]
                     else:
