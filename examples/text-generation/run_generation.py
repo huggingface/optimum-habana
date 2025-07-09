@@ -280,17 +280,26 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--use_flash_attention",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        action="store_true",
+        nargs="?",
+        const=True,
+        default=False,
+        action=SetTrueOrFalseOrNone,
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
