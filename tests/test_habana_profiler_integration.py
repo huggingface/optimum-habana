@@ -113,7 +113,7 @@ def test_integration_stable_diffusion(oh_path, profiling_dir, temp_dir):
         f"--batch_size 1 --image_save_dir {temp_dir} --scheduler euler_discrete "
         "--use_habana --use_hpu_graphs --gaudi_config Habana/stable-diffusion --bf16 "
         "--num_inference_steps 10 --optimize --sdp_on_bf16 "
-        "--profiling_steps 1 --profiling_warmup_steps 1"
+        "--profiling_steps 1 --profiling_warmup_steps 1 --distributed"
     )
     install_requirements(f"{oh_path}/examples/stable-diffusion/requirements.txt")
     expected_dirs = [profiling_dir / "stable_diffusion"]
