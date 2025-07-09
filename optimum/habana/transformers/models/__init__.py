@@ -15,7 +15,10 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
-from .bert import gaudi_BertModel_forward
+from .bert import (
+    gaudi_Bert_Sdpa_SelfAttention_forward,
+    gaudi_BertModel_forward,
+)
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,

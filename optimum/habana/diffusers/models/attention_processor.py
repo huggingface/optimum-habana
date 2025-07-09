@@ -288,8 +288,8 @@ class CogVideoXAttnProcessorGaudi:
 class GaudiJointAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections.
     Copied from JointAttnProcessor2_0.forward: https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/models/attention_processor.py
-        The only differences are:
-        - applied Fused SDPA from Habana's framework.
+        * Modified SDPA to use Gaudi fused SDPA kernel
+        * Modified RMSNorm to use fast Gaudi fused RMSNorm kernel
     """
 
     def __init__(self, is_training=False):
@@ -310,7 +310,7 @@ class GaudiJointAttnProcessor2_0:
 
         batch_size = hidden_states.shape[0]
 
-        # `sample` projections.
+        # Self-attention: `sample` projections
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
@@ -322,12 +322,18 @@ class GaudiJointAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
+        from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
 
-        # `context` projections.
+        use_stages = False
+        bwd_mode = 0
+        fast_math = True
+
+        if attn.norm_q is not None:
+            query = FusedRMSNorm.apply(query, attn.norm_q.weight, attn.norm_q.eps, use_stages, bwd_mode, fast_math)
+        if attn.norm_k is not None:
+            key = FusedRMSNorm.apply(key, attn.norm_k.weight, attn.norm_k.eps, use_stages, bwd_mode, fast_math)
+
+        # Cross-attention: `context` projections
         if encoder_hidden_states is not None:
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -344,9 +350,23 @@ class GaudiJointAttnProcessor2_0:
             ).transpose(1, 2)
 
             if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                encoder_hidden_states_query_proj = FusedRMSNorm.apply(
+                    encoder_hidden_states_query_proj,
+                    attn.norm_added_q.weight,
+                    attn.norm_added_q.eps,
+                    use_stages,
+                    bwd_mode,
+                    fast_math,
+                )
             if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                encoder_hidden_states_key_proj = FusedRMSNorm.apply(
+                    encoder_hidden_states_key_proj,
+                    attn.norm_added_k.weight,
+                    attn.norm_added_k.eps,
+                    use_stages,
+                    bwd_mode,
+                    fast_math,
+                )
 
             query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
             key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
@@ -404,8 +424,9 @@ class GaudiFluxAttnProcessor2_0:
     """
     Adapted from:
     https://github.com/huggingface/diffusers/blob/ed4efbd63d0f6b271894bc404b12f512d6b764e5/src/diffusers/models/attention_processor.py#L2275
-      * Modified SDPA to used Gaudi fused SDPA kernel
+      * Modified SDPA to use Gaudi fused SDPA kernel
       * Modified RoPE to use native PAIRWISE mode ordering HPU RoPE kernel
+      * Modified RMSNorm to use fast Gaudi fused RMSNorm kernel
     """
 
     def __init__(self, is_training=False):
@@ -422,22 +443,34 @@ class GaudiFluxAttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        # `sample` projections.
+
+        # Self-attention: `sample` projections.
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
+
+        # Prepare QKV
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # Apply RMSNorm to Q and K
+        from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
+
+        use_stages = False
+        bwd_mode = 0
+        fast_math = True
+
         if attn.norm_q is not None:
-            query = attn.norm_q(query)
+            query = FusedRMSNorm.apply(query, attn.norm_q.weight, attn.norm_q.eps, use_stages, bwd_mode, fast_math)
         if attn.norm_k is not None:
-            key = attn.norm_k(key)
-        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
+            key = FusedRMSNorm.apply(key, attn.norm_k.weight, attn.norm_k.eps, use_stages, bwd_mode, fast_math)
+
+        # Attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
-            # `context` projections.
+            # Cross-attention: `context` projections
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
@@ -450,14 +483,32 @@ class GaudiFluxAttnProcessor2_0:
             encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
                 batch_size, -1, attn.heads, head_dim
             ).transpose(1, 2)
+
+            # Apply RMSNorm to Q and K context projections
             if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                encoder_hidden_states_query_proj = FusedRMSNorm.apply(
+                    encoder_hidden_states_query_proj,
+                    attn.norm_added_q.weight,
+                    attn.norm_added_q.eps,
+                    use_stages,
+                    bwd_mode,
+                    fast_math,
+                )
             if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                encoder_hidden_states_key_proj = FusedRMSNorm.apply(
+                    encoder_hidden_states_key_proj,
+                    attn.norm_added_k.weight,
+                    attn.norm_added_k.eps,
+                    use_stages,
+                    bwd_mode,
+                    fast_math,
+                )
+
             # attention
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
         if image_rotary_emb is not None:
             query, key = apply_rotary_emb_hpu(query, key, image_rotary_emb)
 
