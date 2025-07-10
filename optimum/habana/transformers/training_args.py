@@ -136,9 +136,13 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profiling.
+            Number of training steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
-            Number of steps to be captured when enabling profiling.
+            Number of training steps to be captured when enabling profiling.
+        profiling_warmup_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to ignore for profiling.
+        profiling_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -293,12 +297,22 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profiling.")},
+        metadata={"help": ("Number of training steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+        metadata={"help": ("Number of training steps to be captured when enabling profiling.")},
+    )
+
+    profiling_warmup_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to ignore for profiling.")},
+    )
+
+    profiling_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to be captured when enabling profiling.")},
     )
 
     profiling_record_shapes: Optional[bool] = field(

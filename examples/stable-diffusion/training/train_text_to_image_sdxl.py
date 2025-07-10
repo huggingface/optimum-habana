@@ -547,13 +547,25 @@ def parse_args(input_args=None):
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of steps to ignore for profiling.",
+        help="Number of training steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
         default=0,
         type=int,
-        help="Number of steps to capture for profiling.",
+        help="Number of training steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps_eval",
+        default=0,
+        type=int,
+        help="Number of inference steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps_eval",
+        default=0,
+        type=int,
+        help="Number of inference steps to capture for profiling.",
     )
     parser.add_argument(
         "--logging_step",
@@ -1153,9 +1165,7 @@ def main(args):
 
     unwrap_model(model=unet, training=True)
     hb_profiler = HabanaProfile(
-        warmup=args.profiling_warmup_steps,
-        active=args.profiling_steps,
-        record_shapes=False,
+        warmup=args.profiling_warmup_steps, active=args.profiling_steps, record_shapes=False, name="train"
     )
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1521,6 +1531,8 @@ def main(args):
                         args.validation_prompt,
                         num_inference_steps=25,
                         generator=generator,
+                        profiling_warmup_steps=args.profiling_warmup_steps_eval,
+                        profiling_steps=args.profiling_steps_eval,
                     ).images[0]
                     for _ in range(args.num_validation_images)
                 ]
