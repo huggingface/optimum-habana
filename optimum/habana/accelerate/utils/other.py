@@ -1,77 +1,145 @@
-from types import MethodType
-
 import torch
-from accelerate.utils.constants import FSDP_PYTORCH_VERSION
-from accelerate.utils.imports import is_deepspeed_available, is_torch_distributed_available
-from accelerate.utils.other import is_compiled_module
-from accelerate.utils.transformer_engine import convert_model
-from accelerate.utils.versions import is_torch_version
 
 
-def extract_model_from_parallel(model, keep_fp32_wrapper: bool = True, recursive: bool = False):
+def is_compiled_module(module: torch.nn.Module) -> bool:
     """
-    Adapted from: https://github.com/huggingface/accelerate/blob/v0.33.0/src/accelerate/utils/other.py#L56
-
-    Changes:
-    - add a `distributed_model` variable to keep track of the distributed wrapper
-      and not lose it when setting it back at the end (for compiled models)
-
-    See https://github.com/huggingface/optimum-habana/pull/1281 for more information.
+    Check whether the module was compiled with torch.compile()
     """
-    options = (torch.nn.parallel.DistributedDataParallel, torch.nn.DataParallel)
+    if not hasattr(torch, "_dynamo"):
+        return False
 
-    is_compiled = is_compiled_module(model)
-    if is_compiled:
-        compiled_model = model
-        model = model._orig_mod
+    return isinstance(module, torch._dynamo.eval_frame.OptimizedModule)
 
-    if is_deepspeed_available():
-        from deepspeed import DeepSpeedEngine
 
-        options += (DeepSpeedEngine,)
+def has_compiled_regions(module: torch.nn.Module) -> bool:
+    """
+    Check whether the module has submodules that were compiled with `torch.compile()`.
+    """
+    if not hasattr(torch, "_dynamo"):
+        return False
 
-    if is_torch_version(">=", FSDP_PYTORCH_VERSION) and is_torch_distributed_available():
-        from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
+    if module._modules:
+        for submodule in module.modules():
+            if isinstance(submodule, torch._dynamo.eval_frame.OptimizedModule):
+                return True
 
-        options += (FSDP,)
+    return False
 
-    # Keep track of the distributed wrapper
-    # TODO: to revisit as lines 44 to 71 are now useless
-    distributed_model = model
-    while isinstance(model, options):
-        model = model.module
 
-    if recursive:
-        # This is needed in cases such as using FSDPv2 on XLA
-        def _recursive_unwrap(module):
-            # Wrapped modules are standardly wrapped as `module`, similar to the cases earlier
-            # with DDP, DataParallel, DeepSpeed, and FSDP
-            if hasattr(module, "module"):
-                unwrapped_module = _recursive_unwrap(module.module)
-            else:
-                unwrapped_module = module
-            # Next unwrap child sublayers recursively
-            for name, child in unwrapped_module.named_children():
-                setattr(unwrapped_module, name, _recursive_unwrap(child))
-            return unwrapped_module
+def is_repeated_blocks(module: torch.nn.Module) -> bool:
+    """
+    Check whether the module is a repeated block, i.e. `torch.nn.ModuleList` with all children of the same class. This
+    is useful to determine whether we should apply regional compilation to the module.
+    """
 
-        # Start with top-level
-        model = _recursive_unwrap(model)
+    return isinstance(module, torch.nn.ModuleList) and all(isinstance(m, module[0].__class__) for m in module)
 
-    if not keep_fp32_wrapper:
-        forward = model.forward
-        original_forward = model.__dict__.pop("_original_forward", None)
-        if original_forward is not None:
-            while hasattr(forward, "__wrapped__"):
-                forward = forward.__wrapped__
-                if forward == original_forward:
-                    break
-            model.forward = MethodType(forward, model)
-        if getattr(model, "_converted_to_transformer_engine", False):
-            convert_model(model, to_transformer_engine=False)
 
-    if is_compiled:
-        compiled_model._orig_mod = distributed_model
-        model = compiled_model
+def has_repeated_blocks(module: torch.nn.Module) -> bool:
+    """
+    Check whether the module has repeated blocks, i.e. `torch.nn.ModuleList` with all children of the same class, at
+    any level of the module hierarchy. This is useful to determine whether we should apply regional compilation to the
+    module.
+    """
+    if module._modules:
+        for submodule in module.modules():
+            if is_repeated_blocks(submodule):
+                return True
 
-    return model
+    return False
+
+
+def compile_regions(module: torch.nn.Module, **compile_kwargs) -> torch.nn.Module:
+    """
+    Performs regional compilation where we target repeated blocks of the same class and compile them sequentially to
+    hit the compiler's cache. For example, in `GPT2LMHeadModel`, the repeated block/class is `GPT2Block`, and can be
+    accessed as `model.transformer.h[0]`. The rest of the model (e.g. model.lm_head) is compiled separately.
+
+    This allows us to speed up the compilation overhead / cold start of models like LLMs and Transformers in general.
+    See https://pytorch.org/tutorials/recipes/regional_compilation.html for more details.
+
+    Args:
+        module (`torch.nn.Module`):
+            The model to compile.
+        **compile_kwargs:
+            Additional keyword arguments to pass to `torch.compile()`.
+
+    Returns:
+        `torch.nn.Module`: A new instance of the model with some compiled regions.
+
+    Example:
+    ```python
+    >>> from accelerate.utils import compile_regions
+    >>> from transformers import AutoModelForCausalLM
+
+    >>> model = AutoModelForCausalLM.from_pretrained("gpt2")
+    >>> compiled_model = compile_regions(model, mode="reduce-overhead")
+    >>> compiled_model.transformer.h[0]
+    OptimizedModule(
+        (_orig_mod): GPT2Block(
+                (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+                (attn): GPT2Attention(
+                (c_attn): Conv1D(nf=2304, nx=768)
+                (c_proj): Conv1D(nf=768, nx=768)
+                (attn_dropout): Dropout(p=0.1, inplace=False)
+                (resid_dropout): Dropout(p=0.1, inplace=False)
+            )
+            (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+            (mlp): GPT2MLP(
+                (c_fc): Conv1D(nf=3072, nx=768)
+                (c_proj): Conv1D(nf=768, nx=3072)
+                (act): NewGELUActivation()
+                (dropout): Dropout(p=0.1, inplace=False)
+            )
+        )
+    )
+    ```
+    """
+
+    def _compile_regions(module: torch.nn.Module, **compile_kwargs) -> torch.nn.Module:
+        if is_repeated_blocks(module):
+            new_module = torch.nn.ModuleList()
+            for submodule in module:
+                new_module.append(torch.compile(submodule, **compile_kwargs))
+        elif has_repeated_blocks(module):
+            new_module = module.__class__.__new__(module.__class__)
+            new_module.__dict__.update(module.__dict__)
+            new_module._modules = {}
+            for name, submodule in module.named_children():
+                new_module.add_module(name, _compile_regions(submodule, **compile_kwargs))
+        else:
+            new_module = torch.compile(module, **compile_kwargs)
+
+        return new_module
+
+    new_module = _compile_regions(module, **compile_kwargs)
+
+    if "_orig_mod" not in new_module.__dict__:
+        # Keeps a reference to the original module to decompile/unwrap it later
+        new_module.__dict__["_orig_mod"] = module
+
+    return new_module
+
+
+def compile_regions_deepspeed(module: torch.nn.Module, **compile_kwargs):
+    """
+    Performs regional compilation the same way as `compile_regions`, but specifically for `DeepSpeedEngine.module`.
+    Since the model is wrapped in a `DeepSpeedEngine` and has many added hooks, offloaded parameters, etc that
+    `torch.compile(...)` interferes with, version of trgional compilation uses the inplace `module.compile()` method
+    instead.
+
+    Args:
+        module (`torch.nn.Module`):
+            The model to compile.
+        **compile_kwargs:
+            Additional keyword arguments to pass to `module.compile()`.
+    """
+
+    if is_repeated_blocks(module):
+        for submodule in module:
+            submodule.compile(**compile_kwargs)
+    elif has_repeated_blocks(module):
+        for child in module.children():
+            compile_regions_deepspeed(child, **compile_kwargs)
+    else:  # leaf node
+        module.compile(**compile_kwargs)

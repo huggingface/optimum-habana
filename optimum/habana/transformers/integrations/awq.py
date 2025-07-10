@@ -168,7 +168,7 @@ def post_init_awq_gemm_hpu_modules(model):
     return model
 
 
-def gaudi_awq_quantizer_process_model_after_weight_loading(self, model):
+def gaudi_awq_quantizer_process_model_after_weight_loading(self, model, **kwargs):
     if self.quantization_config.version == GaudiAWQLinearVersion.HPU:
         model = post_init_awq_gemm_hpu_modules(model)
     else:

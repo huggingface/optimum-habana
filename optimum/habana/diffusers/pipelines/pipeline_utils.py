@@ -19,7 +19,7 @@ import importlib
 import inspect
 import os
 import sys
-from typing import Callable, Dict, Optional, Union
+from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
@@ -391,12 +391,42 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         # Import htcore here to support model quantization
         import habana_frameworks.torch.core as htcore  # noqa: F401
 
-        return super().from_pretrained(
+        # Normally we just need to return super().from_pretrained.  However this is a
+        # workaround for Transformers 4.49.0 issue (sub_model torch_dtype option ignored).
+        # Note this issue is already fixed in 4.50.0dev working branch..
+        model = super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
         )
+        if bf16_full_eval:
+            # Get the component names
+            component_names = [name for name in model.__dict__ if not name.startswith("_")]
+            # Iterate through the component names and fix dtype
+            for name in component_names:
+                component = getattr(model, name, None)
+                if component is not None and hasattr(component, "dtype"):
+                    component.to(torch.bfloat16)
+
+        return model
 
     @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        **kwargs,
+    ):
+        # Move all lora layers state dicts from HPU to CPU before saving
+        for key in list(kwargs.keys()):
+            if key.endswith("_lora_layers") and kwargs[key] is not None:
+                kwargs[key] = to_device_dtype(kwargs[key], target_device=torch.device("cpu"))
+
+        # Call diffusers' base class handler
+        return super().save_lora_weights(
+            save_directory,
+            **kwargs,
+        )
+
+    """
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -439,3 +469,4 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 save_function,
                 safe_serialization,
             )
+    """

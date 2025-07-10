@@ -14,11 +14,11 @@
 # limitations under the License.
 
 import functools
+import os
 
 import torch
-from transformers.utils import (
-    is_peft_available,
-)
+from accelerate.utils import str_to_bool
+from transformers.utils import is_peft_available
 
 
 if is_peft_available():
@@ -45,7 +45,7 @@ def is_fp8_available():
     return has_transformer_engine
 
 
-def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _minimize_memory=False):
+def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
     """
     Recursively converts the linear layer of a model to their `transformers_engine` counterpart.
     """
@@ -53,6 +53,9 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _min
 
     if not is_fp8_available():
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")
+
+    minimize_memory = str_to_bool(os.getenv("PT_HPU_FP8_MINIMIZE_MEMORY", "false"))
+
     for name, module in model.named_children():
         if is_peft_available() and isinstance(module, lora.Linear) and to_transformer_engine and _convert_linear:
             # For lora linear module, convert only base linear layer to fp8 and skip lora-a,
@@ -69,7 +72,7 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _min
                         bias=has_bias,
                         params_dtype=lora_module.weight.dtype,
                         skip_weight_param_allocation=True,
-                        minimize_memory=_minimize_memory,
+                        minimize_memory=minimize_memory,
                     )
                     te_module.weight = lora_module.weight
 
@@ -86,7 +89,7 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _min
                 bias=has_bias,
                 params_dtype=module.weight.dtype,
                 skip_weight_param_allocation=True,
-                minimize_memory=_minimize_memory,
+                minimize_memory=minimize_memory,
             )
             te_module.weight = module.weight
 
@@ -140,12 +143,7 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True, _min
 
             setattr(model, name, TE_ModuleFusedSDPA())
         else:
-            _convert_model(
-                module,
-                to_transformer_engine=to_transformer_engine,
-                _convert_linear=_convert_linear,
-                _minimize_memory=_minimize_memory,
-            )
+            _convert_model(module, to_transformer_engine=to_transformer_engine, _convert_linear=_convert_linear)
 
 
 def has_transformer_engine_layers(model):
@@ -160,14 +158,14 @@ def has_transformer_engine_layers(model):
     return False
 
 
-def convert_model(model, _minimize_memory=False):
+def convert_model(model):
     """
     Converts torch.nn.Linear modules to `transformers_engine` Linear modules.
     Adapted from: https://github.com/huggingface/accelerate/blob/v0.27.2/src/accelerate/accelerator.py#L1303
     """
     if not has_transformer_engine_layers(model):
         with torch.no_grad():
-            _convert_model(model, _minimize_memory=_minimize_memory)
+            _convert_model(model)
         model._converted_to_transformer_engine = True
     return model
 

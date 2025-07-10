@@ -21,36 +21,39 @@
 """PyTorch Mixtral model."""
 
 import math
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
+import torch.distributed as dist
+import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
-from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
+from transformers.modeling_outputs import (
+    MoeCausalLMOutputWithPast,
+    MoeModelOutputWithPast,
+)
 from transformers.models.mixtral.modeling_mixtral import (
+    KwargsForCausalLM,
     MixtralAttention,
+    MixtralBlockSparseTop2MLP,
     MixtralDecoderLayer,
     MixtralForCausalLM,
     MixtralModel,
-    MixtralSparseMoeBlock,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
-from transformers.utils import is_torchdynamo_compiling, logging
+from transformers.processing_utils import Unpack
+from transformers.utils import logging
 
-from ..llama.modeling_llama import (
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
-    GaudiLlamaLinearScalingRotaryEmbedding,
-    GaudiLlamaRotaryEmbedding,
-)
+from ....distributed.tensorparallel import _all_reduce
+from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
 from ..modeling_all_models import KVCache, apply_customized_rope_module
 from .configuration_mixtral import MixtralConfig
 
@@ -75,6 +78,41 @@ except ImportError:
 
 deepspeed_available = is_deepspeed_available()
 logger = logging.get_logger(__name__)
+
+
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(
+        self,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        softmax_mode,
+        recompute_mode,
+        valid_sequence_lengths=None,
+        padding_side="left",
+    ):
+        return self._hpu_kernel_fsdpa.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            softmax_mode,
+            recompute_mode,
+            valid_sequence_lengths,
+            padding_side,
+        )
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
@@ -141,21 +179,53 @@ def gaudi_mixtral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
+class GaudiMixtralSparseMoeBlock(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.hidden_dim = config.hidden_size
+        self.ffn_dim = config.intermediate_size
+        self.num_experts = config.num_local_experts
+
+        self.top_k = config.num_experts_per_tok
+        self.ep_size = config.ep_size if hasattr(config, "ep_size") else 1
+        if dist.is_initialized():
+            self.world_size = dist.get_world_size()
+        else:
+            self.world_size = 1
+        # gating
+        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
+        if self.ep_size > 1:
+            assert config.ep_size == dist.get_world_size()
+            ep_rank = dist.get_rank()
+            experts_per_rank = self.num_experts // self.ep_size
+
+            self.experts_min = experts_per_rank * ep_rank
+            self.experts_max = experts_per_rank * (ep_rank + 1) - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
+
+            self.experts = nn.ModuleList(
+                [
+                    (MixtralBlockSparseTop2MLP(config) if i in self.experts_range else None)
+                    for i in range(self.num_experts)
+                ]
+            )
+        else:
+            self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+            self.experts_min = 0
+            self.experts_max = self.num_experts - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
+
+        # Jitter parameters
+        self.jitter_noise = config.router_jitter_noise
+
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         original_shape = hidden_states.shape
         hidden_dim = original_shape[2]
+        if self.training and self.jitter_noise > 0:
+            hidden_states *= torch.empty_like(hidden_states).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
-
-        if deepspeed_available and (not self.training):
-            from deepspeed import comm as dist
-
-            if dist.is_initialized():
-                output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
-                dist.all_gather(output_tensors, router_logits)
-                router_logits = torch.cat(output_tensors, dim=1)
 
         routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
 
@@ -175,11 +245,14 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 expert_routing_table=selected_experts,
                 router_weights=routing_weights,
             )
-            if is_deepspeed_available():
-                from deepspeed import comm as dist
 
-                if dist.is_initialized():
-                    dist.all_reduce(final_hidden_states)
+            if self.ep_size > 1:
+                final_hidden_states = _all_reduce(final_hidden_states)
+            elif deepspeed_available and (not self.training):
+                from deepspeed import comm
+
+                if comm.is_initialized():
+                    comm.all_reduce(final_hidden_states)
 
         return final_hidden_states.view(original_shape), router_logits
 
@@ -190,9 +263,9 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         router_weights,
     ):
         # pre-processing for custom op inputs
-        w1_list = [expert.w1.weight for expert in self.experts]
-        w2_list = [expert.w2.weight for expert in self.experts]
-        w3_list = [expert.w3.weight for expert in self.experts]
+        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
+        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
+        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
 
         return torch.ops.hpu.mixture_of_experts(
             hidden_states=hidden_states,
@@ -203,8 +276,8 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             w2=w3_list,
             permuted_weights=True,
             activation="silu",
-            experts_min=0,
-            experts_max=len(self.experts) - 1,
+            experts_min=self.experts_min,
+            experts_max=self.experts_max,
         )
 
     def call_sparse_moe_op(
@@ -241,7 +314,7 @@ class GaudiMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
 class GaudiMixtralAttentionLongSequence:
     @staticmethod
-    def forward(q, k, v, mask, causal, q_block_size):
+    def forward(fsdpa, q, k, v, mask, causal, q_block_size):
         """
         Support long sequence at prompt phase
         """
@@ -257,7 +330,7 @@ class GaudiMixtralAttentionLongSequence:
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = q[:, :, s:e, :]
             row_mask = mask[:, :, s:e, :]
-            attn_output[:, :, s:e, :] = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
+            attn_output[:, :, s:e, :] = fsdpa(row_q, k, v, row_mask, 0.0, causal, None)
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -265,47 +338,46 @@ class GaudiMixtralAttentionLongSequence:
         return attn_output
 
 
+def gaudi_eager_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs,
+):
+    bsz, q_len = kwargs["input_shape"]
+    query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
+        query, key, value, attention_mask, module.num_key_value_groups
+    )
+
+    attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_output = torch.matmul(attn_weights, value_states)
+
+    attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim).contiguous()
+
+    return attn_output, attn_weights
+
+
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
         self.config = config
-        self._init_rope()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
-        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=config)
         self.block_size = 1024
-
-    def _init_rope(self):
-        """
-        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
-        """
-        if self.config.rope_scaling is None:
-            self.rotary_emb = GaudiLlamaRotaryEmbedding(
-                self.head_dim,
-                max_position_embeddings=self.max_position_embeddings,
-                base=self.rope_theta,
-            )
-        else:
-            scaling_type = self.config.rope_scaling["type"]
-            scaling_factor = self.config.rope_scaling["factor"]
-            if scaling_type == "linear":
-                self.rotary_emb = GaudiLlamaLinearScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            elif scaling_type == "dynamic":
-                self.rotary_emb = GaudiLlamaDynamicNTKScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            else:
-                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+        self.num_key_value_heads = config.num_key_value_heads
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -317,16 +389,16 @@ class GaudiMixtralAttention(MixtralAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
@@ -337,15 +409,13 @@ class GaudiMixtralAttention(MixtralAttention):
         - add new args flash_attention_recompute
         - add new args cache_idx
         """
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        q_len = input_shape[1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -365,9 +435,10 @@ class GaudiMixtralAttention(MixtralAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
+
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, position_ids, self.training
+            query_states, key_states, cos, sin, kwargs["position_ids"], self.training
         )
 
         if use_cache:
@@ -396,7 +467,8 @@ class GaudiMixtralAttention(MixtralAttention):
         else:
             past_key_value = None
 
-        if FusedSDPA is not None:
+        if self.fused_scaled_dot_product_attention is not None:
+            attn_weights = None
             if query_states.dtype != key_states.dtype:
                 key_states = key_states.type(query_states.dtype)
                 value_states = value_states.type(query_states.dtype)
@@ -404,6 +476,7 @@ class GaudiMixtralAttention(MixtralAttention):
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
                 attn_output = GaudiMixtralAttentionLongSequence.forward(
+                    self.fused_scaled_dot_product_attention,
                     query_states,
                     key_states,
                     value_states,
@@ -413,7 +486,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 )
                 htcore.mark_step()
             else:
-                attn_output = FusedSDPA.apply(
+                attn_output = self.fused_scaled_dot_product_attention(
                     query_states,
                     key_states,
                     value_states,
@@ -425,30 +498,21 @@ class GaudiMixtralAttention(MixtralAttention):
                     flash_attention_recompute,
                 )
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            attn_output, attn_weights = gaudi_eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                sliding_window=getattr(self.config, "sliding_window", None),  # main diff with Llama
+                input_shape=input_shape,
             )
 
-            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.norm_factor
-
-            if attention_mask is not None:
-                attention_mask = attention_mask.unsqueeze(2)
-                attn_weights = attn_weights + attention_mask
-
-            # upcast attention to fp32
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-            attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = torch.matmul(attn_weights, value_states)
-
-            attn_output = attn_output.reshape(bsz, self.num_heads, q_len, self.head_dim).contiguous()
-
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions or FusedSDPA is not None:
-            attn_weights = None
 
         return attn_output, attn_weights, past_key_value
 
@@ -482,6 +546,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -503,6 +568,7 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
@@ -543,7 +609,7 @@ class GaudiMixtralModel(MixtralModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -552,13 +618,13 @@ class GaudiMixtralModel(MixtralModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
-    ) -> Union[Tuple, MoeModelOutputWithPast]:
+        **kwargs,
+    ) -> MoeModelOutputWithPast:
         """
         Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1069
         The only differences are:
@@ -576,11 +642,9 @@ class GaudiMixtralModel(MixtralModel):
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape
         elif inputs_embeds is not None:
@@ -663,7 +727,7 @@ class GaudiMixtralModel(MixtralModel):
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
+                    partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
                     attention_mask,
                     position_ids,
@@ -714,12 +778,6 @@ class GaudiMixtralModel(MixtralModel):
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
 
-        if not return_dict:
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
-                if v is not None
-            )
         return MoeModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -745,7 +803,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -755,14 +813,14 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
-    ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
+        **kwargs: Unpack[KwargsForCausalLM],
+    ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
@@ -771,10 +829,9 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: MoeModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -784,7 +841,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
@@ -792,46 +848,25 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             cache_idx=cache_idx,
         )
 
-        hidden_states = outputs[0]
-        if labels is None and not is_torchdynamo_compiling():
-            logger.warning_once(
-                "Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)"
-            )
+        hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        # TODO: remove the float() operation in v4.46
-        logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
 
         loss = None
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
         aux_loss = None
         if output_router_logits:
             aux_loss = load_balancing_loss_func(
-                outputs.router_logits if return_dict else outputs[-1],
+                outputs.router_logits,
                 self.num_experts,
                 self.num_experts_per_tok,
                 attention_mask,
             )
             if labels is not None:
                 loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            if output_router_logits:
-                output = (aux_loss,) + output
-            return (loss,) + output if loss is not None else output
 
         return MoeCausalLMOutputWithPast(
             loss=loss,

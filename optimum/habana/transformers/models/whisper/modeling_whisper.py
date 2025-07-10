@@ -300,7 +300,7 @@ class GaudiWhisperDecoder(WhisperDecoder):
             if token_idx is not None:
                 position_ids = (token_idx - 1).unsqueeze(0)
             else:
-                position_ids = cache_position.unsqueeze(0)
+                position_ids = cache_position.unsqueeze(0).repeat(input_shape[0], 1)
         # embed positions
         if input_ids is not None:
             positions = self.embed_positions(

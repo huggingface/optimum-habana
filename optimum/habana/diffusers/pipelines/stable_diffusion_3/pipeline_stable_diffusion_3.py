@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -20,8 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-import torch.nn.functional as F
-from diffusers.models.attention_processor import Attention
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import SD3Transformer2DModel
 from diffusers.pipelines.stable_diffusion_3 import StableDiffusion3Pipeline
@@ -32,8 +31,10 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from transformers import (
+    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
+    PreTrainedModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -42,6 +43,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ...models.attention_processor import GaudiJointAttnProcessor2_0
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -78,104 +80,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# ToDo: Look into FusedJointAttnProcessor2_0 usage for sd3 pipeline, and check its perf using fused sdpa
-class GaudiJointAttnProcessor2_0:
-    """Attention processor used typically in processing the SD3-like self-attention projections.
-    Copied from JointAttnProcessor2_0.forward: https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/models/attention_processor.py
-        The only differences are:
-        - applied Fused SDPA from Habana's framework.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        residual = hidden_states
-
-        batch_size = hidden_states.shape[0]
-
-        # `sample` projections.
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # `context` projections.
-        if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
-            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
-            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
-
-        from habana_frameworks.torch.hpex.kernels import FusedSDPA
-
-        hidden_states = FusedSDPA.apply(query, key, value, None, 0.0, False, None, "fast", None)
-
-        # hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            # Split the attention outputs.
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1]],
-                hidden_states[:, residual.shape[1] :],
-            )
-            if not attn.context_pre_only:
-                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if encoder_hidden_states is not None:
-            return hidden_states, encoder_hidden_states
-        else:
-            return hidden_states
-
-
 class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.29.2/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py#L128
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.32.0/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py#L147
 
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -221,6 +128,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             Whether to allow PyTorch to use reduced precision in the SDPA math backend.
     """
 
+    _optional_components = ["image_encoder", "feature_extractor"]
+
     def __init__(
         self,
         transformer: SD3Transformer2DModel,
@@ -232,11 +141,14 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
+        image_encoder: PreTrainedModel = None,
+        feature_extractor: BaseImageProcessor = None,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
         sdp_on_bf16: bool = False,
+        is_training: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -259,6 +171,9 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
             text_encoder_3=text_encoder_3,
             tokenizer_3=tokenizer_3,
         )
+
+        for block in self.transformer.transformer_blocks:
+            block.attn.processor = GaudiJointAttnProcessor2_0(is_training)
 
         self.to(self._device)
 
@@ -380,6 +295,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        use_distributed_cfg: bool = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -474,6 +390,10 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            use_distributed_cfg (`bool`, *optional*, defaults to `False`):
+                Enables distributed CFG (classifier-free guidance) across 2 devices. Requires even number of devices.
+                Conditional and unconditional parts are processed separately (one on each device) if set to True.
+                Boosts performance close to 2x.
             profiling_warmup_steps (`int`, *optional*):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*):
@@ -489,6 +409,24 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
+        if use_distributed_cfg:
+            # Set distributed CFG (classifier-free guidance) across a pair of devices (requires even number of devices)
+            import torch.distributed as dist
+
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "0"))
+            if world_size < 2:
+                raise ValueError("Error: Distributed CFG requires running with at least 2 devices")
+            if not dist.is_initialized():
+                dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            if dist.get_world_size() % 2 != 0:
+                raise ValueError(f"Error: Distributed CFG requires even world size, but got world_size={world_size}")
+            if guidance_scale <= 1:
+                raise ValueError(
+                    "Error: Distributed CFG requires use of classifier-free guidance (guidance scale > 1)"
+                )
+            htcore.hpu.set_device(rank)
+
         # Set dtype to BF16 only if --bf16 is used, else use device's default autocast precision
         # When --bf16 is used, bf16_full_eval=True, which disables use_torch_autocast
         with torch.autocast(
@@ -498,8 +436,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         ):
             quant_mode = kwargs.get("quant_mode", None)
             if quant_mode == "measure" or quant_mode == "quantize":
-                import os
-
                 quant_config_path = os.getenv("QUANT_CONFIG")
 
                 if not quant_config_path:
@@ -589,7 +525,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 ceil(prompt_embeds.shape[1] / kernel_input_alignment_size) * kernel_input_alignment_size
             ) - prompt_embeds.shape[1]
             prompt_embeds = torch.nn.functional.pad(prompt_embeds, (0, 0, 0, pad_size))
-            negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
+            if negative_prompt_embeds is not None:
+                negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
 
             # 4. Prepare timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -628,6 +565,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 warmup=profiling_warmup_steps,
                 active=profiling_steps,
                 record_shapes=False,
+                name="stable_diffusion",
             )
 
             hb_profiler.start()
@@ -648,8 +586,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 "images": [],
             }
 
-            for block in self.transformer.transformer_blocks:
-                block.attn.processor = GaudiJointAttnProcessor2_0()
             ht.hpu.synchronize()
 
             t0 = time.time()
@@ -690,18 +626,40 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep_batch = timestep.expand(latent_model_input.shape[0])
 
-                    noise_pred = self.transformer_hpu(
-                        latent_model_input,
-                        timestep_batch,
-                        text_embeddings_batch,
-                        pooled_prompt_embeddings_batch,
-                        self.joint_attention_kwargs,
-                    )
+                    # noise prediction (transformer call)
+                    if use_distributed_cfg and self.do_classifier_free_guidance:
+                        idx = rank % 2
+                        noise_pred_b1 = self.transformer_hpu(
+                            latent_model_input[idx : idx + 1],
+                            timestep_batch[idx : idx + 1],
+                            text_embeddings_batch[idx : idx + 1],
+                            pooled_prompt_embeddings_batch[idx : idx + 1],
+                            self.joint_attention_kwargs,
+                        )
+                        noise_pred_b2 = torch.zeros_like(noise_pred_b1)
+                        send_req = dist.isend(tensor=noise_pred_b1, dst=rank ^ 1)
+                        recv_req = dist.irecv(tensor=noise_pred_b2, src=rank ^ 1)
+                        send_req.wait()
+                        recv_req.wait()
+                        if idx == 0:
+                            noise_pred = noise_pred_b1 + self.guidance_scale * (noise_pred_b2 - noise_pred_b1)
+                        else:
+                            noise_pred = noise_pred_b2 + self.guidance_scale * (noise_pred_b1 - noise_pred_b2)
+                    else:
+                        noise_pred = self.transformer_hpu(
+                            latent_model_input,
+                            timestep_batch,
+                            text_embeddings_batch,
+                            pooled_prompt_embeddings_batch,
+                            self.joint_attention_kwargs,
+                        )
 
-                    # perform guidance
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                        # perform guidance
+                        if self.do_classifier_free_guidance:
+                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                            noise_pred = noise_pred_uncond + self.guidance_scale * (
+                                noise_pred_text - noise_pred_uncond
+                            )
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_dtype = latents_batch.dtype

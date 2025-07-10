@@ -3,7 +3,6 @@ import argparse
 import json
 import logging
 import os
-import time
 from pathlib import Path
 from pprint import pprint
 from urllib.request import urlopen
@@ -15,6 +14,7 @@ from open_clip import create_model_from_pretrained, get_tokenizer, model
 from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 
 logging.basicConfig(
@@ -198,12 +198,11 @@ def main():
             _, _ = run_qa(model, images, texts, device=device)
 
     logger.info("Running inference")
-    start = time.time()
-    for i in range(args.n_iterations):
-        logits = None
-        with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
-            sorted_indices, logits = run_qa(model, images, texts, device=device)
-    end = time.time()
+    with HabanaGenerationTime() as timer:
+        for i in range(args.n_iterations):
+            logits = None
+            with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
+                sorted_indices, logits = run_qa(model, images, texts, device=device)
 
     # Results and metrics
     metadata_list = []
@@ -211,9 +210,9 @@ def main():
     if args.print_result:
         logger.info("Results from the last iteration:")
         pprint(metadata_list)
-    inference_time_per_iteration = (end - start) * 1000 / args.n_iterations
+    inference_time_per_iteration = timer.last_duration * 1000 / args.n_iterations
     logger.info(f"Inference Time per iteration = {inference_time_per_iteration:.4}ms")
-    throughput = len(args.image_path) * args.n_iterations / (end - start)
+    throughput = len(args.image_path) * args.n_iterations / timer.last_duration
     logger.info(f"Throughput = {throughput:.4} images/s")
 
     # Store results if necessary

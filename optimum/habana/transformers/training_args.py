@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import io
 import json
 import os
 import warnings
@@ -22,13 +21,22 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+import torch.distributed as dist
+from accelerate import DistributedType, PartialState
+from accelerate.state import AcceleratorState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_pt_utils import AcceleratorConfig
-from transformers.trainer_utils import EvaluationStrategy, FSDPOption, HubStrategy, IntervalStrategy, SchedulerType
+from transformers.trainer_utils import (
+    EvaluationStrategy,
+    FSDPOption,
+    HubStrategy,
+    IntervalStrategy,
+    SaveStrategy,
+    SchedulerType,
+)
 from transformers.training_args import (
-    _VALID_DICT_FIELDS,
     OptimizerNames,
     ParallelMode,
     TrainingArguments,
@@ -45,8 +53,7 @@ from transformers.utils import (
 
 from optimum.utils import logging
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType
+from ..distributed import parallel_state
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
@@ -99,6 +106,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         use_compiled_autograd (`bool`, *optional*, defaults to `False`):
             Whether to use compiled autograd for training. Currently only for summarization models.
+        compile_from_sec_iteration (`bool`, *optional*, defaults to `False`):
+            Whether to torch.compile from the second training iteration.
         compile_dynamic (`bool|None`, *optional*, defaults to `None`):
             Set value of 'dynamic' parameter for torch.compile.
         use_regional_compilation (`bool`, *optional*, defaults to `False`):
@@ -107,6 +116,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config. Currently, disabling this parameter improves the performance of the ALBERT model.
         cache_size_limit(`int`, *optional*, defaults to 'None'):
             Set value of 'cache_size_limit' parameter for torch._dynamo.config
+        allow_unspec_int_on_nn_module (`bool`, *optional*, defaults to `None`):
+            Set value of 'allow_unspec_int_on_nn_module' parameter for torch._dynamo.config.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
@@ -125,9 +136,13 @@ class GaudiTrainingArguments(TrainingArguments):
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
         profiling_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for profiling.
+            Number of training steps to ignore for profiling.
         profiling_steps (`int`, *optional*, defaults to 0):
-            Number of steps to be captured when enabling profiling.
+            Number of training steps to be captured when enabling profiling.
+        profiling_warmup_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to ignore for profiling.
+        profiling_steps_eval (`int`, *optional*, defaults to 0):
+            Number of eval steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -168,12 +183,26 @@ class GaudiTrainingArguments(TrainingArguments):
 
     use_compiled_autograd: Optional[bool] = field(
         default=False,
-        metadata={"help": ("Whether to use compiled autograd for training. Currently only for summarization models.")},
+        metadata={
+            "help": (
+                "Whether to use compiled autograd for training. Currently only for summarization models or when using deepspeed."
+            )
+        },
+    )
+
+    compile_from_sec_iteration: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to torch.compile from the second training iteration.")},
     )
 
     compile_dynamic: Optional[bool | None] = field(
         default=None,
         metadata={"help": ("Set value of 'dynamic' parameter for torch.compile.")},
+    )
+
+    use_zero3_leaf_promotion: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable leaf promotion in compile")},
     )
 
     cache_size_limit: Optional[int] = field(
@@ -189,6 +218,13 @@ class GaudiTrainingArguments(TrainingArguments):
     inline_inbuilt_nn_modules: Optional[bool] = field(
         default=None,
         metadata={"help": ("Set value of 'inline_inbuilt_nn_modules' parameter for torch._dynamo.config.")},
+    )
+
+    # This works only if compile kwarg "dynamic = None" or "dynamic = True" is
+    # set and has no effect when "dynamic = False"
+    allow_unspec_int_on_nn_module: Optional[bool] = field(
+        default=None,
+        metadata={"help": ("Set value of 'allow_unspec_int_on_nn_module' parameter for torch._dynamo.config.")},
     )
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
@@ -261,12 +297,22 @@ class GaudiTrainingArguments(TrainingArguments):
 
     profiling_warmup_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to ignore for profiling.")},
+        metadata={"help": ("Number of training steps to ignore for profiling.")},
     )
 
     profiling_steps: Optional[int] = field(
         default=0,
-        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+        metadata={"help": ("Number of training steps to be captured when enabling profiling.")},
+    )
+
+    profiling_warmup_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to ignore for profiling.")},
+    )
+
+    profiling_steps_eval: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of eval steps to be captured when enabling profiling.")},
     )
 
     profiling_record_shapes: Optional[bool] = field(
@@ -324,15 +370,6 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
-        },
-    )
-
-    # Overriding ddp_backend to replace all possible backends by hccl
-    ddp_backend: Optional[str] = field(
-        default="hccl",
-        metadata={
-            "help": "The backend to be used for distributed training.",
-            "choices": ["hccl"],
         },
     )
 
@@ -402,10 +439,18 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
+        # Set default output_dir if not provided
+        if self.output_dir is None:
+            self.output_dir = "trainer_output"
+            logger.info(
+                "No output directory specified, defaulting to 'trainer_output'. "
+                "To change this behavior, specify --output_dir when creating TrainingArguments."
+            )
+
         # Parse in args that could be `dict` sent in from the CLI as a string
-        for field in _VALID_DICT_FIELDS:
+        for field in self._VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
-            # We only want to do this if the str starts with a bracket to indiciate a `dict`
+            # We only want to do this if the str starts with a bracket to indicate a `dict`
             # else its likely a filename if supported
             if isinstance(passed_value, str) and passed_value.startswith("{"):
                 loaded_dict = json.loads(passed_value)
@@ -426,13 +471,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.disable_tqdm is None:
             self.disable_tqdm = logger.getEffectiveLevel() > logging.WARN
 
-        if self.evaluation_strategy is not None:
-            warnings.warn(
-                "`evaluation_strategy` is deprecated and will be removed in version 4.46 of 🤗 Transformers. Use `eval_strategy` instead",
-                FutureWarning,
-            )
-            self.eval_strategy = self.evaluation_strategy
-
         if isinstance(self.eval_strategy, EvaluationStrategy):
             warnings.warn(
                 "using `EvaluationStrategy` for `eval_strategy` is deprecated and will be removed in version 5"
@@ -444,7 +482,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         self.eval_strategy = IntervalStrategy(self.eval_strategy)
         self.logging_strategy = IntervalStrategy(self.logging_strategy)
-        self.save_strategy = IntervalStrategy(self.save_strategy)
+        self.save_strategy = SaveStrategy(self.save_strategy)
         self.hub_strategy = HubStrategy(self.hub_strategy)
 
         self.lr_scheduler_type = SchedulerType(self.lr_scheduler_type)
@@ -452,7 +490,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self.do_eval = True
 
         if self.torch_empty_cache_steps is not None:
-            if not (isinstance(self.torch_empty_cache_steps, int) or self.torch_empty_cache_steps > 0):
+            if not (isinstance(self.torch_empty_cache_steps, int) and self.torch_empty_cache_steps > 0):
                 raise ValueError(
                     f"`torch_empty_cache_steps` must be an integer bigger than 0, got {self.torch_empty_cache_steps}."
                 )
@@ -480,13 +518,13 @@ class GaudiTrainingArguments(TrainingArguments):
             if self.eval_steps != int(self.eval_steps):
                 raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
             self.eval_steps = int(self.eval_steps)
-        if self.save_strategy == IntervalStrategy.STEPS and self.save_steps > 1:
+        if self.save_strategy == SaveStrategy.STEPS and self.save_steps > 1:
             if self.save_steps != int(self.save_steps):
                 raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
             self.save_steps = int(self.save_steps)
 
         # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
-        if self.load_best_model_at_end:
+        if self.load_best_model_at_end and self.save_strategy != SaveStrategy.BEST:
             if self.eval_strategy != self.save_strategy:
                 raise ValueError(
                     "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
@@ -554,7 +592,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # We need to setup the accelerator config here *before* the first call to `self.device`
         if is_accelerate_available():
-            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
+            if not isinstance(self.accelerator_config, AcceleratorConfig):
                 if self.accelerator_config is None:
                     self.accelerator_config = AcceleratorConfig()
                 elif isinstance(self.accelerator_config, dict):
@@ -569,24 +607,21 @@ class GaudiTrainingArguments(TrainingArguments):
                 else:
                     self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
 
-            if self.dispatch_batches is not None:
-                warnings.warn(
-                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.dispatch_batches = self.dispatch_batches
-
-            if self.split_batches is not None:
-                warnings.warn(
-                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
-                    " `--accelerator_config {'split_batches':VALUE} instead",
-                    FutureWarning,
-                )
-                self.accelerator_config.split_batches = self.split_batches
-
             if self.dataloader_drop_last:
                 self.accelerator_config.even_batches = False
+
+        # Disable average tokens when using single device
+        if self.average_tokens_across_devices:
+            try:
+                if self.world_size == 1:
+                    logger.warning(
+                        "average_tokens_across_devices is set to True but it is invalid when world size is"
+                        "1. Turn it to False automatically."
+                    )
+                    self.average_tokens_across_devices = False
+            except ImportError as e:
+                logger.warning(f"Can not specify world size due to {e}. Turn average_tokens_across_devices to False.")
+                self.average_tokens_across_devices = False
 
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
@@ -595,7 +630,7 @@ class GaudiTrainingArguments(TrainingArguments):
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
         if self.torch_compile and self.torch_compile_backend is None:
-            self.torch_compile_backend = "inductor"
+            self.torch_compile_backend = "hpu_backend"
 
         # accelerate integration for torch compile
         if self.torch_compile:
@@ -604,6 +639,8 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[prefix + "BACKEND"] = self.torch_compile_backend
             if self.torch_compile_mode is not None:
                 os.environ[prefix + "MODE"] = self.torch_compile_mode
+            if self.compile_dynamic is not None:
+                os.environ[prefix + "USE_DYNAMIC"] = str(self.compile_dynamic)
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
@@ -677,7 +714,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if isinstance(self.fsdp_config, str):
             if len(self.fsdp) == 0:
                 warnings.warn("`--fsdp_config` is useful only when `--fsdp` is specified.")
-            with io.open(self.fsdp_config, "r", encoding="utf-8") as f:
+            with open(self.fsdp_config, encoding="utf-8") as f:
                 self.fsdp_config = json.load(f)
                 for k in list(self.fsdp_config.keys()):
                     if k.startswith("fsdp_"):
@@ -717,8 +754,11 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
+        if self.tp_size > 1:
+            os.environ["ACCELERATE_USE_TP"] = "true"
+            os.environ["TP_SIZE"] = str(self.tp_size)
         # accelerate integration for FSDP
-        if len(self.fsdp) > 0:
+        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,
@@ -860,6 +900,19 @@ class GaudiTrainingArguments(TrainingArguments):
                 "This is not supported and we recommend you to update your version."
             )
 
+        if self.data_seed is not None:
+            if not is_accelerate_available("1.1.0"):
+                raise NotImplementedError(
+                    "data_seed requires Accelerate version `accelerate` >= 1.1.0. "
+                    "This is not supported and we recommend you to update your version."
+                )
+
+        if self.include_inputs_for_metrics:
+            logger.warning(
+                "Using `include_inputs_for_metrics` is deprecated and will be removed in version 5 of 🤗 Transformers. Please use `include_for_metrics` list argument instead."
+            )
+            self.include_for_metrics.append("inputs")
+
     def __str__(self):
         self_as_dict = asdict(self)
 
@@ -901,11 +954,14 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.torch_compile and self.cache_size_limit is not None:
             torch._dynamo.config.cache_size_limit = self.cache_size_limit
 
+        if self.allow_unspec_int_on_nn_module is not None:
+            torch._dynamo.config.allow_unspec_int_on_nn_module = self.allow_unspec_int_on_nn_module
+
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available():
             raise ImportError(
                 f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
-                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
+                f"Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         # We delay the init of `PartialState` to the end for clarity
         accelerator_state_kwargs = {"enabled": True, "use_configured_state": False}
@@ -914,22 +970,21 @@ class GaudiTrainingArguments(TrainingArguments):
                 "use_configured_state", False
             )
         if accelerator_state_kwargs["use_configured_state"]:
-            if GaudiPartialState._shared_state == {}:
+            if PartialState._shared_state == {}:
                 raise ValueError(
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
             # We rely on `PartialState` to yell if there's issues here (which it will)
-            self.distributed_state = GaudiPartialState(cpu=self.use_cpu)
-            if self.deepspeed and self.distributed_state.distributed_type != GaudiDistributedType.DEEPSPEED:
+            self.distributed_state = PartialState(cpu=self.use_cpu)
+            if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
                     "Tried to use an already configured `Accelerator` or `PartialState` that was not initialized for DeepSpeed, "
                     "but also passed in a `deepspeed` configuration to the `TrainingArguments`. Please set "
                     "`use_configured_state:False` instead or setup your `Accelerator` or `PartialState` properly."
                 )
         else:
-            GaudiAcceleratorState._reset_state()
-            GaudiPartialState._reset_state()
+            AcceleratorState._reset_state(reset_partial_state=True)
             self.distributed_state = None
 
         # Set the log level here for optimum.utils.logging
@@ -940,10 +995,12 @@ class GaudiTrainingArguments(TrainingArguments):
         if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
             os.environ["ACCELERATE_USE_IPEX"] = "false"
 
+        if self.minimize_memory:
+            os.environ["PT_HPU_FP8_MINIMIZE_MEMORY"] = "true"
+
         self._n_gpu = 1
         if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             accelerator_state_kwargs["cpu"] = True
-            accelerator_state_kwargs["backend"] = self.ddp_backend
             self._n_gpu = 0
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
@@ -961,17 +1018,12 @@ class GaudiTrainingArguments(TrainingArguments):
                         "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0"
                     )
 
-            if self.deepspeed:
-                accelerator_state_kwargs["use_deepspeed"] = True
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            else:
-                accelerator_state_kwargs["backend"] = self.ddp_backend
-                accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-            accelerator_state_kwargs["context_parallel_size"] = self.context_parallel_size
-            accelerator_state_kwargs["minimize_memory"] = self.minimize_memory
+            accelerator_state_kwargs["cpu"] = False
+            accelerator_state_kwargs["use_deepspeed"] = self.deepspeed
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
         else:
             raise ValueError(
-                "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
+                "No device has been set. Use either --use_habana to run on HPU or --use_cpu to run on CPU."
             )
 
         # Now we pop everything
@@ -982,23 +1034,34 @@ class GaudiTrainingArguments(TrainingArguments):
             use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
             if use_deepspeed:
                 os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-            self.distributed_state = GaudiPartialState(**accelerator_state_kwargs)
+            self.distributed_state = PartialState(**accelerator_state_kwargs)
             if use_deepspeed:
                 del os.environ["ACCELERATE_USE_DEEPSPEED"]
 
+        # Sequence parallelism
+        if self.parallel_mode == ParallelMode.DISTRIBUTED:
+            if parallel_state.is_unitialized():
+                parallel_state.initialize_model_parallel(
+                    sequence_parallel_size=self.context_parallel_size, use_fp8=False
+                )
+            else:
+                if parallel_state.get_sequence_parallel_world_size() != self.context_parallel_size:
+                    raise ValueError(
+                        "The initialized sequence parallel world size does not match the context parallel size."
+                    )
+                if parallel_state.amax_reduction_is_initialized():
+                    logger.info("FP8 amax reduction group is already initialized.")
+
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index
-        if (
-            torch.distributed.is_available()
-            and torch.distributed.is_initialized()
-            and self.parallel_mode != ParallelMode.DISTRIBUTED
-        ):
+
+        if dist.is_available() and dist.is_initialized() and self.parallel_mode != ParallelMode.DISTRIBUTED:
             logger.warning(
                 "torch.distributed process group is initialized, but parallel_mode != ParallelMode.DISTRIBUTED. "
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
             )
 
-        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
+        if self.distributed_state.distributed_type == DistributedType.NO:
             self._n_gpu = 0
 
         return device

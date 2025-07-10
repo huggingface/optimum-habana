@@ -1,1 +1,2 @@
 from .modeling_video_llava import GaudiVideoLlavaForConditionalGeneration
+from .processing_video_llava import GaudiVideoLlavaProcessor

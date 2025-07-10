@@ -19,7 +19,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.mpt.modeling_mpt import (
     MptAttention,
@@ -43,19 +42,9 @@ except ImportError:
 logger = logging.get_logger(__name__)
 
 
-class Softmax(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, dim=None, invAttnHead=None):
-        return torch.nn.functional.softmax(x, dim)
-
-
 class GaudiMptAttention(MptAttention):
     def __init__(self, config: MptConfig):
         super().__init__(config)
-
-        self.softmax = Softmax()
 
     def forward(
         self,
@@ -154,7 +143,7 @@ class GaudiMptAttention(MptAttention):
                 attention_scores = attention_scores.masked_fill(attention_mask, torch.finfo(query_states.dtype).min)
 
             # (batch_size, n_heads, seq_length, key_length)
-            attn_weights = self.softmax(attention_scores.bfloat16(), dim=-1)
+            attn_weights = nn.functional.softmax(attention_scores, dim=-1, dtype=torch.float32).to(value_states.dtype)
             attn_weights = nn.functional.dropout(attn_weights, p=self.attn_dropout_p, training=self.training)
 
             attn_output = torch.matmul(attn_weights, value_states)
@@ -244,6 +233,7 @@ class GaudiMptModel(MptModel):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: Optional[torch.Tensor] = None,
+        **kwargs,  # NOOP kwargs, for now
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         """
         Copied from MptModel.forward: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
@@ -444,6 +434,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         """
         Inherits from MptForCausalLM: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
@@ -477,14 +468,12 @@ class GaudiMptForCausalLM(MptForCausalLM):
         if labels is not None:
             # move labels to correct device to enable model parallelism
             labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            batch_size, seq_length, vocab_size = shift_logits.shape
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
+            loss = self.loss_function(
+                lm_logits,
+                labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
             )
 
         if not return_dict:

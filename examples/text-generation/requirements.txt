@@ -1,2 +1,5 @@
 datasets
 peft
+sentencepiece
+tiktoken
+blobfile

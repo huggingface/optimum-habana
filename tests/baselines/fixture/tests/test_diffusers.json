@@ -7,7 +7,7 @@
       "throughput": 0.145
     },
     "gaudi3": {
-      "throughput": 0.145
+      "throughput": 0.221
     }
   },
   "tests/test_diffusers.py::GaudiFluxImg2ImgPipelineTester::test_flux_img2img_inference": {
@@ -64,7 +64,7 @@
       "throughput": 1.086
     },
     "gaudi3": {
-      "throughput": 1.086
+      "throughput": 2.168
     }
   },
   "tests/test_diffusers.py::GaudiStableDiffusionPipelineTester::test_sd_textual_inversion": {

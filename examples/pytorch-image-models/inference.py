@@ -6,7 +6,6 @@
 import argparse
 import logging
 import os
-import time
 from contextlib import suppress
 from functools import partial
 
@@ -17,6 +16,8 @@ from timm.data import ImageNetInfo, create_dataset, create_loader, infer_imagene
 from timm.layers import apply_test_time_pool
 from timm.models import create_model
 from timm.utils import AverageMeter, ParseKwargs, set_jit_fuser, setup_default_logging
+
+from optimum.habana.utils import HabanaGenerationTime
 
 
 try:
@@ -297,7 +298,8 @@ def main():
 
     top_k = min(args.topk, args.num_classes)
     batch_time = AverageMeter()
-    end = time.time()
+    timer = HabanaGenerationTime()
+    timer.start()
     all_indices = []
     all_labels = []
     all_outputs = []
@@ -325,8 +327,8 @@ def main():
             all_outputs.append(output.cpu().numpy())
 
             # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
+            timer.step()
+            batch_time.update(timer.last_duration)
 
             if batch_idx % args.log_freq == 0:
                 _logger.info(

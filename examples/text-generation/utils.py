@@ -23,26 +23,11 @@ import glob
 import os
 import shutil
 import tempfile
-import time
 from pathlib import Path
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
-
-from optimum.habana.checkpoint_utils import (
-    get_ds_injection_policy,
-    get_repo_root,
-    model_is_optimized,
-    model_on_meta,
-    write_checkpoints_json,
-)
-from optimum.habana.utils import (
-    check_habana_frameworks_version,
-    check_optimum_habana_min_version,
-    get_habana_frameworks_version,
-    set_seed,
-)
 
 
 def adjust_batch(batch, size):
@@ -105,6 +90,8 @@ def setup_distributed(args):
 def setup_inference(args, model):
     import habana_frameworks.torch.core as htcore
 
+    from optimum.habana.utils import get_habana_frameworks_version
+
     habana_version = get_habana_frameworks_version()
 
     print("Initializing inference mode")
@@ -130,9 +117,6 @@ def setup_const_serialization(const_serialization_path):
 
 
 def setup_env(args):
-    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-    check_min_version("4.45.0")
-    check_optimum_habana_min_version("1.17.0.dev0")
     # TODO: SW-167588 - WA for memory issue in hqt prep_model
     os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
@@ -149,6 +133,13 @@ def setup_env(args):
         # we can call HPU graphs clear_inputs().
         os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
 
+    # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+    check_min_version("4.51.0")
+
+    from optimum.habana.utils import check_optimum_habana_min_version
+
+    check_optimum_habana_min_version("1.18.0.dev0")
+
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -159,7 +150,12 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
+        if (
+            args.quant_config
+            or args.load_quantized_model_with_inc
+            or args.local_quantized_inc_model_path
+            or args.pt2e_path
+        ):
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -177,23 +173,57 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
-def get_torch_compiled_model(model, logger):
+def compile_regions(model, **kwargs):
+    """
+    A standalone function to compile regions of a model.
+
+    Args:
+        model (torch.nn.Module): The model or module to be compiled.
+        kwargs (dict): Additional kwargs for torch.compile.
+    """
+    if isinstance(model, torch.nn.ModuleList):
+        for name, module in model.named_children():
+            module = torch.compile(module, **kwargs)
+            setattr(model, name, module)
+    else:
+        if model._modules:  # If model has submodules, recurse and reassign
+            for name, module in model.named_children():
+                compiled_module = compile_regions(module, **kwargs)
+                if compiled_module is not None:  # Only reassign if something is returned
+                    setattr(model, name, compiled_module)
+        else:  # Leaf node
+            compiled_model = torch.compile(model, **kwargs)
+            return compiled_model
+    return model
+
+
+def get_torch_compiled_model(model, logger, args):
+    if args.cache_size_limit is not None:
+        torch._dynamo.config.cache_size_limit = args.cache_size_limit
+    compile_fn = torch.compile
+    if args.regional_compile:
+        compile_fn = compile_regions
+    if args.dynamo_specialize_float:
+        torch._dynamo.config.specialize_float = True
+
+    compile_kwargs = {
+        "backend": "hpu_backend",
+        "options": {"force_static_compile": args.force_static_compile, "keep_input_mutations": True},
+    }
     # for gpt_bigcode, mpt, bloom, gpt2 model_type
     if hasattr(model, "transformer"):
-        model.transformer = torch.compile(
-            model.transformer, backend="hpu_backend", options={"keep_input_mutations": True}
-        )
+        model.transformer = compile_fn(model.transformer, **compile_kwargs)
     # for gpt_neox
     elif hasattr(model, "gpt_neox"):
-        model.gpt_neox = torch.compile(model.gpt_neox, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.gpt_neox = compile_fn(model.gpt_neox, **compile_kwargs)
     # for llama, mistral, mixtral, qwen2
     elif hasattr(model, "model"):
-        model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model.model = compile_fn(model.model, **compile_kwargs)
     else:
         logger.warning(
             "In low performance case, please explicitly specify a module you want to wrap with `torch.compile`"
         )
-        model = torch.compile(model, backend="hpu_backend", options={"keep_input_mutations": True})
+        model = compile_fn(model, **compile_kwargs)
     return model
 
 
@@ -229,7 +259,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -308,11 +338,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         from optimum.habana.transformers.trainer import _is_peft_model
 
-        if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
-            model = wrap_in_hpu_graph(model, hash_with_views=False)
-        else:
-            max_graphs = getattr(args, "max_graphs", None)
-            model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
+        max_graphs = getattr(args, "max_graphs", None)
+        model = wrap_in_hpu_graph(model, max_graphs=max_graphs)
         if args.assistant_model is not None:
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
@@ -321,12 +348,18 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
             "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
         )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
@@ -391,7 +424,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
@@ -399,7 +432,6 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger, cache_di
 def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
     logger.info("Multi-device ep run.")
 
-    assert args.quant_config == "", "Fp8 is not enabled, unset QUANT_CONFIG"
     assert args.assistant_model is None, "Assistant model must be None"
 
     from torch import distributed as dist
@@ -420,6 +452,8 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         torch_dtype=model_dtype,
         **model_kwargs,
     )
+    if args.quant_config:
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
 
@@ -429,13 +463,18 @@ def setup_distributed_model_ep(args, model_dtype, model_kwargs, logger):
         model = wrap_in_hpu_graph(model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model)
+        model = get_torch_compiled_model(model, logger, args)
 
     return model, args.assistant_model
 
 
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
+
+    from optimum.habana.checkpoint_utils import get_ds_injection_policy, model_on_meta, write_checkpoints_json
+
+    # List of model types that need max position embeddings capped at 8192
+    MODELS_WITH_POS_EMBEDDING_LIMIT = ["llama"]
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
@@ -445,15 +484,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.assistant_model is None:
         assistant_model = None
     else:
-        logger.info(f"Using asssitant model {args.assistant_model}.")
+        logger.info(f"Using assistant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             if (
-                hasattr(config, "rope_scaling")
-                and config.rope_scaling
-                and config.rope_scaling["rope_type"] == "llama3"
+                any(model_type == config.model_type for model_type in MODELS_WITH_POS_EMBEDDING_LIMIT)
                 and config.max_position_embeddings > 8192
             ):
                 config.max_position_embeddings = 8192
@@ -510,9 +547,15 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         model = setup_quantization(model, args)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger)
+        model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
+
+    if args.pt2e_path:
+        from quantization_tools.pt2e import pt2e_prepare
+
+        model = pt2e_prepare(model, args.pt2e_quant_dtype, args.pt2e_save, args.pt2e_path, logger)
+
     return model, assistant_model
 
 
@@ -581,7 +624,7 @@ def setup_tokenizer(args, model, assistant_model, logger):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
-        "trust_remote_code": args.trust_remote_code,
+        "trust_remote_code": args.trust_remote_code or args.trust_remote_code_tokenizer,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -652,6 +695,8 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
+    from optimum.habana.checkpoint_utils import model_is_optimized
+
     is_optimized = model_is_optimized(model.config)
 
     # Generation configuration
@@ -705,7 +750,6 @@ def exclude_hpu_graph_configs(args):
 
 
 def initialize_model(args, logger):
-    init_start = time.perf_counter()
     setup_distributed(args)
     if not args.world_size > 0 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
@@ -715,10 +759,19 @@ def initialize_model(args, logger):
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)
+
+    from optimum.habana.utils import HabanaGenerationTime, set_seed
+
+    timer = HabanaGenerationTime()
+    timer.start()
     set_seed(args.seed)
+
+    from optimum.habana.checkpoint_utils import get_repo_root
+
     cache_dir = get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
+
     use_deepspeed = args.world_size > 0
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
@@ -754,10 +807,10 @@ def initialize_model(args, logger):
         setup_const_serialization(args.const_serialization_path)
     if args.quant_config or args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model = setup_inference(args, model)
-    init_end = time.perf_counter()
+    timer.step()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
-    logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
+    logger.info(f"Model initialization took {(timer.last_duration):.3f}s")
     return model, assistant_model, tokenizer, generation_config
 
 

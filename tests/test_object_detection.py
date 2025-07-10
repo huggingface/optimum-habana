@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import os
-import time
 from unittest import TestCase, skipIf
 
 import habana_frameworks.torch as ht
@@ -26,6 +25,7 @@ from PIL import Image
 from transformers import AutoProcessor, DetrForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import HabanaGenerationTime
 
 from .test_examples import TIME_PERF_FACTOR
 from .utils import OH_DEVICE_CONTEXT
@@ -136,11 +136,11 @@ class GaudiDETRTester(TestCase):
             total_model_time = 0
             for i in range(iterations):
                 inputs = processor(images=image, return_tensors="pt").to("hpu")
-                model_start_time = time.time()
-                _ = model(**inputs)
-                torch.hpu.synchronize()
-                model_end_time = time.time()
-                total_model_time = total_model_time + (model_end_time - model_start_time)
+                with HabanaGenerationTime() as timer:
+                    _ = model(**inputs)
+                    torch.hpu.synchronize()
+
+                total_model_time += timer.last_duration
 
         self.baseline.assertRef(
             compare=lambda latency, expect: latency <= (TIME_PERF_FACTOR * expect),

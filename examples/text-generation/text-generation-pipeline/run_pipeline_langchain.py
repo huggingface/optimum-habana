@@ -17,12 +17,13 @@
 import argparse
 import logging
 import math
-import time
 
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface.llms import HuggingFacePipeline
 from pipeline import GaudiTextGenerationPipeline
 from run_generation import setup_parser
+
+from optimum.habana.utils import HabanaGenerationTime
 
 
 logging.basicConfig(
@@ -82,9 +83,9 @@ def main():
 
     duration = 0
     for iteration in range(args.n_iterations):
-        t0 = time.perf_counter()
-        responses = chain.batch(input_questions)
-        duration += time.perf_counter() - t0
+        with HabanaGenerationTime() as timer:
+            responses = chain.batch(input_questions)
+        duration += timer.last_duration
 
         for i, (question, answer) in enumerate(zip(input_questions, responses)):
             print(f"Question[{iteration + 1}][{i + 1}]: {question['question']}")
