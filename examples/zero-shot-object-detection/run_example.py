@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "--prompt",
         default="a photo of a cat, a photo of a dog",
         type=str,
-        help='Prompt for classification. It should be a string seperated by comma. (eg: --prompt "a photo of a cat, a photo of a dog")',
+        help='Prompt for classification. It should be a string separated by comma. (eg: --prompt "a photo of a cat, a photo of a dog")',
     )
     parser.add_argument(
         "--use_hpu_graphs",

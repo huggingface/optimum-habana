@@ -40,6 +40,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
+from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
@@ -112,6 +113,7 @@ from .models import (
     GaudiLlamaRotaryEmbedding,
     GaudiLlavaForConditionalGeneration,
     GaudiLlavaNextForConditionalGeneration,
+    GaudiLlavaOnevisionForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -163,6 +165,23 @@ from .models import (
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
+    GaudiQwen3MoeAttention,
+    GaudiQwen3MoeDecoderLayer,
+    GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeMLP,
+    GaudiQwen3MoeModel,
+    GaudiQwen3MoeSparseMoeBlock,
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
     GaudiStableLmAttention,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
@@ -171,6 +190,7 @@ from .models import (
     GaudiStarcoder2ForCausalLM,
     GaudiStarcoder2Model,
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
     GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
@@ -199,6 +219,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_Bert_Sdpa_SelfAttention_forward,
     gaudi_BertModel_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -254,6 +275,8 @@ from .models import (
     gaudi_qwen2_rmsnorm_forward,
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
+    gaudi_qwen3_rmsnorm_forward,
+    gaudi_qwen3moe_rmsnorm_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SeamlessM4TAttention_forward,
@@ -411,6 +434,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertSdpaSelfAttention.forward = gaudi_Bert_Sdpa_SelfAttention_forward
     transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
 
     # Optimization for codegen generation on Gaudi
@@ -495,6 +519,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
         GaudiLlavaNextForConditionalGeneration
     )
+    transformers.models.llava_onevision.modeling_llava_onevision.LlavaOnevisionForConditionalGeneration = (
+        GaudiLlavaOnevisionForConditionalGeneration
+    )
 
     # Optimization for paligemma on Gaudi
     transformers.models.paligemma.modeling_paligemma.PaliGemmaForConditionalGeneration = (
@@ -516,6 +543,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
     transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
     transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
+
+    # Optimization for Siglip on Gaudi
+    transformers.models.siglip.modeling_siglip.SiglipVisionEmbeddings = GaudiSiglipVisionEmbeddings
+    transformers.models.siglip.modeling_siglip.SiglipAttention = GaudiSiglipAttention
+    transformers.models.siglip.modeling_siglip.SiglipEncoderLayer = GaudiSiglipEncoderLayer
+    transformers.models.siglip.modeling_siglip.SiglipEncoder = GaudiSiglipEncoder
+    transformers.models.siglip.modeling_siglip.SiglipVisionTransformer = GaudiSiglipVisionTransformer
+    transformers.models.siglip.modeling_siglip.SiglipVisionModel = GaudiSiglipVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
@@ -687,6 +722,23 @@ def adapt_transformers_to_gaudi():
         GaudiQwen2VLForConditionalGeneration
     )
 
+    # Optimization for qwen3 on Gaudi
+    transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
+    transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
+    transformers.models.qwen3.modeling_qwen3.Qwen3Attention = GaudiQwen3Attention
+    transformers.models.qwen3.modeling_qwen3.Qwen3MLP = GaudiQwen3MLP
+    transformers.models.qwen3.modeling_qwen3.Qwen3DecoderLayer = GaudiQwen3DecoderLayer
+    transformers.models.qwen3.modeling_qwen3.Qwen3RMSNorm.forward = gaudi_qwen3_rmsnorm_forward
+
+    # Optimization for qwen3Moe on Gaudi
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForCausalLM = GaudiQwen3MoeForCausalLM
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeModel = GaudiQwen3MoeModel
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeAttention = GaudiQwen3MoeAttention
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeMLP = GaudiQwen3MoeMLP
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeDecoderLayer = GaudiQwen3MoeDecoderLayer
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeSparseMoeBlock = GaudiQwen3MoeSparseMoeBlock
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeRMSNorm.forward = gaudi_qwen3moe_rmsnorm_forward
+
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
@@ -720,6 +772,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
+    transformers.models.video_llava.processing_video_llava.VideoLlavaProcessor = GaudiVideoLlavaProcessor
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperSdpaAttention = GaudiWhisperSdpaAttention
@@ -749,8 +802,10 @@ def adapt_transformers_to_gaudi():
     transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
     transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
     transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
-    transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
-    transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    # transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
+    # transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
+    transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
@@ -812,3 +867,6 @@ def adapt_transformers_to_gaudi():
     transformers.loss.loss_for_object_detection.ImageLoss.loss_cardinality = gaudi_DetrLoss_loss_cardinality
     transformers.loss.loss_for_object_detection.ImageLoss.loss_boxes = gaudi_DetrLoss_loss_boxes
     transformers.loss.loss_for_object_detection.ImageLoss.forward = gaudi_DetrLoss_forward
+
+    # Optimization for RT-DETR model on Gaudi
+    transformers.loss.loss_rt_detr.RTDetrHungarianMatcher.forward = gaudi_RTDetrHungarianMatcher_forward

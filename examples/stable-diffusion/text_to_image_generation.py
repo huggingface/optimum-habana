@@ -300,6 +300,11 @@ def main():
         help="Quantization mode 'measure', 'quantize', 'quantize-mixed' or 'disable'",
     )
     parser.add_argument(
+        "--use_distributed_cfg",
+        action="store_true",
+        help="Use distributed CFG (classifier-free guidance) across 2 devices for SD3 pipeline. Requires even world size.",
+    )
+    parser.add_argument(
         "--prompts_file",
         type=str,
         default=None,
@@ -318,8 +323,8 @@ def main():
 
     # Select stable diffuson pipeline based on input
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
-    sd3_models = ["stable-diffusion-3"]
-    flux_models = ["FLUX.1"]
+    sd3_models = ["stable-diffusion-3", "sd3"]
+    flux_models = ["FLUX.1", "flux"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
     flux = True if any(model in args.model_name_or_path for model in flux_models) else False
@@ -329,7 +334,7 @@ def main():
     # Set the scheduler
     kwargs = {"timestep_spacing": args.timestep_spacing, "rescale_betas_zero_snr": args.use_zero_snr}
 
-    if flux or args.scheduler == "flow_match_euler_discrete":
+    if flux or sd3 or args.scheduler == "flow_match_euler_discrete":
         scheduler = GaudiFlowMatchEulerDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
@@ -422,6 +427,8 @@ def main():
                 negative_prompts_3 = negative_prompt_3
         kwargs_call["prompt_3"] = prompts_3
         kwargs_call["negative_prompt_3"] = negative_prompts_3
+        if args.use_distributed_cfg:
+            kwargs_call["use_distributed_cfg"] = True
 
     if inpainting:
         from diffusers.utils import load_image
@@ -613,7 +620,11 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Set RNG seed
-    set_seed(args.seed)
+    seed_dist_offset = int(os.getenv("RANK", "0"))
+    if args.use_distributed_cfg:
+        # Same seed needed for a pair of workers with distributed CFG for SD3
+        seed_dist_offset = seed_dist_offset // 2
+    set_seed(args.seed + seed_dist_offset)
     if args.use_compel:
         tokenizer = [pipeline.tokenizer]
         text_encoder = [pipeline.text_encoder]
@@ -644,7 +655,10 @@ def main():
         lines = [line.strip() for line in lines]
         args.prompts = lines
 
-    # Generate Images using a Stable Diffusion pipeline
+    # Generate images using auto-selected diffuser pipeline
+    logger.info(
+        f"Generating images using pipeline {pipeline.__class__.__name__} with scheduler {pipeline.scheduler.__class__.__name__}"
+    )
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
             if args.use_compel:
@@ -690,14 +704,22 @@ def main():
 
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "1"))
+            rank_ext = f"_rank{rank}" if world_size > 1 else ""
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
-                    rgb.save(image_save_dir / f"rgb_{i + 1}.png")
+                    rgb.save(image_save_dir / f"rgb_{i + 1}{rank_ext}.png")
                 for i, depth in enumerate(outputs.depth):
-                    depth.save(image_save_dir / f"depth_{i + 1}.png")
+                    depth.save(image_save_dir / f"depth_{i + 1}{rank_ext}.png")
             else:
-                for i, image in enumerate(outputs.images):
-                    image.save(image_save_dir / f"image_{i + 1}.png")
+                skip_rank = False
+                if args.use_distributed_cfg and world_size > 1:
+                    rank_ext += f"and{rank + 1}"
+                    skip_rank = rank % 2 == 1
+                if not skip_rank:
+                    for i, image in enumerate(outputs.images):
+                        image.save(image_save_dir / f"image_{i + 1}{rank_ext}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

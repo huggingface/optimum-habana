@@ -475,7 +475,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     @slow
     def test_flash_attn_2_generate_padding_right(self):
         """
-        Overwritting the common test as the test is flaky on tiny models
+        Overwriting the common test as the test is flaky on tiny models
         """
         model = LlamaForCausalLM.from_pretrained(
             "meta-llama/Llama-2-7b-hf",
@@ -524,7 +524,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     @slow
     def test_eager_matches_sdpa_generate(self):
         """
-        Overwritting the common test as the test is flaky on tiny models
+        Overwriting the common test as the test is flaky on tiny models
         """
         max_new_tokens = 30
         tokenizer = LlamaTokenizer.from_pretrained("saibo/llama-1B")

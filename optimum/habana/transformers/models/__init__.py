@@ -15,7 +15,10 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
-from .bert import gaudi_BertModel_forward
+from .bert import (
+    gaudi_Bert_Sdpa_SelfAttention_forward,
+    gaudi_BertModel_forward,
+)
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -172,6 +175,7 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
 from .mamba import (
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
@@ -270,6 +274,23 @@ from .qwen2_vl import (
     GaudiQwen2VLVisionBlock,
     GaudiVisionSdpaAttention,
 )
+from .qwen3 import (
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
+    gaudi_qwen3_rmsnorm_forward,
+)
+from .qwen3_moe import (
+    GaudiQwen3MoeAttention,
+    GaudiQwen3MoeDecoderLayer,
+    GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeMLP,
+    GaudiQwen3MoeModel,
+    GaudiQwen3MoeSparseMoeBlock,
+    gaudi_qwen3moe_rmsnorm_forward,
+)
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,
     gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
@@ -281,6 +302,14 @@ from .seamless_m4t import (
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
     gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_SeamlessM4TTextToUnitModel_forward,
+)
+from .siglip import (
+    GaudiSiglipAttention,
+    GaudiSiglipEncoder,
+    GaudiSiglipEncoderLayer,
+    GaudiSiglipVisionEmbeddings,
+    GaudiSiglipVisionModel,
+    GaudiSiglipVisionTransformer,
 )
 from .speecht5 import (
     gaudi_generate_speech,
@@ -310,7 +339,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration
+from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaProcessor
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )

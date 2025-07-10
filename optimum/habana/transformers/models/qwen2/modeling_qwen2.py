@@ -16,6 +16,7 @@
 # Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -279,6 +280,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
 
+        self.max_position_embeddings = config.max_position_embeddings
         self.inp_seq_len = -1
 
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
@@ -486,6 +488,8 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if use_flash_attention and FusedSDPA is not None:
             attn_weights = None
+            # Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
+            softmax_mode = "None" if self.training else "fp32"
             if q_len == 1:
                 # next token
                 attn_output = fused_scaled_dot_product_attention(
@@ -496,14 +500,13 @@ class GaudiQwen2Attention(Qwen2Attention):
                     0.0,
                     False,
                     None,
-                    "None",
+                    softmax_mode,
                     False,
                     None,
                     "None",
                 )
             else:
                 # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = fused_scaled_dot_product_attention(
                         query_states,
@@ -755,7 +758,7 @@ class GaudiQwen2Model(Qwen2Model):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -763,7 +766,6 @@ class GaudiQwen2Model(Qwen2Model):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
@@ -776,14 +778,13 @@ class GaudiQwen2Model(Qwen2Model):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        **kwargs,
+    ) -> BaseModelOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
@@ -874,7 +875,7 @@ class GaudiQwen2Model(Qwen2Model):
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
+                    partial(decoder_layer.__call__, **kwargs),
                     hidden_states,
                     causal_mask,
                     position_ids,
@@ -933,8 +934,6 @@ class GaudiQwen2Model(Qwen2Model):
             next_cache = (
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -955,7 +954,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -964,7 +963,6 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -980,18 +978,17 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         **kwargs: Unpack[KwargsForCausalLM],
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> CausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -1000,7 +997,6 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
@@ -1015,7 +1011,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             num_virtual_tokens=num_virtual_tokens,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -1030,10 +1026,6 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,

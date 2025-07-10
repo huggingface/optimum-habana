@@ -75,6 +75,7 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+from huggingface_hub.errors import OfflineModeIsEnabled
 from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
@@ -155,8 +156,6 @@ def check_gated_model_access(model):
     Skip test for a gated model if access is not granted; this occurs when an account
     with the required permissions is not logged into the HF Hub.
     """
-    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
-        return lambda func: func
 
     try:
         hf_hub_download(repo_id=model, filename=HfApi().model_info(model).siblings[0].rfilename)
@@ -164,6 +163,8 @@ def check_gated_model_access(model):
 
     except HfHubHTTPError:
         gated = True
+    except OfflineModeIsEnabled:
+        return pytest.mark.skip(reason=f"{model} is gated and offline mode is enabled")
 
     return pytest.mark.skipif(gated, reason=f"{model} is gated, please log in with approved HF access token")
 
@@ -1344,62 +1345,62 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             "gaudi_config": "Habana/stable-diffusion",
             "torch_dtype": torch.bfloat16,
         }
+        try:
+            os.environ["PATCH_SDPA"] = "1"
 
-        os.environ["PATCH_SDPA"] = "1"
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
 
-        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
-            StableDiffusionXLPipeline_HPU,
-        )
+            model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+            sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+                model_name_or_path,
+                **kwargs,
+            )
 
-        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
-            model_name_or_path,
-            **kwargs,
-        )
+            sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+            sd_pipe.to(torch.device("hpu"))
+            sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+            sd_pipe.set_progress_bar_config(disable=None)
 
-        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
-        sd_pipe.to(torch.device("hpu"))
-        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
-        sd_pipe.set_progress_bar_config(disable=None)
+            prompt = "A painting of a squirrel eating a burger"
 
-        prompt = "A painting of a squirrel eating a burger"
+            # Test num_images_per_prompt=1 (default)
+            images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
-        # Test num_images_per_prompt=1 (default)
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt=1 (default) for several prompts
+            num_prompts = 3
+            images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
 
-        # Test num_images_per_prompt=1 (default) for several prompts
-        num_prompts = 3
-        images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
+            self.assertEqual(len(images), num_prompts)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), num_prompts)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt for single prompt
+            num_images_per_prompt = 2
+            images = sd_pipe(
+                prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
+            ).images
 
-        # Test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        images = sd_pipe(
-            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
+            self.assertEqual(len(images), num_images_per_prompt)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
 
-        self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
+            # Test num_images_per_prompt for several prompts
+            num_prompts = 2
+            images = sd_pipe(
+                [prompt] * num_prompts,
+                num_inference_steps=2,
+                output_type="np",
+                num_images_per_prompt=num_images_per_prompt,
+            ).images
 
-        # Test num_images_per_prompt for several prompts
-        num_prompts = 2
-        images = sd_pipe(
-            [prompt] * num_prompts,
-            num_inference_steps=2,
-            output_type="np",
-            num_images_per_prompt=num_images_per_prompt,
-        ).images
-
-        self.assertEqual(len(images), num_prompts * num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (1024, 1024, 3))
-
-        os.environ.pop("PATCH_SDPA")
+            self.assertEqual(len(images), num_prompts * num_images_per_prompt)
+            self.assertEqual(images[-1].shape, (1024, 1024, 3))
+        finally:
+            os.environ.pop("PATCH_SDPA")
 
     def test_stable_diffusion_xl_optimized_fp8(self):
         import habana_frameworks.torch.hpu as torch_hpu
@@ -1417,58 +1418,59 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             "torch_dtype": torch.bfloat16,
         }
 
-        os.environ["PATCH_SDPA"] = "1"
-        # Set QUANT_CONFIG environment variable
-        os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
+        try:
+            original_dir = os.getcwd()
+            os.environ["PATCH_SDPA"] = "1"
+            os.environ["QUANT_CONFIG"] = "./quantization/stable-diffusion-xl/quantize_config.json"
 
-        from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
-            StableDiffusionXLPipeline_HPU,
-        )
+            from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_mlperf import (
+                StableDiffusionXLPipeline_HPU,
+            )
 
-        model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+            model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
-            model_name_or_path,
-            **kwargs,
-        )
-        sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
-        sd_pipe.to(torch.device("hpu"))
+            sd_pipe = StableDiffusionXLPipeline_HPU.from_pretrained(
+                model_name_or_path,
+                **kwargs,
+            )
+            sd_pipe.unet.set_default_attn_processor(sd_pipe.unet)
+            sd_pipe.to(torch.device("hpu"))
 
-        quant_config_path = os.getenv("QUANT_CONFIG")
+            quant_config_path = os.getenv("QUANT_CONFIG")
 
-        original_dir = os.getcwd()
-        config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
-        os.chdir(config_dir)
+            config_dir = Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion"
+            os.chdir(config_dir)
 
-        if quant_config_path:
-            import habana_frameworks.torch.core as htcore
-            from neural_compressor.torch.quantization import FP8Config, convert, prepare
+            if quant_config_path:
+                import habana_frameworks.torch.core as htcore
+                from neural_compressor.torch.quantization import FP8Config, convert, prepare
 
-            htcore.hpu_set_env()
+                htcore.hpu_set_env()
 
-            config = FP8Config.from_json_file(quant_config_path)
+                config = FP8Config.from_json_file(quant_config_path)
 
-            if config.measure:
-                print("Running measurements")
-                sd_pipe.unet = prepare(sd_pipe.unet, config)
-            elif config.quantize:
-                print("Running quantization")
-                sd_pipe.unet = convert(sd_pipe.unet, config)
-            htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
+                if config.measure:
+                    print("Running measurements")
+                    sd_pipe.unet = prepare(sd_pipe.unet, config)
+                elif config.quantize:
+                    print("Running quantization")
+                    sd_pipe.unet = convert(sd_pipe.unet, config)
+                htcore.hpu_initialize(sd_pipe.unet, mark_only_scales_as_const=True)
 
-        sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
-        sd_pipe.set_progress_bar_config(disable=None)
+            sd_pipe.unet = torch_hpu.wrap_in_hpu_graph(sd_pipe.unet)
+            sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
+            prompt = "A painting of a squirrel eating a burger"
 
-        # Test using quantization configuration
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+            # Test using quantization configuration
+            images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0].shape, (1024, 1024, 3))
-        os.chdir(original_dir)
-
-        os.environ.pop("PATCH_SDPA")
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0].shape, (1024, 1024, 3))
+        finally:
+            os.environ.pop("QUANT_CONFIG")
+            os.environ.pop("PATCH_SDPA")
+            os.chdir(original_dir)
 
     @slow
     def test_stable_diffusion_xl_generation_throughput(self):
@@ -1757,7 +1759,7 @@ class GaudiStableDiffusion3PipelineTester(TestCase):
             output_type="np",
         )
 
-        # Check expected performance of FLUX.1 dev img-to-img model
+        # Check expected performance of SD3 inference model
         self.baseline.assertRef(
             compare=lambda actual, ref: actual >= (0.95 * ref),
             context=[OH_DEVICE_CONTEXT],
@@ -2927,6 +2929,166 @@ class DreamBoothLoRASDXL(TestCase):
     @slow
     def test_dreambooth_lora_sdxl(self):
         self._test_dreambooth_lora_sdxl(train_text_encoder=False)
+
+
+class DreamBoothSD3(TestCase):
+    def _test_dreambooth_lora_sd3(self, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_dreambooth_lora_sd3.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        instance_prompt = "a photo of sks dog"
+        validation_prompt = "a photo of sks dog in a bucket"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot_download(
+                "diffusers/dog-example", local_dir=tmpdir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            cache_dir = Path(tmpdir, ".cache")
+
+            test_args = f"""
+                python3
+                {path_to_script}
+                --pretrained_model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers
+                --dataset_name {tmpdir}
+                --resolution 256
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 20
+                --rank 4
+                --learning_rate 1e-04
+                --max_grad_norm 1
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --gaudi_config_name Habana/stable-diffusion
+                --use_hpu_graphs_for_training
+                --use_hpu_graphs_for_inference
+                --mixed_precision bf16
+                --bf16
+                --sdp_on_bf16
+                --num_validation_images 1
+                --output_dir {tmpdir}
+                """.split()
+            if train_text_encoder:
+                test_args.append("--train_text_encoder")
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
+            test_args.append("--validation_prompt")
+            test_args.append(validation_prompt)
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"transformer"` in their names.
+            if train_text_encoder:
+                starts_with_transformer = all(
+                    k.startswith("transformer") or k.startswith("text_encoder") or k.startswith("text_encoder_2")
+                    for k in lora_state_dict.keys()
+                )
+            else:
+                starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
+            self.assertTrue(starts_with_transformer)
+
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
+
+    def _test_dreambooth_sd3(self, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_text_to_image_sd3.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        instance_prompt = "a photo of sks dog"
+        validation_prompt = "a photo of sks dog in a bucket"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot_download(
+                "diffusers/dog-example", local_dir=tmpdir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            cache_dir = Path(tmpdir, ".cache")
+
+            test_args = f"""
+                python3
+                {path_to_script}
+                --pretrained_model_name_or_path stabilityai/stable-diffusion-3-medium-diffusers
+                --dataset_name {tmpdir}
+                --resolution 256
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 20
+                --learning_rate 5e-04
+                --max_grad_norm 1
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --gaudi_config_name Habana/stable-diffusion
+                --use_hpu_graphs_for_training
+                --use_hpu_graphs_for_inference
+                --mixed_precision bf16
+                --bf16
+                --sdp_on_bf16
+                --num_validation_images 1
+                --output_dir {tmpdir}
+                """.split()
+            if train_text_encoder:
+                test_args.append("--train_text_encoder")
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
+            test_args.append("--validation_prompt")
+            test_args.append(validation_prompt)
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "model_index.json")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
+
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
+
+    @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
+    def test_dreambooth_lora_sd3(self):
+        orig_value = os.environ.get("PT_HPU_MAX_COMPOUND_OP_SIZE")
+        os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+        try:
+            self._test_dreambooth_lora_sd3(train_text_encoder=False)
+        finally:
+            if orig_value is not None:
+                os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = orig_value
+            else:
+                del os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"]
+
+    @check_gated_model_access("stabilityai/stable-diffusion-3-medium-diffusers")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
+    def test_dreambooth_sd3(self):
+        orig_value = os.environ.get("PT_HPU_MAX_COMPOUND_OP_SIZE")
+        os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+        try:
+            self._test_dreambooth_sd3(train_text_encoder=False)
+        finally:
+            if orig_value is not None:
+                os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = orig_value
+            else:
+                del os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"]
 
 
 class GaudiStableVideoDiffusionPipelineTester(TestCase):
@@ -5195,6 +5357,12 @@ class StableDiffusionInpaintPipelineTests(
         }
         return components
 
+    # IG: this test passes locally, but crashes on CI with uncleared graph. Adding teardown and gc.collect to remediate.
+    def test_attention_slicing_forward_pass(self):
+        super().tearDown()
+        gc.collect()
+        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+
     def get_dummy_inputs(self, device, seed=0):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
         # ensure determinism for the device-dependent torch.Generator on HPU
@@ -6446,6 +6614,93 @@ class GaudiFluxImg2ImgPipelineTester(TestCase):
             context=[OH_DEVICE_CONTEXT],
             throughput=outputs.throughput,
         )
+
+
+class DreamBoothLoRAFLUX(TestCase):
+    def _test_dreambooth_lora_flux(self, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_dreambooth_lora_flux.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            snapshot_download(
+                "diffusers/dog-example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            cache_dir = Path(data_dir, ".cache")
+            if cache_dir.is_dir():
+                shutil.rmtree(cache_dir)
+            instance_prompt = "a photo of sks dog"
+            with tempfile.TemporaryDirectory() as out_dir:
+                test_args = f"""
+                    python3
+                    {path_to_script}
+                    --pretrained_model_name_or_path black-forest-labs/FLUX.1-dev
+                    --dataset {data_dir}
+                    --resolution 256
+                    --train_batch_size 1
+                    --gradient_accumulation_steps 1
+                    --max_train_steps 20
+                    --rank 4
+                    --learning_rate 1e-04
+                    --guidance_scale 1
+                    --max_grad_norm 1
+                    --lr_scheduler constant
+                    --lr_warmup_steps 0
+                    --weighting_scheme none
+                    --gaudi_config_name Habana/stable-diffusion
+                    --use_hpu_graphs_for_training
+                    --use_hpu_graphs_for_inference
+                    --mixed_precision bf16
+                    --output_dir {out_dir}
+                    """.split()
+                if train_text_encoder:
+                    test_args.append("--train_text_encoder")
+                test_args.append("--prompt")
+                test_args.append(instance_prompt)
+                p = subprocess.Popen(test_args)
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+                # save_pretrained smoke test
+                self.assertTrue(os.path.isfile(os.path.join(out_dir, "pytorch_lora_weights.safetensors")))
+
+                # make sure the state_dict has the correct naming in the parameters.
+                lora_state_dict = safetensors.torch.load_file(
+                    os.path.join(out_dir, "pytorch_lora_weights.safetensors")
+                )
+                is_lora = all("lora" in k for k in lora_state_dict.keys())
+                self.assertTrue(is_lora)
+
+                # when not training the text encoder, all the parameters in the state dict should start
+                # with `"transformer"` in their names.
+                if train_text_encoder:
+                    starts_with_transformer = all(
+                        k.startswith("transformer") or k.startswith("text_encoder") or k.startswith("text_encoder_2")
+                        for k in lora_state_dict.keys()
+                    )
+                else:
+                    starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
+                self.assertTrue(starts_with_transformer)
+
+    @check_gated_model_access("black-forest-labs/FLUX.1-dev")
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
+    def test_dreambooth_lora_flux(self):
+        RT_VAR = "PT_HPU_MAX_COMPOUND_OP_SIZE"
+        orig_value = os.environ.get(RT_VAR)
+        os.environ[RT_VAR] = "1"
+        try:
+            self._test_dreambooth_lora_flux(train_text_encoder=False)
+        finally:
+            if orig_value is not None:
+                os.environ[RT_VAR] = orig_value
+            else:
+                del os.environ[RT_VAR]
 
 
 class I2VGenXLPipelineTests(TestCase):

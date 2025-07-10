@@ -70,6 +70,9 @@ from transformers import T5EncoderModel
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.diffusers.models.attention_processor import (
+    GaudiFluxAttnProcessor2_0,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -535,10 +538,16 @@ class DreamBoothDataset(Dataset):
         prompt_embeds = embeddings[0]
         pooled_prompt_embeds = embeddings[1]
         text_ids = embeddings[2]
-        prompt_embeds = np.array(prompt_embeds).reshape(self.max_sequence_length, prompt_embeds.shape[-1])
-        pooled_prompt_embeds = np.array(pooled_prompt_embeds).reshape(pooled_prompt_embeds.shape[-1])
-        text_ids = np.array(text_ids).reshape(self.max_sequence_length, 3)
-        return torch.from_numpy(prompt_embeds), torch.from_numpy(pooled_prompt_embeds), torch.from_numpy(text_ids)
+        if torch.is_tensor(prompt_embeds):
+            prompt_embeds = prompt_embeds.reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = pooled_prompt_embeds.reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = text_ids.reshape(self.max_sequence_length, 3)
+            return prompt_embeds, pooled_prompt_embeds, text_ids
+        else:
+            prompt_embeds = np.array(prompt_embeds).reshape(self.max_sequence_length, prompt_embeds.shape[-1])
+            pooled_prompt_embeds = np.array(pooled_prompt_embeds).reshape(pooled_prompt_embeds.shape[-1])
+            text_ids = np.array(text_ids).reshape(self.max_sequence_length, 3)
+            return torch.from_numpy(prompt_embeds), torch.from_numpy(pooled_prompt_embeds), torch.from_numpy(text_ids)
 
     def generate_image_hash(self, image):
         return insecure_hashlib.sha256(image.tobytes()).hexdigest()
@@ -901,6 +910,13 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = "dreambooth-flux-dev-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
+
+    # Use Gaudi-optimized attention processor
+    module = transformer.module if hasattr(transformer, "module") else transformer
+    for block in module.single_transformer_blocks:
+        block.attn.processor = GaudiFluxAttnProcessor2_0(is_training=True)
+    for block in module.transformer_blocks:
+        block.attn.processor = GaudiFluxAttnProcessor2_0(is_training=True)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
