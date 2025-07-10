@@ -21,7 +21,7 @@ $ pip install -U -r requirements.txt
         --subset '' \
         --output_dir ./model_qwen \
         --num_train_epochs 1 \
-        --per_device_train_batch_size 16 \
+        --per_device_train_batch_size 4 \
         --eval_strategy "no" \
         --save_strategy "no" \
         --learning_rate 3e-4 \
@@ -39,15 +39,15 @@ $ pip install -U -r requirements.txt
         --lora_alpha=16 \
         --lora_dropout=0.05 \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
-        --max_seq_length 512 \
+        --max_length 512 \
         --adam_epsilon 1e-08 \
         --use_flash_attention
     ```
 
-2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
+2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 8 cards:
 
     ```bash
-    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
@@ -69,7 +69,7 @@ $ pip install -U -r requirements.txt
         --lora_target_modules "q_proj" "v_proj" \
         --bf16 \
         --remove_unused_columns=False \
-        --max_seq_length 512 \
+        --max_length 512 \
         --run_name="sft_mixtral" \
         --report_to=none \
         --use_habana \
