@@ -2,7 +2,7 @@ import os
 
 from optimum.utils import logging
 
-from .utils import get_device_name
+from ..utils import get_device_name
 
 
 logger = logging.get_logger(__name__)

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 # Assuming the feature detection code is in a module named feature_detection
-from optimum.habana.features import (
+from optimum.habana.utils.features import (
     Feature,
     IsFusedRMSNormAvailable,
     IsGaudi1Available,

@@ -3,7 +3,7 @@ from functools import cache
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-from optimum.habana.environment import get_environment
+from optimum.habana.utils.environment import get_environment
 from optimum.utils import logging
 
 

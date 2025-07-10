@@ -1,6 +1,6 @@
 from functools import cache
 
-from optimum.habana.feature_detection_utils import (
+from optimum.habana.utils.feature_detection_utils import (
     EnvVariable,
     Feature,
     Hardware,
