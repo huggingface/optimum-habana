@@ -335,6 +335,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 module_dropout=0.0,
                 init_weights=True,
                 coft=False,
+                oft_block_size=0,
                 eps=0.0,
             )
         elif adapter == "boft":

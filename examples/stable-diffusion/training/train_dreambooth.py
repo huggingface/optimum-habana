@@ -153,6 +153,7 @@ def create_unet_adapter_config(
             init_weights=True,
             coft=args.unet_use_coft,
             eps=args.unet_eps,
+            oft_block_size=0,
         )
     elif args.adapter == "boft":
         config = BOFTConfig(
@@ -217,6 +218,7 @@ def create_text_encoder_adapter_config(
             init_weights=True,
             coft=args.te_use_coft,
             eps=args.te_eps,
+            oft_block_size=0,
         )
     elif args.adapter == "boft":
         config = BOFTConfig(
