@@ -17,10 +17,13 @@
 import argparse
 import logging
 import math
+import sys
+from pathlib import Path
 
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface.llms import HuggingFacePipeline
-from pipeline import GaudiTextGenerationPipeline
+
+sys.path.append(str(Path(__file__).parent.parent))
 from run_generation import setup_parser
 
 from optimum.habana.utils import HabanaGenerationTime
@@ -38,8 +41,12 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
 
+    # Initialize the model
+    from utils import initialize_model
+    model, _, tokenizer, generation_config = initialize_model(args, logger)
     # Initialize the pipeline
-    pipe = GaudiTextGenerationPipeline(args, logger, use_with_langchain=True, warmup_on_init=False)
+    from pipeline import GaudiTextGenerationPipeline
+    pipe = GaudiTextGenerationPipeline(args, logger, model, tokenizer, generation_config, use_with_langchain=True, warmup_on_init=False)
 
     # Create LangChain object
     hf = HuggingFacePipeline(pipeline=pipe)
