@@ -79,6 +79,7 @@ MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
 MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
     "llama_guard",
+    "qwen2",
     # "roberta",
     # "albert",
     # "distilbert",
