@@ -923,7 +923,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             / "training"
             / "textual_inversion.py"
         )
-
+        install_requirements(path_to_script.parent / "requirements.txt")
         with tempfile.TemporaryDirectory() as data_dir:
             snapshot_download(
                 "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
@@ -1317,6 +1317,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             / "training"
             / "textual_inversion_sdxl.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
         with tempfile.TemporaryDirectory() as data_dir:
             snapshot_download(
                 "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
@@ -2677,6 +2678,7 @@ class TrainTextToImage(TestCase):
             / "training"
             / "train_text_to_image_sdxl.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
 
         cmd_line = f"""ls {path_to_script}""".split()
 
@@ -2697,7 +2699,7 @@ class TrainTextToImage(TestCase):
                 / "training"
                 / "train_text_to_image_sdxl.py"
             )
-
+            install_requirements(path_to_script.parent / "requirements.txt")
             cmd_line = f"""
                  python3
                  {path_to_script}
@@ -2761,7 +2763,7 @@ class TrainControlNet(TestCase):
             / "training"
             / "train_controlnet.py"
         )
-
+        install_requirements(path_to_script.parent / "requirements.txt")
         cmd_line = f"""ls {path_to_script}""".split()
 
         # check find existence
@@ -2783,7 +2785,7 @@ class TrainControlNet(TestCase):
                 / "training"
                 / "train_controlnet.py"
             )
-
+            install_requirements(path_to_script.parent / "requirements.txt")
             download_files(
                 [
                     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png",
