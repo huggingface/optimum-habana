@@ -26,7 +26,7 @@ from transformers.utils import is_torch_available
 
 from optimum.utils import logging
 
-from .version import __version__
+from ..version import __version__
 
 
 logger = logging.get_logger(__name__)
