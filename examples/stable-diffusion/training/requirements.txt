@@ -2,5 +2,6 @@ compel
 datasets
 imagesize
 opencv-python
-peft==0.10.0
+peft==0.16.0
 sentencepiece
+tensorboard==2.19.0
