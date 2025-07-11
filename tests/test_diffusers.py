@@ -275,6 +275,85 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     Tests the StableDiffusionPipeline for Gaudi.
     """
 
+    def merge_peft_adapter(self, model, adapter):
+        from peft import BOFTConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, get_peft_model
+
+        UNET_TARGET_MODULES = [
+            "to_q",
+            "to_k",
+            "to_v",
+            "proj",
+            "proj_in",
+            "proj_out",
+            "conv",
+            "conv1",
+            "conv2",
+            "conv_shortcut",
+            "to_out.0",
+            "time_emb_proj",
+            "ff.net.2",
+        ]
+        TEXT_ENCODER_TARGET_MODULES = ["fc1", "fc2", "q_proj", "k_proj", "v_proj", "out_proj"]
+        target_modules = (
+            UNET_TARGET_MODULES if isinstance(model, UNet2DConditionModel) else TEXT_ENCODER_TARGET_MODULES
+        )
+
+        if adapter == "lora":
+            config = LoraConfig(
+                r=2,
+                lora_alpha=2,
+                target_modules=target_modules,
+                lora_dropout=0.0,
+                bias="none",
+                init_lora_weights=True,
+            )
+        elif adapter == "loha":
+            config = LoHaConfig(
+                r=2,
+                alpha=2,
+                target_modules=target_modules,
+                rank_dropout=0.0,
+                module_dropout=0.0,
+                use_effective_conv2d=False,
+                init_weights=True,
+            )
+        elif adapter == "lokr":
+            config = LoKrConfig(
+                r=2,
+                alpha=2,
+                target_modules=target_modules,
+                rank_dropout=0.0,
+                module_dropout=0.0,
+                use_effective_conv2d=False,
+                decompose_both=False,
+                decompose_factor=-1,
+                init_weights=True,
+            )
+        elif adapter == "oft":
+            config = OFTConfig(
+                r=2,
+                target_modules=target_modules,
+                module_dropout=0.0,
+                init_weights=True,
+                coft=False,
+                oft_block_size=0,
+                eps=0.0,
+            )
+        elif adapter == "boft":
+            from peft import tuners
+
+            tuners.boft.layer._FBD_CUDA = False
+            config = BOFTConfig(
+                boft_block_size=8,
+                boft_block_num=0,
+                boft_n_butterfly_factor=1,
+                target_modules=target_modules,
+                boft_dropout=0.1,
+                bias="boft_only",
+            )
+        model = get_peft_model(model, config)
+        return model.merge_and_unload()
+
     @pytest.fixture(autouse=True)
     def _use_(self, baseline):
         """
@@ -616,6 +695,37 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+    @parameterized.expand(["lora", "loha", "lokr", "oft", "boft"])
+    @slow
+    def test_no_peft_regression_bf16(self, peft_adapter):
+        prompts = [
+            "An image of a squirrel in Picasso style",
+        ]
+        num_images_per_prompt = 1
+        batch_size = 1
+        model_name = "runwayml/stable-diffusion-v1-5"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
+        )
+
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
+            pipeline.unet = self.merge_peft_adapter(pipeline.unet, peft_adapter)
+            pipeline.text_encoder = self.merge_peft_adapter(pipeline.text_encoder, peft_adapter)
+
+        set_seed(27)
+        outputs = pipeline(
+            prompt=prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+
     @slow
     @legacy
     def test_no_throughput_regression_bf16(self):
@@ -814,7 +924,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             / "training"
             / "textual_inversion.py"
         )
-
+        install_requirements(path_to_script.parent / "requirements.txt")
         with tempfile.TemporaryDirectory() as data_dir:
             snapshot_download(
                 "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
@@ -1208,6 +1318,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             / "training"
             / "textual_inversion_sdxl.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
         with tempfile.TemporaryDirectory() as data_dir:
             snapshot_download(
                 "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
@@ -2569,6 +2680,7 @@ class TrainTextToImage(TestCase):
             / "training"
             / "train_text_to_image_sdxl.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
 
         cmd_line = f"""ls {path_to_script}""".split()
 
@@ -2589,7 +2701,7 @@ class TrainTextToImage(TestCase):
                 / "training"
                 / "train_text_to_image_sdxl.py"
             )
-
+            install_requirements(path_to_script.parent / "requirements.txt")
             cmd_line = f"""
                  python3
                  {path_to_script}
@@ -2653,7 +2765,7 @@ class TrainControlNet(TestCase):
             / "training"
             / "train_controlnet.py"
         )
-
+        install_requirements(path_to_script.parent / "requirements.txt")
         cmd_line = f"""ls {path_to_script}""".split()
 
         # check find existence
@@ -2675,7 +2787,7 @@ class TrainControlNet(TestCase):
                 / "training"
                 / "train_controlnet.py"
             )
-
+            install_requirements(path_to_script.parent / "requirements.txt")
             download_files(
                 [
                     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png",
@@ -2806,6 +2918,9 @@ class DreamBooth(TestCase):
             if train_text_encoder:
                 test_args.append("--train_text_encoder")
             test_args.append(extra_config)
+            if "boft" in extra_config:
+                extra_args = "--unet_block_size 1 --te_block_size 1"
+                test_args.extend(extra_args.split())
             p = subprocess.Popen(test_args)
             return_code = p.wait()
 
@@ -2861,6 +2976,14 @@ class DreamBooth(TestCase):
     @slow
     def test_dreambooth_oft_with_text_encoder(self):
         self._test_dreambooth("oft", train_text_encoder=True)
+
+    @slow
+    def test_dreambooth_boft(self):
+        self._test_dreambooth("boft")
+
+    @slow
+    def test_dreambooth_boft_with_text_encoder(self):
+        self._test_dreambooth("boft", train_text_encoder=True)
 
 
 class DreamBoothLoRASDXL(TestCase):

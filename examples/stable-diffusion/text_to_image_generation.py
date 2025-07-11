@@ -583,19 +583,24 @@ def main():
                 pipeline.unet.set_default_attn_processor(pipeline.unet)
 
                 if args.unet_adapter_name_or_path is not None:
-                    from peft import PeftModel
+                    from peft import PeftModel, tuners
+
+                    tuners.boft.layer._FBD_CUDA = False
 
                     pipeline.unet = PeftModel.from_pretrained(pipeline.unet, args.unet_adapter_name_or_path)
-                    pipeline.unet = pipeline.unet.merge_and_unload()
+                    with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16):
+                        pipeline.unet = pipeline.unet.merge_and_unload()
 
                 if args.text_encoder_adapter_name_or_path is not None:
-                    from peft import PeftModel
+                    from peft import PeftModel, tuners
+
+                    tuners.boft.layer._FBD_CUDA = False
 
                     pipeline.text_encoder = PeftModel.from_pretrained(
                         pipeline.text_encoder, args.text_encoder_adapter_name_or_path
                     )
-                    pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
-
+                    with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16):
+                        pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
             else:
                 # SD LDM3D use-case
                 from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
