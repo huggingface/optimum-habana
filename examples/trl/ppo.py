@@ -14,6 +14,7 @@ from trl.core import LengthSampler
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.trl import GaudiPPOConfig, GaudiPPOTrainer, adapt_PreTrainedModelWrapper_to_gaudi
 from optimum.habana.utils import HabanaGenerationTime, set_seed
+from optimum.habana.utils.environment import disable_kernel
 
 
 tqdm.pandas()
@@ -79,6 +80,7 @@ class ScriptArguments:
     )
 
 
+disable_kernel("FusedRMSNorm")
 adapt_PreTrainedModelWrapper_to_gaudi()
 parser = HfArgumentParser(ScriptArguments)
 script_args: ScriptArguments = parser.parse_args_into_dataclasses()[0]
