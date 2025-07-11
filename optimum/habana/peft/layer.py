@@ -217,3 +217,69 @@ def GaudiAdaptedAttention_getattr(self, name: str):
         # This is necessary as e.g. causal models have various methods that we
         # don't want to re-implement here.
         return getattr(self.model, name)
+
+
+def GaudiBoftLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+    """
+    Copied from Linear.forward: https://github.com/huggingface/peft/blob/v0.16.0/src/peft/tuners/boft/layer.py#L591
+    The only differences are:
+    - change the cast dtype logic to avoid error in HPU
+    """
+    previous_dtype = x.dtype
+
+    if self.disable_adapters:
+        if self.merged:
+            self.unmerge()
+        result = self.base_layer(x, *args, **kwargs)
+    elif self.merged:
+        result = self.base_layer(x, *args, **kwargs)
+    else:
+        boft_rotation = torch.eye(self.in_features, device=x.device, dtype=previous_dtype)
+        boft_scale = torch.ones((int(self.out_features), 1), device=x.device, dtype=previous_dtype)
+
+        for active_adapter in self.active_adapters:
+            if active_adapter not in self.boft_R.keys():
+                continue
+            boft_R = self.boft_R[active_adapter]
+            boft_s = self.boft_s[active_adapter]
+            dropout = self.boft_dropout[active_adapter]
+
+            N, D, H, _ = boft_R.shape
+            boft_R = boft_R.view(N * D, H, H)
+            orth_rotate_butterfly = self.cayley_batch(boft_R)
+            orth_rotate_butterfly = orth_rotate_butterfly.view(N, D, H, H)
+            orth_rotate_butterfly = dropout(orth_rotate_butterfly)
+            orth_rotate_butterfly = orth_rotate_butterfly.squeeze(0)
+            block_diagonal_butterfly = torch.block_diag(*torch.unbind(orth_rotate_butterfly))
+            block_diagonal_butterfly = block_diagonal_butterfly.unsqueeze(0)
+
+            # The BOFT author's cayley_batch, dropout and FastBlockDiag ONLY return fp32 outputs.
+            boft_P = self.boft_P.to(x)
+            block_diagonal_butterfly = block_diagonal_butterfly.to(x)
+            butterfly_oft_mat_batch = torch.bmm(block_diagonal_butterfly, boft_P.permute(0, 2, 1))
+            butterfly_oft_mat_batch = torch.bmm(boft_P, butterfly_oft_mat_batch)
+            butterfly_oft_mat = butterfly_oft_mat_batch[0]
+
+            for i in range(1, butterfly_oft_mat_batch.shape[0]):
+                butterfly_oft_mat = butterfly_oft_mat_batch[i] @ butterfly_oft_mat
+
+            boft_rotation = butterfly_oft_mat @ boft_rotation
+            boft_scale = boft_s * boft_scale
+
+        x = x.to(self.get_base_layer().weight.data.dtype)
+
+        orig_weight = self.get_base_layer().weight.data
+        orig_weight = torch.transpose(orig_weight, 0, 1)
+        boft_rotation = boft_rotation.to(previous_dtype)
+        orig_weight = orig_weight.to(previous_dtype)
+        rotated_weight = torch.mm(boft_rotation, orig_weight)
+        rotated_weight = torch.transpose(rotated_weight, 0, 1)
+
+        scaled_rotated_weight = rotated_weight * boft_scale
+
+        scaled_rotated_weight = scaled_rotated_weight.to(previous_dtype)
+        bias = self._cast_input_dtype(self.base_layer.bias, scaled_rotated_weight.dtype)
+        result = F.linear(input=x, weight=scaled_rotated_weight, bias=bias)
+
+    result = result.to(previous_dtype)
+    return result

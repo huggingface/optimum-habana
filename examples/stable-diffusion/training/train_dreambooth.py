@@ -53,7 +53,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from habana_frameworks.torch.hpu import memory_stats
 from huggingface_hub import HfApi
-from peft import LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, get_peft_model
+from peft import BOFTConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, get_peft_model, tuners
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -108,7 +108,9 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
         raise ValueError(f"{model_class} is not supported.")
 
 
-def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig]:
+def create_unet_adapter_config(
+    args: argparse.Namespace,
+) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig, BOFTConfig]:
     if args.adapter == "full":
         raise ValueError("Cannot create unet adapter config for full parameter")
 
@@ -151,7 +153,22 @@ def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, Lo
             init_weights=True,
             coft=args.unet_use_coft,
             eps=args.unet_eps,
+            oft_block_size=0,
         )
+    elif args.adapter == "boft":
+        config = BOFTConfig(
+            boft_block_size=args.unet_block_size,
+            boft_block_num=args.unet_block_num,
+            boft_n_butterfly_factor=args.unet_n_butterfly_factor,
+            target_modules=UNET_TARGET_MODULES,
+            boft_dropout=args.unet_dropout,
+            bias=args.unet_bias,
+        )
+        from optimum.habana.peft.layer import GaudiBoftLinearForward
+
+        tuners.boft.layer.Linear.forward = GaudiBoftLinearForward
+        tuners.boft.layer._FBD_CUDA = False
+
     else:
         raise ValueError(f"Unknown adapter type {args.adapter}")
 
@@ -160,7 +177,7 @@ def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, Lo
 
 def create_text_encoder_adapter_config(
     args: argparse.Namespace,
-) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig]:
+) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig, BOFTConfig]:
     if args.adapter == "full":
         raise ValueError("Cannot create text_encoder adapter config for full parameter")
 
@@ -201,7 +218,21 @@ def create_text_encoder_adapter_config(
             init_weights=True,
             coft=args.te_use_coft,
             eps=args.te_eps,
+            oft_block_size=0,
         )
+    elif args.adapter == "boft":
+        config = BOFTConfig(
+            boft_block_size=args.te_block_size,
+            boft_block_num=args.te_block_num,
+            boft_n_butterfly_factor=args.te_n_butterfly_factor,
+            target_modules=TEXT_ENCODER_TARGET_MODULES,
+            boft_dropout=args.te_dropout,
+            bias=args.te_bias,
+        )
+        from optimum.habana.peft.layer import GaudiBoftLinearForward
+
+        tuners.boft.layer.Linear.forward = GaudiBoftLinearForward
+        tuners.boft.layer._FBD_CUDA = False
     else:
         raise ValueError(f"Unknown adapter type {args.adapter}")
 
@@ -479,6 +510,12 @@ def parse_args(input_args=None):
         action="store_true",
         help="Use HPU graphs for inference on HPU.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
 
     # Adapter arguments
     subparsers = parser.add_subparsers(dest="adapter")
@@ -630,6 +667,44 @@ def parse_args(input_args=None):
         type=float,
         default=0.0,
         help="The control strength of COFT for text_encoder, only used if `train_text_encoder` is True",
+    )
+
+    # boft adapter
+    boft = subparsers.add_parser("boft", help="Use Boft adapter")
+    boft.add_argument("--unet_block_size", type=int, default=8, help="Boft block_size for unet")
+    boft.add_argument("--unet_block_num", type=int, default=0, help="Boft block_num for unet")
+    boft.add_argument("--unet_n_butterfly_factor", type=int, default=1, help="Boft n_butterfly_factor for unet")
+    boft.add_argument("--unet_dropout", type=float, default=0.1, help="Boft dropout for unet")
+    boft.add_argument("--unet_bias", type=str, default="boft_only", help="Boft bias for unet")
+    boft.add_argument(
+        "--te_block_size",
+        type=int,
+        default=8,
+        help="Boft block_size for text_encoder,only used if `train_text_encoder` is True",
+    )
+    boft.add_argument(
+        "--te_block_num",
+        type=int,
+        default=0,
+        help="Boft block_num for text_encoder,only used if `train_text_encoder` is True",
+    )
+    boft.add_argument(
+        "--te_n_butterfly_factor",
+        type=int,
+        default=1,
+        help="Boft n_butterfly_factor for text_encoder,only used if `train_text_encoder` is True",
+    )
+    boft.add_argument(
+        "--te_dropout",
+        type=float,
+        default=0.1,
+        help="Boft dropout for text_encoder,only used if `train_text_encoder` is True",
+    )
+    boft.add_argument(
+        "--te_bias",
+        type=str,
+        default="boft_only",
+        help="Boft bias for text_encoder, only used if `train_text_encoder` is True",
     )
 
     if input_args is not None:
@@ -874,6 +949,9 @@ def main(args):
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
