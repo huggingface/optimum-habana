@@ -57,8 +57,6 @@ from transformers.utils import (
 )
 
 from ..llama.modeling_llama import (
-    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
-    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
 from ..mixtral.modeling_mixtral import GaudiMixtralAttentionLongSequence
@@ -347,6 +345,7 @@ class ArcticAttention(nn.Module):
                 "when creating this class."
             )
 
+        self.rotary_emb = GaudiLlamaRotaryEmbedding(config=self.config)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
@@ -387,34 +386,6 @@ class ArcticAttention(nn.Module):
             self.hidden_size,
             bias=False,
         )
-
-        self._init_rope()
-
-    def _init_rope(self):
-        """
-        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
-        """
-        if self.config.rope_scaling is None:
-            self.rotary_emb = GaudiLlamaRotaryEmbedding(config=self.config)
-        else:
-            scaling_type = self.config.rope_scaling["type"]
-            scaling_factor = self.config.rope_scaling["factor"]
-            if scaling_type == "linear":
-                self.rotary_emb = GaudiLlamaLinearScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            elif scaling_type == "dynamic":
-                self.rotary_emb = GaudiLlamaDynamicNTKScalingRotaryEmbedding(
-                    self.head_dim,
-                    max_position_embeddings=self.max_position_embeddings,
-                    scaling_factor=scaling_factor,
-                    base=self.rope_theta,
-                )
-            else:
-                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
