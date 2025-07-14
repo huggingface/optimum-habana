@@ -95,7 +95,7 @@ git clone -b transformers_future https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 ```
 
 To install the requirements for every example:
