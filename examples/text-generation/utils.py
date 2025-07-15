@@ -138,7 +138,7 @@ def setup_env(args):
 
     from optimum.habana.utils import check_optimum_habana_min_version
 
-    check_optimum_habana_min_version("1.18.0.dev0")
+    check_optimum_habana_min_version("1.19.0.dev0")
 
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
