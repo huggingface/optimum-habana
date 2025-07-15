@@ -45,7 +45,7 @@
       "eval_f1": 0.8889,
       "train_runtime": 53.5968,
       "train_samples_per_second": 362.209
-    },
+    }
   },
   "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_CodeLlama-13b-Instruct-hf_deepspeed": {
     "gaudi2": {
