@@ -48,7 +48,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 > Tests should be run in a Docker container based on Intel Gaudi's official images. Instructions to
 > obtain the latest containers from the Intel Gaudi Vault are available
 > [here](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html#use-intel-gaudi-containers).
-> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.21 stack.
+> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.22 stack.
 
 
 ## Install the library and get example scripts
@@ -65,9 +65,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 ```bash
 git clone https://github.com/huggingface/optimum-habana
-cd optimum-habana && git checkout v1.18.0
+cd optimum-habana && git checkout v1.19.0
 ```
-with `v1.18.0` being the latest Optimum for Intel Gaudi release version.
+with `v1.19.0` being the latest Optimum for Intel Gaudi release version.
 
 ### Option 2: Use the latest main branch under development
 
