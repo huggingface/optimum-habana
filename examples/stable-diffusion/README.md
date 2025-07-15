@@ -475,6 +475,23 @@ PT_HPU_LAZY_MODE=1 python text_to_video_generation.py \
     --dtype bf16
 ```
 
+#### Image-to-Video with CogvideoX1.5
+
+```bash
+PT_HPU_LAZY_MODE=1 python image_to_video_generation.py \
+    --model_name_or_path "THUDM/CogVideoX1.5-5B-I2V" \
+    --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
+    --prompts "Rocket is rising" \
+    --use_habana \
+    --use_hpu_graphs \
+    --num_videos_per_prompt 1 \
+    --num_inference_steps 50 \
+    --num_frames 49 \
+    --width 1360 \
+    --height 768 \
+    --bf16
+```
+
 # Important Notes for Gaudi3 Users
 
  - **Batch Size Limitation**: Due to a known issue, batch sizes for some Stable Diffusion models need to be reduced.
