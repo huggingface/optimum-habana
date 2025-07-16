@@ -96,7 +96,7 @@ slow_tests_1x: test_installs
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
 	@status1=0; status2=0; \
-	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
+	DATASET_CONFIG='$(DATASET_CONFIG)' python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
 	python -m pytest tests/test_habana_profiler_integration.py -v -s -m x8 || status2=$$?; \
 	exit $$((status1 + status2))
 
