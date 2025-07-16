@@ -38,8 +38,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 from utils import finalize_quantization, initialize_model, save_model
 
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
-
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 logger = logging.getLogger(__name__)
@@ -337,6 +335,11 @@ def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
+
+    # Delayed import: optimum.habana.utils is imported here to ensure that
+    # environment variables and runtime configurations are properly initialized
+    # before loading modules that depend on them.
+    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
