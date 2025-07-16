@@ -743,8 +743,12 @@ def adapt_transformers_to_gaudi():
     # Optimization for qwen3Moe on Gaudi
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForCausalLM = GaudiQwen3MoeForCausalLM
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeModel = GaudiQwen3MoeModel
-    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForSequenceClassification = GaudiQwen3MoeForSequenceClassification
-    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForTokenClassification = GaudiQwen3MoeForTokenClassification
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForSequenceClassification = (
+        GaudiQwen3MoeForSequenceClassification
+    )
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForTokenClassification = (
+        GaudiQwen3MoeForTokenClassification
+    )
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeAttention = GaudiQwen3MoeAttention
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeMLP = GaudiQwen3MoeMLP
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeDecoderLayer = GaudiQwen3MoeDecoderLayer

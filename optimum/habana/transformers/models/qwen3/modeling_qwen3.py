@@ -21,7 +21,12 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast, TokenClassifierOutput
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    SequenceClassifierOutputWithPast,
+    TokenClassifierOutput,
+)
 from transformers.models.qwen3.configuration_qwen3 import Qwen3Config
 from transformers.models.qwen3.modeling_qwen3 import (
     KwargsForCausalLM,
@@ -1151,6 +1156,8 @@ The only differences are:
 - add new args flash_attention_causal_mask
 - add new args flash_attention_fast_softmax
 """
+
+
 class GaudiQwen3ForSequenceClassification(Qwen3ForSequenceClassification):
     def forward(
         self,
@@ -1174,7 +1181,7 @@ class GaudiQwen3ForSequenceClassification(Qwen3ForSequenceClassification):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        
+
         transformer_outputs: BaseModelOutputWithPast = self.model(
             input_ids,
             attention_mask=attention_mask,
@@ -1191,12 +1198,12 @@ class GaudiQwen3ForSequenceClassification(Qwen3ForSequenceClassification):
         )
         hidden_states = transformer_outputs.last_hidden_state
         logits = self.score(hidden_states)
-        
+
         if input_ids is not None:
             batch_size = input_ids.shape[0]
         else:
             batch_size = inputs_embeds.shape[0]
-            
+
         if self.config.pad_token_id is None and batch_size != 1:
             raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
         if self.config.pad_token_id is None:
@@ -1212,13 +1219,13 @@ class GaudiQwen3ForSequenceClassification(Qwen3ForSequenceClassification):
                 f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
                 "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
             )
-            
+
         pooled_logits = logits[torch.arange(batch_size, device=logits.device), last_non_pad_token]
-        
+
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
-            
+
         return SequenceClassifierOutputWithPast(
             loss=loss,
             logits=pooled_logits,
@@ -1251,7 +1258,7 @@ class GaudiQwen3ForTokenClassification(Qwen3ForTokenClassification):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        
+
         outputs: BaseModelOutputWithPast = self.model(
             input_ids,
             attention_mask=attention_mask,
@@ -1269,11 +1276,11 @@ class GaudiQwen3ForTokenClassification(Qwen3ForTokenClassification):
         sequence_output = outputs.last_hidden_state
         sequence_output = self.dropout(sequence_output)
         logits = self.score(sequence_output)
-        
+
         loss = None
         if labels is not None:
             loss = self.loss_function(logits, labels, self.config)
-            
+
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,

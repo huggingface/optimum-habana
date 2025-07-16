@@ -1273,6 +1273,8 @@ The only differences are:
 - add new args flash_attention_causal_mask
 - add new args flash_attention_fast_softmax
 """
+
+
 class GaudiQwen3MoeForSequenceClassification(Qwen3MoeForSequenceClassification):
     def forward(
         self,
@@ -1296,7 +1298,7 @@ class GaudiQwen3MoeForSequenceClassification(Qwen3MoeForSequenceClassification):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        
+
         transformer_outputs: BaseModelOutputWithPast = self.model(
             input_ids,
             attention_mask=attention_mask,
@@ -1313,12 +1315,12 @@ class GaudiQwen3MoeForSequenceClassification(Qwen3MoeForSequenceClassification):
         )
         hidden_states = transformer_outputs.last_hidden_state
         logits = self.score(hidden_states)
-        
+
         if input_ids is not None:
             batch_size = input_ids.shape[0]
         else:
             batch_size = inputs_embeds.shape[0]
-            
+
         if self.config.pad_token_id is None and batch_size != 1:
             raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
         if self.config.pad_token_id is None:
@@ -1334,13 +1336,13 @@ class GaudiQwen3MoeForSequenceClassification(Qwen3MoeForSequenceClassification):
                 f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
                 "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
             )
-            
+
         pooled_logits = logits[torch.arange(batch_size, device=logits.device), last_non_pad_token]
-        
+
         loss = None
         if labels is not None:
             loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
-            
+
         return SequenceClassifierOutputWithPast(
             loss=loss,
             logits=pooled_logits,
@@ -1373,7 +1375,7 @@ class GaudiQwen3MoeForTokenClassification(Qwen3MoeForTokenClassification):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        
+
         outputs: BaseModelOutputWithPast = self.model(
             input_ids,
             attention_mask=attention_mask,
@@ -1391,11 +1393,11 @@ class GaudiQwen3MoeForTokenClassification(Qwen3MoeForTokenClassification):
         sequence_output = outputs.last_hidden_state
         sequence_output = self.dropout(sequence_output)
         logits = self.score(sequence_output)
-        
+
         loss = None
         if labels is not None:
             loss = self.loss_function(logits, labels, self.config)
-            
+
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,
