@@ -411,6 +411,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                 eval_dataset = self._prepare_dataset(eval_dataset, processing_class, args, "eval")
 
         GaudiTrainer.__init__(
+            self,
             model=model,
             args=args,
             gaudi_config=gaudi_config,
@@ -724,7 +725,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             if self._peft_has_been_casted_to_bf16
             else nullcontext
         )
-        with compute_loss_context_manager:
+        with compute_loss_context_manager():
             loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval="train")
 
         # Make sure to move the loss to the device the original accumulating loss is at back in the `Trainer` class:
