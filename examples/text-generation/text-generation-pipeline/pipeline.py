@@ -58,14 +58,21 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             if torch.is_tensor(model_inputs[t]):
                 model_inputs[t] = model_inputs[t].to(self.device)
 
+        from optimum.habana.utils import HabanaProfile
+
+        profiler = HabanaProfile(
+            warmup=self.profiling_warmup_steps,
+            active=self.profiling_steps,
+            record_shapes=self.profiling_record_shapes,
+            name="generate",
+        )
+
         output = self.model.generate(
             **model_inputs,
             generation_config=self.generation_config,
             lazy_mode=True,
             hpu_graphs=self.use_hpu_graphs,
-            profiling_steps=self.profiling_steps,
-            profiling_warmup_steps=self.profiling_warmup_steps,
-            profiling_record_shapes=self.profiling_record_shapes,
+            profiler=profiler,
         ).cpu()
 
         if use_batch:
