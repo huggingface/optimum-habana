@@ -125,29 +125,11 @@ steps like:
         --model_name_or_path="sft/final_merged_checkpoint" \
         --tokenizer_name_or_path=meta-llama/Llama-2-70b-hf \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "out_proj" "fc_in" "fc_out" "wte" \
         --output_dir="dpo" \
-        --do_train \
-        --max_steps=1000 \
-        --logging_steps=10 \
-        --save_steps=100 \
         --max_prompt_length=256 \
         --max_length=512 \
-        --per_device_train_batch_size=1 \
-        --per_device_eval_batch_size=1 \
-        --gradient_accumulation_steps=4 \
-        --learning_rate=5e-4 \
-        --lr_scheduler_type="cosine" \
-        --warmup_steps=100 \
-        --optim="paged_adamw_32bit" \
-        --lora_target_modules "q_proj" "v_proj" "k_proj" "out_proj" "fc_in" "fc_out" "wte" \
-        --bf16 \
-        --remove_unused_columns=False \
-        --run_name="dpo_llama2" \
-        --force_use_ref_model \
-        --report_to=none \
-        --overwrite_output_dir \
-        --use_habana \
-        --use_lazy_mode
+        --report_to=none
     ```
 
 
