@@ -94,6 +94,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         self.sigma_up_t_list = []
         self.sigma_down_t_list = []
 
+    @torch.compiler.disable
     def get_params(self, timestep: Union[float, torch.FloatTensor]):
         """
         Initialize the time-dependent parameters, and retrieve the time-dependent
