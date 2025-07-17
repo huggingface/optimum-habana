@@ -658,6 +658,12 @@ class GaudiTrainer(Trainer):
             len_dataloader,
             max_steps,
         ) = self.set_initial_training_values(args, train_dataloader, total_train_batch_size)
+
+        # set_initial_training_values returns max_steps as len_dataloader // args.gradient_accumulation_steps,
+        # which results in stopping before the 'remainder' steps are processed, the following lines correct it
+        num_update_steps_per_epoch = math.ceil(len_dataloader / args.gradient_accumulation_steps)
+        max_steps = num_train_epochs * num_update_steps_per_epoch
+
         if (
             self.accelerator.mpu.sequence_parallel_is_initialized()
             and self.accelerator.mpu.get_sequence_parallel_world_size() > 1
@@ -957,21 +963,28 @@ class GaudiTrainer(Trainer):
             step = -1
             epoch_iterator = iter(epoch_dataloader)
             # We chunkify the epoch iterator into gradient accumulation steps `n` batches
-            remainder = num_examples % args.gradient_accumulation_steps
-            if remainder == 0:
-                remainder = args.gradient_accumulation_steps
-            update_step = -1
-            total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
+            total_updates = steps_in_epoch // args.gradient_accumulation_steps
+            remainder = steps_in_epoch % args.gradient_accumulation_steps
+            if remainder != 0:
+                total_updates += 1
+
             if args.gradient_accumulation_steps == 1:
                 total_updates -= 1
-            for _ in range(total_updates):
-                update_step += 1
-                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
+            for update_step in range(total_updates):
+                is_last_update_step = update_step == total_updates - 1
+                if is_last_update_step and remainder != 0:
+                    num_batches = remainder
+                else:
+                    num_batches = args.gradient_accumulation_steps
+
                 batch_samples, num_items_in_batch = self.get_batch_samples_transformers(
                     epoch_iterator, num_batches, args.device
                 )
                 for i, inputs in enumerate(batch_samples):
                     step += 1
+                    is_last_update_step = (step + 1) == steps_in_epoch
+                    do_sync_step = (step + 1) % args.gradient_accumulation_steps == 0 or is_last_update_step
+
                     if self.args.compile_from_sec_iteration and is_torch_version(">=", "2.6.0"):
                         torch.compiler.set_stance("force_eager" if step == 0 else "default")
 
@@ -982,7 +995,6 @@ class GaudiTrainer(Trainer):
                     ):
                         start_time_after_warmup = time.time()
 
-                    do_sync_step = (step + 1) % args.gradient_accumulation_steps == 0 or (step + 1) == steps_in_epoch
                     # Since we perform prefetching, we need to manually set sync_gradients
                     self.accelerator.gradient_state._set_sync_gradients(do_sync_step)
 
@@ -1031,7 +1043,7 @@ class GaudiTrainer(Trainer):
                         else contextlib.nullcontext
                     )
                     with context():
-                        tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+                        tr_loss_step = self.training_step(model, inputs)
 
                     if (
                         args.parallel_mode == ParallelMode.DISTRIBUTED
