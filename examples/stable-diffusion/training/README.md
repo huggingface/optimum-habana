@@ -434,7 +434,7 @@ We can use the same `dog` dataset for the following example.
 
 To launch SD3 LoRA training on a single Gaudi card, use:
 ```bash
-python train_dreambooth_lora_sd3.py \
+PT_HPU_LAZY_MODE=1 python train_dreambooth_lora_sd3.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-3-medium-diffusers" \
     --dataset_name="dog" \
     --instance_prompt="a photo of sks dog" \
@@ -469,7 +469,7 @@ with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sd
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path "stabilityai/stable-diffusion-3-medium-diffusers" \
     --lora_id dog_lora_sd3 \
     --prompts "A picture of a sks dog in a bucket" \
@@ -491,7 +491,7 @@ We can use the `dog` dataset for the following example.
 
 To launch SD3 full model training on single Gaudi card, use:
 ```bash
-python train_text_to_image_sd3.py \
+PT_HPU_LAZY_MODE=1 python train_text_to_image_sd3.py \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-3-medium-diffusers" \
     --dataset_name="dog" \
     --instance_prompt="a photo of sks dog" \
@@ -525,7 +525,7 @@ with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_text_to_image_sd
 
 After training completes, you could directly use `text_to_image_generation.py` sample for inference as follows:
 ```bash
-python ../text_to_image_generation.py \
+PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
     --model_name_or_path "dog_ft_sd3" \
     --prompts "A picture of a sks dog in a bucket" \
     --scheduler flow_match_euler_discrete \
