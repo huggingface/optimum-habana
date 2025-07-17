@@ -16,13 +16,22 @@
 
 # There is a circular import in the PPOTrainer if we let isort sort these
 # isort: on
+import importlib.metadata
+from packaging import version
 
 from .sft_trainer import GaudiSFTTrainer
 from .dpo_trainer import GaudiDPOTrainer
-from .ppo_config import GaudiPPOConfig
-from .ppo_trainer import GaudiPPOTrainer
+
 from .reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
 
 from .ddpo_trainer import GaudiDDPOTrainer
 from .dpo_config import GaudiDPOConfig
 from .sft_config import GaudiSFTConfig
+
+trl_version = importlib.metadata.version("trl")
+if version.parse(trl_version) < version.parse("0.17.0"):
+    from .ppo_config import GaudiPPOConfig
+    from .ppo_trainer import GaudiPPOTrainer
+else:
+    from .grpo_trainer import GaudiGRPOTrainer
+    from .grpo_config import GaudiGRPOConfig
