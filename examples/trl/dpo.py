@@ -1,4 +1,4 @@
-# copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/dpo_llama2.py, enable it for Gaudi2
+# copy from https://github.com/huggingface/trl/blob/v0.17.0/examples/research_projects/stack_llama_2/scripts/dpo_llama2.py, enable it for Gaudi2
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -162,7 +162,7 @@ if __name__ == "__main__":
         bf16=True,
         remove_unused_columns=False,
         run_name="dpo_llama2",
-        gradient_checkpointing_kwargs={"use_reentrant": script_args.gradient_checkpointing_use_reentrant},
+        gradient_checkpointing_kwargs=dict(use_reentrant=script_args.gradient_checkpointing_use_reentrant),
         use_habana=True,
         use_lazy_mode=True,
         use_hpu_graphs_for_training=not script_args.gradient_checkpointing and (not script_args.deepspeed),
@@ -170,6 +170,10 @@ if __name__ == "__main__":
         seed=script_args.seed,
         deepspeed=script_args.deepspeed,
         overwrite_output_dir=True,
+        beta=script_args.beta,
+        max_prompt_length=script_args.max_prompt_length,
+        max_length=script_args.max_length,
+        force_use_ref_model=True,
     )
 
     # Set seed before initializing model.
@@ -243,14 +247,10 @@ if __name__ == "__main__":
         model_ref,
         gaudi_config=gaudi_config,
         args=training_args,
-        beta=script_args.beta,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         peft_config=peft_config,
-        max_prompt_length=script_args.max_prompt_length,
-        max_length=script_args.max_length,
-        force_use_ref_model=True,
     )
 
     # 6. train
