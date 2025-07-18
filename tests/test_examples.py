@@ -300,6 +300,11 @@ class ExampleTestMeta(type):
                 return True
             else:
                 return False
+        elif "Qwen3-8B" in model_name and example_name == "run_glue":
+            if deepspeed:
+                return True
+            else:
+                return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
