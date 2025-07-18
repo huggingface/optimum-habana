@@ -19,7 +19,6 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -46,6 +45,7 @@ from transformers.models.qwen3_moe.modeling_qwen3_moe import (
 )
 
 from ....distributed import parallel_state
+from ....utils import warn0
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -694,8 +694,9 @@ class GaudiQwen3MoeDecoderLayer(Qwen3MoeDecoderLayer):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(

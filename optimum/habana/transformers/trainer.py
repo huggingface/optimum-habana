@@ -117,6 +117,7 @@ from ..utils import (
     set_seed,
     speed_metrics,
     to_device_dtype,
+    warn0,
 )
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .integrations.deepspeed import deepspeed_init
@@ -545,12 +546,13 @@ class GaudiTrainer(Trainer):
 
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
-            warnings.warn(
+            warn0(
                 (
                     "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
                     "instead."
                 ),
-                FutureWarning,
+                category=FutureWarning,
+                state=self.accelerator.state,
             )
         if len(kwargs) > 0:
             raise TypeError(f"train() got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")

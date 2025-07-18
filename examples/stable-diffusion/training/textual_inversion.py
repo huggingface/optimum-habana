@@ -20,7 +20,6 @@ import math
 import os
 import random
 import shutil
-import warnings
 from pathlib import Path
 
 import diffusers
@@ -53,7 +52,7 @@ from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.utils import HabanaGenerationTime, set_seed
+from optimum.habana.utils import HabanaGenerationTime, set_seed, warn0
 
 
 if is_wandb_available():
@@ -737,12 +736,11 @@ def main():
         train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
     if args.validation_epochs is not None:
-        warnings.warn(
+        warn0(
             f"FutureWarning: You are doing logging with validation_epochs={args.validation_epochs}."
             " Deprecated validation_epochs in favor of `validation_steps`"
             f"Setting `args.validation_steps` to {args.validation_epochs * len(train_dataset)}",
             FutureWarning,
-            stacklevel=2,
         )
         args.validation_steps = args.validation_epochs * len(train_dataset)
 

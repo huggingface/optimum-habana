@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from functools import partial
@@ -45,6 +44,7 @@ from trl.trainer.utils import (
 )
 
 from ... import GaudiConfig, GaudiTrainer
+from ...utils import warn0
 from .dpo_config import GaudiDPOConfig
 
 
@@ -106,7 +106,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         - cast peft model to bf16.
         """
         if model_init_kwargs is not None:
-            warnings.warn(
+            warn0(
                 "You passed `model_init_kwargs` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.model_init_kwargs = model_init_kwargs
@@ -134,7 +134,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             model_init_kwargs["torch_dtype"] = torch_dtype
 
         if ref_model_init_kwargs is not None:
-            warnings.warn(
+            warn0(
                 "You passed `ref_model_init_kwargs` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.ref_model_init_kwargs = ref_model_init_kwargs
@@ -161,14 +161,14 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             ref_model_init_kwargs["torch_dtype"] = torch_dtype
 
         if isinstance(model, str):
-            warnings.warn(
+            warn0(
                 "You passed a model_id to the DPOTrainer. This will automatically create an "
                 "`AutoModelForCausalLM` or a `PeftModel` (if you passed a `peft_config`) for you."
             )
             model = AutoModelForCausalLM.from_pretrained(model, **model_init_kwargs)
 
         if isinstance(ref_model, str):
-            warnings.warn(
+            warn0(
                 "You passed a ref model_id to the DPOTrainer. This will automatically create an `AutoModelForCausalLM`"
             )
             ref_model = AutoModelForCausalLM.from_pretrained(ref_model, **ref_model_init_kwargs)
@@ -178,7 +178,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         self._peft_has_been_casted_to_bf16 = False
 
         if force_use_ref_model:
-            warnings.warn(
+            warn0(
                 "You passed `force_use_ref_model` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.force_use_ref_model = force_use_ref_model
@@ -245,7 +245,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                 model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
         if generate_during_eval:
-            warnings.warn(
+            warn0(
                 "You passed `generate_during_eval` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.generate_during_eval = generate_during_eval
@@ -256,7 +256,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             )
 
         if is_encoder_decoder is not None:
-            warnings.warn(
+            warn0(
                 "You passed `is_encoder_decoder` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.is_encoder_decoder = is_encoder_decoder
@@ -272,9 +272,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         if model is not None:
             self.is_vision_model = model.config.model_type in MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES.keys()
         else:
-            warnings.warn(
-                "No model provided, cannot determine if it is a vision model. Setting is_vision_model to False."
-            )
+            warn0("No model provided, cannot determine if it is a vision model. Setting is_vision_model to False.")
             self.is_vision_model = False
 
         if self.is_vision_model:
@@ -285,28 +283,28 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
 
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
         if model_adapter_name is not None:
-            warnings.warn(
+            warn0(
                 "You passed `model_adapter_name` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.model_adapter_name = model_adapter_name
         self.model_adapter_name = args.model_adapter_name
 
         if ref_adapter_name is not None:
-            warnings.warn(
+            warn0(
                 "You passed `ref_adapter_name` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.ref_adapter_name = ref_adapter_name
         self.ref_adapter_name = args.ref_adapter_name
 
         if reference_free:
-            warnings.warn(
+            warn0(
                 "You passed `reference_free` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.reference_free = reference_free
         self.reference_free = args.reference_free
 
         if precompute_ref_log_probs:
-            warnings.warn(
+            warn0(
                 "You passed `precompute_ref_log_probs` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.precompute_ref_log_probs = precompute_ref_log_probs
@@ -323,12 +321,12 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             raise ValueError("tokenizer must be specified to tokenize a DPO dataset.")
 
         if max_length is not None:
-            warnings.warn(
+            warn0(
                 "You passed `max_length` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.max_length = max_length
         if args.max_length is None:
-            warnings.warn(
+            warn0(
                 "`max_length` is not set in the DPOConfig's init"
                 " it will default to `512` by default, but you should do it yourself in the future.",
                 UserWarning,
@@ -336,12 +334,12 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             args.max_length = 512
 
         if max_prompt_length is not None:
-            warnings.warn(
+            warn0(
                 "You passed `max_prompt_length` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.max_prompt_length = max_prompt_length
         if args.max_prompt_length is None:
-            warnings.warn(
+            warn0(
                 "`max_prompt_length` is not set in the DPOConfig's init"
                 " it will default to `128` by default, but you should do it yourself in the future.",
                 UserWarning,
@@ -349,12 +347,12 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             args.max_prompt_length = 128
 
         if max_target_length is not None:
-            warnings.warn(
+            warn0(
                 "You passed `max_target_length` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.max_target_length = max_target_length
         if args.max_target_length is None and self.is_encoder_decoder:
-            warnings.warn(
+            warn0(
                 "When using an encoder decoder architecture, you should set `max_target_length` in the DPOConfig's init"
                 " it will default to `128` by default, but you should do it yourself in the future.",
                 UserWarning,
@@ -362,7 +360,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             args.max_target_length = 128
 
         if label_pad_token_id != -100:
-            warnings.warn(
+            warn0(
                 "You passed `label_pad_token_id` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.label_pad_token_id = label_pad_token_id
@@ -376,7 +374,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             if args.remove_unused_columns:
                 args.remove_unused_columns = False
                 # warn users
-                warnings.warn(
+                warn0(
                     "When using DPODataCollatorWithPadding, you should set `remove_unused_columns=False` in your TrainingArguments"
                     " we have set it for you, but you should do it yourself in the future.",
                     UserWarning,
@@ -387,7 +385,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             self.use_dpo_data_collator = False
 
         if not disable_dropout:
-            warnings.warn(
+            warn0(
                 "You passed `disable_dropout` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.disable_dropout = disable_dropout
@@ -400,14 +398,14 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         self.generate_during_eval = args.generate_during_eval
         self.label_pad_token_id = args.label_pad_token_id
         if padding_value is not None:
-            warnings.warn(
+            warn0(
                 "You passed `padding_value` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.padding_value = padding_value
         self.padding_value = args.padding_value if padding_value is not None else self.tokenizer.pad_token_id
         self.max_prompt_length = args.max_prompt_length
         if truncation_mode != "keep_end":
-            warnings.warn(
+            warn0(
                 "You passed `truncation_mode` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.truncation_mode = truncation_mode
@@ -421,24 +419,24 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         self._precomputed_eval_ref_log_probs = False
 
         if loss_type != "sigmoid":
-            warnings.warn(
+            warn0(
                 "You passed `loss_type` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.loss_type = loss_type
         if label_smoothing != 0:
-            warnings.warn(
+            warn0(
                 "You passed `label_smoothing` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.label_smoothing = label_smoothing
         if args.loss_type in ["hinge", "ipo", "bco_pair"] and args.label_smoothing > 0:
-            warnings.warn(
+            warn0(
                 "You are using a loss type that does not support label smoothing. Ignoring label_smoothing parameter."
             )
         if args.loss_type == "kto_pair":
             raise ValueError("Support for kto_pair has been removed in DPOTrainer. Please use KTOTrainer.")
 
         if beta != 0.1:
-            warnings.warn(
+            warn0(
                 "You passed `beta` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.beta = beta
@@ -453,7 +451,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
 
         if dataset_num_proc is not None:
-            warnings.warn(
+            warn0(
                 "You passed `dataset_num_proc` to the DPOTrainer, the value you passed will override the one in the `DPOConfig`."
             )
             args.dataset_num_proc = dataset_num_proc
@@ -697,7 +695,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         - use hpu autocast
         """
         if not self.use_dpo_data_collator:
-            warnings.warn(
+            warn0(
                 "compute_loss is only implemented for DPODataCollatorWithPadding, and you passed a datacollator that is different than "
                 "DPODataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
             )
