@@ -34,13 +34,13 @@ def get_build():
     import sys
 
     output = subprocess.run(
-        f"{sys.executable} pip show habana-torch-plugin",
+        f"{sys.executable} -m pip show habana-torch-plugin",
         shell=True,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    version_re = re.compile(r"Version:\s*(?P<version>.*)")
+    version_re = re.compile(r"Version:\s*(?P<version>.*)", re.MULTILINE)
     match = version_re.search(output.stdout)
     if output.returncode == 0 and match:
         return match.group("version")
