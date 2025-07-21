@@ -863,7 +863,7 @@ class MultiCardMaskedLanguageModelingExampleTester(
 class MultiCardAudioClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_audio_classification", multi_card=True
 ):
-    TASK_NAME = "common_language"
+    TASK_NAME = "regisss/common_language"
 
 
 class MultiCardSpeechRecognitionExampleTester(
