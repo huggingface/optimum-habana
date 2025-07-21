@@ -1000,7 +1000,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                     valid_sequence_lengths=sub_valid_sequence_lengths[i],
                     cache_idx=cache_idx,
                     num_virtual_tokens=num_virtual_tokens,
-                    **kwargs,
                 )
                 self.self_attn.attention_all_reduce(split_hidden_states[i])
                 if output_attentions:
@@ -1044,7 +1043,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                 valid_sequence_lengths=valid_sequence_lengths,
                 cache_idx=cache_idx,
                 num_virtual_tokens=num_virtual_tokens,
-                **kwargs,
             )
             self.self_attn.attention_all_reduce(hidden_states)
             hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
