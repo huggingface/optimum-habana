@@ -23,6 +23,7 @@ from pathlib import Path
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface.llms import HuggingFacePipeline
 
+
 sys.path.append(str(Path(__file__).parent.parent))
 from run_generation import setup_parser
 
@@ -43,10 +44,14 @@ def main():
 
     # Initialize the model
     from utils import initialize_model
+
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     # Initialize the pipeline
     from pipeline import GaudiTextGenerationPipeline
-    pipe = GaudiTextGenerationPipeline(args, logger, model, tokenizer, generation_config, use_with_langchain=True, warmup_on_init=False)
+
+    pipe = GaudiTextGenerationPipeline(
+        args, logger, model, tokenizer, generation_config, use_with_langchain=True, warmup_on_init=False
+    )
 
     # Create LangChain object
     hf = HuggingFacePipeline(pipeline=pipe)

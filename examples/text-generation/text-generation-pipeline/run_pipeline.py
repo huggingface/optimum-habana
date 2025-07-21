@@ -3,6 +3,8 @@ import logging
 import math
 import sys
 from pathlib import Path
+
+
 sys.path.append(str(Path(__file__).parent.parent))
 
 from run_generation import setup_parser
@@ -43,9 +45,11 @@ def main():
 
     logger.info("Initializing text-generation pipeline...")
     from utils import initialize_model
+
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     from pipeline import GaudiTextGenerationPipeline
+
     pipe = GaudiTextGenerationPipeline(args, logger, model, tokenizer, generation_config)
 
     from optimum.habana.utils import HabanaGenerationTime
