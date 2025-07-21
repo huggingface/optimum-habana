@@ -10,10 +10,12 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
-    def __init__(self, args, logger, use_with_langchain=False, warmup_on_init=True):
-        from utils import initialize_model
-
-        self.model, _, self.tokenizer, self.generation_config = initialize_model(args, logger)
+    def __init__(
+        self, args, logger, model, tokenizer, generation_config, use_with_langchain=False, warmup_on_init=True
+    ):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.generation_config = generation_config
 
         self.task = "text-generation"
         self.device = args.device
