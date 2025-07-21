@@ -254,6 +254,7 @@ def _test_text_generation(
         command += [
             "--use_hpu_graphs",
         ]
+        env_variables["PT_HPU_LAZY_MODE"] = "1"
 
     if not deepspeed:
         command.append("--bf16")
