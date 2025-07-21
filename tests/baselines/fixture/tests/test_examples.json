@@ -49,9 +49,9 @@
   },
   "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_Qwen3-8B_deepspeed": {
     "gaudi2": {
-      "eval_f1": 0.8402,
-      "train_runtime": 132.5885,
-      "train_samples_per_second": 93.607
+      "eval_f1": 0.9209,
+      "train_runtime": 55.8928,
+      "train_samples_per_second": 339.104
     }
   },
   "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_CodeLlama-13b-Instruct-hf_deepspeed": {
