@@ -21,7 +21,6 @@
 
 import math
 import os
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -60,6 +59,7 @@ from transformers.utils import (
 )
 
 from ....distributed.tensorparallel import _all_reduce
+from ....utils import warn0
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_deepseek_v2 import DeepseekV2Config
 
@@ -1032,8 +1032,9 @@ class DeepseekV2Attention(nn.Module):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         bsz, q_len, _ = hidden_states.size()
         if self.q_lora_rank is None:
@@ -1403,8 +1404,9 @@ class DeepseekV2Attention(nn.Module):
         """
 
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
 
         bsz, q_len, _ = hidden_states.size()
@@ -1533,8 +1535,9 @@ class DeepseekV2DecoderLayer(nn.Module):
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
 
