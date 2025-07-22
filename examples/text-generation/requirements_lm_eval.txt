@@ -3,3 +3,4 @@ datasets>=3.0.2, <=3.6.0
 tiktoken
 blobfile
 sentencepiece
+neural_compressor_pt >= 3.4.1
