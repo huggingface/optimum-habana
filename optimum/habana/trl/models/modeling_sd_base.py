@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -29,6 +28,7 @@ from ...diffusers import (
     GaudiDDIMScheduler,
     GaudiStableDiffusionPipeline,
 )
+from ...utils import warn0
 
 
 def scheduler_step(
@@ -357,7 +357,7 @@ class GaudiDefaultDDPOStableDiffusionPipeline(DefaultDDPOStableDiffusionPipeline
             self.use_lora = True
         except OSError:
             if use_lora:
-                warnings.warn(
+                warn0(
                     "If you are aware that the pretrained model has no lora weights to it, ignore this message. "
                     "Otherwise please check the if `pytorch_lora_weights.safetensors` exists in the model folder."
                 )
