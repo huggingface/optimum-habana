@@ -15,7 +15,6 @@
 
 import json
 import os
-import warnings
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -54,7 +53,7 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..distributed import parallel_state
-from ..utils import get_habana_frameworks_version
+from ..utils import get_habana_frameworks_version, warn0
 from .gaudi_configuration import GaudiConfig
 
 
@@ -394,7 +393,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     def __post_init__(self):
         if self.use_hpu_graphs:
-            warnings.warn(
+            warn0(
                 (
                     "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use `--use_hpu_graphs_for_training` or `--use_hpu_graphs_for_inference` instead."
                 ),
@@ -472,7 +471,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self.disable_tqdm = logger.getEffectiveLevel() > logging.WARN
 
         if isinstance(self.eval_strategy, EvaluationStrategy):
-            warnings.warn(
+            warn0(
                 "using `EvaluationStrategy` for `eval_strategy` is deprecated and will be removed in version 5"
                 " of 🤗 Transformers. Use `IntervalStrategy` instead",
                 FutureWarning,
@@ -578,7 +577,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         self.optim = OptimizerNames(self.optim)
         if self.adafactor:
-            warnings.warn(
+            warn0(
                 (
                     "`--adafactor` is deprecated and will be removed in version 5 of 🤗 Transformers. Use `--optim"
                     " adafactor` instead"
@@ -713,7 +712,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if isinstance(self.fsdp_config, str):
             if len(self.fsdp) == 0:
-                warnings.warn("`--fsdp_config` is useful only when `--fsdp` is specified.")
+                warn0("`--fsdp_config` is useful only when `--fsdp` is specified.")
             with open(self.fsdp_config, encoding="utf-8") as f:
                 self.fsdp_config = json.load(f)
                 for k in list(self.fsdp_config.keys()):
@@ -722,7 +721,7 @@ class GaudiTrainingArguments(TrainingArguments):
                         self.fsdp_config[k[5:]] = v
 
         if self.fsdp_min_num_params > 0:
-            warnings.warn("using `--fsdp_min_num_params` is deprecated. Use fsdp_config instead ", FutureWarning)
+            warn0("using `--fsdp_min_num_params` is deprecated. Use fsdp_config instead ", FutureWarning)
 
         self.fsdp_config["min_num_params"] = max(self.fsdp_config.get("min_num_params", 0), self.fsdp_min_num_params)
 
@@ -731,18 +730,19 @@ class GaudiTrainingArguments(TrainingArguments):
             self.fsdp_config["transformer_layer_cls_to_wrap"] = [self.fsdp_config["transformer_layer_cls_to_wrap"]]
 
         if self.fsdp_transformer_layer_cls_to_wrap is not None:
-            warnings.warn(
-                "using `--fsdp_transformer_layer_cls_to_wrap` is deprecated. Use fsdp_config instead ", FutureWarning
+            warn0(
+                "using `--fsdp_transformer_layer_cls_to_wrap` is deprecated. Use fsdp_config instead ",
+                FutureWarning,
             )
             self.fsdp_config["transformer_layer_cls_to_wrap"] = self.fsdp_config.get(
                 "transformer_layer_cls_to_wrap", []
             ) + [self.fsdp_transformer_layer_cls_to_wrap]
 
         if len(self.fsdp) == 0 and self.fsdp_config["min_num_params"] > 0:
-            warnings.warn("`min_num_params` is useful only when `--fsdp` is specified.")
+            warn0("`min_num_params` is useful only when `--fsdp` is specified.")
 
         if len(self.fsdp) == 0 and self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None:
-            warnings.warn("`transformer_layer_cls_to_wrap` is useful only when `--fsdp` is specified.")
+            warn0("`transformer_layer_cls_to_wrap` is useful only when `--fsdp` is specified.")
 
         if (
             len(self.fsdp) > 0
@@ -852,7 +852,7 @@ class GaudiTrainingArguments(TrainingArguments):
             )
 
         if self.push_to_hub_token is not None:
-            warnings.warn(
+            warn0(
                 (
                     "`--push_to_hub_token` is deprecated and will be removed in version 5 of 🤗 Transformers. Use "
                     "`--hub_token` instead."
@@ -866,7 +866,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 self.push_to_hub_model_id, organization=self.push_to_hub_organization, token=self.hub_token
             )
             if self.push_to_hub_organization is not None:
-                warnings.warn(
+                warn0(
                     (
                         "`--push_to_hub_model_id` and `--push_to_hub_organization` are deprecated and will be removed"
                         " in version 5 of 🤗 Transformers. Use `--hub_model_id` instead and pass the full repo name to"
@@ -875,7 +875,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     FutureWarning,
                 )
             else:
-                warnings.warn(
+                warn0(
                     (
                         "`--push_to_hub_model_id` is deprecated and will be removed in version 5 of 🤗 Transformers."
                         " Use `--hub_model_id` instead and pass the full repo name to this argument (in this case"
@@ -885,7 +885,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 )
         elif self.push_to_hub_organization is not None:
             self.hub_model_id = f"{self.push_to_hub_organization}/{Path(self.output_dir).name}"
-            warnings.warn(
+            warn0(
                 (
                     "`--push_to_hub_organization` is deprecated and will be removed in version 5 of 🤗 Transformers."
                     " Use `--hub_model_id` instead and pass the full repo name to this argument (in this case"

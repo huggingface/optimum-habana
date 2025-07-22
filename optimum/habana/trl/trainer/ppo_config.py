@@ -11,12 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
 from trl import PPOConfig, is_wandb_available
 from trl.trainer.utils import exact_div
+
+from ...utils import warn0
 
 
 @dataclass
@@ -41,7 +42,7 @@ class GaudiPPOConfig(PPOConfig):
         - add adapt_transformers_to_gaudi for habana
         """
         if self.forward_batch_size is not None:
-            warnings.warn(
+            warn0(
                 "Note that using `forward_batch_size` is deprecated, use `mini_batch_size` instead. By setting it you overwrite `mini_batch_size` which affects both the batch size during forward passes and also the mini batch size for PPO optimization."
             )
             self.mini_batch_size = self.forward_batch_size

@@ -35,6 +35,8 @@ from torch.utils.checkpoint import (
     set_device_states,
 )
 
+from ..utils import warn0
+
 
 __all__ = [
     "checkpoint",
@@ -45,7 +47,7 @@ __all__ = [
 # Extra warning if we are using old PyTorch version
 if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.1.0"):
     warnings.simplefilter("error", UserWarning)
-    warnings.warn("PyTorch version is less than 2.1. Please upgrade to continue.", UserWarning)
+    warn0("PyTorch version is less than 2.1. Please upgrade to continue.", UserWarning)
 
 
 if not hthpu.is_initialized() and DefaultDeviceType.get_device_type() != "hpu":
@@ -70,7 +72,7 @@ def _infer_device_type(*args):
 
     device_types_set = set(device_types)
     if len(device_types_set) > 1:
-        warnings.warn(
+        warn0(
             "Tensor arguments, excluding CPU tensors, are detected on at least two types of devices. "
             "Device state will only be saved for devices of a single device type, and the remaining "
             "devices will be ignored. Consequently, if any checkpointed functions involve randomness, "
@@ -338,14 +340,13 @@ def checkpoint(
         Output of running :attr:`function` on :attr:`*args`
     """
     if use_reentrant is None:
-        warnings.warn(
+        warn0(
             "torch.utils.checkpoint: the use_reentrant parameter should be "
             "passed explicitly. In version 2.5 we will raise an exception "
             "if use_reentrant is not passed. use_reentrant=False is "
             "recommended, but if you need to preserve the current default "
             "behavior, you can pass use_reentrant=True. Refer to docs for more "
-            "details on the differences between the two variants.",
-            stacklevel=2,
+            "details on the differences between the two variants."
         )
         use_reentrant = True
 

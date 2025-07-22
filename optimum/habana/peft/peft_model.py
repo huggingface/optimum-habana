@@ -1,9 +1,9 @@
-import warnings
-
 import packaging.version
 import torch
 import transformers
 from peft import PeftType
+
+from ..utils import warn0
 
 
 def gaudi_generate(self, *args, **kwargs):
@@ -76,11 +76,11 @@ def gaudi_prepare_inputs_for_generation(self, *args, task_ids: torch.Tensor = No
             model_kwargs["token_idx_cpu"] = token_idx_cpu
 
         if model_kwargs.get("position_ids", None) is not None and token_idx is None:
-            warnings.warn("Position ids are not supported for parameter efficient tuning. Ignoring position ids.")
+            warn0("Position ids are not supported for parameter efficient tuning. Ignoring position ids.")
             model_kwargs["position_ids"] = None
 
         if kwargs.get("token_type_ids", None) is not None:
-            warnings.warn("Token type ids are not supported for parameter efficient tuning. Ignoring token type ids")
+            warn0("Token type ids are not supported for parameter efficient tuning. Ignoring token type ids")
             kwargs["token_type_ids"] = None
 
         if model_kwargs["past_key_values"] is None and peft_config.peft_type == PeftType.PREFIX_TUNING:

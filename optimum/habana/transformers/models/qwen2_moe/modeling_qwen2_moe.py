@@ -20,7 +20,6 @@
 """PyTorch Qwen2MoE model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -43,6 +42,7 @@ from transformers.models.qwen2_moe.modeling_qwen2_moe import (
 )
 from transformers.utils import logging
 
+from ....utils import warn0
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -663,8 +663,9 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         - add new arg flash_attention_fast_softmax
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
