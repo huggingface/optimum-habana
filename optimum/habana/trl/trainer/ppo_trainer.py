@@ -13,7 +13,6 @@
 # limitations under the License.
 import math
 import typing
-import warnings
 from contextlib import nullcontext
 from typing import Callable, List, Optional, Union
 
@@ -52,7 +51,7 @@ from trl.trainer import (
     RunningMoments,
 )
 
-from ...utils import HabanaGenerationTime, set_seed
+from ...utils import HabanaGenerationTime, set_seed, warn0
 from . import GaudiPPOConfig
 
 
@@ -130,7 +129,7 @@ class GaudiPPOTrainer(PPOTrainer):
         if isinstance(ref_model, SUPPORTED_ARCHITECTURES):
             self.ref_model = ref_model.to(self.accelerator.device.type)
             if num_shared_layers is not None:
-                warnings.warn(
+                warn0(
                     "num_shared_layers is ignored when ref_model is provided. Two different models are used for the "
                     "model and the reference model and no layers are shared.",
                     UserWarning,
@@ -159,7 +158,7 @@ class GaudiPPOTrainer(PPOTrainer):
         if dataset is not None and not (isinstance(dataset, torch.utils.data.Dataset) or isinstance(dataset, Dataset)):
             raise ValueError("dataset must be a torch.utils.data.Dataset or datasets.Dataset")
         elif dataset is None:
-            warnings.warn(
+            warn0(
                 "No dataset is provided. Make sure to set config.batch_size to the correct value before training.",
                 UserWarning,
             )
@@ -168,7 +167,7 @@ class GaudiPPOTrainer(PPOTrainer):
         if self.dataset is not None:
             self.dataloader = self.prepare_dataloader(self.dataset, data_collator)
         elif self.dataset is None and self.accelerator.num_processes > 1:
-            warnings.warn(
+            warn0(
                 "No dataset is provided. In a multi-GPU setting, this will lead to an error. You should"
                 " prepare your dataloader yourself with `dataloader = ppo_trainer.accelerator.prepare(dataloader)`"
                 " and using `torch.utils.data.DataLoader`, or pass a dataset to the `PPOTrainer`. Please "

@@ -17,7 +17,6 @@
 ###############################################################################
 import math
 import os
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -27,6 +26,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttenti
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
 
+from ....utils import warn0
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
@@ -340,10 +340,11 @@ def gaudi_bloom_model_forward(
 ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
     if deprecated_arguments.pop("position_ids", False) is not False:
         # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
-        warnings.warn(
+        warn0(
             "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
             " passing `position_ids`.",
-            FutureWarning,
+            category=FutureWarning,
+            state=self.accelerator.state,
         )
     if len(deprecated_arguments) > 0:
         raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
@@ -547,10 +548,11 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         num_items_in_batch = deprecated_arguments.pop("num_items_in_batch", None)
         if deprecated_arguments.pop("position_ids", False) is not False:
             # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
-            warnings.warn(
+            warn0(
                 "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
                 " passing `position_ids`.",
-                FutureWarning,
+                category=FutureWarning,
+                state=self.accelerator.state,
             )
         if len(deprecated_arguments) > 0:
             raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")

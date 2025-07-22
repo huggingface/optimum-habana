@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -14,6 +13,8 @@ from transformers.models.t5.modeling_t5 import __HEAD_MASK_WARNING_MSG
 from transformers.utils import (
     logging,
 )
+
+from ....utils import warn0
 
 
 logger = logging.get_logger(__name__)
@@ -524,7 +525,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     # FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
     if head_mask is not None and decoder_head_mask is None:
         if self.config.num_layers == self.config.num_decoder_layers:
-            warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
+            warn0(__HEAD_MASK_WARNING_MSG, category=FutureWarning, state=self.accelerate.state)
             decoder_head_mask = head_mask
 
     # Encode if needed (training, first prediction pass)
