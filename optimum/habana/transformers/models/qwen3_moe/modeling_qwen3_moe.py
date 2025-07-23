@@ -640,8 +640,7 @@ class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
             from deepspeed import comm as dist
             from deepspeed.module_inject.layers import LinearAllreduce
 
-            LINEAR_ALLREDUCE_TYPE = LinearAllreduce
-            if dist.is_initialized() and any(isinstance(module, LINEAR_ALLREDUCE_TYPE) for _, module in self.named_modules()):
+            if dist.is_initialized() and any(isinstance(module, LinearAllreduce) for _, module in self.named_modules()):
                 dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
         final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)

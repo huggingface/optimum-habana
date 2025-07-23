@@ -564,12 +564,11 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
     )
     final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
 
-    if is_deepspeed_available() and not self.training:
+    if not self.training and is_deepspeed_available():
         from deepspeed import comm as dist
         from deepspeed.module_inject.layers import LinearAllreduce
 
-        LINEAR_ALLREDUCE_TYPE = LinearAllreduce
-        if dist.is_initialized() and any(isinstance(module, LINEAR_ALLREDUCE_TYPE) for _, module in self.named_modules()):
+        if dist.is_initialized() and any(isinstance(module, LinearAllreduce) for _, module in self.named_modules()):
             dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
     shared_expert_output = self.shared_expert(hidden_states)
