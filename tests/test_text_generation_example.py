@@ -231,6 +231,9 @@ def _test_text_generation(
     if "moonlight-16b-a3b" in model_name.lower():
         command += ["--trim_logits", "--trust_remote_code_tokenizer"]
 
+    if "phi-2" in model_name.lower():
+        command += ["--attn_softmax_bf16"]
+
     if (reuse_cache or torch_compile) and not parallel_strategy == "tp" and not is_starcoder_first_gen_model:
         command += ["--reuse_cache"]
 

@@ -343,6 +343,7 @@ class GaudiPhiModel(PhiModel):
         cache_idx: Optional[int] = None,
         lazy_mode: Optional[bool] = True,
         attn_softmax_bf16: Optional[bool] = False,
+        fp8: Optional[bool] = False,
         **kwargs,
     ) -> BaseModelOutputWithPast:
         """
@@ -423,6 +424,7 @@ class GaudiPhiModel(PhiModel):
                 lazy_mode
                 and not self.training
                 and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+                and not fp8  # mark_step impacts fp8 performance
                 and hthpu.get_device_name() != "GAUDI3" # mark_step improves gaudi 2 performance but impacts gaudi 3
             ):
                 htcore.mark_step()
@@ -537,6 +539,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16,
+            fp8=kwargs.get("fp8"),
         )
 
         hidden_states = outputs.last_hidden_state
@@ -637,6 +640,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "fp8": kwargs.get("fp8"),
             }
         )
 

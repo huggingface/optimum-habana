@@ -728,6 +728,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
     generation_config.attn_batch_split = args.attn_batch_split
+    generation_config.fp8 = bool(args.quant_config)
 
     return generation_config
 

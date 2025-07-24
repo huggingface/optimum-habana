@@ -1504,6 +1504,9 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config, model_kwargs, assistant_model, batch_size, max_cache_length, device
         )
 
+        # determine if the model is fp8
+        model_kwargs["fp8"] = generation_config.fp8
+
         # determine whether introduce trim_logits feature
         model_kwargs["trim_logits"] = generation_config.trim_logits
 
