@@ -328,13 +328,10 @@ def main():
         )
     elif is_cogvideo_model:
         del kwargs["scheduler"]
-        pipeline = GaudiCogVideoXImageToVideoPipeline.from_pretrained(
-            args.model_name_or_path,
-            **kwargs
-        )
+        pipeline = GaudiCogVideoXImageToVideoPipeline.from_pretrained(args.model_name_or_path, **kwargs)
         pipeline.vae.enable_tiling()
         pipeline.vae.enable_slicing()
-        generator = generator=torch.Generator(device="cpu").manual_seed(args.seed)
+        generator = generator = torch.Generator(device="cpu").manual_seed(args.seed)
         outputs = pipeline(
             image=input,
             prompt=args.prompts,

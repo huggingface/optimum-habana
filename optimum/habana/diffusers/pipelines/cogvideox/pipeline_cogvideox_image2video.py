@@ -13,10 +13,10 @@
 # limitations under the License.
 
 import math
-from typing import Callable, Dict, List, Optional, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Union
 
-import torch
 import habana_frameworks.torch.core as htcore
+import torch
 from diffusers import CogVideoXImageToVideoPipeline
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
@@ -28,23 +28,24 @@ from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from transformers import T5EncoderModel, T5Tokenizer
 
+from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+
 from ...models.attention_processor import CogVideoXAttnProcessorGaudi
 from ...models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3dforwardGaudi, tiled_decode_gaudi
 from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
-from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-setattr(CogVideoXCausalConv3d, 'forward', CogVideoXCausalConv3dforwardGaudi)
-setattr(AutoencoderKLCogVideoX, 'tiled_decode', tiled_decode_gaudi)
+setattr(CogVideoXCausalConv3d, "forward", CogVideoXCausalConv3dforwardGaudi)
+setattr(AutoencoderKLCogVideoX, "tiled_decode", tiled_decode_gaudi)
 
 
 class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageToVideoPipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.33.1/src/diffusers/pipelines/cogvideo/pipeline_cogvideox_image2video.py#L156
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.34.0/src/diffusers/pipelines/cogvideo/pipeline_cogvideox_image2video.py#L164
     """
 
     def __init__(
@@ -81,6 +82,7 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
 
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
             self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
 
     def enable_model_cpu_offload(self, *args, **kwargs):
@@ -307,7 +309,9 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                    latent_image_input = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+                    latent_image_input = (
+                        torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+                    )
                     latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -326,16 +330,18 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
                     # perform guidance
                     if use_dynamic_cfg:
                         self._guidance_scale = 1 + guidance_scale * (
-                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0))
+                            / 2
                         )
                     if do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-
                     # compute the previous noisy sample x_t -> x_t-1
                     if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[
+                            0
+                        ]
                     else:
                         latents, old_pred_original_sample = self.scheduler.step(
                             noise_pred,
@@ -362,13 +368,12 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                 if not self.use_hpu_graphs:
                     htcore.mark_step()
 
-        #HabanaProfile.stop()
+        # HabanaProfile.stop()
         if not output_type == "latent":
             # Discard any padding frames that were added for CogVideoX 1.5
             latents = latents[:, additional_frames:]
@@ -386,7 +391,9 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
         return CogVideoXPipelineOutput(frames=video)
 
     @torch.no_grad()
-    def transformer_hpu(self, latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb, attention_kwargs):
+    def transformer_hpu(
+        self, latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb, attention_kwargs
+    ):
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb)
         else:
@@ -402,7 +409,14 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
 
     @torch.no_grad()
     def capture_replay(self, latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb):
-        inputs = [latent_model_input.clone(), prompt_embeds.clone(), timestep.clone(), ofs_emb, image_rotary_emb, False]
+        inputs = [
+            latent_model_input.clone(),
+            prompt_embeds.clone(),
+            timestep.clone(),
+            ofs_emb,
+            image_rotary_emb,
+            False,
+        ]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
@@ -413,12 +427,12 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
                 graph.capture_begin()
                 outputs = self.transformer(
                     self.transformer,
-                    hidden_states = inputs[0],
-                    encoder_hidden_states = inputs[1],
+                    hidden_states=inputs[0],
+                    encoder_hidden_states=inputs[1],
                     timestep=inputs[2],
                     ofs=inputs[3],
                     image_rotary_emb=inputs[4],
-                    return_dict=inputs[5]
+                    return_dict=inputs[5],
                 )[0]
                 graph.capture_end()
                 graph_inputs = inputs

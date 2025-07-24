@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple, Union
 
 import torch
 
@@ -33,5 +32,5 @@ class RotaryPosEmbedding(torch.autograd.Function):
     @staticmethod
     def backward(ctx, x_grad_in):
         (cos, sin) = ctx.saved_tensors
-        x_embed_grad =torch.ops.hpu.rotary_pos_embedding_backward(x_grad_in, sin, cos, None, 0, 1)
+        x_embed_grad = torch.ops.hpu.rotary_pos_embedding_backward(x_grad_in, sin, cos, None, 0, 1)
         return x_embed_grad, None

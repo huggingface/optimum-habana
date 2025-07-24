@@ -261,7 +261,7 @@ class CogVideoXAttnProcessorGaudi:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = RotaryPosEmbedding.apply(key[:, :, text_seq_length:], image_rotary_emb)
 
-        softmax_mode = 'None' if attn.training else 'fast'
+        softmax_mode = "None" if attn.training else "fast"
         hidden_states = self.fused_scaled_dot_product_attention(
             query,
             key,

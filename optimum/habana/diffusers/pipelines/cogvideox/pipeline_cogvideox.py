@@ -84,6 +84,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
 
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
             self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
 
     def enable_model_cpu_offload(self, *args, **kwargs):

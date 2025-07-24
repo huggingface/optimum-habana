@@ -98,8 +98,8 @@ from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
-    GaudiCogVideoXPipeline,
     GaudiCogVideoXImageToVideoPipeline,
+    GaudiCogVideoXPipeline,
     GaudiDDIMScheduler,
     GaudiDDPMPipeline,
     GaudiDiffusionPipeline,
@@ -4264,6 +4264,7 @@ class GaudiCogVideoXPipelineTester(TestCase):
         prompts = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
         return prompts
 
+    @slow
     def test_cogvideoX_default_case(self):
         gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
         gaudi_config_kwargs["use_torch_autocast"] = True
@@ -4287,6 +4288,7 @@ class GaudiCogVideoXPipelineTester(TestCase):
 
         self.assertIsNotNone(video)
         self.assertEqual(49, len(video))
+
 
 class GaudiCogVideoXImageToVideoPipelineTester(TestCase):
     """
@@ -4397,6 +4399,7 @@ class GaudiCogVideoXImageToVideoPipelineTester(TestCase):
         prompts = "Rocket is rising."
         return prompts
 
+    @slow
     def test_cogvideoX_default_case(self):
         gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
         gaudi_config_kwargs["use_torch_autocast"] = True
@@ -4408,7 +4411,9 @@ class GaudiCogVideoXImageToVideoPipelineTester(TestCase):
         components["gaudi_config"] = gaudi_config
 
         prompts = self.get_dummy_inputs()
-        image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
+        image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"
+        )
         cogVideoX_pipe = GaudiCogVideoXImageToVideoPipeline(**components)
         video = cogVideoX_pipe(
             image=image,
