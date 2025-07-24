@@ -47,7 +47,7 @@ $ pip install -U -r requirements.txt
 2. Supervised fine-tuning of the mistralai/Mixtral-8x7B-Instruct-v0.1 on 4 cards:
 
     ```bash
-    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
+    PT_HPU_LAZY_MODE=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 4 --use_deepspeed sft.py \
         --model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
@@ -89,7 +89,7 @@ steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
     ```bash
-    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
+    PT_HPU_LAZY_MODE=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
@@ -121,7 +121,7 @@ steps like:
 
 2. Run the DPO trainer using the model saved by the previous step:
     ```bash
-    PT_HPU_LAZY_MODE=1 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
+    PT_HPU_LAZY_MODE=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
         --model_name_or_path="sft/final_merged_checkpoint" \
         --tokenizer_name_or_path=meta-llama/Llama-2-70b-hf \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
