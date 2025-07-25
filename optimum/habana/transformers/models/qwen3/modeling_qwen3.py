@@ -1287,4 +1287,3 @@ class GaudiQwen3ForTokenClassification(Qwen3ForTokenClassification):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-    
