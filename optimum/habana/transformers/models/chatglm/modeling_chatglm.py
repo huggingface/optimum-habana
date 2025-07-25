@@ -22,7 +22,6 @@ import copy
 import json
 import math
 import os
-import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -43,6 +42,7 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import logging
 
+from ....utils import warn0
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_chatglm import ChatGLMConfig
 
@@ -1697,11 +1697,12 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         if has_default_max_length and generation_config.max_new_tokens is None:
-            warnings.warn(
+            warn0(
                 f"Using `max_length`'s default ({generation_config.max_length}) to control the generation length. "
                 "This behaviour is deprecated and will be removed from the config in v5 of Transformers -- we"
                 " recommend using `max_new_tokens` to control the maximum length of the generation.",
-                UserWarning,
+                category=UserWarning,
+                state=self.accelerator.state,
             )
         elif generation_config.max_new_tokens is not None:
             generation_config.max_length = generation_config.max_new_tokens + input_ids_seq_length

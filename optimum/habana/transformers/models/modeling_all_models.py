@@ -14,12 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from typing import Tuple
 
 import torch
 from transformers.modeling_utils import ModuleUtilsMixin, PretrainedConfig
 from transformers.utils.import_utils import is_torch_sdpa_available
+
+from ...utils import warn0
 
 
 try:
@@ -147,8 +148,10 @@ def gaudi_get_extended_attention_mask(
     if not (attention_mask.dim() == 2 and self.config.is_decoder):
         # show warning only if it won't be shown in `create_extended_attention_mask_for_decoder`
         if device is not None:
-            warnings.warn(
-                "The `device` argument is deprecated and will be removed in v5 of Transformers.", FutureWarning
+            warn0(
+                "The `device` argument is deprecated and will be removed in v5 of Transformers.",
+                category=FutureWarning,
+                state=self.accelerator.state,
             )
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
