@@ -34,6 +34,7 @@ def cogvideoXTransformerForwardGaudi(
     encoder_hidden_states: torch.Tensor,
     timestep: Union[int, float, torch.LongTensor],
     timestep_cond: Optional[torch.Tensor] = None,
+    ofs: Optional[Union[int, float, torch.LongTensor]] = None,
     image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
@@ -67,6 +68,12 @@ def cogvideoXTransformerForwardGaudi(
     # there might be better ways to encapsulate this.
     t_emb = t_emb.to(dtype=hidden_states.dtype)
     emb = self.time_embedding(t_emb, timestep_cond)
+
+    if self.ofs_embedding is not None:
+        ofs_emb = self.ofs_proj(ofs)
+        ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+        ofs_emb = self.ofs_embedding(ofs_emb)
+        emb = emb + ofs_emb
 
     # 2. Patch embedding
     hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
@@ -124,8 +131,17 @@ def cogvideoXTransformerForwardGaudi(
     #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
     #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
     p = self.config.patch_size
-    output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
-    output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+    p_t = self.config.patch_size_t
+
+    if p_t is None:
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+    else:
+        # For CogVideoX 1.5
+        output = hidden_states.reshape(
+            batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
+        )
+        output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
 
     if USE_PEFT_BACKEND:
         # remove `lora_scale` from each PEFT layer
