@@ -17,7 +17,6 @@
 import copy
 import inspect
 import math
-import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -75,7 +74,7 @@ from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_
 
 from optimum.utils import logging
 
-from ...utils import HabanaGenerationTime, HabanaProfile
+from ...utils import HabanaGenerationTime, HabanaProfile, warn0
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
@@ -931,7 +930,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 new_generation_config = GaudiGenerationConfig.from_model_config(self.config)
                 if new_generation_config != self.generation_config:  # 4)
-                    warnings.warn(
+                    warn0(
                         "You have modified the pretrained model configuration to control generation. This is a"
                         " deprecated strategy to control generation and will be removed in v5."
                         " Please use and modify the model generation configuration (see"
@@ -1045,7 +1044,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # Quick escape route 3: model that only supports legacy caches = nothing to prepare
         if not self._supports_default_dynamic_cache():
             if generation_config.cache_implementation is not None:
-                warnings.warn(
+                warn0(
                     "This model does not support `Cache` instances, it only supports the legacy cache format (tuple "
                     f"of tuples). `cache_implementation` (set to {generation_config.cache_implementation}) will be "
                     "ignored.",
@@ -1596,7 +1595,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         if self.device.type != input_ids.device.type:
-            warnings.warn(
+            warn0(
                 (
                     "You are calling .generate() with the `input_ids` being on a device type different"
                     f" than your model's device. `input_ids` is on {input_ids.device.type}, whereas the model"
