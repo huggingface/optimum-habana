@@ -20,13 +20,12 @@
 import argparse
 from typing import Literal, Optional
 
-from lm_eval.models.huggingface import HFLM, TemplateLM
-
 import torch
 import torch.nn.functional as F
-
+from lm_eval.models.huggingface import HFLM, TemplateLM
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
+
 
 class HabanaModelAdapter(HFLM):
     def __init__(
@@ -182,4 +181,3 @@ class HabanaModelAdapter(HFLM):
         if self.delta:
             model_info["delta_sha"] = get_model_sha(self.delta, self.revision)
         return model_info
-

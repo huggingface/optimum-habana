@@ -22,7 +22,6 @@ import json
 import logging
 import multiprocessing as mp
 import os
-from typing import Literal, Optional
 
 import psutil
 
@@ -99,10 +98,8 @@ def main() -> None:
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
-    from lm_eval import evaluator, utils
-
     import torch
-    import torch.nn.functional as F
+    from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter
 
     with torch.no_grad():
