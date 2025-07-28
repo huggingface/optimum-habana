@@ -102,11 +102,17 @@
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen3-8B-1-False-False]": {
     "gaudi2": {
       "throughput": 101.78595453711921
+    },
+    "gaudi3": {
+      "throughput": 116.34827870142529
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Qwen/Qwen3-30B-A3B-1-False-False]": {
     "gaudi2": {
       "throughput": 23.27712445319976
+    },
+    "gaudi3": {
+      "throughput": 33.75449762678064
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[Salesforce/codegen2-1B-1-False-False]": {
