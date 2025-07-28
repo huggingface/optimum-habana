@@ -1,0 +1,8 @@
+trl == 0.17.0
+peft == 0.12.0
+datasets
+tyro
+evaluate
+scikit-learn == 1.5.2
+accelerate
+math_verify
