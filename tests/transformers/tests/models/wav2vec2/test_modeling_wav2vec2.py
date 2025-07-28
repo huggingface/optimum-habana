@@ -30,7 +30,6 @@ from transformers import Wav2Vec2Config, is_torch_available
 from transformers.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
-    is_pt_flax_cross_test,
     is_pyctcdecode_available,
     is_torchaudio_available,
     require_flash_attn,
@@ -509,16 +508,6 @@ class Wav2Vec2ModelTest(ModelTesterMixin, unittest.TestCase):
     # and thus the `get_input_embeddings` fn
     # is not implemented
     def test_model_common_attributes(self):
-        pass
-
-    @is_pt_flax_cross_test
-    @unittest.skip(reason="Non-rubst architecture does not exist in Flax")
-    def test_equivalence_flax_to_pt(self):
-        pass
-
-    @is_pt_flax_cross_test
-    @unittest.skip(reason="Non-rubst architecture does not exist in Flax")
-    def test_equivalence_pt_to_flax(self):
         pass
 
     def test_retain_grad_hidden_states_attentions(self):
