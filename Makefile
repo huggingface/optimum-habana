@@ -162,10 +162,14 @@ slow_tests_video_llava_example: test_installs
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
-slow_tests_trl: test_installs
+slow_tests_trl_ddpo: test_installs
 	python -m pip install trl==0.9.6
 	python -m pip install peft==0.15.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
+
+slow_tests_trl_grpo: test_installs
+	python -m pip install -r examples/trl/requirements_grpo.txt
+	python -m pytest tests/test_trl.py -v -s -k "GaudiGRPOTrainerTester"
 
 slow_tests_object_segmentation: test_installs
 	python -m pytest tests/test_object_segmentation.py
