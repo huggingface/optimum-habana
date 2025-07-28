@@ -20,16 +20,7 @@ This directory contains the scripts that showcase how to inference/fine-tune the
 
 ## Requirements
 
-First, you should install the pytorch-image-models (Timm):
-
-```bash
-git clone https://github.com/huggingface/pytorch-image-models.git
-cd pytorch-image-models
-pip install .
-cd ..
-```
-
-Then install the remaning requirements
+First, you should install the requirements:
 
 ```bash
 pip install -r requirements.txt
