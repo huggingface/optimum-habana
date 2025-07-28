@@ -4,8 +4,72 @@
 ## Requirements
 
 First, you should install the requirements:
+
+- For **GRPO example**:
+```bash
+$ pip install -U -r requirements_grpo.txt
+```
+
+- For **all other examples**:
 ```bash
 $ pip install -U -r requirements.txt
+```
+
+## GRPO Training
+
+Installing DeepSpeed
+
+```sh
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
+```
+
+Running single card training
+
+```sh
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 grpo.py \
+    --model_name_or_path Qwen/Qwen2-0.5B-Instruct \
+    --dataset_name AI-MO/NuminaMath-TIR \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --bf16 True \
+    --gradient_accumulation_steps=16 \
+    --max_prompt_length 512 \
+    --num_generations 4 \
+    --max_completion_length 64 \
+    --use_peft True \
+    --lora_target_modules q_proj k_proj \
+    --num_train_epochs 1 \
+    --save_strategy="epoch"
+```
+
+
+Runnig multi-card training
+
+```sh
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --world_size 8 --use_deepspeed grpo.py \
+    --model_name_or_path Qwen/Qwen2-0.5B-Instruct \
+    --dataset_name AI-MO/NuminaMath-TIR \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --bf16 True \
+    --gradient_accumulation_steps=16 \
+    --gradient_checkpointing \
+    --max_prompt_length 512 \
+    --num_generations 4 \
+    --max_completion_length 64 \
+    --use_peft True \
+    --lora_target_modules q_proj k_proj \
+    --max_steps=500 \
+    --logging_steps=10 \
+    --save_steps=100
 ```
 
 ## Supervised Finetuning

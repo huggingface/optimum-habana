@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib.metadata
 import inspect
 from collections import defaultdict
 from contextlib import nullcontext
@@ -23,6 +24,7 @@ import torch.nn as nn
 from accelerate import PartialState
 from accelerate.utils import is_deepspeed_available
 from datasets import Dataset
+from packaging import version
 from transformers import (
     AutoModelForCausalLM,
     DataCollator,
@@ -33,12 +35,10 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_VISION_2_SEQ_MAPPIN
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 from trl import DPOTrainer, create_reference_model
-from trl.import_utils import is_peft_available, is_wandb_available
 from trl.trainer.dpo_config import FDivergenceConstants
 from trl.trainer.utils import (
     DPODataCollatorWithPadding,
     RunningMoments,
-    SyncRefModelCallback,
     disable_dropout_in_model,
     pad_to_length,
 )
@@ -46,6 +46,16 @@ from trl.trainer.utils import (
 from ... import GaudiConfig, GaudiTrainer
 from ...utils import warn0
 from .dpo_config import GaudiDPOConfig
+
+
+trl_version = importlib.metadata.version("trl")
+if version.parse(trl_version) < version.parse("0.17.0"):
+    from trl.import_utils import is_peft_available, is_wandb_available
+    from trl.trainer.utils import SyncRefModelCallback
+else:
+    from transformers import is_wandb_available
+    from transformers.utils import is_peft_available
+    from trl.trainer.callbacks import SyncRefModelCallback
 
 
 if is_peft_available():
