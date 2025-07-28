@@ -25,7 +25,6 @@ import os
 import random
 import shutil
 import time
-import warnings
 from contextlib import nullcontext
 from math import ceil
 from pathlib import Path
@@ -66,7 +65,7 @@ from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiStableDiffusion3Pipeline
 from optimum.habana.diffusers.models.attention_processor import GaudiJointAttnProcessor2_0
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
+from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded, warn0
 
 
 if is_wandb_available():
@@ -692,9 +691,9 @@ def parse_args(input_args=None):
     else:
         # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
+            warn0("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
+            warn0("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
