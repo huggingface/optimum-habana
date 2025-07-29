@@ -830,43 +830,44 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
 
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs: MoeModelOutputWithPast = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            output_router_logits=output_router_logits,
-            cache_position=cache_position,
-            token_idx=token_idx,
-            reuse_cache=reuse_cache,
-            flash_attention_recompute=flash_attention_recompute,
-            cache_idx=cache_idx,
-        )
-
-        hidden_states = outputs.last_hidden_state
-        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
-
-        loss = None
-        if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
-
-        aux_loss = None
-        if output_router_logits:
-            aux_loss = load_balancing_loss_func(
-                outputs.router_logits,
-                self.num_experts,
-                self.num_experts_per_tok,
-                attention_mask,
+        with torch.inference_mode(not self.training):
+            # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+            outputs: MoeModelOutputWithPast = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                output_router_logits=output_router_logits,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                flash_attention_recompute=flash_attention_recompute,
+                cache_idx=cache_idx,
             )
+
+            hidden_states = outputs.last_hidden_state
+            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
+
+            loss = None
             if labels is not None:
-                loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
+                loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+
+            aux_loss = None
+            if output_router_logits:
+                aux_loss = load_balancing_loss_func(
+                    outputs.router_logits,
+                    self.num_experts,
+                    self.num_experts_per_tok,
+                    attention_mask,
+                )
+                if labels is not None:
+                    loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
 
         return MoeCausalLMOutputWithPast(
             loss=loss,
