@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import torch
 from torch import nn
+from transformers.activations import ACT2FN
 from transformers.models.mamba.configuration_mamba import MambaConfig
 from transformers.models.mamba.modeling_mamba import (
     MambaCache,
@@ -13,14 +14,7 @@ from transformers.utils import (
 
 
 logger = logging.get_logger(__name__)
-
-is_fast_path_available = False
-
-#TODO: Should we always use custom kernel or have an arg for it?
 use_pscan_kernel = True
-# if os.path.exists(custom_op_lib_path) and env_variables["GC_KERNEL_PATH"] != default_path:
-#     use_pscan_kernel = True
-
 
 def Run_Mamba_Forward_Gaudi(in_state, in_x, in_dt, in_A, in_B, in_C, in_D, in_z):
     in_state_h = in_state.unsqueeze(1).transpose(2, 3)
@@ -32,14 +26,8 @@ def Run_Mamba_Forward_Gaudi(in_state, in_x, in_dt, in_A, in_B, in_C, in_D, in_z)
     in_D_h = in_D.unsqueeze(0).unsqueeze(1).unsqueeze(2)
     in_z_h = in_z.transpose(1, 2).unsqueeze(2)
 
-    if in_state.dtype == torch.float:
-        state_out_h = torch.ops.hpu.mamba_pscan(in_state_h, in_x_h, in_dt_h, in_A_h, in_B_h)
-        output_h = torch.ops.hpu.mamba_pscan_update(state_out_h, in_x_h, in_C_h, in_D_h, in_z_h)
-
-    else:
-        in_A_h = in_A_h.to(torch.bfloat16)
-        state_out_h = torch.ops.hpu.mamba_pscan_bf16(in_state_h, in_x_h, in_dt_h, in_A_h, in_B_h)
-        output_h = torch.ops.hpu.mamba_pscan_update_bf16(state_out_h, in_x_h, in_C_h, in_D_h, in_z_h)
+    state_out_h = torch.ops.hpu.mamba_pscan(in_state_h, in_x_h, in_dt_h, in_A_h, in_B_h)
+    output_h = torch.ops.hpu.mamba_pscan_update(state_out_h, in_x_h, in_C_h, in_D_h, in_z_h)
 
     output_hpu = output_h.squeeze(2).transpose(1, 2)
     state_hpu = state_out_h.transpose(2, 3)
@@ -195,13 +183,6 @@ class gaudi_MambaMixer(nn.Module):
         self.D = nn.Parameter(torch.ones(self.intermediate_size))
         self.out_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=config.use_bias)
         self.use_bias = config.use_bias
-
-        if not is_fast_path_available:
-            logger.warning_once(
-                "The fast path is not available because one of `(selective_state_update, selective_scan_fn, causal_conv1d_fn, causal_conv1d_update, mamba_inner_fn)`"
-                " is None. Falling back to the sequential implementation of Mamba, as use_mambapy is set to False. To install follow https://github.com/state-spaces/mamba/#installation and"
-                " https://github.com/Dao-AILab/causal-conv1d. For the mamba.py backend, follow https://github.com/alxndrTL/mamba.py."
-            )
 
     # fmt: off
     def slow_forward(self, input_states, cache_params: Optional[MambaCache]=None, cache_position:Optional[torch.LongTensor]=None, attention_mask: Optional[torch.LongTensor] = None):
