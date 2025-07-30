@@ -245,7 +245,6 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
             activation="silu",
             experts_min=self.experts_min,
             experts_max=self.experts_max,
-            recomp=self.training,
         )
 
         if not self.training:
