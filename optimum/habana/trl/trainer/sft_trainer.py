@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import dataclasses
+import importlib.metadata
 import inspect
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -22,6 +23,7 @@ import torch
 import torch.nn as nn
 from accelerate import PartialState
 from datasets import Dataset
+from packaging import version
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -35,20 +37,27 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
-from trl.import_utils import is_peft_available
-from trl.trainer.utils import (
-    ConstantLengthDataset,
-    DataCollatorForCompletionOnlyLM,
-    RichProgressCallback,
-)
-
-
-if is_peft_available():
-    from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from ... import GaudiConfig, GaudiTrainer
 from ...utils import warn0
 from .sft_config import GaudiSFTConfig
+
+
+trl_version = importlib.metadata.version("trl")
+if version.parse(trl_version) < version.parse("0.17.0"):
+    from trl.import_utils import is_peft_available
+    from trl.trainer.utils import (
+        ConstantLengthDataset,
+        DataCollatorForCompletionOnlyLM,
+        RichProgressCallback,
+    )
+else:
+    from transformers.utils import is_peft_available
+    from trl.trainer.callbacks import RichProgressCallback
+    from trl.trainer.utils import ConstantLengthDataset, DataCollatorForCompletionOnlyLM
+
+if is_peft_available():
+    from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 
 class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
