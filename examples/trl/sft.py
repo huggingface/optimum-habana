@@ -16,6 +16,7 @@ from transformers.integrations.deepspeed import (
 )
 
 from optimum.habana import GaudiConfig
+from optimum.habana.distributed import apply_zero3_leaf_promotion
 from optimum.habana.trl import GaudiSFTConfig, GaudiSFTTrainer
 from optimum.habana.utils import set_seed
 
@@ -142,11 +143,13 @@ if __name__ == "__main__":
         return train_data, valid_data, formating_func
 
     low_cpu_mem_usage = True
+    is_deepspeed_zero3_enabled = False
     if is_deepspeed_available():
-        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled as ds_zero3_flag
 
-        if is_deepspeed_zero3_enabled():
+        if ds_zero3_flag():
             low_cpu_mem_usage = False
+            is_deepspeed_zero3_enabled = True
 
     base_model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
@@ -163,6 +166,12 @@ if __name__ == "__main__":
     base_model.generation_config.use_flash_attention = script_args.use_flash_attention
     base_model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
     base_model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
+
+    apply_zero3_leaf_promotion(
+        base_model,
+        is_deepspeed_zero3_enabled=is_deepspeed_zero3_enabled,
+        use_zero3_leaf_promotion=training_args.use_zero3_leaf_promotion,
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
