@@ -28,8 +28,6 @@ from itertools import cycle
 from pathlib import Path
 
 import pandas as pd
-import torch
-from transformers import BatchEncoding
 from utils import (
     SetTrueOrFalseOrNone,
     adjust_batch,
@@ -505,6 +503,8 @@ def main():
     args = setup_parser(parser)
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
+    import torch
+
     use_lazy_mode = True
     if args.torch_compile or args.pt2e_path:
         use_lazy_mode = False
@@ -755,6 +755,8 @@ def main():
 
         def generate(size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            from transformers import BatchEncoding
+
             profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
