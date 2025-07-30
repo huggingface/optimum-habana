@@ -4,6 +4,7 @@ import torch
 
 from .distributed_runner import DistributedRunner
 from .fast_ddp import all_reduce_gradients
+from .zero3_utils import apply_zero3_leaf_promotion
 
 
 def rank_and_world(group=None):
