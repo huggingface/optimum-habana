@@ -55,6 +55,7 @@ class GaudiFP8Linear(nn.Module):
         )
 
         self.block_size = block_size
+        self.custom_name = "gaudi_fp8_linear"
 
         self.activation_scheme = activation_scheme
 
@@ -64,7 +65,7 @@ class GaudiFP8Linear(nn.Module):
             self.register_parameter("bias", None)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.linear(input, self.weight, self.bias)
+        return F.linear(input, self.get_dequant_weight(), self.bias)
 
     def pad_weight_naive(self):
         # Pad weight to block dimensions
@@ -163,7 +164,7 @@ def replace_with_fp8_linear(
     quantization_config=None,
 ):
     """Helper function to replace model layers with FP8 versions."""
-    modules_to_not_convert = ["lm_head", "kv_b_proj"] if modules_to_not_convert is None else modules_to_not_convert
+    modules_to_not_convert = ["lm_head"] if modules_to_not_convert is None else modules_to_not_convert
 
     if quantization_config.modules_to_not_convert is not None:
         modules_to_not_convert.extend(quantization_config.modules_to_not_convert)
