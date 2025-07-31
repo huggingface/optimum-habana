@@ -62,16 +62,13 @@ from transformers.utils import (
 from ....distributed.tensorparallel import _all_reduce
 from ....utils import warn0
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
-from ..modeling_all_models import apply_customized_rope_module
+from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_deepseek_v3 import DeepseekV3Config
 
 
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekV3Config"
-
-# Maximum number of experts supported by dynamic MoE op (mixture_of_experts)
-SLICE_MAX_EXPERT = int(os.getenv("SLICE_MAX_EXPERT", "80"))
 
 # import hpu fused ops
 try:
@@ -526,20 +523,23 @@ class GaudiDeepseekV3MoE(nn.Module):
         # num_experts used during quantization with neural compressor
         self.num_experts = config.n_routed_experts
         self.num_experts_per_tok = config.num_experts_per_tok
+        self.num_experts = config.n_routed_experts # Added to support INC FP8 quantization
 
         if hasattr(config, "ep_size") and config.ep_size > 1:
             assert config.ep_size == dist.get_world_size()
             self.ep_size = config.ep_size
             self.experts_per_rank = config.n_routed_experts // config.ep_size
             self.ep_rank = dist.get_rank()
+            self.experts_min = self.experts_per_rank * self.ep_rank
+            self.experts_max = self.experts_per_rank * (self.ep_rank + 1) - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
             self.experts = nn.ModuleList(
                 [
                     (
-                        GaudiDeepseekV3MLP(
+                        (GaudiDeepseekV3MLP(
                             config, intermediate_size=config.moe_intermediate_size, add_dummy_quant_input=True
-                        )
-                        if i >= self.ep_rank * self.experts_per_rank and i < (self.ep_rank + 1) * self.experts_per_rank
-                        else None
+                        ) if i in self.experts_range else None)
+                        for i in range(self.num_experts)
                     )
                     for i in range(config.n_routed_experts)
                 ]
@@ -548,6 +548,9 @@ class GaudiDeepseekV3MoE(nn.Module):
             self.ep_size = 1
             self.experts_per_rank = config.n_routed_experts
             self.ep_rank = 0
+            self.experts_min = 0
+            self.experts_max = config.n_routed_experts - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
             self.experts = nn.ModuleList(
                 [
                     GaudiDeepseekV3MLP(
@@ -562,9 +565,6 @@ class GaudiDeepseekV3MoE(nn.Module):
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = GaudiDeepseekV3MLP(config=config, intermediate_size=intermediate_size)
 
-        # Slice experts for max experts supported by fused dynamic mixture_of_experts op
-        self.expert_slice = math.ceil(self.experts_per_rank / SLICE_MAX_EXPERT)
-        self.expert_chunk = math.ceil(self.experts_per_rank / self.expert_slice)
 
     def forward(self, hidden_states):
         identity = hidden_states
@@ -605,16 +605,11 @@ class GaudiDeepseekV3MoE(nn.Module):
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
             htcore.mark_step()
-            # changes to support hpu fused dynamic MoE op -- replacement for moe_infer()
-            # loop through expert slices due to limits on max. experts supported by mixture_of_experts op
-            for idx in range(self.expert_slice):
-                experts_min = (self.ep_rank * self.experts_per_rank) + (self.expert_chunk * idx)
-                experts_max = min((experts_min + self.expert_chunk), (self.ep_rank + 1) * self.experts_per_rank)
-                hidden_states_slice = self.call_dynamic_moe_op(
-                    hidden_states, topk_idx, topk_weight, experts_min, experts_max
-                )
-                final_hidden_states = final_hidden_states + hidden_states_slice
-                htcore.mark_step()
+            final_hidden_states = self.call_dynamic_moe_op(
+                hidden_states=hidden_states,
+                expert_routing_table=topk_idx,
+                router_weights=topk_weight,
+            )
 
             if self.ep_size > 1:
                 final_hidden_states = _all_reduce(final_hidden_states)
@@ -632,33 +627,29 @@ class GaudiDeepseekV3MoE(nn.Module):
 
         return final_hidden_states
 
-    def call_dynamic_moe_op(self, hidden_states, topk_idx, topk_weight, experts_min, experts_max):
-        experts_range = range(experts_min, experts_max)
-        gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
-        down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
-        up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in experts_range]
+    def call_dynamic_moe_op(
+        self,
+        hidden_states,
+        expert_routing_table,
+        router_weights,
+    ):
+        # pre-processing for custom op inputs
+        gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in self.experts_range]
+        down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in self.experts_range]
+        up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in self.experts_range]
 
         return torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states.to(torch.bfloat16),
-            expert_routing_table=topk_idx,
-            router_weights=topk_weight,
+            hidden_states=hidden_states,
+            expert_routing_table=expert_routing_table,
+            router_weights=router_weights,
             w1=gate_proj_list,
             w2=up_proj_list,
             w3=down_proj_list,
             permuted_weights=True,
             activation="silu",
-            experts_min=experts_min,
-            experts_max=experts_max - 1,
+            experts_min=self.experts_min,
+            experts_max=self.experts_max,
         )
-
-
-# Functional apis need to be wrapped in classes for quantization on hpu
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, y):
-        return torch.matmul(x, y)
 
 
 def gaudi_deepseekv3_repeat_kv(
