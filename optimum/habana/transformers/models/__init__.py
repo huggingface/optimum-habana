@@ -177,8 +177,10 @@ from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
 from .llava_onevision import GaudiLlavaOnevisionForConditionalGeneration
 from .mamba import (
+    gaudi_MambaCache_update_conv_state,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+    gaudi_MambaMixer,
 )
 from .minicpm import MiniCPM3Config, MiniCPM3ForCausalLM
 from .mistral import (
