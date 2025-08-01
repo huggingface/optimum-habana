@@ -160,7 +160,7 @@ slow_tests_video_llava_example: test_installs
 	python -m pytest tests/test_video_llava.py
 
 slow_tests_fsdp: test_installs
-	python -m pip install tensorboard == 2.19.0
+	python -m pip install tensorboard==2.19.0
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 slow_tests_trl_ddpo: test_installs
