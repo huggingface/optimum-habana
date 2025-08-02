@@ -141,7 +141,7 @@ class HabanaModelAdapter(HFLM):
     @property
     def max_length(self) -> int:
         # Legacy
-        return self._max_length if self._max_length else self.buckets[-2]
+        return self._max_length if self._max_length else self.buckets[-1]
 
     @property
     def device(self):
