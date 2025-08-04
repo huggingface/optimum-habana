@@ -14,6 +14,7 @@
 
 import torch
 from typing import Any, Callable, Dict, List, Optional, Union
+import types
 from diffusers.pipelines.wan.pipeline_wan import WanPipeline
 from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -29,6 +30,7 @@ from transformers import AutoTokenizer
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile
 from ...models.attention_processor import GaudiWanAttnProcessor
+from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -111,10 +113,12 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             expand_timesteps=expand_timesteps,
         )
         self.to(self._device)
+        self.transformer.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer)
         for block in self.transformer.blocks:
             block.attn1.processor = GaudiWanAttnProcessor(is_training)
             block.attn2.processor = GaudiWanAttnProcessor(is_training)
         if self.transformer_2 is not None:
+            self.transformer_2.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer_2)
             for block in self.transformer_2.blocks:
                 block.attn1.processor = GaudiWanAttnProcessor(is_training)
                 block.attn2.processor = GaudiWanAttnProcessor(is_training)
@@ -122,9 +126,9 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            transformer = wrap_in_hpu_graph(transformer)
+            self.transformer = wrap_in_hpu_graph(transformer)
             if self.transformer_2 is not None:
-                transformer_2 = wrap_in_hpu_graph(transformer_2)
+                self.transformer_2 = wrap_in_hpu_graph(transformer_2)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
