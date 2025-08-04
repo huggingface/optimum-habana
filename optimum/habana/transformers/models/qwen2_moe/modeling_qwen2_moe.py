@@ -47,6 +47,7 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
+from functools import lru_cache
 
 
 try:
@@ -526,6 +527,16 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
+@lru_cache(None)
+def _is_deepspeed_initialized(self) -> bool:
+    if not is_deepspeed_available():
+        return False
+    from deepspeed import comm as dist
+    from deepspeed.module_inject.layers import LinearAllreduce
+    return (
+        dist.is_initialized() and
+        any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
+    )
 
 def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -564,12 +575,9 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
     )
     final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
 
-    if not self.training and is_deepspeed_available():
+    if not self.training and _is_deepspeed_initialized(self):
         from deepspeed import comm as dist
-        from deepspeed.module_inject.layers import LinearAllreduce
-
-        if dist.is_initialized() and any(isinstance(module, LinearAllreduce) for _, module in self.named_modules()):
-            dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
+        dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
     shared_expert_output = self.shared_expert(hidden_states)
 
