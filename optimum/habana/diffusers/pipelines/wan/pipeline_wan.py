@@ -31,6 +31,7 @@ from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile
 from ...models.attention_processor import GaudiWanAttnProcessor
 from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
+from ...models.autoencoders.autoencoder_kl_wan import WanDecoder3dForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -122,6 +123,7 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             for block in self.transformer_2.blocks:
                 block.attn1.processor = GaudiWanAttnProcessor(is_training)
                 block.attn2.processor = GaudiWanAttnProcessor(is_training)
+        self.vae.decoder.forward = types.MethodType(WanDecoder3dForwardGaudi, self.vae.decoder)
 
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
