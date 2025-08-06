@@ -75,7 +75,14 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
-    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument(
+        "--limit",
+        "-L",
+        type=float,
+        default=None,
+        metavar="N|0<N<1",
+        help="Limit the number of examples per task. If <1, limit is a percentage of the total number of examples.",
+    )
     parser.add_argument(
         "--show_config",
         action="store_true",
@@ -88,8 +95,21 @@ def setup_lm_eval_parser():
         help="If True, prints extra-logs for all tasks",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
+    parser.add_argument(
+        "--num_fewshot",
+        "-f",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of examples in few-shot context",
+    )
+    parser.add_argument(
+        "--fewshot_as_multiturn",
+        action="store_true",
+        default=False,
+        help="If True, uses the fewshot as a multi-turn conversation",
+    )
     args = setup_parser(parser)
-
     return args
 
 
@@ -109,8 +129,15 @@ def main() -> None:
 
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
-            log_samples = args.log_samples
-            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=log_samples)
+            results = evaluator.simple_evaluate(
+                lm,
+                tasks=args.tasks,
+                limit=args.limit,
+                log_samples=args.log_samples,
+                num_fewshot=args.num_fewshot,
+                fewshot_as_multiturn=args.fewshot_as_multiturn,
+                apply_chat_template=args.use_chat_template,
+            )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
 
