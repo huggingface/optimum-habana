@@ -153,8 +153,14 @@ class HabanaModelAdapter(HFLM):
     def max_length(self, value: int) -> None:
         self._max_length = value
 
-    def find_bucket(self, length: int) -> list[int]:
-        return [b for b in self.buckets if b >= length][0]
+    def find_bucket(self, length: int, key=lambda b, length: b >= length) -> int:
+        for b in self.buckets:
+            if key(b, length):
+                return b
+        new_bucket = length
+        self.buckets.append(new_bucket)
+        self.buckets.sort()
+        return new_bucket
 
     def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
         bs, seq_length = inps.shape
