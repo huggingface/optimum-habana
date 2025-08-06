@@ -1308,7 +1308,7 @@ class GaudiTrainer(Trainer):
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
 
             # reset tr_loss to zero
-            tr_loss -= tr_loss
+            tr_loss = tr_loss.zero_()
 
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
