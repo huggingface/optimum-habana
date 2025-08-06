@@ -109,6 +109,12 @@ def setup_lm_eval_parser():
         default=False,
         help="If True, uses the fewshot as a multi-turn conversation",
     )
+    parser.add_argument(
+        "--metadata",
+        type=json.loads,
+        default=None,
+        help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
+    )
     args = setup_parser(parser)
     return args
 
@@ -122,8 +128,12 @@ def main() -> None:
     from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter
 
+    max_length = None
+    if args.metadata:
+        max_length = args.metadata.get("max_length")
+
     with torch.no_grad():
-        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
+        lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
 
     from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
