@@ -50,6 +50,11 @@ class HabanaModelAdapter(HFLM):
         add_bos_token: Optional[bool] = True,
         prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
+        # end token for thinking, either the string or int token id.
+        # splits to get response after this token (if provided).
+        think_end_token: Optional[Union[str, int]] = None,
+        enable_thinking: Optional[bool] = None,
+        chat_template_args: Optional[dict] = None,
         **kwargs,
     ) -> None:
         # To skip cuda code of the HFLM init
@@ -65,6 +70,15 @@ class HabanaModelAdapter(HFLM):
         self.peft = args.peft_model
         self.delta = delta
         self.custom_prefix_token_id = prefix_token_id
+        if isinstance(think_end_token, str) and think_end_token.isdigit():
+            self.think_end_token = int(think_end_token)
+        else:
+            self.think_end_token = think_end_token
+
+        self.chat_template_args = chat_template_args or {}
+        if enable_thinking is not None:
+            self.chat_template_args.update({"enable_thinking": enable_thinking})
+
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.truncation = truncation
@@ -215,18 +229,15 @@ class HabanaModelAdapter(HFLM):
         stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
         # to avoid graph recompilation
         if self.options.static_shapes:
-            # Filter buckets greater than or equal to the given number
-            greater_or_equal = [x for x in self.buckets if x >= context.shape[1]]
-            # Return the smallest value from the filtered list, or the context shape, if no such value exists
-            bucket = min(greater_or_equal, default=context.shape[1])
-            max_gen_toks = max_length - context.shape[1]
-            max_length = max(max_length, max_gen_toks + bucket)
+            self.options.bucket_internal = True
+            bucket_length = self.find_bucket(context.shape[1])
+            max_gen_toks = max_length - bucket_length
         # move context & attention_mask to hpu
         context = context.to("hpu")
         generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
         return self.model.generate(
             input_ids=context,
-            max_length=max_length,
+            max_new_tokens=max_gen_toks,
             stopping_criteria=stopping_criteria,
             pad_token_id=self.tokenizer.pad_token_id,
             use_cache=True,
