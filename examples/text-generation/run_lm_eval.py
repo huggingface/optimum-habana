@@ -22,6 +22,7 @@ import json
 import logging
 import multiprocessing as mp
 import os
+from pathlib import Path
 
 import psutil
 
@@ -128,6 +129,14 @@ def setup_lm_eval_parser():
             "E.g. `--apply_chat_template template_name`"
         ),
     )
+    parser.add_argument(
+        "--samples",
+        "-E",
+        default=None,
+        type=str,
+        metavar="/path/to/json",
+        help='JSON string or path to JSON file containing doc indices of selected examples to test. Format: {"task_name":[indices],...}',
+    )
     args = setup_parser(parser)
     return args
 
@@ -147,13 +156,21 @@ def main() -> None:
     from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     max_length = None
+    metadata = None
     if args.metadata:
+        metadata = args.metadata if isinstance(args.metadata, dict) else utils.sample_parse_args_string(args.metadata)
         max_length = args.metadata.get("max_length")
 
     if args.fewshot_as_multiturn and args.apply_chat_template is False:
         raise ValueError(
             "When `fewshot_as_multiturn` is selected, `apply_chat_template` must be set (either to `True` or to the chosen template name)."
         )
+    if args.samples:
+        assert args.limit is None, "If --samples is not None, then --limit must be None."
+        if (samples := Path(args.samples)).is_file():
+            args.samples = json.loads(samples.read_text())
+        else:
+            args.samples = json.loads(args.samples)
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
@@ -164,10 +181,12 @@ def main() -> None:
                 lm,
                 tasks=args.tasks,
                 limit=args.limit,
+                samples=args.samples,
                 log_samples=args.log_samples,
                 num_fewshot=args.num_fewshot,
                 fewshot_as_multiturn=args.fewshot_as_multiturn,
                 apply_chat_template=args.apply_chat_template,
+                metadata=metadata,
             )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu

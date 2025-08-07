@@ -1,4 +1,4 @@
-lm-eval==0.4.8
+lm-eval==0.4.9.1
 datasets == 3.6.0
 evaluate == 0.4.3
 rouge_score == 0.1.2

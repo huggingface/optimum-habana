@@ -19,13 +19,13 @@
 
 import argparse
 import logging
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import stop_sequences_criteria
+from lm_eval.models.utils import get_dtype, stop_sequences_criteria
 
 # Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -46,6 +46,7 @@ class HabanaModelAdapter(HFLM):
         truncation: Optional[bool] = False,
         logits_cache: bool = True,
         max_length: Optional[int] = None,
+        softmax_dtype: Union[str, torch.dtype, None] = None,
         add_bos_token: Optional[bool] = True,
         prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
@@ -70,6 +71,7 @@ class HabanaModelAdapter(HFLM):
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = max_length
+        self.softmax_dtype = get_dtype(softmax_dtype) if softmax_dtype is not None else None
         self.hpu_graphs = args.use_hpu_graphs
         self.use_lazy_mode = True
         if args.torch_compile:
