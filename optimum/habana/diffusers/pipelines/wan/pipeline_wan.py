@@ -106,9 +106,9 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             self,
             tokenizer=tokenizer,
             text_encoder=text_encoder,
-            transformer=transformer,
             vae=vae,
             scheduler=scheduler,
+            transformer=transformer,
             transformer_2=transformer_2,
             boundary_ratio=boundary_ratio,
             expand_timesteps=expand_timesteps,
@@ -358,23 +358,41 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                     timestep = t.expand(latents.shape[0])
 
                 with current_model.cache_context("cond"):
-                    noise_pred = current_model(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-
-                if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
-                        noise_uncond = current_model(
+                    if not self.use_hpu_graphs:
+                        noise_pred = current_model(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
+                    else:
+                        noise_pred = current_model(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=prompt_embeds.clone(),
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0].clone()
+
+                if self.do_classifier_free_guidance:
+                    with current_model.cache_context("uncond"):
+                        if not self.use_hpu_graphs:
+                            noise_uncond = current_model(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                        else:
+                            noise_uncond = current_model(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds.clone(),
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0].clone()
                     noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
