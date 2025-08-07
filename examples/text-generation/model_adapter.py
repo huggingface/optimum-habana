@@ -18,11 +18,14 @@
 ###############################################################################
 
 import argparse
-from typing import Literal, Optional
+import logging
+from typing import List, Literal, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from lm_eval.models.huggingface import HFLM, TemplateLM
+from lm_eval.models.utils import get_dtype, stop_sequences_criteria
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -36,6 +39,8 @@ class HabanaModelAdapter(HFLM):
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
         logits_cache: bool = True,
+        max_length: Optional[int] = None,
+        softmax_dtype: Union[str, torch.dtype, None] = None,
         add_bos_token: Optional[bool] = True,
         prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
@@ -58,7 +63,18 @@ class HabanaModelAdapter(HFLM):
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
-        self._max_length = options.max_length
+        self._max_length = max_length
+        self.softmax_dtype = get_dtype(softmax_dtype) if softmax_dtype is not None else None
+        self.hpu_graphs = args.use_hpu_graphs
+        self.use_lazy_mode = True
+        if args.torch_compile:
+            self.use_lazy_mode = False
+        self.vocab_size = self._model.config.vocab_size
+        if "gemma" in getattr(self._config, "model_type", ""):
+            self.add_bos_token = True
+            logger.info(
+                f"Model type is '{self._config.model_type}', part of the Gemma family--a BOS token will be used as Gemma underperforms without it."
+            )
         self.batch_size_per_gpu = int(args.batch_size)
         self.revision = args.model_revision
         self.model_inputs = {"use_cache": self.options.use_cache}
