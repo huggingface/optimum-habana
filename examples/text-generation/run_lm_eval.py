@@ -23,6 +23,7 @@ import logging
 import multiprocessing as mp
 import os
 from pathlib import Path
+from typing import Union
 
 import psutil
 
@@ -52,6 +53,20 @@ def LimitedSpawnPool(_):
 
 
 mp.Pool = LimitedSpawnPool
+
+
+def try_parse_json(value: str) -> Union[str, dict, None]:
+    """
+    From https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py
+    """
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        if "{" in value:
+            raise argparse.ArgumentTypeError(f"Invalid JSON: {value}. Hint: Use double quotes for JSON strings.")
+        return value
 
 
 def setup_lm_eval_parser():
@@ -96,6 +111,15 @@ def setup_lm_eval_parser():
         help="If True, prints extra-logs for all tasks",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
+    parser.add_argument(
+        "--gen_kwargs",
+        type=try_parse_json,
+        default=None,
+        help=(
+            "Either comma delimited string or JSON formatted arguments for model generation on greedy_until tasks,"
+            """ e.g. '{"temperature":0.7,"until":["hello"]}' or temperature=0,top_p=0.1."""
+        ),
+    )
     parser.add_argument(
         "--num_fewshot",
         "-f",
@@ -188,6 +212,7 @@ def main() -> None:
                 log_samples=args.log_samples,
                 num_fewshot=args.num_fewshot,
                 fewshot_as_multiturn=args.fewshot_as_multiturn,
+                gen_kwargs=args.gen_kwargs,
                 system_instruction=args.system_instruction,
                 apply_chat_template=args.apply_chat_template,
                 metadata=metadata,
