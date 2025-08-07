@@ -6,3 +6,5 @@ evaluate
 scikit-learn == 1.5.2
 accelerate
 math_verify
+protobuf==3.20.3
+numpy==1.26.4
