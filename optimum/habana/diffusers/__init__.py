@@ -35,3 +35,4 @@ from .schedulers import (
     GaudiFlowMatchEulerDiscreteScheduler,
 )
 from .pipelines.wan.pipeline_wan import GaudiWanPipeline
+from .pipelines.wan.pipeline_wan_i2v import GaudiWanImageToVideoPipeline
