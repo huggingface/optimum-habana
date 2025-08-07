@@ -591,6 +591,8 @@ class GaudiWanAttnProcessor:
 
         if rotary_emb is not None:
 
+            """
+            Wan's ROPE is pairwised, like this:
             def apply_rotary_emb(
                 hidden_states: torch.Tensor,
                 freqs_cos: torch.Tensor,
@@ -603,9 +605,10 @@ class GaudiWanAttnProcessor:
                 out[..., 0::2] = x1 * cos - x2 * sin
                 out[..., 1::2] = x1 * sin + x2 * cos
                 return out.type_as(hidden_states)
-
-            query = apply_rotary_emb(query, *rotary_emb)
-            key = apply_rotary_emb(key, *rotary_emb)
+            """
+            from habana_frameworks.torch.hpex.kernels import apply_rotary_pos_emb, RotaryPosEmbeddingMode
+            query = apply_rotary_pos_emb(query, *rotary_emb, None, 0, RotaryPosEmbeddingMode.PAIRWISE)
+            key = apply_rotary_pos_emb(key, *rotary_emb, None, 0, RotaryPosEmbeddingMode.PAIRWISE)
 
         # I2V task
         hidden_states_img = None
