@@ -115,6 +115,19 @@ def setup_lm_eval_parser():
         default=None,
         help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
     )
+    parser.add_argument(
+        "--apply_chat_template",
+        type=str,
+        nargs="?",
+        const=True,
+        default=False,
+        help=(
+            "If True, apply chat template to the prompt. "
+            "Providing `--apply_chat_template` without an argument will apply the default chat template to the prompt. "
+            "To apply a specific template from the available list of templates, provide the template name as an argument. "
+            "E.g. `--apply_chat_template template_name`"
+        ),
+    )
     args = setup_parser(parser)
     return args
 
@@ -137,6 +150,11 @@ def main() -> None:
     if args.metadata:
         max_length = args.metadata.get("max_length")
 
+    if args.fewshot_as_multiturn and args.apply_chat_template is False:
+        raise ValueError(
+            "When `fewshot_as_multiturn` is selected, `apply_chat_template` must be set (either to `True` or to the chosen template name)."
+        )
+
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
 
@@ -149,7 +167,7 @@ def main() -> None:
                 log_samples=args.log_samples,
                 num_fewshot=args.num_fewshot,
                 fewshot_as_multiturn=args.fewshot_as_multiturn,
-                apply_chat_template=args.use_chat_template,
+                apply_chat_template=args.apply_chat_template,
             )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
