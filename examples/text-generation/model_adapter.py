@@ -44,6 +44,11 @@ class HabanaModelAdapter(HFLM):
         add_bos_token: Optional[bool] = True,
         prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
+        # end token for thinking, either the string or int token id.
+        # splits to get response after this token (if provided).
+        think_end_token: Optional[Union[str, int]] = None,
+        enable_thinking: Optional[bool] = None,
+        chat_template_args: Optional[dict] = None,
         **kwargs,
     ) -> None:
         # To skip cuda code of the HFLM init
@@ -59,6 +64,15 @@ class HabanaModelAdapter(HFLM):
         self.peft = args.peft_model
         self.delta = delta
         self.custom_prefix_token_id = prefix_token_id
+        if isinstance(think_end_token, str) and think_end_token.isdigit():
+            self.think_end_token = int(think_end_token)
+        else:
+            self.think_end_token = think_end_token
+
+        self.chat_template_args = chat_template_args or {}
+        if enable_thinking is not None:
+            self.chat_template_args.update({"enable_thinking": enable_thinking})
+
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.logits_cache = logits_cache
@@ -171,6 +185,57 @@ class HabanaModelAdapter(HFLM):
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
         return logits
+
+    def generate_until(self, requests: List[Instance], disable_tqdm: bool = False) -> List[str]:
+        """
+        Override to change only max_length property
+        """
+        legacy_max_length = self.max_length
+        self.max_length = super().max_length
+        # Call the parent class's implementation for the unchanged parts
+        res = super().generate_until(requests, disable_tqdm)
+        self.max_length = legacy_max_length
+        return res
+
+    def _model_generate(self, context, max_length, stop, **generation_kwargs):
+        """
+        Patched method
+        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L858
+        """
+
+        # temperature = 0.0 if not set
+        # if do_sample is false and temp==0.0:
+        # remove temperature, as do_sample=False takes care of this
+        # and we don't want a warning from HF
+        generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
+        do_sample = generation_kwargs.get("do_sample", None)
+
+        # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
+        if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
+            generation_kwargs["do_sample"] = do_sample = False
+
+        if do_sample is False and generation_kwargs.get("temperature") == 0.0:
+            generation_kwargs.pop("temperature")
+        # build stopping criteria
+        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
+        # to avoid graph recompilation
+        if self.options.static_shapes:
+            self.options.bucket_internal = True
+            bucket_length = self.find_bucket(context.shape[1])
+            max_gen_toks = max_length - bucket_length
+        # move context & attention_mask to hpu
+        context = context.to("hpu")
+        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
+        return self.model.generate(
+            input_ids=context,
+            max_new_tokens=max_gen_toks,
+            stopping_criteria=stopping_criteria,
+            pad_token_id=self.tokenizer.pad_token_id,
+            use_cache=True,
+            hpu_graphs=self.hpu_graphs,
+            lazy_mode=self.use_lazy_mode,
+            **generation_kwargs,
+        )
 
     def get_model_info(self) -> dict:
         """
