@@ -23,7 +23,7 @@ from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.phi.configuration_phi import PhiConfig
 from transformers.models.phi.modeling_phi import (
@@ -360,20 +360,12 @@ class GaudiPhiModel(PhiModel):
             )
             use_cache = False
 
-        use_legacy_cache = True
-        use_new_cache = False
         past_seen_tokens = 0
         if past_key_values is not None and use_cache:
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                past_seen_tokens = past_key_values[0][0].shape[2]
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -402,7 +394,7 @@ class GaudiPhiModel(PhiModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             if output_hidden_states:

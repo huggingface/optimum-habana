@@ -217,7 +217,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
-                return (loss,) + output if loss is not None else output
+                return (loss,) + output
 
             return LlavaCausalLMOutputWithPast(
                 loss=loss,
