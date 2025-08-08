@@ -8,7 +8,6 @@ from transformers.utils import (
 )
 
 from optimum.utils import logging
-from neural_compressor.torch.algorithms.fp8_quant._core.utils import should_quantize
 
 
 if is_accelerate_available():
@@ -69,15 +68,11 @@ class GaudiFP8Linear(nn.Module):
 
     def pad_weight_naive(self):
         # Pad weight to block dimensions
-        weight, orig_M, orig_N = pad_block_fp8_weight_naive(
-            self.weight,
-            self.weight_scale_inv,
-            self.block_size
-        )
+        weight, orig_M, orig_N = pad_block_fp8_weight_naive(self.weight, self.weight_scale_inv, self.block_size)
         self.weight = weight
         self.orig_M = orig_M
         self.orig_N = orig_N
-        
+
     def get_dequant_weight(self):
         if self.weight.dtype == self.high_precision:
             return self.weight
@@ -89,7 +84,7 @@ class GaudiFP8Linear(nn.Module):
             dtype=self.high_precision,
             original_M=self.orig_M,
             original_N=self.orig_N,
-            do_unpad=True
+            do_unpad=True,
         )
 
     def dequant_block_fp8_weight(self, layer) -> torch.Tensor:
@@ -184,6 +179,7 @@ def replace_with_fp8_linear(
 
     return model
 
+
 def pad_weight(weight, block_size):
     """Pads a matrix to make its dimensions multiples of block_size."""
     M, N = weight.shape[-2:]
@@ -193,7 +189,7 @@ def pad_weight(weight, block_size):
 
     if pad_M == 0 and pad_N == 0:
         return weight, M, N  # No padding needed
-    padded_weight = torch.nn.functional.pad(weight, (0, pad_N, 0, pad_M), mode='constant', value=0)
+    padded_weight = torch.nn.functional.pad(weight, (0, pad_N, 0, pad_M), mode="constant", value=0)
     return padded_weight, M, N  # Return original dimensions for unpadding
 
 
@@ -217,7 +213,7 @@ def unpad_weight(weight, original_M, original_N, keep_first_dim=False):
     """
     if (weight.shape[-2] == original_M) and (weight.shape[-1] == original_N):
         return weight
-    
+
     if keep_first_dim:
         return weight[:, :original_M, :original_N]
     else:
