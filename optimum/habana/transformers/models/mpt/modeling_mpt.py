@@ -107,7 +107,7 @@ class GaudiMptAttention(MptAttention):
             else:
                 past_key_value = [key_states.clone(), value_states.clone()]
 
-        query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
+        query_length = seq_length + past_key_value[0].shape[2]
 
         if position_bias is not None:
             if len(position_bias.shape) != 3:
@@ -389,7 +389,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
                 idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
 
-                if bucket_internal and token_idx is not None:
+                if bucket_internal:
                     attention_mask = attention_mask[:, :cache_idx]
         elif bucket_internal and token_idx is not None:
             # for the 1st token we can slice the inputs till token idx for the fwd pass.
