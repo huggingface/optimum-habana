@@ -1,5 +1,5 @@
-import os
 import importlib
+import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import habana_frameworks.torch.utils.experimental as htexp
@@ -177,11 +177,11 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
 
     Also dequantizes layers in INC blocklist
     """
-    
-    from optimum.habana.transformers.integrations.finegrained_fp8 import GaudiFP8Linear, pad_block_fp8_weight_naive
-    from neural_compressor.torch.algorithms.fp8_quant._quant_common.quant_config import get_hqt_config 
-    from neural_compressor.torch.algorithms.fp8_quant._core.utils import should_quantize, is_re_match
+
+    from neural_compressor.torch.algorithms.fp8_quant._core.utils import is_re_match
     from neural_compressor.torch.quantization import FP8Config
+
+    from optimum.habana.transformers.integrations.finegrained_fp8 import GaudiFP8Linear
 
     quant_config = os.getenv("QUANT_CONFIG")
     blocklist = []
@@ -194,19 +194,17 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
     rescale_factor_inv = 1.0 / rescale_factor
 
     for name, module in model.named_modules():
-        
         if isinstance(module, GaudiFP8Linear):
             # module = model._modules[name]
-            if ON_GAUDI2: # rescale scale and weight for Gaudi2
+            if ON_GAUDI2:  # rescale scale and weight for Gaudi2
                 weight = module.weight.to(module.high_precision) * rescale_factor
                 scale = module.weight_scale_inv * rescale_factor_inv
                 module.weight = weight.to(module.weight.dtype)
                 module.weight_scale_inv = scale.to(module.weight_scale_inv.dtype)
-            
+
             module.pad_weight_naive()
 
-            if len(blocklist) > 0: 
-                mod_type = module.__class__.__name__
+            if len(blocklist) > 0:
                 if is_re_match(blocklist, name):
                     module.weight = module.get_dequant_weight()
 

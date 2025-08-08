@@ -28,8 +28,6 @@ The main differences are:
 """
 
 import math
-import os
-import warnings
 from typing import Callable, List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -523,7 +521,7 @@ class GaudiDeepseekV3MoE(nn.Module):
         # num_experts used during quantization with neural compressor
         self.num_experts = config.n_routed_experts
         self.num_experts_per_tok = config.num_experts_per_tok
-        self.num_experts = config.n_routed_experts # Added to support INC FP8 quantization
+        self.num_experts = config.n_routed_experts  # Added to support INC FP8 quantization
 
         if hasattr(config, "ep_size") and config.ep_size > 1:
             assert config.ep_size == dist.get_world_size()
@@ -536,10 +534,11 @@ class GaudiDeepseekV3MoE(nn.Module):
             self.experts = nn.ModuleList(
                 [
                     (
-                        (GaudiDeepseekV3MLP(
+                        GaudiDeepseekV3MLP(
                             config, intermediate_size=config.moe_intermediate_size, add_dummy_quant_input=True
-                        ) if i in self.experts_range else None)
-                        for i in range(self.num_experts)
+                        )
+                        if i in self.experts_range
+                        else None
                     )
                     for i in range(config.n_routed_experts)
                 ]
@@ -564,7 +563,6 @@ class GaudiDeepseekV3MoE(nn.Module):
         if config.n_shared_experts is not None:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
             self.shared_experts = GaudiDeepseekV3MLP(config=config, intermediate_size=intermediate_size)
-
 
     def forward(self, hidden_states):
         identity = hidden_states
@@ -604,7 +602,6 @@ class GaudiDeepseekV3MoE(nn.Module):
             final_hidden_states = torch.zeros(
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
-            htcore.mark_step()
             final_hidden_states = self.call_dynamic_moe_op(
                 hidden_states=hidden_states,
                 expert_routing_table=topk_idx,
@@ -831,11 +828,6 @@ class DeepseekV3Attention(nn.Module):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
-        self._is_fp8 = False
-        if hasattr(config, "quantization_config"):
-            if hasattr(config.quantization_config, "quant_method"):
-                self._is_fp8 = config.quantization_config.quant_method == "fp8"
-
         self.softmax_scale = self.q_head_dim ** (-0.5)
         if self.config.rope_scaling is not None:
             mscale_all_dim = self.config.rope_scaling.get("mscale_all_dim", 0)
@@ -920,14 +912,7 @@ class DeepseekV3Attention(nn.Module):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            # TODO: Find a better way to handle k_b_proj during runtime dequantization
-            # In FP8 models, rotary_emb() can be called with BF16 or FP8 weights so cannot patch with INC
-            # Better option might be to add k_b_proj to block list and dequant on model load
-            if self._is_fp8:
-                #_, _ = self.rotary_emb(self.k_b_proj.get_dequant_weight(), seq_len=seq_len)
-                _, _ = self.rotary_emb(self.k_b_proj.weight, seq_len=seq_len)
-            else:
-               _, _ = self.rotary_emb(self.k_b_proj.weight, seq_len=seq_len)
+            _, _ = self.rotary_emb(self.k_b_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -947,13 +932,7 @@ class DeepseekV3Attention(nn.Module):
         return tensor.view(bsz, seq_len, self.num_heads, self.v_head_dim).transpose(1, 2).contiguous()
 
     def split_kv_b_proj(self):
-        # TODO: Find a better way to hand le kv_b_proj during runtime dequantization
-        # Better option might be to add kv_b_proj to block list and dequant on model load
-        if self._is_fp8:
-            #kv_b_proj_weight = self.kv_b_proj.get_dequant_weight().view(self.num_heads, -1, self.kv_lora_rank)
-            kv_b_proj_weight = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
-        else:
-            kv_b_proj_weight = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
+        kv_b_proj_weight = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
         self.q_absorb = kv_b_proj_weight[:, : self.qk_nope_head_dim, :].unsqueeze(0).transpose(0, 1)
         self.out_absorb = kv_b_proj_weight[:, self.qk_nope_head_dim :, :].unsqueeze(0)
 
