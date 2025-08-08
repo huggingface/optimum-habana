@@ -126,6 +126,11 @@ def main() -> None:
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
 
         json_str = json.dumps(results, indent=2, default=utils.handle_non_serializable, ensure_ascii=False)
+        from pathlib import Path
+
+        output_dir = Path(args.output_file).parent
+        if not output_dir.exists():
+            os.makedirs(output_dir)
         with open(args.output_file, "w", encoding="utf-8") as f:
             f.write(json_str)
         if args.show_config:
