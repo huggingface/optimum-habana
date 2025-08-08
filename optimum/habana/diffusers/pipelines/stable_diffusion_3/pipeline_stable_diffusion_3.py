@@ -492,7 +492,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             device = self._execution_device
 
-            lora_scale = kwargs.get("lora_scale", None) if kwargs is not None else None
+            lora_scale = kwargs.get("lora_scale", None)
 
             (
                 prompt_embeds,

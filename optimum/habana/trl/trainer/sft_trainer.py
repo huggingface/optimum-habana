@@ -249,8 +249,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
 
                     model = prepare_model_for_kbit_training(model, **prepare_model_kwargs)
 
-                    if args is not None:
-                        args = dataclasses.replace(args, gradient_checkpointing=False)
+                    args = dataclasses.replace(args, gradient_checkpointing=False)
                 elif getattr(args, "gradient_checkpointing", False) and (
                     "use_reentrant" not in gradient_checkpointing_kwargs
                     or gradient_checkpointing_kwargs["use_reentrant"]
@@ -273,12 +272,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     model = get_peft_model(model, peft_config, autocast_adapter_dtype=False)
                 else:
                     model = get_peft_model(model, peft_config)
-                if (
-                    args is not None
-                    and args.bf16
-                    and getattr(model, "is_loaded_in_4bit", False)
-                    and not is_sharded_qlora
-                ):
+                if args.bf16 and getattr(model, "is_loaded_in_4bit", False) and not is_sharded_qlora:
                     model = model.to(torch.bfloat16)
 
         if tokenizer is None:
@@ -405,8 +399,8 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     formatting_func,
                     args.num_of_sequences,
                     args.chars_per_token,
-                    remove_unused_columns=args.remove_unused_columns if args is not None else True,
-                    pad_max=args.pad_max if args is not None else False,
+                    remove_unused_columns=args.remove_unused_columns,
+                    pad_max=args.pad_max,
                     **args.dataset_kwargs,
                 )
             if eval_dataset is not None:
@@ -425,7 +419,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                         formatting_func,
                         args.num_of_sequences,
                         args.chars_per_token,
-                        remove_unused_columns=args.remove_unused_columns if args is not None else True,
+                        remove_unused_columns=args.remove_unused_columns,
                         **args.dataset_kwargs,
                     )
                 if not _multiple:
