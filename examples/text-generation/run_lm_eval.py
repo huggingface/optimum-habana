@@ -167,6 +167,11 @@ def setup_lm_eval_parser():
         metavar="/path/to/json",
         help='JSON string or path to JSON file containing doc indices of selected examples to test. Format: {"task_name":[indices],...}',
     )
+    parser.add_argument(
+        "--confirm_run_unsafe_code",
+        action="store_true",
+        help="Confirm that you understand the risks of running unsafe code for tasks that require it",
+    )
     args = setup_parser(parser)
     return args
 
@@ -216,6 +221,7 @@ def main() -> None:
                 system_instruction=args.system_instruction,
                 apply_chat_template=args.apply_chat_template,
                 metadata=metadata,
+                confirm_run_unsafe_code=args.confirm_run_unsafe_code,
             )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
