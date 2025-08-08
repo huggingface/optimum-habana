@@ -274,9 +274,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 **kwargs,
             )
         else:
-            legacy_processing = (
-                input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1
-            ) and pixel_values is not None
+            legacy_processing = token_idx == 1 and pixel_values is not None
             use_flash_attention = kwargs.get("use_flash_attention", False)
             flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
             position_ids = kwargs.get("position_ids", None)

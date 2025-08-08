@@ -1265,9 +1265,7 @@ class GLM4VModel(GLM4VPreTrainedModel):
                     device=expanded_attn_mask.device,
                 )
                 expanded_attn_mask = torch.cat([pre_seq_mask, expanded_attn_mask], dim=-1)
-            combined_attention_mask = (
-                expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
-            )
+            combined_attention_mask = expanded_attn_mask
 
         return combined_attention_mask
 

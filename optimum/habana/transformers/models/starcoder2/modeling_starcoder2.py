@@ -23,7 +23,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.starcoder2.configuration_starcoder2 import Starcoder2Config
 from transformers.models.starcoder2.modeling_starcoder2 import (
@@ -553,20 +553,12 @@ class GaudiStarcoder2Model(Starcoder2Model):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        use_new_cache = False  # Ignoring new Cache path for HPU
         past_seen_tokens = 0
-
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_usable_length(seq_length)
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                past_seen_tokens = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             position_ids = torch.arange(
@@ -591,7 +583,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
