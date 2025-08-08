@@ -36,6 +36,8 @@
       title: Multi-node Training
     - local: usage_guides/quantization
       title: Quantization
+    - local: usage_guides/safe_softmax
+      title: Safe softmax
     title: How-To Guides
   - sections:
     - local: package_reference/trainer
