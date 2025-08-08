@@ -205,6 +205,8 @@ def get_torch_compiled_model(model, logger, args):
         compile_fn = compile_regions
     if args.dynamo_specialize_float:
         torch._dynamo.config.specialize_float = True
+    if args.dynamo_allow_unspec_int_on_nn_module:
+        torch._dynamo.config.allow_unspec_int_on_nn_module = True
 
     compile_kwargs = {
         "backend": "hpu_backend",
