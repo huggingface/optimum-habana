@@ -229,87 +229,34 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
 
         routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
 
-        # TODO
-        # This is a hack solution to avoid segmentation fault during SFT training.
-        # Remove this section after the issue is fixed.
-        if self.training:
-            final_hidden_states = self.call_sparse_moe_op(
-                shape=original_shape,
-                hidden_states=hidden_states,
-                expert_routing_table=selected_experts,
-                router_weights=routing_weights,
-            )
-        else:
-            final_hidden_states = self.call_dynamic_moe_op(
-                hidden_states=hidden_states,
-                expert_routing_table=selected_experts,
-                router_weights=routing_weights,
-            )
-
-            if self.ep_size > 1:
-                final_hidden_states = _all_reduce(final_hidden_states)
-            elif deepspeed_available and (not self.training):
-                from deepspeed import comm
-
-                if comm.is_initialized():
-                    comm.all_reduce(final_hidden_states)
-
-        return final_hidden_states.view(original_shape), router_logits
-
-    def call_dynamic_moe_op(
-        self,
-        hidden_states,
-        expert_routing_table,
-        router_weights,
-    ):
         # pre-processing for custom op inputs
         w1_list = [self.experts[i].w1.weight for i in self.experts_range]
         w2_list = [self.experts[i].w2.weight for i in self.experts_range]
         w3_list = [self.experts[i].w3.weight for i in self.experts_range]
 
-        return torch.ops.hpu.mixture_of_experts(
+        final_hidden_states = torch.ops.hpu.mixture_of_experts(
             hidden_states=hidden_states,
-            expert_routing_table=expert_routing_table,
-            router_weights=router_weights,
+            expert_routing_table=selected_experts,
+            router_weights=routing_weights,
             w1=w1_list,
+            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
             w3=w2_list,
-            w2=w3_list,
             permuted_weights=True,
             activation="silu",
             experts_min=self.experts_min,
             experts_max=self.experts_max,
         )
 
-    def call_sparse_moe_op(
-        self,
-        shape,
-        hidden_states,
-        expert_routing_table,
-        router_weights,
-    ):
-        dtype = hidden_states.dtype
-        device = hidden_states.device
+        if not self.training:
+            if self.ep_size > 1:
+                final_hidden_states = _all_reduce(final_hidden_states)
+            elif deepspeed_available:
+                from deepspeed import comm
 
-        padded_weights = torch.zeros((hidden_states.shape[0], self.num_experts), dtype=dtype, device=device)
-        padded_weights.scatter_(-1, expert_routing_table, router_weights)
-        padded_weights = padded_weights.view(shape[0], shape[1], self.num_experts).permute(2, 0, 1).unsqueeze(-1)
+                if comm.is_initialized():
+                    comm.all_reduce(final_hidden_states)
 
-        current_state_static = hidden_states
-
-        final_hidden_states = torch.zeros(shape, dtype=dtype, device=device)
-
-        # Loop over all available experts in the model and perform the computation on each expert
-        for expert_idx in range(self.num_experts):
-            expert_layer = self.experts[expert_idx]
-            padded_weight = padded_weights[expert_idx]
-            current_hidden_states_static = expert_layer(current_state_static).view(shape) * padded_weight
-            final_hidden_states += current_hidden_states_static
-
-            # Support long sequences exceeding 8192
-            if not self.training and shape[1] > 8192:
-                htcore.mark_step()
-
-        return final_hidden_states
+        return final_hidden_states.view(original_shape), router_logits
 
 
 class GaudiMixtralAttentionLongSequence:
