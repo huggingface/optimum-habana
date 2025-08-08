@@ -46,7 +46,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("google/gemma-7b", 1, False, True),
             ("google/gemma-2-9b", 1, False, True),
             ("google/gemma-2-27b", 1, False, True),
-            pytest.param("state-spaces/mamba-130m-hf", 1536, False, False, marks=pytest.mark.skip("Deprecated")),
+            ("state-spaces/mamba-130m-hf", 1536, False, False),
             # ("Deci/DeciLM-7B", 1, False, False),
             ("Qwen/Qwen2-7B", 256, False, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, False),
