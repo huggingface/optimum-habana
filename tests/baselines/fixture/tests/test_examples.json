@@ -40,6 +40,30 @@
       "train_samples_per_second": 560.75
     }
   },
+  "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_Qwen2-7B_deepspeed": {
+    "gaudi2": {
+      "eval_f1": 0.8889,
+      "train_runtime": 53.5968,
+      "train_samples_per_second": 362.209
+    },
+    "gaudi3": {
+      "eval_f1": 0.8846,
+      "train_runtime": 127.7528,
+      "train_samples_per_second": 647.583
+    }
+  },
+  "tests/test_examples.py::DeepSpeedTextClassificationExampleTester::test_run_glue_Qwen3-8B_deepspeed": {
+    "gaudi2": {
+      "eval_f1": 0.9209,
+      "train_runtime": 55.8928,
+      "train_samples_per_second": 339.104
+    },
+    "gaudi3": {
+      "eval_f1": 0.9174,
+      "train_runtime": 108.4027,
+      "train_samples_per_second": 611.761
+    }
+  },
   "tests/test_examples.py::DeepspeedCausalLanguageModelingExampleTester::test_run_clm_CodeLlama-13b-Instruct-hf_deepspeed": {
     "gaudi2": {
       "perplexity": 6.877496628184696,
