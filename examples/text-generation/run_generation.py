@@ -679,22 +679,29 @@ def main():
             def download_book(book_id):
                 import os
 
-                import requests
+                from accelerate import Accelerator
 
-                url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
-                response = requests.get(url)
-                if response.status_code == 200:
-                    pid = os.getpid()
-                    save_path = f"/tmp/{book_id}_{pid}.txt"
-                    with open(save_path, "wb") as file:
-                        file.write(response.content)
-                    print(f"Book downloaded and saved to: {save_path}")
-                    return save_path
-                else:
-                    print("Failed to download book! Exiting...")
-                    import sys
+                acc = Accelerator()
+                with acc.main_process_first():
+                    save_path = f"/tmp/{book_id}.txt"
+                    if os.path.isfile(save_path):
+                        print(f"Using preexisting file: {save_path}")
+                        return save_path
+                    else:
+                        import requests
 
-                    sys.exit()
+                        url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                        response = requests.get(url)
+                        if response.status_code == 200:
+                            with open(save_path, "wb") as file:
+                                file.write(response.content)
+                            print(f"Book downloaded and saved to: {save_path}")
+                            return save_path
+                        else:
+                            print("Failed to download book! Exiting...")
+                            import sys
+
+                            sys.exit()
 
             def assemble_prompt(prompt_size, book_path):
                 prompt = ""
