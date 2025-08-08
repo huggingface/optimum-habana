@@ -221,8 +221,8 @@ class HabanaModelAdapter(HFLM):
         # to avoid graph recompilation
         if self.options.static_shapes:
             self.options.bucket_internal = True
-            bucket_length = self.find_bucket(context.shape[1])
-            max_gen_toks = max_length - bucket_length
+            _ = self.find_bucket(context.shape[1])
+            max_gen_toks = max_length - context.shape[1]
         # move context & attention_mask to hpu
         context = context.to("hpu")
         generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
