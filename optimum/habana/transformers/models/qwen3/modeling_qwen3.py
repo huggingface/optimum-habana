@@ -280,6 +280,7 @@ class GaudiQwen3Attention(Qwen3Attention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
 
+        self.max_position_embeddings = config.max_position_embeddings
         self.inp_seq_len = -1
 
         self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
