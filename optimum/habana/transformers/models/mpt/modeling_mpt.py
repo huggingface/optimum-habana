@@ -107,7 +107,7 @@ class GaudiMptAttention(MptAttention):
             else:
                 past_key_value = [key_states.clone(), value_states.clone()]
 
-        query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
+        query_length = seq_length + past_key_value[0].shape[2]
 
         if position_bias is not None:
             if len(position_bias.shape) != 3:
