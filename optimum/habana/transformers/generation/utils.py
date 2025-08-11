@@ -17,7 +17,6 @@
 import copy
 import inspect
 import math
-import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -75,7 +74,7 @@ from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_
 
 from optimum.utils import logging
 
-from ...utils import HabanaGenerationTime, HabanaProfile
+from ...utils import HabanaGenerationTime, HabanaProfile, warn0
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
@@ -133,6 +132,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deepseek_v3",
     "chatglm",
     "qwen2_vl",
+    "qwen3",
+    "qwen3_moe",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -929,7 +930,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 new_generation_config = GaudiGenerationConfig.from_model_config(self.config)
                 if new_generation_config != self.generation_config:  # 4)
-                    warnings.warn(
+                    warn0(
                         "You have modified the pretrained model configuration to control generation. This is a"
                         " deprecated strategy to control generation and will be removed in v5."
                         " Please use and modify the model generation configuration (see"
@@ -1043,7 +1044,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # Quick escape route 3: model that only supports legacy caches = nothing to prepare
         if not self._supports_default_dynamic_cache():
             if generation_config.cache_implementation is not None:
-                warnings.warn(
+                warn0(
                     "This model does not support `Cache` instances, it only supports the legacy cache format (tuple "
                     f"of tuples). `cache_implementation` (set to {generation_config.cache_implementation}) will be "
                     "ignored.",
@@ -1130,10 +1131,8 @@ class GaudiGenerationMixin(GenerationMixin):
         use_model_defaults: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
         iteration_times: Optional[List[float]] = None,
-        profiling_record_shapes: Optional[bool] = False,
+        profiler: Optional[HabanaProfile] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -1208,12 +1207,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             hpu_graphs (`bool`, *optional*, defaults to `False`):
                 Whether to use HPU graphs for inference.
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             kwargs (`Dict[str, Any]`, *optional*):
                 Ad hoc parametrization of `generation_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. If the model is an encoder-decoder model, encoder
@@ -1350,8 +1345,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 "chatglm",
                 "deepseek_v2",
                 "deepseek_v3",
+                "qwen3",
+                "qwen3_moe",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, qwen3_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1565,6 +1562,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "qwen2_moe",
                 "baichuan",
                 "deepseek_v2",
+                "qwen3",
+                "qwen3_moe",
             ]:
                 if (
                     hasattr(self.config, "max_position_embeddings")
@@ -1593,7 +1592,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         if self.device.type != input_ids.device.type:
-            warnings.warn(
+            warn0(
                 (
                     "You are calling .generate() with the `input_ids` being on a device type different"
                     f" than your model's device. `input_ids` is on {input_ids.device.type}, whereas the model"
@@ -1677,8 +1676,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 streamer=streamer,
                 lazy_mode=lazy_mode,
                 ignore_eos=generation_config.ignore_eos,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
                 **model_kwargs,
             )
@@ -1717,10 +1715,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 streamer=streamer,
                 lazy_mode=lazy_mode,
                 ignore_eos=generation_config.ignore_eos,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
-                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1743,10 +1739,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 streamer=streamer,
                 lazy_mode=lazy_mode,
                 ignore_eos=generation_config.ignore_eos,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
-                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1779,10 +1773,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_config=generation_config,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
-                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1814,10 +1806,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_config=generation_config,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
-                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1889,10 +1879,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_config=generation_config,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                profiling_warmup_steps=profiling_warmup_steps,
-                profiling_steps=profiling_steps,
+                profiler=profiler,
                 hb_gen_time=hb_gen_time,
-                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1969,10 +1957,8 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"],
         lazy_mode: Optional[bool] = False,
         ignore_eos: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2006,12 +1992,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             ignore_eos (`bool`, *optional*, defaults to `False`):
                 Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -2059,10 +2041,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
-        )
-        hb_profer.start()
+        if profiler is not None:
+            profiler.start()
+
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
@@ -2505,7 +2486,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+
+            if profiler is not None:
+                profiler.step()
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2518,7 +2501,9 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+        if profiler is not None:
+            profiler.stop()
+
         if streamer is not None:
             streamer.end()
 
@@ -2574,10 +2559,8 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"],
         lazy_mode: Optional[bool] = False,
         ignore_eos: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2605,12 +2588,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             ignore_eos (`bool`, *optional*, defaults to `False`):
                 Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -2659,10 +2638,8 @@ class GaudiGenerationMixin(GenerationMixin):
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
-        )
-        hb_profer.start()
+        if profiler is not None:
+            profiler.start()
 
         if not bucket_internal:
             if bucket_size >= 0:
@@ -2833,7 +2810,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+
+            if profiler is not None:
+                profiler.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -2885,7 +2864,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+            if profiler is not None:
+                profiler.stop()
 
         if streamer is not None:
             streamer.end()
@@ -2938,10 +2918,8 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config: GaudiGenerationConfig,
         synced_gpus: bool,
         lazy_mode: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -2973,12 +2951,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 `FullyShardedDataParallel` and DeepSpeed ZeRO Stage 3).
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3166,10 +3140,9 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids = torch.stack(return_res)
             return input_ids
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
-        )
-        hb_profer.start()
+        if profiler is not None:
+            profiler.start()
+
         this_peer_finished = False
 
         bucket_size = model_kwargs.get("bucket_size", -1)
@@ -3379,7 +3352,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
-            hb_profer.step()
+            if profiler is not None:
+                profiler.step()
+
             if self.generation_config.static_shapes:
                 is_min_length_reached = (
                     self.generation_config.min_length and cur_len >= self.generation_config.min_length
@@ -3393,7 +3368,9 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 this_peer_finished = True
 
-            hb_profer.step()
+            if profiler is not None:
+                profiler.step()
+
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
@@ -3430,7 +3407,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 
-        hb_profer.stop()
+        if profiler is not None:
+            profiler.stop()
 
         if self.generation_config.static_shapes:
             beam_trace = (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
@@ -3509,10 +3487,8 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config: GaudiGenerationConfig,
         synced_gpus: bool,
         lazy_mode: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ):
         r"""
@@ -3538,12 +3514,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 `FullyShardedDataParallel` and DeepSpeed ZeRO Stage 3).
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the `forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3567,10 +3539,8 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config: GaudiGenerationConfig,
         synced_gpus: bool,
         lazy_mode: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -3597,12 +3567,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 `FullyShardedDataParallel` and DeepSpeed ZeRO Stage 3).
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3671,10 +3637,8 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             decoder_prompt_len = input_ids.shape[-1]
 
-        hb_profer = HabanaProfile(
-            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
-        )
-        hb_profer.start()
+        if profiler is not None:
+            profiler.start()
 
         time_to_first_token_done = False
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
@@ -3804,7 +3768,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            hb_profer.step()
+            if profiler is not None:
+                profiler.step()
 
             if constrained_beam_scorer.is_done or get_final_stopping_criteria(
                 stopping_criteria(input_ids, scores, token_idx=cur_len)
@@ -3819,7 +3784,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
-        hb_profer.stop()
+        if profiler is not None:
+            profiler.stop()
+
         sequence_outputs = constrained_beam_scorer.finalize(
             input_ids,
             beam_scores,
@@ -3874,10 +3841,8 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"],
         lazy_mode: Optional[bool] = False,
         ignore_eos: Optional[bool] = False,
-        profiling_warmup_steps: Optional[int] = 0,
-        profiling_steps: Optional[int] = 0,
+        profiler: Optional[HabanaProfile] = None,
         hb_gen_time: Optional[HabanaGenerationTime] = None,
-        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -3908,12 +3873,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            profiling_warmup_steps (`int`, *optional*, defaults to 0):
-                Number of steps to ignore for profling.
-            profiling_steps (`int`, *optional*, defaults to 0):
-                Number of steps to be captured when enabling profiling.
-            profiling_record_shapes (`bool`, *optional*, defaults to False):
-                Record shapes when enabling profiling.
+            profiler (`HabanaProfile`, *optional*, defaults to None):
+                HabanaProfile object to use for profiling.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3953,8 +3914,9 @@ class GaudiGenerationMixin(GenerationMixin):
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
         model_kwargs = self._get_initial_cache_position(input_ids, model_kwargs)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        if profiler is not None:
+            profiler.start()
+
         this_peer_finished = False
         is_first_iteration = True  # to preserve the same API in the output as other generation methods
 
@@ -4151,12 +4113,16 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-            hb_profer.step()
+
+            if profiler is not None:
+                profiler.step()
 
             if this_peer_finished and not synced_gpus:
                 break
 
-        hb_profer.stop()
+        if profiler is not None:
+            profiler.stop()
+
         if streamer is not None:
             streamer.end()
 

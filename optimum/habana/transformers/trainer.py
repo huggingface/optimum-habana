@@ -117,6 +117,7 @@ from ..utils import (
     set_seed,
     speed_metrics,
     to_device_dtype,
+    warn0,
 )
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .integrations.deepspeed import deepspeed_init
@@ -458,7 +459,7 @@ class GaudiTrainer(Trainer):
 
     def _wrap_model(self, model, training=True, dataloader=None):
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
-        if self.accelerator.unwrap_model(model) is not model:
+        if self.accelerator.unwrap_model(model, keep_torch_compile=False) is not model:
             return model
 
         # Note: in torch.distributed mode, there's no point in wrapping the model
@@ -545,12 +546,13 @@ class GaudiTrainer(Trainer):
 
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
-            warnings.warn(
+            warn0(
                 (
                     "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
                     "instead."
                 ),
-                FutureWarning,
+                category=FutureWarning,
+                state=self.accelerator.state,
             )
         if len(kwargs) > 0:
             raise TypeError(f"train() got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
@@ -918,6 +920,7 @@ class GaudiTrainer(Trainer):
             active=self.args.profiling_steps,
             record_shapes=self.args.profiling_record_shapes,
             with_stack=self.args.profiling_with_stack,
+            name="train",
         )
         hb_profiler.start()
 
@@ -1305,7 +1308,7 @@ class GaudiTrainer(Trainer):
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
 
             # reset tr_loss to zero
-            tr_loss -= tr_loss
+            tr_loss = tr_loss.zero_()
 
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
@@ -1431,12 +1434,18 @@ class GaudiTrainer(Trainer):
             else:
                 self.model_wrapped.save_checkpoint(output_dir)
         elif self.is_fsdp_enabled:
+            if isinstance(self.model, torch._dynamo.eval_frame.OptimizedModule):
+                # TODO: for some reason the fsdp model is not unwrapped correctly here, the self.mode
+                # shouldn't be an OptimizedModule at this point.
+                model = self.model._orig_mod
+            else:
+                model = self.model
             # save fsdp specific ckpt for resuming from ckpt
             save_fsdp_model(
-                self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir, **_get_fsdp_ckpt_kwargs()
+                self.accelerator.state.fsdp_plugin, self.accelerator, model, output_dir, **_get_fsdp_ckpt_kwargs()
             )
             save_fsdp_optimizer(
-                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
+                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, model, output_dir
             )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
@@ -1729,8 +1738,8 @@ class GaudiTrainer(Trainer):
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
         if not isinstance(self.model, supported_classes):
-            if isinstance(self.accelerator.unwrap_model(self.model), supported_classes):
-                self.accelerator.unwrap_model(self.model).save_pretrained(
+            if isinstance(self.accelerator.unwrap_model(self.model, keep_torch_compile=False), supported_classes):
+                self.accelerator.unwrap_model(self.model, keep_torch_compile=False).save_pretrained(
                     output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
                 )
             else:
@@ -1908,7 +1917,8 @@ class GaudiTrainer(Trainer):
             start_time = time.time()
             model = (
                 self.accelerator.prepare(model)
-                if self.is_deepspeed_enabled or (self.is_fsdp_enabled and self.accelerator.mixed_precision != "fp8")
+                if self.is_deepspeed_enabled
+                or (self.is_fsdp_enabled and self.accelerator.mixed_precision != "fp8" and not self.args.torch_compile)
                 else self.accelerator.prepare_model(model, evaluation_mode=True)
             )
             self.model_preparation_time = round(time.time() - start_time, 4)
@@ -1979,6 +1989,15 @@ class GaudiTrainer(Trainer):
 
         # set a default dtype of logits
         logits_dtype: str = "float32"
+
+        hb_profiler = HabanaProfile(
+            warmup=self.args.profiling_warmup_steps_eval,
+            active=self.args.profiling_steps_eval,
+            record_shapes=self.args.profiling_record_shapes,
+            with_stack=self.args.profiling_with_stack,
+            name=description.lower(),
+        )
+        hb_profiler.start()
 
         # Main evaluation loop
         start_time_eval = time.time()
@@ -2069,6 +2088,10 @@ class GaudiTrainer(Trainer):
             # Added mark step here to avoid graph recompile
             if args.use_lazy_mode:
                 self.htcore.mark_step()
+
+            hb_profiler.step()
+
+        hb_profiler.stop()
 
         # After all calls to `.gather_function`, reset to `gather_for_metrics`:
         self.gather_function = self.accelerator.gather_for_metrics
@@ -2669,3 +2692,13 @@ class GaudiTrainer(Trainer):
             num_items_in_batch = num_items_in_batch.to(device)
 
         return batch_samples, num_items_in_batch
+
+    @property
+    def tokenizer(self) -> Optional[PreTrainedTokenizerBase]:
+        # Removed warning about usage of Trainer.tokenizer
+        return self.processing_class
+
+    @tokenizer.setter
+    def tokenizer(self, processing_class) -> None:
+        # Removed warning about usage of Trainer.tokenizer
+        self.processing_class = processing_class

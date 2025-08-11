@@ -62,6 +62,8 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("THUDM/chatglm3-6b", 1, True, False),
             ("Qwen/Qwen2.5-7B", 4, False, False),
             ("moonshotai/Moonlight-16B-A3B", 1, False, False),
+            ("Qwen/Qwen3-8B", 1, False, False),
+            ("Qwen/Qwen3-30B-A3B", 1, False, False),
         ],
         "fp8": [
             pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, marks=pytest.mark.x4),
@@ -243,6 +245,7 @@ def _test_text_generation(
         command += [
             "--use_hpu_graphs",
         ]
+        env_variables["PT_HPU_LAZY_MODE"] = "1"
 
     if not deepspeed:
         command.append("--bf16")

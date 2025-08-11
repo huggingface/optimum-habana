@@ -10,10 +10,12 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
-    def __init__(self, args, logger, use_with_langchain=False, warmup_on_init=True):
-        from utils import initialize_model
-
-        self.model, _, self.tokenizer, self.generation_config = initialize_model(args, logger)
+    def __init__(
+        self, args, logger, model, tokenizer, generation_config, use_with_langchain=False, warmup_on_init=True
+    ):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.generation_config = generation_config
 
         self.task = "text-generation"
         self.device = args.device
@@ -58,14 +60,21 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             if torch.is_tensor(model_inputs[t]):
                 model_inputs[t] = model_inputs[t].to(self.device)
 
+        from optimum.habana.utils import HabanaProfile
+
+        profiler = HabanaProfile(
+            warmup=self.profiling_warmup_steps,
+            active=self.profiling_steps,
+            record_shapes=self.profiling_record_shapes,
+            name="generate",
+        )
+
         output = self.model.generate(
             **model_inputs,
             generation_config=self.generation_config,
             lazy_mode=True,
             hpu_graphs=self.use_hpu_graphs,
-            profiling_steps=self.profiling_steps,
-            profiling_warmup_steps=self.profiling_warmup_steps,
-            profiling_record_shapes=self.profiling_record_shapes,
+            profiler=profiler,
         ).cpu()
 
         if use_batch:

@@ -22,7 +22,6 @@ PyTorch MiniCPM model. Adapted from https://huggingface.co/openbmb/MiniCPM3-4B/t
 """
 
 import math
-import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -54,6 +53,7 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 
+from ....utils import warn0
 from .configuration_minicpm import MiniCPM3Config
 
 
@@ -88,7 +88,7 @@ def _get_unpad_data(attention_mask):
 
 
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
-    warnings.warn(
+    warn0(
         "Calling `transformers.models.minicpm.modeling_minicpm._prepare_4d_attention_mask` is deprecated and will be removed in v4.37. Use `transformers.modeling_attn_mask_utils._prepare_4d_attention_mask"
     )
     return _prepare_4d_attention_mask(mask=mask, dtype=dtype, tgt_len=tgt_len)
@@ -97,7 +97,7 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 def _make_causal_mask(
     input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
 ):
-    warnings.warn(
+    warn0(
         "Calling `transformers.models.minicpm.modeling_minicpm._make_causal_mask` is deprecated and will be removed in v4.37. Use `transformers.models.minicpm.modeling_minicpm.AttentionMaskConverter._make_causal_mask"
     )
     return AttentionMaskConverter._make_causal_mask(
@@ -446,8 +446,9 @@ class MiniCPMAttention(nn.Module):
         - Add token_idx support
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
 
         bsz, q_len, _ = hidden_states.size()
@@ -577,8 +578,9 @@ class MiniCPMFlashAttention2(MiniCPMAttention):
         """
         # MiniCPMFlashAttention2 attention does not support output_attentions
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
 
             # overwrite attention_mask with padding_mask
@@ -962,8 +964,9 @@ class MiniCPMDecoderLayer(nn.Module):
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
 
         residual = hidden_states

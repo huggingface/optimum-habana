@@ -20,7 +20,6 @@
 """PyTorch Qwen2MoE model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -43,6 +42,7 @@ from transformers.models.qwen2_moe.modeling_qwen2_moe import (
 )
 from transformers.utils import logging
 
+from ....utils import warn0
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -266,6 +266,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
 
+        self.max_position_embeddings = config.max_position_embeddings
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -420,6 +421,8 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
+            # Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
+            softmax_mode = "None" if self.training else "fp32"
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -430,14 +433,13 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                     0.0,
                     False,
                     None,
-                    "None",
+                    softmax_mode,
                     False,
                     None,
                     "None",
                 )
             else:
                 # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states,
@@ -661,8 +663,9 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         - add new arg flash_attention_fast_softmax
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(

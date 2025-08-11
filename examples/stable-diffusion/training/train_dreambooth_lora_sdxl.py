@@ -25,7 +25,6 @@ import logging
 import math
 import os
 import shutil
-import warnings
 from pathlib import Path
 
 import diffusers
@@ -71,7 +70,7 @@ from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 from optimum.habana.transformers.trainer import _is_peft_model
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import set_seed, warn0
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -566,6 +565,12 @@ def parse_args(input_args=None):
         action="store_true",
         help="Use HPU graphs for inference on HPU.",
     )
+    parser.add_argument(
+        "--sdp_on_bf16",
+        action="store_true",
+        default=False,
+        help="Allow pyTorch to use reduced precision in the SDPA math backend",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -590,9 +595,9 @@ def parse_args(input_args=None):
     else:
         # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
+            warn0("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
+            warn0("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -850,6 +855,9 @@ def main(args):
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
+
+    if args.sdp_on_bf16:
+        torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
 
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:

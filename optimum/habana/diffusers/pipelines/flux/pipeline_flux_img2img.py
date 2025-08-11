@@ -502,6 +502,7 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
             warmup=profiling_warmup_steps,
             active=profiling_steps,
             record_shapes=False,
+            name="diffuser_pipeline",
         )
         hb_profiler.start()
 
@@ -561,7 +562,7 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = timestep.expand(latents_batch.shape[0]).to(latents_batch.dtype)
 
-                if i >= quant_mixed_step:
+                if quant_mode == "quantize-mixed" and i >= quant_mixed_step:
                     # Mixed quantization
                     noise_pred = transformer_bf16(
                         hidden_states=latents_batch,

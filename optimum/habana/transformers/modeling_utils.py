@@ -152,6 +152,8 @@ from .models import (
     GaudiQwen2Attention,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
+    GaudiQwen2ForSequenceClassification,
+    GaudiQwen2ForTokenClassification,
     GaudiQwen2MLP,
     GaudiQwen2Model,
     GaudiQwen2MoeAttention,
@@ -165,6 +167,17 @@ from .models import (
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
+    GaudiQwen3MoeAttention,
+    GaudiQwen3MoeDecoderLayer,
+    GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeMLP,
+    GaudiQwen3MoeModel,
+    GaudiQwen3MoeSparseMoeBlock,
     GaudiSiglipAttention,
     GaudiSiglipEncoder,
     GaudiSiglipEncoderLayer,
@@ -208,6 +221,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_Bert_Sdpa_SelfAttention_forward,
     gaudi_BertModel_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -263,6 +277,8 @@ from .models import (
     gaudi_qwen2_rmsnorm_forward,
     gaudi_qwen2moe_block_sparse_moe_forward,
     gaudi_qwen2moe_rmsnorm_forward,
+    gaudi_qwen3_rmsnorm_forward,
+    gaudi_qwen3moe_rmsnorm_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SeamlessM4TAttention_forward,
@@ -420,6 +436,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertSdpaSelfAttention.forward = gaudi_Bert_Sdpa_SelfAttention_forward
     transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
 
     # Optimization for codegen generation on Gaudi
@@ -677,6 +694,8 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification = GaudiQwen2ForSequenceClassification
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForTokenClassification = GaudiQwen2ForTokenClassification
     transformers.models.qwen2.modeling_qwen2.Qwen2Model = GaudiQwen2Model
     transformers.models.qwen2.modeling_qwen2.Qwen2Attention = GaudiQwen2Attention
     transformers.models.qwen2.modeling_qwen2.Qwen2MLP = GaudiQwen2MLP
@@ -706,6 +725,23 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
         GaudiQwen2VLForConditionalGeneration
     )
+
+    # Optimization for qwen3 on Gaudi
+    transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
+    transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
+    transformers.models.qwen3.modeling_qwen3.Qwen3Attention = GaudiQwen3Attention
+    transformers.models.qwen3.modeling_qwen3.Qwen3MLP = GaudiQwen3MLP
+    transformers.models.qwen3.modeling_qwen3.Qwen3DecoderLayer = GaudiQwen3DecoderLayer
+    transformers.models.qwen3.modeling_qwen3.Qwen3RMSNorm.forward = gaudi_qwen3_rmsnorm_forward
+
+    # Optimization for qwen3Moe on Gaudi
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForCausalLM = GaudiQwen3MoeForCausalLM
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeModel = GaudiQwen3MoeModel
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeAttention = GaudiQwen3MoeAttention
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeMLP = GaudiQwen3MoeMLP
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeDecoderLayer = GaudiQwen3MoeDecoderLayer
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeSparseMoeBlock = GaudiQwen3MoeSparseMoeBlock
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeRMSNorm.forward = gaudi_qwen3moe_rmsnorm_forward
 
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmAttention = GaudiStableLmAttention

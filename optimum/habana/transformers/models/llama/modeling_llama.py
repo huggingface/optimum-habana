@@ -28,6 +28,7 @@ from ....distributed.tensorparallel import (
     reduce_from_tensor_model_parallel_region,
 )
 from ....distributed.tp import TPModule
+from ....utils.features import import_usable_component
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -44,20 +45,17 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-
-    has_fused_rms_norm = True
-except ImportError:
-    has_fused_rms_norm = False
-    print("Not using HPU fused kernel for RMSNorm")
-
-try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
+
+
+FusedRMSNorm, has_fused_rms_norm = import_usable_component(
+    "habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"
+)
 
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
@@ -525,6 +523,8 @@ class GaudiLlamaAttention(LlamaAttention):
             return self.k_proj.scales.dtype
         elif hasattr(self.k_proj, "use_qdq") and self.k_proj.use_qdq:
             return self.k_proj.dequant_weights.hp_dtype
+        elif isinstance(self.k_cache, KVCache) and "float8" in str(self.k_proj.weight.dtype):
+            return self.k_proj.hp_dtype
         return self.k_proj.weight.dtype
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
