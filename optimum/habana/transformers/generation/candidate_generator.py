@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
 import torch
 from transformers.generation.candidate_generator import (
@@ -20,7 +20,7 @@ class GaudiAssistedCandidateGenerator(AssistedCandidateGenerator):
         input_ids: torch.LongTensor,
         assistant_model: "PreTrainedModel",
         generation_config: "GaudiGenerationConfig",
-        model_kwargs: Dict,
+        model_kwargs: dict,
         inputs_tensor: Optional[torch.Tensor] = None,
         logits_processor: "LogitsProcessorList" = None,
     ):

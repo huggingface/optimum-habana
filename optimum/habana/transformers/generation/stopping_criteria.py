@@ -43,7 +43,7 @@ def gaudi_MaxLengthCriteria_call(
         else:
             return create_return_const_tensor(input_ids, token_idx >= self.max_length)
     else:
-        cur_len = input_ids.shape[-1]
+        cur_len = input_ids.shape[1]
         is_done = cur_len >= self.max_length
         if self.max_position_embeddings is not None and not is_done and cur_len >= self.max_position_embeddings:
             logger.warning_once(
