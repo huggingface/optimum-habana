@@ -373,7 +373,6 @@ class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageT
                 if not self.use_hpu_graphs:
                     htcore.mark_step()
 
-        # HabanaProfile.stop()
         if not output_type == "latent":
             # Discard any padding frames that were added for CogVideoX 1.5
             latents = latents[:, additional_frames:]
