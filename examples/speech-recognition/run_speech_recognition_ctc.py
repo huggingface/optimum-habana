@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +22,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 import datasets
 import evaluate
@@ -58,8 +57,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.51.0")
-check_optimum_habana_min_version("1.18.0.dev0")
+check_min_version("4.55.0")
+check_optimum_habana_min_version("1.19.0.dev0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
@@ -243,11 +242,11 @@ class DataTrainingArguments:
             )
         },
     )
-    chars_to_ignore: Optional[List[str]] = list_field(
+    chars_to_ignore: Optional[list[str]] = list_field(
         default=None,
         metadata={"help": "A list of characters to remove from the transcripts."},
     )
-    eval_metrics: List[str] = list_field(
+    eval_metrics: list[str] = list_field(
         default=["wer"],
         metadata={"help": "A list of metrics the model should be evaluated on. E.g. `'wer cer'`"},
     )
@@ -279,7 +278,7 @@ class DataTrainingArguments:
         metadata={
             "help": (
                 "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
-                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+                "generated when running `hf auth login` (stored in `~/.huggingface`)."
             )
         },
     )
@@ -350,7 +349,7 @@ class DataCollatorCTCWithPadding:
     pad_to_multiple_of_labels: Optional[int] = None
     feature_extractor_input_name: Optional[str] = "input_values"
 
-    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+    def __call__(self, features: list[dict[str, Union[list[int], torch.Tensor]]]) -> dict[str, torch.Tensor]:
         # split inputs and labels since they have to be of different lengths and need
         # different padding methods
         input_features = [
