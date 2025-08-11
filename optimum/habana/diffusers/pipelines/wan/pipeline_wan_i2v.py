@@ -464,9 +464,9 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-            if not self.use_hpu_graphs:
-                htcore.mark_step()
-            hb_profiler.step()
+                if not self.use_hpu_graphs:
+                    htcore.mark_step()
+                hb_profiler.step()
 
         self._current_timestep = None
 
