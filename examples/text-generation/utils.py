@@ -348,11 +348,11 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
-        model = get_torch_compiled_model(model, logger, args)
         if "PT_HPU_LAZY_MODE" in os.environ:
             assert os.environ["PT_HPU_LAZY_MODE"] != "1", (
                 "`--torch_compile` is not compatible with PT_HPU_LAZY_MODE=1. Please set it to 0 or unset the variable."
             )
+        model = get_torch_compiled_model(model, logger, args)
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
 
