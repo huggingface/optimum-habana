@@ -32,7 +32,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ....transformers.gaudi_configuration import GaudiConfig
 from ...models.attention_processor import CogVideoXAttnProcessorGaudi
 from ...models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3dforwardGaudi, tiled_decode_gaudi
-from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
+from ...models.transformers.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
