@@ -1071,10 +1071,7 @@ class GLMTransformer(torch.nn.Module):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                if next_decoder_cache is not None:
-                    next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-                else:
-                    next_decoder_cache = (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
