@@ -329,7 +329,10 @@ class GaudiMixtralAttentionLongSequence:
         for i in range(q_tiles):
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = q[:, :, s:e, :]
-            row_mask = mask[:, :, s:e, :]
+            if mask is not None:
+                row_mask = mask[:, :, s:e, :]
+            else:
+                row_mask = None
             attn_output[:, :, s:e, :] = fsdpa(row_q, k, v, row_mask, 0.0, causal, None)
 
         if q_padding != 0:
