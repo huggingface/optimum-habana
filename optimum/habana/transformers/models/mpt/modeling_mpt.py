@@ -66,7 +66,7 @@ class GaudiMptAttention(MptAttention):
         - add new arg flash_attention_recompute
         - add new args cache_idx
         """
-
+        assert position_bias is not None
         batch_size, seq_length = hidden_states.shape[:2]
 
         mixed_qkv = self.Wqkv(hidden_states)
