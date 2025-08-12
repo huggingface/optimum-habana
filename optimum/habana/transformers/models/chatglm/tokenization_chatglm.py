@@ -347,7 +347,11 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         if max_length is not None and pad_to_multiple_of is not None and (max_length % pad_to_multiple_of != 0):
             max_length = ((max_length // pad_to_multiple_of) + 1) * pad_to_multiple_of
 
-        needs_to_be_padded = padding_strategy != PaddingStrategy.DO_NOT_PAD and len(required_input) != max_length
+        needs_to_be_padded = (
+            padding_strategy != PaddingStrategy.DO_NOT_PAD
+            and max_length is not None
+            and len(required_input) != max_length
+        )
 
         # Initialize attention mask if not present.
         if "attention_mask" not in encoded_inputs:

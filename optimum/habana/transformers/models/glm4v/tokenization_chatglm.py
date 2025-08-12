@@ -76,13 +76,18 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
         self.mergeable_ranks = mergeable_ranks
 
         self.tokenizer = tiktoken.Encoding(
-            name="my_tokenizer", pat_str=pat_str, mergeable_ranks=mergeable_ranks, special_tokens={}
+            name="my_tokenizer",
+            pat_str=pat_str,
+            mergeable_ranks=mergeable_ranks,
+            special_tokens={},
         )
         self.decoder = {rank: token for token, rank in mergeable_ranks.items()}
         self.n_words = len(self.decoder)
 
         super().__init__(
-            padding_side=padding_side, clean_up_tokenization_spaces=clean_up_tokenization_spaces, **kwargs
+            padding_side=padding_side,
+            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+            **kwargs,
         )
 
     @property
@@ -157,7 +162,10 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
         return (vocab_file,)
 
     def get_prefix_tokens(self):
-        prefix_tokens = [self.convert_tokens_to_ids("[gMASK]"), self.convert_tokens_to_ids("<sop>")]
+        prefix_tokens = [
+            self.convert_tokens_to_ids("[gMASK]"),
+            self.convert_tokens_to_ids("<sop>"),
+        ]
         return prefix_tokens
 
     def build_single_message(self, role, metadata, message, tokenize=True, message_prefix=None):
@@ -201,10 +209,14 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
             transform = transforms.Compose(
                 [
                     transforms.Resize(
-                        (self.image_size, self.image_size), interpolation=transforms.InterpolationMode.BICUBIC
+                        (self.image_size, self.image_size),
+                        interpolation=transforms.InterpolationMode.BICUBIC,
                     ),
                     transforms.ToTensor(),
-                    transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+                    transforms.Normalize(
+                        (0.48145466, 0.4578275, 0.40821073),
+                        (0.26862954, 0.26130258, 0.27577711),
+                    ),
                 ]
             )
             for item in conversation:
@@ -258,7 +270,10 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
                     input_ids.extend([self.convert_tokens_to_ids("<|assistant|>")])
                 else:
                     input_message += "<|assistant|>"
-            return {"input": input_ids if tokenize else input_message, "image": input_image}
+            return {
+                "input": input_ids if tokenize else input_message,
+                "image": input_image,
+            }
 
         # Main logic to handle different conversation formats
         if isinstance(conversation, list) and all(isinstance(i, dict) for i in conversation):
@@ -371,7 +386,11 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
         if max_length is not None and pad_to_multiple_of is not None and (max_length % pad_to_multiple_of != 0):
             max_length = ((max_length // pad_to_multiple_of) + 1) * pad_to_multiple_of
 
-        needs_to_be_padded = padding_strategy != PaddingStrategy.DO_NOT_PAD and len(required_input) != max_length
+        needs_to_be_padded = (
+            padding_strategy != PaddingStrategy.DO_NOT_PAD
+            and max_length is not None
+            and len(required_input) != max_length
+        )
 
         # Initialize attention mask if not present.
         if "attention_mask" not in encoded_inputs:
@@ -434,8 +453,11 @@ class ChatGLM4Tokenizer(PreTrainedTokenizer):
         if max_length is not None and pad_to_multiple_of is not None and (max_length % pad_to_multiple_of != 0):
             max_length = ((max_length // pad_to_multiple_of) + 1) * pad_to_multiple_of
 
-        needs_to_be_padded = padding_strategy != PaddingStrategy.DO_NOT_PAD and len(required_input) != max_length
-
+        needs_to_be_padded = (
+            padding_strategy != PaddingStrategy.DO_NOT_PAD
+            and max_length is not None
+            and len(required_input) != max_length
+        )
         # Initialize attention mask if not present.
         assert encoded_inputs["position_ids"] is not None
         assert encoded_inputs["attention_mask"] is not None
