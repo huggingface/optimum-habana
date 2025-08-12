@@ -1085,7 +1085,7 @@ class GLMTransformer(torch.nn.Module):
         if self.post_layer_norm:
             hidden_states = self.final_layernorm(hidden_states)
 
-        return hidden_states, next_cache, all_hidden_states, all_self_attns if all_self_attns is not None else ()
+        return hidden_states, next_cache, all_hidden_states, all_self_attns
 
 
 class GLM4VPreTrainedModel(PreTrainedModel):

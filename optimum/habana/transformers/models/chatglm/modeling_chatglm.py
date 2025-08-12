@@ -206,9 +206,7 @@ def gaudi_chatglm_repeat_kv(
     new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
     query_layer = query_layer.reshape(new_q_shape)
 
-    if attention_mask is not None:
-        # Add groups dim and set to 1
-        attention_mask = attention_mask.unsqueeze(1)
+    attention_mask = attention_mask.unsqueeze(1)
 
     return query_layer, key_layer, value_layer, attention_mask
 
