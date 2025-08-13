@@ -5,7 +5,7 @@ from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.configuration_opt import OPTConfig
 from transformers.models.opt.modeling_opt import (
-    OPT_ATTENTION_CLASSES,
+    OPTAttention,
     OPTForCausalLM,
     OPTLearnedPositionalEmbedding,
     logger,
@@ -174,7 +174,7 @@ class GaudiOPTDecoderLayer(torch.nn.Module):
         super().__init__()
         self.embed_dim = config.hidden_size
 
-        self.self_attn = OPT_ATTENTION_CLASSES["eager"](config=config, layer_idx=layer_idx)
+        self.self_attn = OPTAttention(config=config, layer_idx=layer_idx)
 
         self.do_layer_norm_before = config.do_layer_norm_before
         self.dropout = config.dropout

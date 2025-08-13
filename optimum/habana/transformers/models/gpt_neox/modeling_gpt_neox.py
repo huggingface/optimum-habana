@@ -10,7 +10,6 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXLayer,
     GPTNeoXMLP,
     GPTNeoXModel,
-    KwargsForCausalLM,
     apply_rotary_pos_emb,
     logger,
 )
@@ -404,7 +403,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs,
     ) -> Union[tuple, CausalLMOutputWithPast]:
         outputs: BaseModelOutputWithPast = self.gpt_neox(
             input_ids,

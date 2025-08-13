@@ -1,6 +1,7 @@
 from typing import Optional, Union
 
 import torch
+from transformers.cache_utils import StaticCache
 from transformers.masking_utils import create_causal_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.cohere.modeling_cohere import (
@@ -11,7 +12,6 @@ from transformers.models.cohere.modeling_cohere import (
     CohereForCausalLM,
     CohereRotaryEmbedding,
     DynamicCache,
-    StaticCache,
     apply_rotary_pos_emb,
     eager_attention_forward,
 )

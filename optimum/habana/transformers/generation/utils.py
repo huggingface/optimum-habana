@@ -174,6 +174,34 @@ def get_final_stopping_criteria(x):
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
 
+# Auxiliary functions for beam search
+def _temporary_reorder_cache(self, past_key_values, beam_idx):
+    """
+    Temporary function to handle the different types of cache reordering processes while we roll out `Cache`.
+
+    TODO: standardize cache formats and make all models compatible with `Cache`. It would remove the need
+    for this function, with `Cache.reorder_cache` being the sole remaining code path
+    """
+    model_class = self.__class__.__name__.lower()
+    # Exception 1: code path for models using the legacy cache format
+    if isinstance(past_key_values, (tuple, list)):
+        past_key_values = self._reorder_cache(past_key_values, beam_idx)
+    # Exception 2: models with different cache formats. These are limited to `DynamicCache` until their
+    # cache format is standardized, to avoid adding complexity to the codebase.
+    elif "gptbigcode" in model_class:
+        if not isinstance(past_key_values, (DynamicCache, EncoderDecoderCache)):
+            raise ValueError(
+                f"Using an unsupported cache format with {model_class}. Currently, it only supports the "
+                "legacy tuple format or `DynamicCache`"
+            )
+        past_key_values = self._reorder_cache(past_key_values, beam_idx)
+        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+    # Standard code path: use the `Cache.reorder_cache`
+    else:
+        past_key_values.reorder_cache(beam_idx)
+    return past_key_values
+
+
 class GaudiGenerationMixin(GenerationMixin):
     """
     This class enables to perform fast generation in lazy mode and with HPU graphs.
@@ -3404,8 +3432,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 if model_kwargs["reuse_cache"]:
                     model_kwargs["past_key_values"] = unwrap_deepspeed_model(self).reorder_kv_cache(beam_idx)
                 else:
-                    model_kwargs["past_key_values"] = self._temporary_reorder_cache(
-                        model_kwargs["past_key_values"], beam_idx
+                    model_kwargs["past_key_values"] = _temporary_reorder_cache(
+                        self, model_kwargs["past_key_values"], beam_idx
                     )
 
             if return_dict_in_generate and output_scores:

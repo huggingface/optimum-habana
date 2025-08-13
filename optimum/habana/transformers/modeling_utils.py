@@ -42,7 +42,6 @@ from .integrations.awq import (
 )
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
-    GAUDI_WHISPER_ATTENTION_CLASSES,
     BaichuanConfig,
     BaichuanForCausalLM,
     BaichuanTokenizer,
@@ -298,8 +297,7 @@ from .models import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
-    gaudi_T5ForConditionalGeneration_forward,
-    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    GaudiT5ForConditionalGeneration,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
     gaudi_table_transformer_conv_encoder_forward,
@@ -350,10 +348,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
     transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
-    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2SdpaAttention = GaudiWav2Vec2SdpaAttention
-    transformers.models.wav2vec2.modeling_wav2vec2.WAV2VEC2_ATTENTION_CLASSES.update(
-        {"sdpa": GaudiWav2Vec2SdpaAttention}
-    )
+    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Attention = GaudiWav2Vec2SdpaAttention
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.prepare_inputs_for_generation = (
@@ -489,9 +484,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeForCausalLM = GaudiGPTBigCodeForCausalLM
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeBlock.forward = gaudi_gpt_bigcode_block_forward
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeModel.forward = gaudi_gpt_bigcode_model_forward
-    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBIGCODE_ATTENTION_CLASSES.update(
-        {"eager": GaudiGPTBigCodeAttention}
-    )
 
     # Optimization for gpt-neo generation on Gaudi
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoForCausalLM = GaudiGPTNeoForCausalLM
@@ -566,10 +558,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
     transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
     transformers.models.t5.modeling_t5.T5LayerSelfAttention.forward = gaudi_T5LayerSelfAttention_forward
-    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
-    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
-        gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
-    )
+    transformers.models.t5.modeling_t5.T5ForConditionalGeneration = GaudiT5ForConditionalGeneration
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward
 
@@ -784,7 +773,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
-    transformers.models.whisper.modeling_whisper.WHISPER_ATTENTION_CLASSES = GAUDI_WHISPER_ATTENTION_CLASSES
 
     # Optimization for mllama on Gaudi
     transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
@@ -799,13 +787,13 @@ def adapt_transformers_to_gaudi():
     transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
     transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
 
-    transformers.AutoConfig.register("deci", DeciLMConfig)
-    transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+    # transformers.AutoConfig.register("deci", DeciLMConfig)
+    # transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
     # Optimization for deepseek on Gaudi
-    transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
-    transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
-    transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
+    # transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
+    # transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
+    # transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
     # transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
     # transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
     transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config

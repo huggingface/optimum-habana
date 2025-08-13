@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2022 the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -80,6 +79,7 @@ from transformers.utils import (
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
+    check_torch_load_is_safe,
     is_accelerate_available,
     is_safetensors_available,
 )
@@ -463,7 +463,7 @@ if is_torch_available():
         output_dir=None,
         **kwargs,
     ):
-        label_names = kwargs.get("label_names", None)
+        label_names = kwargs.get("label_names")
         gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
         train_dataset = RegressionDataset(length=train_len, label_names=label_names)
         eval_dataset = RegressionDataset(length=eval_len, label_names=label_names)
@@ -569,6 +569,7 @@ class GaudiTrainerIntegrationCommon:
         else:
             best_model = RegressionModel()
             if not safe_weights:
+                check_torch_load_is_safe()
                 state_dict = torch.load(os.path.join(checkpoint, WEIGHTS_NAME), weights_only=True)
             else:
                 state_dict = safetensors.torch.load_file(os.path.join(checkpoint, SAFE_WEIGHTS_NAME))
@@ -579,6 +580,11 @@ class GaudiTrainerIntegrationCommon:
 
         metrics = trainer.evaluate()
         self.assertEqual(metrics[metric], best_value)
+
+    def remove_nan_logs(self, log):
+        for key in list(log.keys()):
+            if log[key] != log[key]:  # Check if the value is NaN
+                del log[key]
 
     def check_trainer_state_are_the_same(self, trainer_state, trainer_state1):
         # We'll pop things so operate on copies.
@@ -593,6 +599,10 @@ class GaudiTrainerIntegrationCommon:
             for key in skip_log_keys:
                 _ = log.pop(key, None)
                 _ = log1.pop(key, None)
+
+            self.remove_nan_logs(log)
+            self.remove_nan_logs(log1)
+
             self.assertEqual(log, log1)
 
     def convert_to_sharded_checkpoint(self, folder, save_safe=True, load_safe=True):
@@ -601,6 +611,7 @@ class GaudiTrainerIntegrationCommon:
             loader = safetensors.torch.load_file
             weights_file = os.path.join(folder, SAFE_WEIGHTS_NAME)
         else:
+            check_torch_load_is_safe()
             loader = torch.load
             weights_file = os.path.join(folder, WEIGHTS_NAME)
 
@@ -1088,6 +1099,37 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
                 trainer.lr_scheduler.step()
             self.assertEqual(trainer.lr_scheduler.get_last_lr()[0], 1e-5)
 
+    def test_cosine_with_min_lr_schedule_with_warmup_lr_rate(self):
+        train_dataset = RegressionDataset()
+        model = RegressionModel()
+        num_steps, num_warmup_steps = 10, 2
+        extra_kwargs = {"min_lr": 1e-5}  # Non-default arguments
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = GaudiTrainingArguments(
+                tmpdir,
+                lr_scheduler_type="cosine_warmup_with_min_lr",
+                lr_scheduler_kwargs=extra_kwargs,
+                learning_rate=0.2,
+                warmup_steps=num_warmup_steps,
+                report_to="none",
+                use_habana=True,
+                use_lazy_mode=True,
+            )
+            trainer = GaudiTrainer(model, gaudi_config=get_gaudi_config(), args=args, train_dataset=train_dataset)
+            trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
+
+            # Checking that the scheduler was created
+            self.assertIsNotNone(trainer.lr_scheduler)
+
+            # Check the last learning rate
+            step_lrs = []
+            for _ in range(num_steps):
+                step_lrs.append(trainer.optimizer.param_groups[0]["lr"])
+                trainer.lr_scheduler.step()
+            self.assertEqual(step_lrs[0], 0.1)
+            self.assertEqual(step_lrs[1], 0.2)
+            self.assertEqual(step_lrs[-1], 1e-05)
+
     def test_reduce_lr_on_plateau_args(self):
         # test passed arguments for a custom ReduceLROnPlateau scheduler
         train_dataset = RegressionDataset(length=64)
@@ -1289,7 +1331,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer.train()
         args = GaudiTrainingArguments(tmp_dir, use_habana=True, use_lazy_mode=True, report_to=[])
         dict1, dict2 = args.to_dict(), trainer.args.to_dict()
-        for key in dict1.keys():
+        for key in dict1:
             # Logging dir can be slightly different as they default to something with the time.
             if key != "logging_dir":
                 self.assertEqual(dict1[key], dict2[key])
@@ -1324,6 +1366,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #         per_device_train_batch_size=2,
     #         torch_compile=True,
     #         max_steps=1,  # compile happens on the first step
+    #         report_to="none",
     #         use_habana=True,
     #         use_lazy_mode=True,
     #     )
@@ -2235,7 +2278,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #     gaudi_config = get_gaudi_config()
     #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()])
     #     trainer.train()
-    #     self.assertEqual(trainer._train_batch_size, 8)
+    #     self.assertEqual(trainer._train_batch_size, 14)
 
     # def test_auto_batch_size_with_resume_from_checkpoint(self):
     #     train_dataset = RegressionDataset(length=128)
@@ -2260,16 +2303,16 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #         model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockOOMCallback()]
     #     )
     #     trainer.train()
-    #     # After `auto_find_batch_size` is ran we should now be at 8
-    #     self.assertEqual(trainer._train_batch_size, 8)
+    #     # After `auto_find_batch_size` is ran we should now be at 16*0.9=14
+    #     self.assertEqual(trainer._train_batch_size, 14)
 
     #     # We can then make a new Trainer
     #     trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
     #     # Check we are at 16 to start
     #     self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
     #     trainer.train(resume_from_checkpoint=True)
-    #     # We should be back to 8 again, picking up based upon the last ran Trainer
-    #     self.assertEqual(trainer._train_batch_size, 8)
+    #     # We should be back to 14 again, picking up based upon the last ran Trainer
+    #     self.assertEqual(trainer._train_batch_size, 14)
 
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):
@@ -2608,6 +2651,36 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             )
             train_output = trainer.train()
             self.assertEqual(train_output.global_step, int(self.n_epochs))
+
+    def test_num_batches_in_training_with_gradient_accumulation(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for num_train_epochs in [1, 2]:
+                for train_len in [123, 120]:
+                    trainer = get_regression_trainer(
+                        train_len=train_len,
+                        per_device_train_batch_size=4,
+                        gradient_accumulation_steps=5,
+                        num_train_epochs=num_train_epochs,
+                        output_dir=tmp_dir,
+                    )
+
+                    total_batch_samples = []
+
+                    def wrap_get_batch_samples(fn):
+                        def wrapped_fn(epoch_iterator, num_batches, device):
+                            self.assertGreater(num_batches, 0)
+                            batch_samples, num_items_in_batch = fn(epoch_iterator, num_batches, device)
+                            self.assertEqual(len(batch_samples), num_batches)
+                            total_batch_samples.append(num_batches)
+                            return batch_samples, num_items_in_batch
+
+                        return wrapped_fn
+
+                    trainer.get_batch_samples = wrap_get_batch_samples(trainer.get_batch_samples)
+
+                    trainer.train()
+
+                    self.assertEqual(len(trainer.get_train_dataloader()) * num_train_epochs, sum(total_batch_samples))
 
     def test_early_stopping_callback(self):
         # early stopping stops training before num_training_epochs
@@ -3056,7 +3129,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             gaudi_config = get_gaudi_config()
             trainer = GaudiTrainer(
                 model=RegressionPreTrainedModel(config),
-                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, report_to="none", use_habana=True, use_lazy_mode=True),
                 gaudi_config=gaudi_config,
                 processing_class=image_processor,
             )
@@ -3074,7 +3147,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             gaudi_config = get_gaudi_config()
             trainer = GaudiTrainer(
                 model=RegressionPreTrainedModel(config),
-                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, report_to="none", use_habana=True, use_lazy_mode=True),
                 gaudi_config=gaudi_config,
                 processing_class=feature_extractor,
             )
@@ -3096,7 +3169,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             gaudi_config = get_gaudi_config()
             trainer = GaudiTrainer(
                 model=RegressionPreTrainedModel(config),
-                args=GaudiTrainingArguments(output_dir=tmp_dir, use_habana=True, use_lazy_mode=True),
+                args=GaudiTrainingArguments(output_dir=tmp_dir, report_to="none", use_habana=True, use_lazy_mode=True),
                 gaudi_config=gaudi_config,
                 processing_class=processor,
             )
@@ -3470,8 +3543,7 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
     def get_commit_history(self, repo):
         commit_logs = subprocess.run(
             "git log".split(),
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+            capture_output=True,
             check=True,
             encoding="utf-8",
             cwd=repo,

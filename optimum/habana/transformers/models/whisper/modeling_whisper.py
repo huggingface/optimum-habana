@@ -15,10 +15,8 @@ from transformers.models.whisper.modeling_whisper import (
     WhisperAttention,
     WhisperDecoder,
     WhisperDecoderLayer,
-    WhisperFlashAttention2,
     WhisperForConditionalGeneration,
     WhisperModel,
-    WhisperSdpaAttention,
     shift_tokens_right,
 )
 from transformers.utils import logging
@@ -27,7 +25,7 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 
-class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
+class GaudiWhisperSdpaAttention(WhisperAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -141,14 +139,6 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, None, past_key_value
-
-
-# Now only support the default GaudiWhisperSdpaAttention
-GAUDI_WHISPER_ATTENTION_CLASSES = {
-    "eager": WhisperAttention,
-    "flash_attention_2": WhisperFlashAttention2,
-    "sdpa": GaudiWhisperSdpaAttention,
-}
 
 
 class GaudiWhisperDecoderLayer(WhisperDecoderLayer):

@@ -38,10 +38,9 @@ from transformers.models.qwen2.modeling_qwen2 import (
     Qwen2Model,
     Qwen2RMSNorm,
     apply_rotary_pos_emb,
-    logger,
 )
 from transformers.processing_utils import Unpack
-from transformers.utils import TransformersKwargs
+from transformers.utils import TransformersKwargs, logging
 
 from ....distributed import parallel_state
 from ...modeling_attn_mask_utils import (
@@ -74,6 +73,9 @@ except ImportError:
     FusedSDPA = None
 
 import habana_frameworks.torch.core as htcore
+
+
+logger = logging.get_logger(__name__)
 
 
 def gaudi_qwen2_rmsnorm_forward(self, hidden_states):
