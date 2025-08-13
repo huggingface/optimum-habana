@@ -367,8 +367,7 @@ class Attention(nn.Module):
         q_tiles = (q_len // self.block_size) if (q_len % self.block_size == 0) else math.ceil(q_len / self.block_size)
         q_padding = q_tiles * self.block_size - q_len
         query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
-        if attention_mask is not None:
-            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", torch.finfo(key_layer.dtype).min)
+        attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", torch.finfo(key_layer.dtype).min)
 
         row_o_list = []
         for i in range(q_tiles):
@@ -635,10 +634,7 @@ class Attention(nn.Module):
             )
             q_padding = q_tiles * self.q_block_size - q_len
             query_states = F.pad(query_states, (0, 0, 0, q_padding), "constant", 0)
-            if attention_mask is not None:
-                attention_mask = F.pad(
-                    attention_mask, (0, 0, 0, q_padding), "constant", torch.finfo(key_states.dtype).min
-                )
+            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", torch.finfo(key_states.dtype).min)
 
             row_o_list = []
 
