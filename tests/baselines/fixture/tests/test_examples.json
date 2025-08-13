@@ -125,8 +125,8 @@
   },
   "tests/test_examples.py::DeepspeedSFTMixtralExampleTester::test_sft_Mixtral-8x7B-Instruct-v0.1_deepspeed": {
     "gaudi2": {
-      "train_runtime": 918.8018,
-      "train_samples_per_second": 7.554
+      "train_runtime": 286.0,
+      "train_samples_per_second": 12.0
     },
     "gaudi3": {
       "train_runtime": 270.0,
