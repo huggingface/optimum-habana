@@ -169,8 +169,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
         q_padding = q_tiles * q_block_size - q_len
         query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
-        if attention_mask is not None:
-            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
         row_o_list = []
         for i in range(q_tiles):
             s, e = i * q_block_size, (i + 1) * q_block_size
