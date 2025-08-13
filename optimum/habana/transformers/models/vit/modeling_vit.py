@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -52,16 +52,32 @@ def gaudi_eager_attention_forward(
 
 
 def gaudi_vit_self_attention_forward(
-    self, hidden_states, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
-) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
+    self,
+    hidden_states,
+    head_mask: Optional[torch.Tensor] = None,
+    output_attentions: bool = False,
+) -> Union[tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor]]:
     """
     Same method as transformers.models.vit.modeling_vit.ViTSelfAttention.forward with a small tweak:
     the division is performed before the matmul for computing attention scores.
     This gives better performance on HPU.
     """
-    key_layer = self.transpose_for_scores(self.key(hidden_states))
-    value_layer = self.transpose_for_scores(self.value(hidden_states))
-    query_layer = self.transpose_for_scores(self.query(hidden_states))
+    batch_size, seq_length, _ = hidden_states.shape
+    key_layer = (
+        self.key(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
+    value_layer = (
+        self.value(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
+    query_layer = (
+        self.query(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
 
     context_layer, attention_probs = gaudi_eager_attention_forward(
         self,

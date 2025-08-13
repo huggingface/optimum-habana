@@ -25,19 +25,26 @@ def gaudi_BlipTextSelfAttention_forward(
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     """
     Copied from BlipTextSelfAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L143
     The only differences are:
         - add token_idx
     """
-    mixed_query_layer = self.query(hidden_states)
+    batch_size, seq_length, _ = hidden_states.shape
+    query_layer = (
+        self.query(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
 
     # If this is instantiated as a cross-attention module, the keys
     # and values come from an encoder; the attention mask needs to be
     # such that the encoder's padding tokens are not attended to.
     is_cross_attention = encoder_hidden_states is not None
+    attention_mask = encoder_attention_mask if is_cross_attention else attention_mask
 
     if is_cross_attention:
         key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))

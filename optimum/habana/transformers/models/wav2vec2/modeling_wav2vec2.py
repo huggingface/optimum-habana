@@ -16,7 +16,7 @@
 
 import os
 import random
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from habana_frameworks.torch.hpu import get_device_name
@@ -47,7 +47,7 @@ except ImportError:
 
 
 def _gaudi_wav2vec2_compute_mask_indices(
-    shape: Tuple[int, int],
+    shape: tuple[int, int],
     mask_prob: float,
     mask_length: int,
     attention_mask: Optional[torch.LongTensor] = None,
@@ -160,7 +160,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
 
 
 def _gaudi_wav2vec2_sample_negative_indices(
-    features_shape: Tuple, num_negatives: int, mask_time_indices: Optional[torch.Tensor] = None
+    features_shape: tuple, num_negatives: int, mask_time_indices: Optional[torch.Tensor] = None
 ):
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L254
@@ -220,12 +220,10 @@ def gaudi_wav2vec2_encoder_forward(
         expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
         hidden_states[~expand_attention_mask] = 0
 
-        # extend attention_mask
-        attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
-        attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
-        attention_mask = attention_mask.expand(
-            attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
-        )
+    attention_mask = self._update_full_mask(
+        attention_mask,
+        hidden_states,
+    )
 
     position_embeddings = self.pos_conv_embed(hidden_states)
     hidden_states = hidden_states + position_embeddings
@@ -238,23 +236,15 @@ def gaudi_wav2vec2_encoder_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         dropout_probability = torch.rand([])
 
-        skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
+        skip_the_layer = self.training and (dropout_probability < self.config.layerdrop)
         if not skip_the_layer or synced_gpus:
             # under fsdp or deepspeed zero3 all gpus must run in sync
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = layer(
-                    hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
-                )
+            layer_outputs = layer(
+                hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
+            )
             hidden_states = layer_outputs[0]
 
         if skip_the_layer:
@@ -283,7 +273,7 @@ def gaudi_wav2vec2_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-) -> Union[Tuple, Wav2Vec2BaseModelOutput]:
+) -> Union[tuple, Wav2Vec2BaseModelOutput]:
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1282
     The only difference is that a clone of `hidden_states` is given to _mask_hidden_states to avoid an error.
@@ -393,7 +383,7 @@ def gaudi_wav2vec2forctc_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     labels: Optional[torch.Tensor] = None,
-) -> Union[Tuple, CausalLMOutput]:
+) -> Union[tuple, CausalLMOutput]:
     """
     copied from Transformers https://github.com/huggingface/transformers/blob/e770f0316d2a9b787c9d1440f204fcb65e176682/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1950
     only differences are (1) attention_mask tensor generation using ones_like is done on HPU, (2) masked_select is not applied on labels to compute flattened_targets to avoid
@@ -506,11 +496,11 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
         self,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         Copied from Wav2Vec2SdpaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/wav2vec2/modeling_wav2vec2.py
         The only difference is If the `USE_FLASH_ATTENTION` switch is enabled, then use the HPU's fused SDPA; otherwise, use PyTorch's native SDPA
@@ -567,10 +557,10 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`

@@ -58,7 +58,7 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
 
-    def forward(self, input_ids: torch.Tensor, past_key_values_length: torch.Tensor = torch.tensor(0)):
+    def forward(self, input_ids: torch.Tensor, past_key_values_length: torch.Tensor = torch.tensor(0), position_ids: torch.Tensor = None):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
 
         bsz, seq_len = input_ids.shape[:2]
@@ -72,19 +72,25 @@ def gaudi_BartAttention_forward(
     self,
     hidden_states: torch.Tensor,
     key_value_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    # TODO: we need a refactor so that the different attention modules can get their specific kwargs
+    # ATM, we have mixed things encoder, decoder, and encoder-decoder attn
+    **kwargs,
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """Input shape: Batch x Time x Channel"""
 
     # if key_value_states are provided this layer is used as a cross-attention layer
     # for the decoder
     is_cross_attention = key_value_states is not None
 
-    bsz, tgt_len, _ = hidden_states.size()
+    # determine input shapes
+    bsz, tgt_len = hidden_states.shape[:-1]
+    src_len = key_value_states.shape[1] if is_cross_attention else tgt_len
 
     # get query proj
     query_states = self.q_proj(hidden_states) * self.scaling

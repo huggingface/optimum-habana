@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -411,41 +411,22 @@ def gaudi_T5Stack_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                layer_module.__call__,
-                hidden_states,
-                extended_attention_mask,
-                position_bias,
-                encoder_hidden_states,
-                encoder_extended_attention_mask,
-                encoder_decoder_position_bias,
-                layer_head_mask,
-                cross_attn_layer_head_mask,
-                None,  # past_key_value is always None with gradient checkpointing
-                use_cache,
-                output_attentions,
-                True,
-                cache_position,
-                None,
-            )
-        else:
-            layer_outputs = layer_module(
-                hidden_states,
-                attention_mask=extended_attention_mask,
-                position_bias=position_bias,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_extended_attention_mask,
-                encoder_decoder_position_bias=encoder_decoder_position_bias,
-                layer_head_mask=layer_head_mask,
-                cross_attn_layer_head_mask=cross_attn_layer_head_mask,
-                past_key_value=past_key_value,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                return_dict=return_dict,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        layer_outputs = layer_module(
+            hidden_states,
+            attention_mask=extended_attention_mask,
+            position_bias=position_bias,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_extended_attention_mask,
+            encoder_decoder_position_bias=encoder_decoder_position_bias,
+            layer_head_mask=layer_head_mask,
+            cross_attn_layer_head_mask=cross_attn_layer_head_mask,
+            past_key_value=past_key_value,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            return_dict=return_dict,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
 
         # layer_outputs is a tuple with:
         # hidden-states, key-value-states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
@@ -506,8 +487,8 @@ def gaudi_T5ForConditionalGeneration_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     decoder_head_mask: Optional[torch.FloatTensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    encoder_outputs: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+    encoder_outputs: Optional[tuple[tuple[torch.Tensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -518,7 +499,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.LongTensor] = None,
     **kwargs,
-) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
+) -> Union[tuple[torch.FloatTensor], Seq2SeqLMOutput]:
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 

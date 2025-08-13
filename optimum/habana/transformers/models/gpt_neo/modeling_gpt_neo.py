@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from transformers.modeling_outputs import (
@@ -10,32 +10,6 @@ from transformers.modeling_outputs import (
 from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoForCausalLM, logger
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
-
-
-def gaudi_gpt_neo_attention_forward(
-    self,
-    hidden_states,
-    attention_mask=None,
-    layer_past=None,
-    head_mask=None,
-    use_cache=False,
-    output_attentions=False,
-    token_idx=None,
-):
-    """
-    Copied from GPTNeoAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
-    The only differences are:
-    - add new args token_idx
-    """
-    return self.attention(
-        hidden_states,
-        attention_mask=attention_mask,
-        layer_past=layer_past,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-    )
 
 
 def gaudi_gpt_neo_selfattention_forward(
@@ -86,10 +60,34 @@ def gaudi_gpt_neo_selfattention_forward(
     attn_output = self.resid_dropout(attn_output)
 
     outputs = (attn_output, present)
-    if output_attentions:
-        outputs += (attn_weights,)
 
     return outputs  # a, present, (attentions)
+
+
+def gaudi_gpt_neo_attention_forward(
+    self,
+    hidden_states,
+    attention_mask=None,
+    layer_past=None,
+    head_mask=None,
+    use_cache=False,
+    output_attentions=False,
+    token_idx=None,
+):
+    """
+    Copied from GPTNeoAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+    The only differences are:
+    - add new args token_idx
+    """
+    return self.attention(
+        hidden_states,
+        attention_mask=attention_mask,
+        layer_past=layer_past,
+        head_mask=head_mask,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+    )
 
 
 def gaudi_gpt_neo_block_forward(
@@ -109,7 +107,7 @@ def gaudi_gpt_neo_block_forward(
     """
     residual = hidden_states
     hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
+    attn_output, attn_weights = self.attn(
         hidden_states,
         layer_past=layer_past,
         attention_mask=attention_mask,
@@ -118,8 +116,7 @@ def gaudi_gpt_neo_block_forward(
         output_attentions=output_attentions,
         token_idx=token_idx,
     )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
+
     # residual connection
     hidden_states = attn_output + residual
 
@@ -129,18 +126,13 @@ def gaudi_gpt_neo_block_forward(
     # residual connection
     hidden_states = residual + feed_forward_hidden_states
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
-
-    return outputs  # hidden_states, present, (attentions, cross_attentions)
+    return hidden_states, attn_weights
 
 
 def gaudi_gpt_neo_model_forward(
     self,
     input_ids: Optional[torch.Tensor] = None,
-    past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+    past_key_values: Optional[tuple[torch.FloatTensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     token_type_ids: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
@@ -151,7 +143,7 @@ def gaudi_gpt_neo_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTNeoModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
     The only differences are:
@@ -234,26 +226,15 @@ def gaudi_gpt_neo_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
@@ -293,7 +274,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
-        past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+        past_key_values: Optional[tuple[torch.FloatTensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
@@ -307,7 +288,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
