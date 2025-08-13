@@ -537,6 +537,7 @@ class ExampleTestMeta(type):
                 env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
             if model_name == "mistralai/Mixtral-8x7B-Instruct-v0.1":
+                env_variables["PT_HPU_LAZY_MODE"] = "1"
                 env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
             if self.EXAMPLE_NAME == "run_audio_classification":
