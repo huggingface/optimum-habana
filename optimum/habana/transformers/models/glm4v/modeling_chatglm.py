@@ -1374,7 +1374,7 @@ class GLM4VModel(GLM4VPreTrainedModel):
                 past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        if position_ids is None and images is None:
+        if position_ids is None:
             position_ids = torch.arange(
                 past_key_values_length, seq_length_with_past, dtype=torch.long, device=inputs_embeds.device
             )
@@ -1534,6 +1534,9 @@ class GLM4VForConditionalGeneration(GLM4VPreTrainedModel, GenerationMixin):
 
         if past_key_values:
             position_ids = position_ids[..., -1:] + token_idx - position_ids.size(-1) - 1
+        else:
+            # Handle the case when token_idx is None
+            position_ids = position_ids[..., -1:]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
