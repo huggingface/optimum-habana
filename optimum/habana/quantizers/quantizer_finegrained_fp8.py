@@ -136,7 +136,9 @@ class GaudiFineGrainedFP8HfQuantizer(FineGrainedFP8HfQuantizer):
         modules_to_not_convert: List[str] = [],
         **kwargs,
     ):
-        from optimum.habana.transformers.integrations.finegrained_fp8 import replace_with_fp8_linear
+        from optimum.habana.transformers.integrations.finegrained_fp8 import (
+            replace_with_fp8_linear,
+        )
 
         self.modules_to_not_convert = ["lm_head"] + modules_to_not_convert
 
@@ -181,7 +183,7 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
     from neural_compressor.torch.algorithms.fp8_quant._core.utils import is_re_match
     from neural_compressor.torch.quantization import FP8Config
 
-    from optimum.habana.transformers.integrations.finegrained_fp8 import GaudiFP8Linear
+    from optimum.habana.transformers.integrations.finegrained_fp8 import HPU_MODULES_TO_NOT_CONVERT, GaudiFP8Linear
 
     quant_config = os.getenv("QUANT_CONFIG")
     blocklist = []
@@ -189,6 +191,8 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
         fp8_config = FP8Config.from_json_file(quant_config)
         if "names" in fp8_config.blocklist:
             blocklist = fp8_config.blocklist["names"]
+    else:
+        blocklist = HPU_MODULES_TO_NOT_CONVERT
 
     rescale_factor = torch.finfo(torch.float8_e4m3fnuz).max / torch.finfo(torch.float8_e4m3fn).max
     rescale_factor_inv = 1.0 / rescale_factor
@@ -207,5 +211,7 @@ def _gaudi_rescale_pad_fp8_weights(model, current_key_name=None):
             if len(blocklist) > 0:
                 if is_re_match(blocklist, name):
                     module.weight = module.get_dequant_weight()
+                else:
+                    module.weight_scale_inv = module.weight_scale_inv
 
     return model
