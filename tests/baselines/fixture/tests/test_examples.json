@@ -147,6 +147,16 @@
       "train_samples_per_second": 13.065
     }
   },
+  "tests/test_examples.py::DeepspeedSFTMixtralExampleTester::test_sft_Mixtral-8x7B-Instruct-v0.1_deepspeed": {
+    "gaudi2": {
+      "train_runtime": 286.0,
+      "train_samples_per_second": 12.0
+    },
+    "gaudi3": {
+      "train_runtime": 270.0,
+      "train_samples_per_second": 13.1
+    }
+  },
   "tests/test_examples.py::DeepspeedSummarizationExampleTester::test_run_summarization_flan-t5-xxl_deepspeed": {
     "gaudi2": {
       "eval_rougeLsum": 27.9095,
