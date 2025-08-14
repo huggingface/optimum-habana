@@ -1,3 +1,5 @@
+import os
+from enum import Enum
 from typing import Callable, Optional, Tuple
 
 import torch
@@ -14,6 +16,31 @@ if is_accelerate_available():
     from accelerate import init_empty_weights
 
 logger = logging.get_logger(__name__)
+
+
+class FP8Method(str, Enum):
+    FP8_DYNAMIC = "fp8_dynamic"
+    FP8_INC = "fp8_inc"
+    NONE = "none"
+
+
+HPU_MODULES_TO_NOT_CONVERT = ["lm_head", "k_b_proj", "kv_b_proj"]
+
+
+def get_fp8_method(config):
+    if os.getenv("QUANT_CONFIG") is not None:
+        # FP8 quantization with Intel Neural Compressor (INC)
+        return FP8Method.FP8_INC
+
+    if hasattr(config, "quantization_config"):
+        quantization_config = config.quantization_config
+        # Dynamic FP8 quantization without INC
+        if hasattr(quantization_config, "quant_method") and quantization_config.quant_method == "fp8":
+            activation_scheme = quantization_config.activation_scheme
+            if activation_scheme != "dynamic":
+                raise ValueError(f"Unsupported fp8 activation scheme: {activation_scheme}")
+            return FP8Method.FP8_DYNAMIC
+    return FP8Method.NONE
 
 
 class GaudiFP8Linear(nn.Module):
@@ -63,7 +90,36 @@ class GaudiFP8Linear(nn.Module):
         else:
             self.register_parameter("bias", None)
 
+        if hasattr(torch.ops.hpu, "cast_to_fp8_just_in_time"):
+            self.fp8_linear_func = self.fp8_linear_blockwise
+        else:
+            self.fp8_linear_func = self.fp8_linear_dequant
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return self.fp8_linear_func(input)
+
+    def fp8_linear_blockwise(self, input: torch.Tensor) -> torch.Tensor:
+        if self.weight.dtype == self.high_precision:
+            output = F.linear(input, self.weight, self.bias)
+        else:
+            input_fp8, input_scale = torch.ops.hpu.cast_to_fp8_just_in_time(
+                input, [1, self.block_size[1]], out_dtype=torch.float8_e4m3fn, scale_dtype=torch.bfloat16
+            )
+            output = torch.ops.hpu.fp8_gemm_v2(
+                input_fp8,
+                False,
+                self.weight,
+                True,
+                None,
+                torch.bfloat16,
+                input_scale,
+                self.weight_scale_inv.t(),
+                None,
+                False,
+            )
+        return output
+
+    def fp8_linear_dequant(self, input: torch.Tensor) -> torch.Tensor:
         return F.linear(input, self.get_dequant_weight(), self.bias)
 
     def pad_weight_naive(self):
