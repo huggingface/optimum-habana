@@ -364,7 +364,13 @@ class GaudiFalconAttention(FalconAttention):
         else:
             kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
 
-        if (not reuse_cache) and (token_idx is not None) and (cache_idx is not None) and (query_length == 1):
+        if (
+            (not reuse_cache)
+            and (token_idx is not None)
+            and (cache_idx is not None)
+            and (query_length == 1)
+            and (present is not None)
+        ):
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
             # to avoid making past key values as persistent output tensors of HPU graphs.
             present = (present[0].shape, present[1].shape)
