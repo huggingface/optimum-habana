@@ -12,24 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple, Union
 
 import torch
 
 
-def apply_rotary_emb(
-    x: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/models/embeddings.py#L697
-    """
-    cos_, sin_ = freqs_cis  # [S, D]
+class RotaryPosEmbedding(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, freqs_cis):
+        cos_, sin_ = freqs_cis  # [S, D]
 
-    cos = cos_[None, None]
-    sin = sin_[None, None]
-    cos, sin = cos.to(x.device), sin.to(x.device)
+        cos = cos_[None, None]
+        sin = sin_[None, None]
+        cos, sin = cos.to(x.device), sin.to(x.device)
 
-    x = torch.ops.hpu.rotary_pos_embedding(x, sin, cos, None, 0, 1)
+        ctx.save_for_backward(cos, sin)
+        x = torch.ops.hpu.rotary_pos_embedding(x, sin, cos, None, 0, 1)
+        return x
 
-    return x
+    @staticmethod
+    def backward(ctx, x_grad_in):
+        (cos, sin) = ctx.saved_tensors
+        x_embed_grad = torch.ops.hpu.rotary_pos_embedding_backward(x_grad_in, sin, cos, None, 0, 1)
+        return x_embed_grad, None
