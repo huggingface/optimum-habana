@@ -166,11 +166,15 @@ from .models import (
     GaudiQwen3Attention,
     GaudiQwen3DecoderLayer,
     GaudiQwen3ForCausalLM,
+    GaudiQwen3ForSequenceClassification,
+    GaudiQwen3ForTokenClassification,
     GaudiQwen3MLP,
     GaudiQwen3Model,
     GaudiQwen3MoeAttention,
     GaudiQwen3MoeDecoderLayer,
     GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeForSequenceClassification,
+    GaudiQwen3MoeForTokenClassification,
     GaudiQwen3MoeMLP,
     GaudiQwen3MoeModel,
     GaudiQwen3MoeSparseMoeBlock,
@@ -716,6 +720,8 @@ def adapt_transformers_to_gaudi():
     # Optimization for qwen3 on Gaudi
     transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
     transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
+    transformers.models.qwen3.modeling_qwen3.Qwen3ForSequenceClassification = GaudiQwen3ForSequenceClassification
+    transformers.models.qwen3.modeling_qwen3.Qwen3ForTokenClassification = GaudiQwen3ForTokenClassification
     transformers.models.qwen3.modeling_qwen3.Qwen3Attention = GaudiQwen3Attention
     transformers.models.qwen3.modeling_qwen3.Qwen3MLP = GaudiQwen3MLP
     transformers.models.qwen3.modeling_qwen3.Qwen3DecoderLayer = GaudiQwen3DecoderLayer
@@ -724,6 +730,12 @@ def adapt_transformers_to_gaudi():
     # Optimization for qwen3Moe on Gaudi
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForCausalLM = GaudiQwen3MoeForCausalLM
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeModel = GaudiQwen3MoeModel
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForSequenceClassification = (
+        GaudiQwen3MoeForSequenceClassification
+    )
+    transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForTokenClassification = (
+        GaudiQwen3MoeForTokenClassification
+    )
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeAttention = GaudiQwen3MoeAttention
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeMLP = GaudiQwen3MoeMLP
     transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeDecoderLayer = GaudiQwen3MoeDecoderLayer
