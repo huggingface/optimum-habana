@@ -438,6 +438,12 @@ def setup_parser(parser):
         help="Set torch._dynamo.config.specialize_float to True.",
     )
 
+    parser.add_argument(
+        "--dynamo_allow_unspec_int_on_nn_module",
+        action="store_true",
+        help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
