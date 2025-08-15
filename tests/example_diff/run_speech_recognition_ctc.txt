@@ -1,20 +1,26 @@
-32,33d31
+1a2
+> # coding=utf-8
+26c27
+< from typing import Optional, Union
+---
+> from typing import Dict, List, Optional, Union
+31,32d31
 < from datasets import DatasetDict, load_dataset
 < 
-34a33
+33a33
 > from datasets import DatasetDict, load_dataset
-42,43d40
+41,42d40
 <     Trainer,
 <     TrainingArguments,
-45d41
+44d41
 <     set_seed,
-50a47,48
+49a47,48
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-52,53d49
+51,52d49
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.46.0.dev0")
-55c51,56
+< check_min_version("4.52.0.dev0")
+54c51,56
 < require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 ---
 > try:
@@ -23,40 +29,80 @@
 > 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-59a61,66
+58a61,66
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.45.0")
-> check_optimum_habana_min_version("1.14.0.dev0")
+> check_min_version("4.51.0")
+> check_optimum_habana_min_version("1.18.0.dev0")
 > 
 > require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 > 
-144c151
+143c151
 <             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very"
 ---
 >             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very "
-154d160
+146a155,181
+>     use_flash_attention: bool = field(
+>         default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning"}
+>     )
+>     flash_attention_recompute: bool = field(
+>         default=False,
+>         metadata={
+>             "help": "Whether to enable recompute in Habana flash attention for fine-tuning."
+>             " It is applicable only when use_flash_attention is True."
+>         },
+>     )
+>     flash_attention_fast_softmax: bool = field(
+>         default=False,
+>         metadata={
+>             "help": "Whether to use fast softmax for Habana flash attention."
+>             " It is applicable only when use_flash_attention is True."
+>         },
+>     )
+> 
+>     def __post_init__(self):
+>         if self.use_flash_attention:
+>             os.environ["USE_FLASH_ATTENTION"] = "1"
+>         if self.flash_attention_recompute:
+>             assert self.use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
+>             os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
+>         if self.flash_attention_fast_softmax:
+>             assert self.use_flash_attention, "flash_attention_fast_softmax is set, but use_flash_attention is not"
+>             os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
+153d187
 < 
-400c406
+213c247
+<     chars_to_ignore: Optional[list[str]] = list_field(
+---
+>     chars_to_ignore: Optional[List[str]] = list_field(
+217c251
+<     eval_metrics: list[str] = list_field(
+---
+>     eval_metrics: List[str] = list_field(
+320c354
+<     def __call__(self, features: list[dict[str, Union[list[int], torch.Tensor]]]) -> dict[str, torch.Tensor]:
+---
+>     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+399c433
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-434a441,446
+433a468,473
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         token=data_args.token,
 >     )
 > 
-435a448
+434a475
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-437,438c450,452
+436,437c477,479
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-451,458c465,471
+450,457c492,498
 <     if training_args.do_train:
 <         raw_datasets["train"] = load_dataset(
 <             data_args.dataset_name,
@@ -73,7 +119,7 @@
 >         token=data_args.token,
 >         trust_remote_code=data_args.trust_remote_code,
 >     )
-460,465c473,478
+459,464c500,505
 <         if data_args.audio_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
@@ -87,7 +133,7 @@
 >             " Make sure to set `--audio_column_name` to the correct audio column - one of"
 >             f" {', '.join(raw_datasets['train'].column_names)}."
 >         )
-467,472c480,485
+466,471c507,512
 <         if data_args.text_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
@@ -101,36 +147,34 @@
 >             "Make sure to set `--text_column_name` to the correct text column - one of "
 >             f"{', '.join(raw_datasets['train'].column_names)}."
 >         )
-474,475c487,488
+473,474c514,515
 <         if data_args.max_train_samples is not None:
 <             raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
 ---
 >     if data_args.max_train_samples is not None:
 >         raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
-494c507
-<         f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
+493c534
+<         f"[{''.join(data_args.chars_to_ignore)}]" if data_args.chars_to_ignore is not None else None
 ---
->         f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
-633a647,651
+>         f"[{''.join(data_args.chars_to_ignore).replace(' ', '')}]" if data_args.chars_to_ignore is not None else None
+523a565
+>         attn_implementation=training_args.attn_implementation,
+632a675,679
 >         raise RuntimeError(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-743c761,764
+742c789,792
 <         processor=processor, feature_extractor_input_name=feature_extractor_input_name
 ---
 >         processor=processor,
 >         feature_extractor_input_name=feature_extractor_input_name,
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
-747c768
+746c796
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-748a770
+747a798
 >         gaudi_config=gaudi_config,
-754c776
-<         processing_class=processor,
----
->         tokenizer=processor,

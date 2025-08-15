@@ -66,7 +66,7 @@ class GaudiMptAttention(MptAttention):
         - add new arg flash_attention_recompute
         - add new args cache_idx
         """
-
+        assert position_bias is not None
         batch_size, seq_length = hidden_states.shape[:2]
 
         mixed_qkv = self.Wqkv(hidden_states)
@@ -107,17 +107,16 @@ class GaudiMptAttention(MptAttention):
             else:
                 past_key_value = [key_states.clone(), value_states.clone()]
 
-        query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
+        query_length = seq_length + past_key_value[0].shape[2]
 
-        if position_bias is not None:
-            if len(position_bias.shape) != 3:
-                raise ValueError(f"Expecting position_bias shape to be 3 dimensions, got {len(position_bias.shape)}")
-            key_length = key_states.shape[-2]
+        if len(position_bias.shape) != 3:
+            raise ValueError(f"Expecting position_bias shape to be 3 dimensions, got {len(position_bias.shape)}")
+        key_length = key_states.shape[-2]
 
-            position_bias_query_index = max(0, position_bias.size(1) - query_length)
-            position_bias_key_index = max(0, position_bias.size(2) - key_length)
+        position_bias_query_index = max(0, position_bias.size(1) - query_length)
+        position_bias_key_index = max(0, position_bias.size(2) - key_length)
 
-            position_bias = position_bias[:, position_bias_query_index:, position_bias_key_index:]
+        position_bias = position_bias[:, position_bias_query_index:, position_bias_key_index:]
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
@@ -389,7 +388,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
                 idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
 
-                if bucket_internal and token_idx is not None:
+                if bucket_internal:
                     attention_mask = attention_mask[:, :cache_idx]
         elif bucket_internal and token_idx is not None:
             # for the 1st token we can slice the inputs till token idx for the fwd pass.

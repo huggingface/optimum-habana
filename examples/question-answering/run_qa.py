@@ -21,7 +21,6 @@ Fine-tuning the library models for question answering using a slightly adapted v
 import logging
 import os
 import sys
-import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -46,7 +45,7 @@ from transformers.utils.versions import require_version
 from utils_qa import postprocess_qa_predictions
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import set_seed, warn0
 
 
 try:
@@ -60,7 +59,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.49.0")
+check_min_version("4.51.0")
 check_optimum_habana_min_version("1.18.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
@@ -646,7 +645,7 @@ def main():
         accepted_best_metrics = ("exact_match", "f1")
 
     if training_args.load_best_model_at_end and training_args.metric_for_best_model not in accepted_best_metrics:
-        warnings.warn(f"--metric_for_best_model should be set to one of {accepted_best_metrics}")
+        warn0(f"--metric_for_best_model should be set to one of {accepted_best_metrics}")
 
     metric = evaluate.load(
         "squad_v2" if data_args.version_2_with_negative else "squad", cache_dir=model_args.cache_dir

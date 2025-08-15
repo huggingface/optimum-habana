@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import dataclasses
+import importlib.metadata
 import inspect
-import warnings
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 from accelerate import PartialState
 from datasets import Dataset
+from packaging import version
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -36,19 +37,27 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
-from trl.import_utils import is_peft_available
-from trl.trainer.utils import (
-    ConstantLengthDataset,
-    DataCollatorForCompletionOnlyLM,
-    RichProgressCallback,
-)
 
+from ... import GaudiConfig, GaudiTrainer
+from ...utils import warn0
+from .sft_config import GaudiSFTConfig
+
+
+trl_version = importlib.metadata.version("trl")
+if version.parse(trl_version) < version.parse("0.17.0"):
+    from trl.import_utils import is_peft_available
+    from trl.trainer.utils import (
+        ConstantLengthDataset,
+        DataCollatorForCompletionOnlyLM,
+        RichProgressCallback,
+    )
+else:
+    from transformers.utils import is_peft_available
+    from trl.trainer.callbacks import RichProgressCallback
+    from trl.trainer.utils import ConstantLengthDataset, DataCollatorForCompletionOnlyLM
 
 if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
-
-from ... import GaudiConfig, GaudiTrainer
-from .sft_config import GaudiSFTConfig
 
 
 class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
@@ -136,9 +145,10 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             assert data_collator is None, (
                 "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
             )
+        state = PartialState()
         if args is None:
             output_dir = "tmp_trainer"
-            warnings.warn(f"No `SFTConfig` passed, using `output_dir={output_dir}`.")
+            warn0(f"No `SFTConfig` passed, using `output_dir={output_dir}`.", state=state)
             args = GaudiSFTConfig(output_dir=output_dir)
         elif args is not None and args.__class__.__name__ == "TrainingArguments":
             args_as_dict = args.to_dict()
@@ -147,8 +157,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             args = GaudiSFTConfig(**args_as_dict)
 
         if model_init_kwargs is not None:
-            warnings.warn(
-                "You passed `model_init_kwargs` to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed `model_init_kwargs` to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.model_init_kwargs = model_init_kwargs
         if getattr(args, "model_init_kwargs", None) is None:
@@ -172,25 +183,29 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             model_init_kwargs["torch_dtype"] = torch_dtype
 
         if infinite is not None:
-            warnings.warn(
-                "The `infinite` argument is deprecated and will be removed in a future version of TRL. Use `TrainingArguments.max_steps` or `TrainingArguments.num_train_epochs` instead to control training length."
+            warn0(
+                "The `infinite` argument is deprecated and will be removed in a future version of TRL. Use `TrainingArguments.max_steps` or `TrainingArguments.num_train_epochs` instead to control training length.",
+                state=state,
             )
 
         if isinstance(model, str):
-            warnings.warn(
+            warn0(
                 "You passed a model_id to the SFTTrainer. This will automatically create an "
-                "`AutoModelForCausalLM` or a `PeftModel` (if you passed a `peft_config`) for you."
+                "`AutoModelForCausalLM` or a `PeftModel` (if you passed a `peft_config`) for you.",
+                state=state,
             )
             model = AutoModelForCausalLM.from_pretrained(model, **model_init_kwargs)
 
         if packing:
-            warnings.warn(
-                "You passed a `packing` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `packing` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.packing = packing
         if eval_packing is not None:
-            warnings.warn(
-                "You passed a `eval_packing` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `eval_packing` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.eval_packing = eval_packing
 
@@ -234,8 +249,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
 
                     model = prepare_model_for_kbit_training(model, **prepare_model_kwargs)
 
-                    if args is not None:
-                        args = dataclasses.replace(args, gradient_checkpointing=False)
+                    args = dataclasses.replace(args, gradient_checkpointing=False)
                 elif getattr(args, "gradient_checkpointing", False) and (
                     "use_reentrant" not in gradient_checkpointing_kwargs
                     or gradient_checkpointing_kwargs["use_reentrant"]
@@ -258,12 +272,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     model = get_peft_model(model, peft_config, autocast_adapter_dtype=False)
                 else:
                     model = get_peft_model(model, peft_config)
-                if (
-                    args is not None
-                    and args.bf16
-                    and getattr(model, "is_loaded_in_4bit", False)
-                    and not is_sharded_qlora
-                ):
+                if args.bf16 and getattr(model, "is_loaded_in_4bit", False) and not is_sharded_qlora:
                     model = model.to(torch.bfloat16)
 
         if tokenizer is None:
@@ -272,14 +281,16 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 tokenizer.pad_token = tokenizer.eos_token
 
         if max_seq_length is not None:
-            warnings.warn(
-                "You passed a `max_seq_length` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `max_seq_length` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.max_seq_length = max_seq_length
 
         if pad_max is not None:
-            warnings.warn(
-                "You passed a `pad_max` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `pad_max` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.pad_max = pad_max
 
@@ -287,20 +298,23 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             # to overcome some issues with broken tokenizers
             max_seq_length = min(tokenizer.model_max_length, 1024)
 
-            warnings.warn(
-                f"You didn't pass a `max_seq_length` argument to the SFTTrainer, this will default to {max_seq_length}"
+            warn0(
+                f"You didn't pass a `max_seq_length` argument to the SFTTrainer, this will default to {max_seq_length}",
+                state=state,
             )
 
         if dataset_num_proc is not None:
-            warnings.warn(
-                "You passed a `dataset_num_proc` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `dataset_num_proc` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.dataset_num_proc = dataset_num_proc
         self.dataset_num_proc = args.dataset_num_proc
 
         if dataset_batch_size != args.dataset_batch_size:
-            warnings.warn(
-                "You passed a `dataset_batch_size` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `dataset_batch_size` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.dataset_batch_size = dataset_batch_size
         self.dataset_batch_size = args.dataset_batch_size
@@ -308,16 +322,18 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         self._trainer_supports_neftune = hasattr(args, "neftune_noise_alpha")
         if neftune_noise_alpha is not None and self._trainer_supports_neftune:
             args.neftune_noise_alpha = neftune_noise_alpha
-            warnings.warn(
-                "You passed a `neftune_noise_alpha` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `neftune_noise_alpha` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             # self.neftune_noise_alpha is done at Trainer level
         elif not self._trainer_supports_neftune:
             self.neftune_noise_alpha = neftune_noise_alpha
 
         if dataset_text_field is not None:
-            warnings.warn(
-                "You passed a `dataset_text_field` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `dataset_text_field` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.dataset_text_field = dataset_text_field
 
@@ -350,22 +366,25 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
         if num_of_sequences != args.num_of_sequences:
-            warnings.warn(
-                "You passed a `num_of_sequences` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `num_of_sequences` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.num_of_sequences = num_of_sequences
 
         if chars_per_token != args.chars_per_token:
-            warnings.warn(
-                "You passed a `chars_per_token` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+            warn0(
+                "You passed a `chars_per_token` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                state=state,
             )
             args.chars_per_token = chars_per_token
 
         # Pre-process the datasets only once per node. The remaining processes will use the cache.
-        with PartialState().local_main_process_first():
+        with state.local_main_process_first():
             if dataset_kwargs is not None:
-                warnings.warn(
-                    "You passed a `dataset_kwargs` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`."
+                warn0(
+                    "You passed a `dataset_kwargs` argument to the SFTTrainer, the value you passed will override the one in the `SFTConfig`.",
+                    state=state,
                 )
                 args.dataset_kwargs = dataset_kwargs
             if args.dataset_kwargs is None:
@@ -380,8 +399,8 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     formatting_func,
                     args.num_of_sequences,
                     args.chars_per_token,
-                    remove_unused_columns=args.remove_unused_columns if args is not None else True,
-                    pad_max=args.pad_max if args is not None else False,
+                    remove_unused_columns=args.remove_unused_columns,
+                    pad_max=args.pad_max,
                     **args.dataset_kwargs,
                 )
             if eval_dataset is not None:
@@ -400,16 +419,17 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                         formatting_func,
                         args.num_of_sequences,
                         args.chars_per_token,
-                        remove_unused_columns=args.remove_unused_columns if args is not None else True,
+                        remove_unused_columns=args.remove_unused_columns,
                         **args.dataset_kwargs,
                     )
                 if not _multiple:
                     eval_dataset = _eval_datasets["singleton"]
 
         if tokenizer.padding_side is not None and tokenizer.padding_side != "right":
-            warnings.warn(
+            warn0(
                 "You passed a tokenizer with `padding_side` not equal to `right` to the SFTTrainer. This might lead to some unexpected behaviour due to "
-                "overflow issues when training a model in half-precision. You might consider adding `tokenizer.padding_side = 'right'` to your code."
+                "overflow issues when training a model in half-precision. You might consider adding `tokenizer.padding_side = 'right'` to your code.",
+                state=state,
             )
 
         GaudiTrainer.__init__(
@@ -420,7 +440,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
@@ -433,8 +453,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             self.model.add_model_tags(self._tag_names)
 
         if self.args.max_steps > 0 and args.packing:
-            warnings.warn(
-                "You passed `packing=True` to the SFTTrainer/SFTConfig, and you are training your model with `max_steps` strategy. The dataset will be iterated until the `max_steps` are reached."
+            warn0(
+                "You passed `packing=True` to the SFTTrainer/SFTConfig, and you are training your model with `max_steps` strategy. The dataset will be iterated until the `max_steps` are reached.",
+                state=self.accelerator.state,
             )
             self.train_dataset.infinite = True
         elif self.args.max_steps == -1 and args.packing:
@@ -488,8 +509,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         )
         if column_names and "input_ids" in column_names:
             if formatting_func is not None:
-                warnings.warn(
-                    "You passed a dataset that is already processed (contains an `input_ids` field) together with a valid formatting function. Therefore `formatting_func` will be ignored."
+                warn0(
+                    "You passed a dataset that is already processed (contains an `input_ids` field) together with a valid formatting function. Therefore `formatting_func` will be ignored.",
+                    state=self.accelerator.state,
                 )
 
             return dataset
@@ -574,9 +596,10 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         extra_columns = list(set(dataset.column_names) - set(signature_columns))
 
         if not remove_unused_columns and len(extra_columns) > 0:
-            warnings.warn(
+            warn0(
                 "You passed `remove_unused_columns=False` on a non-packed dataset. This might create some issues with the default collator and yield to errors. If you want to "
-                f"inspect dataset other columns (in this case {extra_columns}), you can subclass `DataCollatorForLanguageModeling` in case you used the default collator and create your own data collator in order to inspect the unused dataset columns."
+                f"inspect dataset other columns (in this case {extra_columns}), you can subclass `DataCollatorForLanguageModeling` in case you used the default collator and create your own data collator in order to inspect the unused dataset columns.",
+                state=self.accelerator.state,
             )
 
         tokenized_dataset = dataset.map(

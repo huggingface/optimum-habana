@@ -133,6 +133,7 @@ Here are a few settings you may be interested in:
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing. This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits. This feature is thoroughly tested with Llama 2 70B but may be useful for other models as well.
+- `--dynamo_specialize_float` enables specialization for float inputs by setting `specialize_float=True` in the `torch._dynamo` configuration. This option is applicable only when using `torch.compile` and can enhance performance, particularly in models utilizing FP8 quantization.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -821,7 +822,7 @@ pip install -r requirements_lm_eval.txt
 >
 > COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
 >
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
+> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==3.6.0
 
 
 ### Examples

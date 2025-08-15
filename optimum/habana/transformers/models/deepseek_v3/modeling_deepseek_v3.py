@@ -28,7 +28,6 @@ The main differences are:
 """
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -59,6 +58,7 @@ from transformers.utils import (
 )
 
 from ....distributed.tensorparallel import _all_reduce
+from ....utils import warn0
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ..modeling_all_models import apply_customized_rope_module
 from .configuration_deepseek_v3 import DeepseekV3Config
@@ -851,7 +851,7 @@ class DeepseekV3Attention(nn.Module):
         self.v_cache.allocate(inp_seq_len, dtype, device, k_pe_cache_shape)
 
     def update_sincos_cache(self, seq_len):
-        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # Call rotary emb forward() to update cos/sin cache when inferring more than self.max_position_embeddings
         # This helps in avoiding creation of these caches during actual model forward pass and
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
@@ -925,14 +925,16 @@ class DeepseekV3Attention(nn.Module):
         """
 
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
 
         if self.training:
             if "padding_mask" in kwargs:
-                warnings.warn(
-                    "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+                warn0(
+                    "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                    state=self.accelerator.state,
                 )
             bsz, q_len, _ = hidden_states.size()
             if self.q_lora_rank is None:
@@ -1252,8 +1254,9 @@ class DeepseekV3DecoderLayer(nn.Module):
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
 

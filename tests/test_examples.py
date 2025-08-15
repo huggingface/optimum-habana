@@ -295,6 +295,16 @@ class ExampleTestMeta(type):
             return False
         elif "gemma" in model_name and IS_GAUDI1:
             return False
+        elif "Qwen2-7B" in model_name and example_name == "run_glue":
+            if deepspeed:
+                return True
+            else:
+                return False
+        elif "Qwen3-8B" in model_name and example_name == "run_glue":
+            if deepspeed:
+                return True
+            else:
+                return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
@@ -492,11 +502,8 @@ class ExampleTestMeta(type):
             elif "flan" in model_name:
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
             elif "bloom" in model_name:
-                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
-            elif "Qwen2-72B" in model_name:
-                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
             elif fsdp:
                 if "llama" in model_name:
                     env_variables["PT_HPU_AUTOCAST_LOWER_PRECISION_OPS_LIST"] = str(

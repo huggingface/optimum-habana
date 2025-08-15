@@ -16,24 +16,23 @@ limitations under the License.
 
 # pyTorch-IMage-Models (TIMM) Examples with HPUs
 
-This directory contains the scripts that showcase how to inference/fine-tune the TIMM models on Intel's HPUs with the lazy/graph modes. Training is supported for single/multiple HPU cards. Currently we can support first 10 most downloadable models from [Hugging Face timm link](https://huggingface.co/timm). In our example below for inference/training we will use [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) as our testing model and same usage for other models. 
+This directory contains the scripts that showcase how to inference/fine-tune the TIMM models on Intel's HPUs with the lazy/graph modes. Training is supported for single/multiple HPU cards. Currently we can support first 10 most downloadable models from [Hugging Face timm link](https://huggingface.co/timm). In our example below for inference/training we will use [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) as our testing model and same usage for other models.
 
 ## Requirements
 
-First, you should install the pytorch-image-models (Timm):
+First, you should install the requirements:
+
 ```bash
-git clone https://github.com/huggingface/pytorch-image-models.git
-cd pytorch-image-models
-pip install .
+pip install -r requirements.txt
 ```
 
-## Single-HPU training
+## Training
 
-### Using datasets from Hub
+### Datasets
 
-Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
+The following datasets [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face will be used.
 
-### Training with HPU graph mode
+### Using graph mode
 
 ```bash
 PT_HPU_LAZY_MODE=1 python train_hpu_graph.py \
@@ -43,33 +42,17 @@ PT_HPU_LAZY_MODE=1 python train_hpu_graph.py \
     --model resnet50.a1_in1k \
     --train-split train \
     --val-split train \
-    --dataset-download 
+    --dataset-download \
+    --epochs 100
 ```
 
-## Multi-HPU training
+To run fine-tuning on multiple HPU replace `python train_hpu_graph.py` with
+`torchrun --nnodes 1 --nproc_per_node <number-of-HPUs> train_hpu_graph.py`.
 
-Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
+## inference
 
-### Training with HPU graph mode
+### Using graph mode
 
-```bash
-PT_HPU_LAZY_MODE=1 torchrun --nnodes 1 --nproc_per_node 2 \
-    train_hpu_graph.py \
-    --data-dir ./ \
-    --dataset hfds/johnowhitaker/imagenette2-320 \
-    --device 'hpu' \
-    --model resnet50.a1_in1k \
-    --train-split train \
-    --val-split train \
-    --dataset-download
-```
-
-
-## Single-HPU inference
-
-Here we show how to fine-tune the [imagenette2-320 dataset](https://huggingface.co/datasets/johnowhitaker/imagenette2-320) and model with [timm/resnet50.a1_in1k](https://huggingface.co/timm/resnet50.a1_in1k) from Hugging Face.
-
-### HPU with graph mode
 ```bash
 PT_HPU_LAZY_MODE=1 python inference.py \
     --data-dir='./' \
@@ -79,7 +62,3 @@ PT_HPU_LAZY_MODE=1 python inference.py \
     --split train \
     --graph_mode
 ```
-
-
-
-

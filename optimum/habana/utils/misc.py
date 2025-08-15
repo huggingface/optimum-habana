@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import random
 import subprocess
 import time
@@ -25,7 +26,7 @@ from transformers.utils import is_torch_available
 
 from optimum.utils import logging
 
-from .version import __version__
+from ..version import __version__
 
 
 logger = logging.get_logger(__name__)
@@ -290,12 +291,8 @@ class HabanaGenerationTime(object):
         self.step()
 
 
-class HabanaProfile(object):
-    """
-    HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured.
-    """
-
-    HABANA_PROFILE_ENABLED = True
+class HabanaProfile:
+    _profilers = []
 
     def __init__(
         self,
@@ -303,65 +300,44 @@ class HabanaProfile(object):
         active: int = 0,
         record_shapes: bool = True,
         with_stack: bool = False,
+        name: str = "",
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
-        if active <= 0 or warmup < 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+        self._profiler = None
+        self._running = False
 
-            def noop():
-                pass
+        if active <= 0:
+            self.start = self.stop = self.step = lambda: None
 
-            self.start = noop
-            self.stop = noop
-            self.step = noop
         else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = False
+            output_dir = os.path.join(output_dir, name)
+
             schedule = torch.profiler.schedule(wait=wait, warmup=warmup, active=active, repeat=1)
             activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.HPU]
-
-            profiler = torch.profiler.profile(
+            self._profiler = torch.profiler.profile(
                 schedule=schedule,
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
                 with_stack=with_stack,
             )
-            self.start = profiler.start
-            self.stop = profiler.stop
-            self.step = profiler.step
-            HabanaProfile.enable.invalid = True
-            HabanaProfile.disable.invalid = True
-
-    def stop(self):
-        self.stop()
+            self._profilers.append(self)
 
     def start(self):
-        self.start()
+        if any(p._running for p in self._profilers):
+            raise RuntimeError("Cannot start profiler, another profiler instance is already running")
+        self._running = True
+        self._profiler.start()
+
+    def stop(self):
+        if self._running:
+            self._profiler.stop()
+            self._running = False
 
     def step(self):
-        self.step()
-
-    @staticmethod
-    def disable():
-        """
-        Runs only once and must happen before doing profiling.
-        """
-        if hasattr(HabanaProfile.disable, "invalid"):
-            if not HabanaProfile.disable.invalid:
-                HabanaProfile.HABANA_PROFILE_ENABLED = False
-        else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = False
-
-    @staticmethod
-    def enable():
-        """
-        Runs only once and must happen before doing profiling.
-        """
-        if hasattr(HabanaProfile.enable, "invalid"):
-            if not HabanaProfile.enable.invalid:
-                HabanaProfile.HABANA_PROFILE_ENABLED = True
-        else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = True
+        if self._running:
+            self._profiler.step()
 
 
 def check_optimum_habana_min_version(min_version):

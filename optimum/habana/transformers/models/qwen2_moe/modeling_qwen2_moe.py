@@ -20,7 +20,6 @@
 """PyTorch Qwen2MoE model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -43,6 +42,7 @@ from transformers.models.qwen2_moe.modeling_qwen2_moe import (
 )
 from transformers.utils import logging
 
+from ....utils import warn0
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -266,6 +266,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
 
+        self.max_position_embeddings = config.max_position_embeddings
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -420,6 +421,8 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             past_key_value = None
 
         if use_flash_attention and FusedSDPA is not None:
+            # Qwen2 Famliy should not use fast/bf16 softmax for SDPA due to its magnitude issue
+            softmax_mode = "None" if self.training else "fp32"
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -430,14 +433,13 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
                     0.0,
                     False,
                     None,
-                    "None",
+                    softmax_mode,
                     False,
                     None,
                     "None",
                 )
             else:
                 # first token
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states,
@@ -661,8 +663,9 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         - add new arg flash_attention_fast_softmax
         """
         if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            warn0(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`",
+                state=self.accelerator.state,
             )
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
@@ -806,7 +809,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -815,7 +818,6 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
@@ -828,7 +830,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-    ) -> Union[Tuple, MoeModelOutputWithPast]:
+    ) -> MoeModelOutputWithPast:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -849,7 +851,6 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -998,12 +999,6 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
             next_cache = (
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
-        if not return_dict:
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
-                if v is not None
-            )
 
         return MoeModelOutputWithPast(
             last_hidden_state=hidden_states,
@@ -1036,7 +1031,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -1046,7 +1041,6 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -1062,7 +1056,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         **loss_kwargs,
-    ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
+    ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
@@ -1071,13 +1065,12 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: MoeModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -1087,7 +1080,6 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
@@ -1102,7 +1094,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
             num_virtual_tokens=num_virtual_tokens,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -1121,19 +1113,13 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         aux_loss = None
         if output_router_logits:
             aux_loss = load_balancing_loss_func(
-                outputs.router_logits if return_dict else outputs[-1],
+                outputs.router_logits,
                 self.num_experts,
                 self.num_experts_per_tok,
                 attention_mask,
             )
             if labels is not None:
                 loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            if output_router_logits:
-                output = (aux_loss,) + output
-            return (loss,) + output if loss is not None else output
 
         return MoeCausalLMOutputWithPast(
             loss=loss,

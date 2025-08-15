@@ -36,7 +36,7 @@ style: clean
 # Run unit and integration tests
 fast_tests:
 	python -m pip install .[tests]
-	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
+	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py tests/test_habana_profiler_unit.py
 # TODO enable when CI has more servers
 #	python -m pytest test_functional_text_generation_example.py
 
@@ -44,6 +44,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
+	python -m pip install peft==0.16.0
 	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
@@ -86,14 +87,18 @@ slow_tests_custom_file_input: test_installs
 slow_tests_1x: test_installs
 	@status1=0; status2=0; status3=0; \
 	python -m pytest tests/test_examples.py -v -s -k "single_card" || status1=$$?; \
-	python -m pip install peft==0.10.0; \
+	python -m pip install peft==0.12.0; \
 	python -m pytest tests/test_peft_inference.py || status2=$$?; \
 	python -m pytest tests/test_pipeline.py || status3=$$?; \
-	exit $$((status1 + status2 + status3))
+	python -m pytest tests/test_habana_profiler_integration.py -v -s -m "not x8" || status4=$$?; \
+	exit $$((status1 + status2 + status3 + status4))
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
-	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card"
+	@status1=0; status2=0; \
+	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
+	python -m pytest tests/test_habana_profiler_integration.py -v -s -m x8 || status2=$$?; \
+	exit $$((status1 + status2))
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
@@ -103,6 +108,9 @@ slow_tests_deepspeed: test_installs
 slow_tests_diffusers: test_installs
 	python -m pip install -r examples/stable-diffusion/requirements.txt; \
 	python -m pytest tests/test_diffusers.py -v -s
+
+slow_tests_sentence_transformers: test_installs
+	python -m pytest tests/test_sentence_transformers.py -v -s
 
 # Run all text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
@@ -156,10 +164,14 @@ slow_tests_video_llava_example: test_installs
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
-slow_tests_trl: test_installs
+slow_tests_trl_ddpo: test_installs
 	python -m pip install trl==0.9.6
-	python -m pip install peft==0.12.0
+	python -m pip install peft==0.15.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
+
+slow_tests_trl_grpo: test_installs
+	python -m pip install -r examples/trl/requirements_grpo.txt
+	python -m pytest tests/test_trl.py -v -s -k "GaudiGRPOTrainerTester"
 
 slow_tests_object_segmentation: test_installs
 	python -m pytest tests/test_object_segmentation.py

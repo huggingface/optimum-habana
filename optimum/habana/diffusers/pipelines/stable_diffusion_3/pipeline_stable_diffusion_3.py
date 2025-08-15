@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -294,6 +295,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        use_distributed_cfg: bool = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -388,6 +390,10 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            use_distributed_cfg (`bool`, *optional*, defaults to `False`):
+                Enables distributed CFG (classifier-free guidance) across 2 devices. Requires even number of devices.
+                Conditional and unconditional parts are processed separately (one on each device) if set to True.
+                Boosts performance close to 2x.
             profiling_warmup_steps (`int`, *optional*):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*):
@@ -403,6 +409,24 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
+        if use_distributed_cfg:
+            # Set distributed CFG (classifier-free guidance) across a pair of devices (requires even number of devices)
+            import torch.distributed as dist
+
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "0"))
+            if world_size < 2:
+                raise ValueError("Error: Distributed CFG requires running with at least 2 devices")
+            if not dist.is_initialized():
+                dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            if dist.get_world_size() % 2 != 0:
+                raise ValueError(f"Error: Distributed CFG requires even world size, but got world_size={world_size}")
+            if guidance_scale <= 1:
+                raise ValueError(
+                    "Error: Distributed CFG requires use of classifier-free guidance (guidance scale > 1)"
+                )
+            htcore.hpu.set_device(rank)
+
         # Set dtype to BF16 only if --bf16 is used, else use device's default autocast precision
         # When --bf16 is used, bf16_full_eval=True, which disables use_torch_autocast
         with torch.autocast(
@@ -412,8 +436,6 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
         ):
             quant_mode = kwargs.get("quant_mode", None)
             if quant_mode == "measure" or quant_mode == "quantize":
-                import os
-
                 quant_config_path = os.getenv("QUANT_CONFIG")
 
                 if not quant_config_path:
@@ -470,7 +492,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             device = self._execution_device
 
-            lora_scale = kwargs.get("lora_scale", None) if kwargs is not None else None
+            lora_scale = kwargs.get("lora_scale", None)
 
             (
                 prompt_embeds,
@@ -503,7 +525,8 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 ceil(prompt_embeds.shape[1] / kernel_input_alignment_size) * kernel_input_alignment_size
             ) - prompt_embeds.shape[1]
             prompt_embeds = torch.nn.functional.pad(prompt_embeds, (0, 0, 0, pad_size))
-            negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
+            if negative_prompt_embeds is not None:
+                negative_prompt_embeds = torch.nn.functional.pad(negative_prompt_embeds, (0, 0, 0, pad_size))
 
             # 4. Prepare timesteps
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -542,6 +565,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                 warmup=profiling_warmup_steps,
                 active=profiling_steps,
                 record_shapes=False,
+                name="stable_diffusion",
             )
 
             hb_profiler.start()
@@ -602,18 +626,40 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep_batch = timestep.expand(latent_model_input.shape[0])
 
-                    noise_pred = self.transformer_hpu(
-                        latent_model_input,
-                        timestep_batch,
-                        text_embeddings_batch,
-                        pooled_prompt_embeddings_batch,
-                        self.joint_attention_kwargs,
-                    )
+                    # noise prediction (transformer call)
+                    if use_distributed_cfg and self.do_classifier_free_guidance:
+                        idx = rank % 2
+                        noise_pred_b1 = self.transformer_hpu(
+                            latent_model_input[idx : idx + 1],
+                            timestep_batch[idx : idx + 1],
+                            text_embeddings_batch[idx : idx + 1],
+                            pooled_prompt_embeddings_batch[idx : idx + 1],
+                            self.joint_attention_kwargs,
+                        )
+                        noise_pred_b2 = torch.zeros_like(noise_pred_b1)
+                        send_req = dist.isend(tensor=noise_pred_b1, dst=rank ^ 1)
+                        recv_req = dist.irecv(tensor=noise_pred_b2, src=rank ^ 1)
+                        send_req.wait()
+                        recv_req.wait()
+                        if idx == 0:
+                            noise_pred = noise_pred_b1 + self.guidance_scale * (noise_pred_b2 - noise_pred_b1)
+                        else:
+                            noise_pred = noise_pred_b2 + self.guidance_scale * (noise_pred_b1 - noise_pred_b2)
+                    else:
+                        noise_pred = self.transformer_hpu(
+                            latent_model_input,
+                            timestep_batch,
+                            text_embeddings_batch,
+                            pooled_prompt_embeddings_batch,
+                            self.joint_attention_kwargs,
+                        )
 
-                    # perform guidance
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                        # perform guidance
+                        if self.do_classifier_free_guidance:
+                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                            noise_pred = noise_pred_uncond + self.guidance_scale * (
+                                noise_pred_text - noise_pred_uncond
+                            )
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_dtype = latents_batch.dtype

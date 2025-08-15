@@ -15,7 +15,10 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
-from .bert import gaudi_BertModel_forward
+from .bert import (
+    gaudi_Bert_Sdpa_SelfAttention_forward,
+    gaudi_BertModel_forward,
+)
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -249,6 +252,8 @@ from .qwen2 import (
     GaudiQwen2Attention,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
+    GaudiQwen2ForSequenceClassification,
+    GaudiQwen2ForTokenClassification,
     GaudiQwen2MLP,
     GaudiQwen2Model,
     gaudi_qwen2_rmsnorm_forward,
@@ -270,6 +275,27 @@ from .qwen2_vl import (
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
     GaudiVisionSdpaAttention,
+)
+from .qwen3 import (
+    GaudiQwen3Attention,
+    GaudiQwen3DecoderLayer,
+    GaudiQwen3ForCausalLM,
+    GaudiQwen3ForSequenceClassification,
+    GaudiQwen3ForTokenClassification,
+    GaudiQwen3MLP,
+    GaudiQwen3Model,
+    gaudi_qwen3_rmsnorm_forward,
+)
+from .qwen3_moe import (
+    GaudiQwen3MoeAttention,
+    GaudiQwen3MoeDecoderLayer,
+    GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeForSequenceClassification,
+    GaudiQwen3MoeForTokenClassification,
+    GaudiQwen3MoeMLP,
+    GaudiQwen3MoeModel,
+    GaudiQwen3MoeSparseMoeBlock,
+    gaudi_qwen3moe_rmsnorm_forward,
 )
 from .seamless_m4t import (
     gaudi_SeamlessM4TAttention_forward,

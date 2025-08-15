@@ -22,7 +22,6 @@ import logging
 import os
 import re
 import sys
-import warnings
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
@@ -45,7 +44,7 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import set_seed, warn0
 
 
 try:
@@ -59,7 +58,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.49.0")
+check_min_version("4.51.0")
 check_optimum_habana_min_version("1.18.0.dev0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
@@ -325,7 +324,7 @@ class DataCollatorCTCWithPadding:
     Data collator that will dynamically pad the inputs received.
     Args:
         processor (:class:`~transformers.AutoProcessor`)
-            The processor used for proccessing the data.
+            The processor used for processing the data.
         padding (:obj:`bool`, :obj:`str` or :class:`~transformers.tokenization_utils_base.PaddingStrategy`, `optional`, defaults to :obj:`True`):
             Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
             among:
@@ -775,7 +774,7 @@ def main():
     try:
         processor = AutoProcessor.from_pretrained(training_args.output_dir)
     except (OSError, KeyError):
-        warnings.warn(
+        warn0(
             "Loading a processor from a feature extractor config that does not"
             " include a `processor_class` attribute is deprecated and will be removed in v5. Please add the following "
             " attribute to your `preprocessor_config.json` file to suppress this warning: "
