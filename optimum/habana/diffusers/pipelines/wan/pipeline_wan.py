@@ -333,10 +333,11 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             boundary_timestep = None
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
+            for i in range(len(timesteps)):
                 if self.interrupt:
                     continue
-
+                t = timesteps[0]
+                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                 self._current_timestep = t
 
                 if boundary_timestep is None or t >= boundary_timestep:

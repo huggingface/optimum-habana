@@ -339,7 +339,6 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
             last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
                 device, dtype=torch.float32
             )
-
         latents_outputs = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
@@ -377,12 +376,13 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
             boundary_timestep = None
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
+            for i in range(len(timesteps)):
                 if self.interrupt:
                     continue
 
+                t = timesteps[0]
+                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                 self._current_timestep = t
-                #import pdb;pdb.set_trace()
                 if boundary_timestep is None or t >= boundary_timestep:
                     # wan2.1 or high-noise stage in wan2.2
                     current_model = self.transformer
