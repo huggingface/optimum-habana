@@ -310,6 +310,7 @@ from .models import (
     gaudi_xglm_model_forward,
     gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
+from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
 
 
 def adapt_transformers_to_gaudi():
@@ -788,11 +789,7 @@ def adapt_transformers_to_gaudi():
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
     # Optimization for deepseek on Gaudi
-    # transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)
-    # transformers.AutoModelForCausalLM.register(DeepseekV2Config, DeepseekV2ForCausalLM)
-    # transformers.AutoTokenizer.register(DeepseekV2Config, fast_tokenizer_class=DeepseekTokenizerFast)
-    # transformers.AutoConfig.register("deepseek_v3", DeepseekV3Config)
-    # transformers.AutoModelForCausalLM.register(DeepseekV3Config, DeepseekV3ForCausalLM)
+    transformers.models.deepseek_v2.modeling_deepseek_v2.DeepseekV2ForCausalLM = GaudiDeepseekV2ForCausalLM
     transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
     transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
 

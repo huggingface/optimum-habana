@@ -70,7 +70,6 @@ from .decilm import (
     DeciLMForCausalLM,
 )
 from .deepseek_v2 import (
-    DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
