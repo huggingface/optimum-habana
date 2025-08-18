@@ -50,6 +50,8 @@ from .models import (
     ChatGLMForConditionalGeneration,
     ChatGLMForSequenceClassification,
     ChatGLMTokenizer,
+    DeciLMConfig,
+    DeciLMForCausalLM,
     DeepseekV3Config,
     DeepseekV3ForCausalLM,
     Gaudi2Idefics2ImageProcessor,
@@ -782,8 +784,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
     transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
 
-    # transformers.AutoConfig.register("deci", DeciLMConfig)
-    # transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
+    transformers.AutoConfig.register("deci", DeciLMConfig)
+    transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
     # Optimization for deepseek on Gaudi
     # transformers.AutoConfig.register("deepseek_v2", DeepseekV2Config)

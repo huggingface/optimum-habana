@@ -381,6 +381,8 @@ class DeciLMModel(LlamaModel, DeciLMPreTrainedModel):
 
 
 class DeciLMForCausalLM(LlamaForCausalLM, DeciLMPreTrainedModel):
+    config_class = DeciLMConfig
+
     def __init__(self, config):
         DeciLMPreTrainedModel.__init__(self, config)
         self.model = DeciLMModel(config)
