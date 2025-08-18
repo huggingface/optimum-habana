@@ -332,10 +332,10 @@ from .starcoder2 import (
     GaudiStarcoder2Model,
 )
 from .t5 import (
+    GaudiT5ForConditionalGeneration,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
-    GaudiT5ForConditionalGeneration,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )

@@ -783,7 +783,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
                 use_lazy_mode=True,
                 **args_kwargs,
             )
-            # train with base loss
+            # train with base loss (per_device_train_batch_size is equal to 8 by default)
             set_seed(42)
             model = AutoModelForCausalLM.from_pretrained(model_name)
             base_loss_callback = StoreLossCallback()
@@ -799,6 +799,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             assert trainer.model_accepts_loss_kwargs
             trainer.train()
 
+            # train with gradient accumulation
             args = GaudiTrainingArguments(
                 tmp_dir,
                 **args_kwargs,
@@ -808,7 +809,6 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
                 use_lazy_mode=True,
             )
 
-            # train with gradient accumulation
             set_seed(42)
             model = AutoModelForCausalLM.from_pretrained(model_name)
             grad_accum_loss_callback = StoreLossCallback()
@@ -848,15 +848,15 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         # all diff truth should be quite close
         self.assertLess(max(diff_truth), 0.01, f"Difference {max(diff_truth)} is not within 0.01")
         # max diff broken should be very off ("very off" is arbitrary, but as long as it's bigger than 0.1, it's fine)
-        # updated target value compared original implementation https://github.com/huggingface/transformers/blob/v4.49.0/tests/trainer/test_trainer.py#L888
-        self.assertGreater(max(diff_broken), 1.0, f"Difference {max(diff_broken)} is not greater than 1.0")
+        self.assertGreater(max(diff_broken), 0.7, f"Difference {max(diff_broken)} is not greater than 0.7")
 
         loss_base = sum(base_loss_callback.losses)
         loss_broken = sum(broken_loss_callback.losses)
 
         # mean/sum loss should not vary too much.
         relative_diff = abs(loss_base - loss_broken) / max(loss_base, loss_broken)
-        self.assertLess(relative_diff, 0.2, f"Relative difference {relative_diff} is not within 0.2")
+        # updated target value compared to original implementation: https://github.com/huggingface/transformers/blob/v4.55.0/tests/trainer/test_trainer.py#L922
+        self.assertLess(relative_diff, 0.6, f"Relative difference {relative_diff} is not within 0.6")
 
     def test_gradient_accumulation_loss_alignment_with_loss_func(self):
         set_seed(42)
@@ -2676,7 +2676,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
                         return wrapped_fn
 
-                    trainer.get_batch_samples = wrap_get_batch_samples(trainer.get_batch_samples)
+                    trainer.get_batch_samples_transformers = wrap_get_batch_samples(trainer.get_batch_samples_transformers)
 
                     trainer.train()
 

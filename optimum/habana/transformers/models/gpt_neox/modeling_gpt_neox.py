@@ -13,7 +13,6 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     apply_rotary_pos_emb,
     logger,
 )
-from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ...modeling_rope_utils import GaudiRotaryEmbedding
