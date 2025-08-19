@@ -143,13 +143,13 @@ if __name__ == "__main__":
         return train_data, valid_data, formating_func
 
     low_cpu_mem_usage = True
-    is_deepspeed_zero3_enabled = False
+    is_zero3_enabled = False
     if is_deepspeed_available():
-        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled as ds_zero3_flag
+        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 
-        if ds_zero3_flag():
+        if is_deepspeed_zero3_enabled():
             low_cpu_mem_usage = False
-            is_deepspeed_zero3_enabled = True
+            is_zero3_enabled = True
 
     base_model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
     apply_zero3_leaf_promotion(
         base_model,
-        is_deepspeed_zero3_enabled=is_deepspeed_zero3_enabled,
+        is_deepspeed_zero3_enabled=is_zero3_enabled,
         use_zero3_leaf_promotion=training_args.use_zero3_leaf_promotion,
     )
 
