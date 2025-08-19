@@ -70,7 +70,7 @@ logger = logging.get_logger(__name__)
 
 class GaudiGemma2RotaryEmbedding(GaudiRotaryEmbedding):
     def __init__(self, config: Gemma2Config):
-        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
+        config.rope_scaling = getattr(config, "rope_scaling", None)
         super().__init__(config=config)
 
 
