@@ -13,26 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import logging
-from typing import Dict, Tuple, Type
 
 import torch
 
 
 logger = logging.getLogger(__name__)
-
-_MODEL_Z3_LEAF_REGISTRY: Dict[str, Tuple[str, str]] = {
-    "llama": ("optimum.habana.transformers.models.llama.modeling_llama", "GaudiLlamaDecoderLayer"),
-    "mixtral": ("optimum.habana.transformers.models.mixtral.modeling_mixtral", "GaudiMixtralSparseMoeBlock"),
-    "qwen3_moe": ("optimum.habana.transformers.models.qwen3_moe.modeling_qwen3_moe", "GaudiQwen3MoeSparseMoeBlock"),
-    # Add more as needed
-}
-
-
-def _import_class(module_path: str, class_name: str) -> Type:
-    mod = importlib.import_module(module_path)
-    return getattr(mod, class_name)
 
 
 def apply_zero3_leaf_promotion(
@@ -65,11 +51,24 @@ def apply_zero3_leaf_promotion(
 
     config = getattr(model, "config", model)
     model_type = getattr(config, "model_type", None)
-    if model_type not in _MODEL_Z3_LEAF_REGISTRY:
+
+    if model_type == "llama":
+        from optimum.habana.transformers.models.llama.modeling_llama import GaudiLlamaDecoderLayer
+
+        set_z3_leaf_modules(model, [GaudiLlamaDecoderLayer])
+
+    elif model_type == "mixtral":
+        from optimum.habana.transformers.models.mixtral.modeling_mixtral import GaudiMixtralSparseMoeBlock
+
+        set_z3_leaf_modules(model, [GaudiMixtralSparseMoeBlock])
+
+    elif model_type == "qwen3_moe":
+        from optimum.habana.transformers.models.qwen3_moe.modeling_qwen3_moe import GaudiQwen3MoeSparseMoeBlock
+
+        set_z3_leaf_modules(model, [GaudiQwen3MoeSparseMoeBlock])
+
+    else:
         logger.debug(f"Model type '{model_type}' is not registered for ZeRO-3 leaf promotion.")
         return
 
-    module_path, class_name = _MODEL_Z3_LEAF_REGISTRY[model_type]
-    leaf_cls = _import_class(module_path, class_name)
-    set_z3_leaf_modules(model, [leaf_cls])
-    logger.debug(f"Registered {class_name} as ZeRO-3 leaf for {model_type}.")
+    logger.debug(f"Model type '{model_type}' is registered for ZeRO-3 leaf promotion.")
