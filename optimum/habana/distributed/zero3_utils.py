@@ -21,31 +21,15 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def apply_zero3_leaf_promotion(
-    model: torch.nn.Module,
-    *,
-    is_deepspeed_zero3_enabled: bool = False,
-    use_zero3_leaf_promotion: bool = False,
-) -> None:
+def apply_zero3_leaf_promotion(model: torch.nn.Module) -> None:
     """
-    Promote registered modules to ZeRO-3 leafs **only if the caller
-    explicitly confirms** that DeepSpeed ZeRO-3 is enabled and the
-    user-toggle `use_zero3_leaf_promotion` is True.
+    Promote registered modules to ZeRO-3 leafs.
 
     Parameters
     ----------
     model : torch.nn.Module
         The model (or PEFT wrapper) on which `set_z3_leaf_modules` will be called.
-    is_deepspeed_zero3_enabled : bool
-        Must be True when the caller has already verified that DeepSpeed
-        ZeRO-3 is currently active.  DeepSpeed is imported only if this
-        flag is True.
-    use_zero3_leaf_promotion : bool
-        User-level opt-in flag that must also be True for the patch to run.
     """
-    if not is_deepspeed_zero3_enabled or not use_zero3_leaf_promotion:
-        return
-
     # Caller guarantees DeepSpeed is available; safe to import
     from deepspeed.utils import set_z3_leaf_modules
 

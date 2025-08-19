@@ -167,11 +167,8 @@ if __name__ == "__main__":
     base_model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
     base_model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
 
-    apply_zero3_leaf_promotion(
-        base_model,
-        is_deepspeed_zero3_enabled=is_zero3_enabled,
-        use_zero3_leaf_promotion=training_args.use_zero3_leaf_promotion,
-    )
+    if is_zero3_enabled and training_args.use_zero3_leaf_promotion:
+        apply_zero3_leaf_promotion(base_model)
 
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
