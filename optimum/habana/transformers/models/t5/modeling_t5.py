@@ -586,7 +586,6 @@ class GaudiT5ForConditionalGeneration(T5ForConditionalGeneration):
             encoder_attentions=encoder_outputs.attentions,
         )
 
-
     def prepare_inputs_for_generation(
         self,
         input_ids,

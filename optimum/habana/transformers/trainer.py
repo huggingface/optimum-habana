@@ -1686,7 +1686,7 @@ class GaudiTrainer(Trainer):
         if self.args.use_lazy_mode and self.args.pipelining_fwd_bwd:
             self.htcore.mark_step()
 
-        # Finally we need to normalize the loss for reporting if GA loss bug is not fixed during compute loss
+            # Finally we need to normalize the loss for reporting if GA loss bug is not fixed during compute loss
             if (not self.model_accepts_loss_kwargs or num_items_in_batch is None) and self.compute_loss_func is None:
                 # If the model does not accept loss kwargs, we need to normalize the loss by the number of gradient accumulation steps
                 loss = loss / self.current_gradient_accumulation_steps

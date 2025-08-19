@@ -921,7 +921,9 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
                 past_seen_tokens,
             )
         else:
-            mask_function = create_causal_mask if self.config.sliding_window is None else create_sliding_window_causal_mask
+            mask_function = (
+                create_causal_mask if self.config.sliding_window is None else create_sliding_window_causal_mask
+            )
             causal_mask = mask_function(
                 config=self.config,
                 input_embeds=inputs_embeds,

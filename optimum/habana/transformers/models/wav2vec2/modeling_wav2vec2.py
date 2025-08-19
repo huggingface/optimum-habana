@@ -242,9 +242,7 @@ def gaudi_wav2vec2_encoder_forward(
         skip_the_layer = self.training and (dropout_probability < self.config.layerdrop)
         if not skip_the_layer or synced_gpus:
             # under fsdp or deepspeed zero3 all gpus must run in sync
-            layer_outputs = layer(
-                hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
-            )
+            layer_outputs = layer(hidden_states, attention_mask=attention_mask, output_attentions=output_attentions)
             hidden_states = layer_outputs[0]
 
         if skip_the_layer:

@@ -2676,7 +2676,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
                         return wrapped_fn
 
-                    trainer.get_batch_samples_transformers = wrap_get_batch_samples(trainer.get_batch_samples_transformers)
+                    trainer.get_batch_samples_transformers = wrap_get_batch_samples(
+                        trainer.get_batch_samples_transformers
+                    )
 
                     trainer.train()
 
