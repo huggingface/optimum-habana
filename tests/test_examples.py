@@ -711,7 +711,6 @@ class ExampleTesterBase(TestCase):
             cmd_line += [
                 f"{script}",
                 f"--model_name_or_path {model_name}",
-                f"--gaudi_config_name {gaudi_config_name}",
                 f"{task_option}",
                 "--do_train",
                 f"--output_dir {output_dir}",
@@ -724,8 +723,10 @@ class ExampleTesterBase(TestCase):
                 "--throughput_warmup_steps 3",
                 "--save_strategy no",
             ]
-            if not gaudi_config_name:
-                cmd_line.pop(cmd_line.index(f"--gaudi_config_name {gaudi_config_name}"))
+            if gaudi_config_name:
+                cmd_line += [
+                    f"--gaudi_config_name {gaudi_config_name}",
+                ]
 
         if "compile" in task or "--torch_compile" in extra_command_line_arguments:
             cmd_line += ["--use_lazy_mode False"]
