@@ -27,7 +27,7 @@
                         "--optim paged_adamw_32bit",
                         "--remove_unused_columns False",
                         "--use_zero3_leaf_promotion True",
-                        "--deepspeed examples/trl/mixtral_ds_zero3_config.json"
+                        "--deepspeed examples/language-modeling/mixtral_ds_zero3_config.json"
                     ]
                 }
             }
@@ -61,7 +61,7 @@
                         "--optim paged_adamw_32bit",
                         "--remove_unused_columns False",
                         "--use_zero3_leaf_promotion True",
-                        "--deepspeed examples/trl/mixtral_ds_zero3_config.json"
+                        "--deepspeed examples/language-modeling/mixtral_ds_zero3_config.json"
                     ]
                 }
             }
