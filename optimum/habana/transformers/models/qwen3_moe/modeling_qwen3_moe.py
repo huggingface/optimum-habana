@@ -19,6 +19,7 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
+from functools import lru_cache
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -56,7 +57,6 @@ from ...modeling_attn_mask_utils import (
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
 from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
-from functools import lru_cache
 
 
 try:
