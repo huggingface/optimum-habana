@@ -297,7 +297,7 @@ def gaudi_SpeechT5Decoder_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         skip_the_layer = False
         if self.training:
             dropout_probability = torch.rand([])
