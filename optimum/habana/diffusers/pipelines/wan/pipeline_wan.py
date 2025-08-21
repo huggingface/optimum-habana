@@ -67,7 +67,7 @@ EXAMPLE_DOC_STRING = """
 
 class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py#L95
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/pipelines/wan/pipeline_wan.py#L95
 
     This class inherits from `WanPipeline` and overrides methods to use Gaudi-specific implementations.
     add args use_habana
@@ -75,15 +75,16 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
     add args gaudi_config
     add args bf16_full_eval
     add args sdp_on_bf16
+    add args is_training
     """
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        transformer: Optional[WanTransformer3DModel] = None,
         transformer_2: Optional[WanTransformer3DModel] = None,
         boundary_ratio: Optional[float] = None,
         expand_timesteps: bool = False,  # Wan2.2 ti2v
@@ -299,14 +300,6 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        hb_profiler = HabanaProfile(
-            warmup=profiling_warmup_steps,
-            active=profiling_steps,
-            record_shapes=False,
-            name="diffuser_pipeline",
-        )
-        hb_profiler.start()
-
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -322,6 +315,14 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         )
 
         mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
+
+        hb_profiler = HabanaProfile(
+            warmup=profiling_warmup_steps,
+            active=profiling_steps,
+            record_shapes=False,
+            name="diffuser_pipeline",
+        )
+        hb_profiler.start()
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order

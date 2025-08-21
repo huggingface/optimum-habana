@@ -41,24 +41,30 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from optimum.habana.diffusers import GaudiWanPipeline
+        >>> from optimum.habana.diffusers import GaudiWanImageToVideoPipeline
 
-        >>> pipe = GaudiWanPipeline.from_pretrained(       
+        >>> pipe = GaudiWanImageToVideoPipeline.from_pretrained(       
         ...    "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
         ...     torch_dtype=torch.bfloat16,
         ...     use_habana=True,
         ...     use_hpu_graphs=True,
         ...     gaudi_config="Habana/stable-diffusion",
         ... )
+        >>> image_processor = ModularPipeline.from_pretrained("YiYiXu/WanImageProcessor", trust_remote_code=True)
+        >>> image = image_processor(
+        ...     image="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG",
+        ...     output="processed_image"
+        ... )
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
         >>> output = pipe(
+        ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     height=720,
-        ...     width=1280,
+        ...     height=image.height,
+        ...     width=image.width,
         ...     num_frames=81,
         ...     guidance_scale=5.0,
         ... ).frames[0]
@@ -68,7 +74,7 @@ EXAMPLE_DOC_STRING = """
 
 class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py#L95
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/pipelines/wan/pipeline_wan_i2v.py#L127
 
     This class inherits from `WanPipeline` and overrides methods to use Gaudi-specific implementations.
     add args use_habana
