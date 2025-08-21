@@ -17,7 +17,7 @@
 import copy
 import inspect
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -362,12 +362,12 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         batch_size: int,
         model_input_name: str,
-        model_kwargs: Dict[str, torch.Tensor],
+        model_kwargs: dict[str, torch.Tensor],
         decoder_start_token_id: torch.Tensor,
         device: Optional[torch.device] = None,
         max_new_tokens: int = None,
         pad_token_id: int = None,
-    ) -> Tuple[torch.LongTensor, Dict[str, torch.Tensor]]:
+    ) -> tuple[torch.LongTensor, dict[str, torch.Tensor]]:
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
         # we also allow the user to pass it under `input_ids`, if the encoder does not use it as the main input.
@@ -472,7 +472,7 @@ class GaudiGenerationMixin(GenerationMixin):
         is_encoder_decoder: bool = False,
         input_ids: Optional[torch.LongTensor] = None,
         **model_kwargs,
-    ) -> Tuple[torch.LongTensor, Dict[str, Any]]:
+    ) -> tuple[torch.LongTensor, dict[str, Any]]:
         """
         Expands tensors from [batch_size, ...] to [batch_size * expand_size, ...].
 
@@ -563,10 +563,10 @@ class GaudiGenerationMixin(GenerationMixin):
     def _update_model_kwargs_for_generation(
         self,
         outputs: ModelOutput,
-        model_kwargs: Dict[str, Any],
+        model_kwargs: dict[str, Any],
         is_encoder_decoder: bool = False,
         num_new_tokens: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Copied from Transformers: https://github.com/huggingface/transformers/blob/527ab894e59b6582578008e3b47648a65063f73d/src/transformers/generation/utils.py#L745
 
@@ -735,7 +735,7 @@ class GaudiGenerationMixin(GenerationMixin):
         logits_processor: LogitsProcessorList,
         target_tokenizer: "PreTrainedTokenizerBase",
         assistant_tokenizer: "PreTrainedTokenizerBase",
-        model_kwargs: Dict,
+        model_kwargs: dict,
     ) -> CandidateGenerator:
         different_tokenizers = all(v is not None for v in (assistant_model, target_tokenizer, assistant_tokenizer))
 
@@ -903,8 +903,8 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         generation_config: Optional[GaudiGenerationConfig],
         use_model_defaults: Optional[bool] = None,
-        **kwargs: Dict,
-    ) -> Tuple[GaudiGenerationConfig, Dict]:
+        **kwargs: dict,
+    ) -> tuple[GaudiGenerationConfig, dict]:
         """
         Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/generation/utils.py#L1230
         Differences:
@@ -1000,7 +1000,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def _prepare_cache_for_generation(
         self,
         generation_config: GaudiGenerationConfig,
-        model_kwargs: Dict,
+        model_kwargs: dict,
         assistant_model: "PreTrainedModel",
         batch_size: int,
         max_cache_length: int,
@@ -1122,7 +1122,7 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config: Optional[GaudiGenerationConfig] = None,
         logits_processor: Optional[LogitsProcessorList] = None,
         stopping_criteria: Optional[StoppingCriteriaList] = None,
-        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
+        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], list[int]]] = None,
         synced_gpus: Optional[bool] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
         streamer: Optional["BaseStreamer"] = None,
@@ -1131,7 +1131,7 @@ class GaudiGenerationMixin(GenerationMixin):
         use_model_defaults: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
-        iteration_times: Optional[List[float]] = None,
+        iteration_times: Optional[list[float]] = None,
         profiler: Optional[HabanaProfile] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
@@ -1174,7 +1174,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation config an error is thrown. If your stopping criteria depends on the `scores` input, make
                 sure you pass `return_dict_in_generate=True, output_scores=True` to `generate`. This feature is
                 intended for advanced users.
-            prefix_allowed_tokens_fn (`Callable[[int, torch.Tensor], List[int]]`, *optional*):
+            prefix_allowed_tokens_fn (`Callable[[int, torch.Tensor], list[int]]`, *optional*):
                 If provided, this function constraints the beam search to allowed tokens only at each step. If not
                 provided no constraint is applied. This function takes 2 arguments: the batch ID `batch_id` and
                 `input_ids`. It has to return a list with the allowed tokens for the next generation step conditioned
@@ -1209,7 +1209,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether to use HPU graphs for inference.
             profiler (`HabanaProfile`, *optional*, defaults to None):
                 HabanaProfile object to use for profiling.
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Ad hoc parametrization of `generation_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. If the model is an encoder-decoder model, encoder
                 specific kwargs should not be prefixed and decoder specific kwargs should be prefixed with *decoder_*.
@@ -1820,7 +1820,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
                 def typeerror():
                     raise ValueError(
-                        "`force_words_ids` has to either be a `List[List[List[int]]]` or `List[List[int]]` "
+                        "`force_words_ids` has to either be a `list[list[list[int]]]` or `list[list[int]]` "
                         f"of positive integers, but is {generation_config.force_words_ids}."
                     )
 
@@ -1897,7 +1897,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def _dola_decoding(
         self,
         input_ids: torch.LongTensor,
-        dola_layers: Union[str, List[int]],
+        dola_layers: Union[str, list[int]],
         logits_processor: LogitsProcessorList,
         stopping_criteria: StoppingCriteriaList,
         generation_config: GaudiGenerationConfig,
@@ -1914,7 +1914,7 @@ class GaudiGenerationMixin(GenerationMixin):
         Parameters:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 The sequence used as a prompt for the generation.
-            dola_layers (`Union[str, List[int]]`):
+            dola_layers (`Union[str, list[int]]`):
                 The candidate layers used in contrasting layers of DoLa. It can be either 1) 'low' or 'high', which
                 means the lower part or higher part of the model layers, respectively, or 2) a list of layer indices
                 to be used for candidate layers. The 0-th layer is the word embedding layer of the model.

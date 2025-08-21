@@ -14,7 +14,7 @@
 # limitations under the License.
 """PyTorch Paligemma model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -34,11 +34,11 @@ logger = logging.get_logger(__name__)
 class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        pixel_values: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor = None,
+        pixel_values: torch.FloatTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[List[torch.FloatTensor], Cache]] = None,
+        past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -50,7 +50,7 @@ class GaudiPaliGemmaForConditionalGeneration(PaliGemmaForConditionalGeneration):
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         **lm_kwargs,
-    ) -> Union[Tuple, PaliGemmaCausalLMOutputWithPast]:
+    ) -> Union[tuple, PaliGemmaCausalLMOutputWithPast]:
         """
         Inherits from PaliGemmaForConditionalGeneration::forward https://github.com/huggingface/transformers/blob/v4.45.1/src/transformers/models/paligemma/modeling_paligemma.py#L402
         The only differences are:
