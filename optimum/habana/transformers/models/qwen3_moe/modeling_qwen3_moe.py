@@ -19,6 +19,7 @@
 # limitations under the License.
 """PyTorch Qwen3MoE model."""
 
+from functools import lru_cache
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -591,6 +592,16 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
         return attn_output
 
 
+@lru_cache(None)
+def _is_deepspeed_initialized(self) -> bool:
+    if not is_deepspeed_available():
+        return False
+    from deepspeed import comm as dist
+    from deepspeed.module_inject.layers import LinearAllreduce
+
+    return dist.is_initialized() and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
+
+
 class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
     def __init__(self, config: Qwen3MoeConfig):
         super().__init__(config)
@@ -642,11 +653,10 @@ class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
         )
         htcore.mark_step()
 
-        if not self.training and is_deepspeed_available() and self.moe_intermediate_size != w1_list[0].size(0):
+        if not self.training and _is_deepspeed_initialized(self):
             from deepspeed import comm as dist
 
-            if dist.is_initialized():
-                dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
+            dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
         final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
         return final_hidden_states, router_logits
