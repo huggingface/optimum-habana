@@ -169,7 +169,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "sft": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        ["llama", "qwen2"],
+        ["llama", "qwen2", "mixtral"],
     ),
     "dpo": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
@@ -270,11 +270,15 @@ class ExampleTestMeta(type):
             return False
         elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
             return False
+        elif "Mixtral-8x7B" in model_name and task_name != "trl-sft-mixtral":
+            return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
         elif "llama" in model_name and "trl-sft-qwen" in task_name:
+            return False
+        elif "llama" in model_name and "trl-sft-mixtral" in task_name:
             return False
         elif "Llama-3.1-8B" in model_name:
             if multi_card:
@@ -320,6 +324,8 @@ class ExampleTestMeta(type):
             # CodeLlama is tested only on Gaudi2+ and with DeepSpeed
             return True
         elif "Qwen2-72B" in model_name and not IS_GAUDI1 and deepspeed:
+            return True
+        elif "Mixtral-8x7B" in model_name and not IS_GAUDI1 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -543,6 +549,10 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
+            if model_name == "mistralai/Mixtral-8x7B-Instruct-v0.1":
+                env_variables["PT_HPU_LAZY_MODE"] = "1"
+                env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
+
             if self.EXAMPLE_NAME == "run_audio_classification":
                 extra_command_line_arguments.append("--sdp_on_bf16")
                 if "wav2vec2" in model_name:
@@ -704,7 +714,6 @@ class ExampleTesterBase(TestCase):
             cmd_line += [
                 f"{script}",
                 f"--model_name_or_path {model_name}",
-                f"--gaudi_config_name {gaudi_config_name}",
                 f"{task_option}",
                 "--do_train",
                 f"--output_dir {output_dir}",
@@ -712,11 +721,15 @@ class ExampleTesterBase(TestCase):
                 f"--learning_rate {lr}",
                 f"--per_device_train_batch_size {train_batch_size}",
                 f"--per_device_eval_batch_size {eval_batch_size}",
-                f" --num_train_epochs {num_epochs}",
+                f"--num_train_epochs {num_epochs}",
                 "--use_habana",
                 "--throughput_warmup_steps 3",
                 "--save_strategy no",
             ]
+            if gaudi_config_name:
+                cmd_line += [
+                    f"--gaudi_config_name {gaudi_config_name}",
+                ]
 
         if "compile" in task or "--torch_compile" in extra_command_line_arguments:
             cmd_line += ["--use_lazy_mode False"]
@@ -1022,6 +1035,13 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 
 class DeepspeedSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True):
     TASK_NAME = "trl-sft-qwen"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
+
+
+class DeepspeedSFTMixtralExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True
+):
+    TASK_NAME = "trl-sft-mixtral"
     DATASET_NAME = "philschmid/dolly-15k-oai-style"
 
 
