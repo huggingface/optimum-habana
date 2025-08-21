@@ -15,7 +15,7 @@
 # limitations under the License.
 """PyTorch XLM-RoBERTa model."""
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.utils.checkpoint
@@ -34,9 +34,9 @@ def gaudi_XLMRoberta_Sdpa_SelfAttention_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/v4.46.3/src/transformers/models/xlm_roberta/modeling_xlm_roberta.py#L295
     Changes:

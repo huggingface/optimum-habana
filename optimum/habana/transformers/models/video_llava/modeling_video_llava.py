@@ -14,7 +14,7 @@
 # limitations under the License.
 """PyTorch VideoLlava model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -31,14 +31,14 @@ logger = logging.get_logger(__name__)
 class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration):
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        pixel_values_images: Optional[torch.FloatTensor] = None,
-        pixel_values_videos: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor = None,
+        pixel_values_images: torch.FloatTensor = None,
+        pixel_values_videos: torch.FloatTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[Union[int, List[int]]] = None,
+        vision_feature_layer: Optional[Union[int, list[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -49,7 +49,7 @@ class GaudiVideoLlavaForConditionalGeneration(VideoLlavaForConditionalGeneration
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         **lm_kwargs,
-    ) -> Union[Tuple, VideoLlavaCausalLMOutputWithPast]:
+    ) -> Union[tuple, VideoLlavaCausalLMOutputWithPast]:
         r"""
         Copied from VideoLlavaForConditionalGeneration.forward: https://github.com/huggingface/transformers/blob/v4.51.3/src/transformers/models/video_llava/modeling_video_llava.py#L365
         The only difference is:

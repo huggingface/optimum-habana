@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from transformers.modeling_outputs import (
@@ -140,7 +140,7 @@ def gaudi_gpt_neo_block_forward(
 def gaudi_gpt_neo_model_forward(
     self,
     input_ids: Optional[torch.Tensor] = None,
-    past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+    past_key_values: Optional[tuple[torch.FloatTensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     token_type_ids: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
@@ -151,7 +151,7 @@ def gaudi_gpt_neo_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTNeoModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
     The only differences are:
@@ -293,7 +293,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
-        past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+        past_key_values: Optional[tuple[torch.FloatTensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
@@ -307,7 +307,7 @@ class GaudiGPTNeoForCausalLM(GPTNeoForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set

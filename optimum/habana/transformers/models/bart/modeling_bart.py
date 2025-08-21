@@ -15,7 +15,7 @@
 # limitations under the License.
 """PyTorch BART model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -72,12 +72,12 @@ def gaudi_BartAttention_forward(
     self,
     hidden_states: torch.Tensor,
     key_value_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """Input shape: Batch x Time x Channel"""
 
     # if key_value_states are provided this layer is used as a cross-attention layer
@@ -122,10 +122,10 @@ def gaudi_BartAttention_forward(
         value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
     if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+        # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
         # Further calls to cross_attention layer can then reuse all cross-attention
         # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+        # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
         # all previous decoder key/value_states. Further calls to uni-directional self-attention
         # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
         # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -202,7 +202,7 @@ def gaudi_BartEncoderLayer_forward(
     layer_head_mask: torch.FloatTensor,
     output_attentions: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+) -> tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
     residual = hidden_states
     hidden_states, attn_weights, _ = self.self_attn(
         hidden_states=hidden_states,
@@ -239,11 +239,11 @@ def gaudi_BartDecoderLayer_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
     residual = hidden_states
 
     # Self Attention
@@ -322,7 +322,7 @@ def gaudi_BartEncoder_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutput]:
+) -> Union[tuple, BaseModelOutput]:
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -427,14 +427,14 @@ def gaudi_BartDecoder_forward(
     encoder_attention_mask: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -608,8 +608,8 @@ def gaudi_BartModel_forward(
     head_mask: Optional[torch.Tensor] = None,
     decoder_head_mask: Optional[torch.Tensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    encoder_outputs: Optional[List[torch.FloatTensor]] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    encoder_outputs: Optional[list[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
@@ -617,7 +617,7 @@ def gaudi_BartModel_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, Seq2SeqModelOutput]:
+) -> Union[tuple, Seq2SeqModelOutput]:
     # different to other models, Bart automatically creates decoder_input_ids from
     # input_ids if no decoder_input_ids are provided
     if decoder_input_ids is None and decoder_inputs_embeds is None:
@@ -697,8 +697,8 @@ def gaudi_BartForConditionalGeneration_forward(
     head_mask: Optional[torch.Tensor] = None,
     decoder_head_mask: Optional[torch.Tensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    encoder_outputs: Optional[List[torch.FloatTensor]] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    encoder_outputs: Optional[list[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -707,7 +707,7 @@ def gaudi_BartForConditionalGeneration_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, Seq2SeqLMOutput]:
+) -> Union[tuple, Seq2SeqLMOutput]:
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if labels is not None:

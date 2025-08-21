@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPooling
@@ -31,7 +31,7 @@ def gaudi_albert_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-) -> Union[BaseModelOutputWithPooling, Tuple]:
+) -> Union[BaseModelOutputWithPooling, tuple]:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/models/albert/modeling_albert.py#L689
     except that mixed precision is disabled for computing:

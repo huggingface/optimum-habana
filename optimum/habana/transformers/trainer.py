@@ -27,9 +27,9 @@ import random
 import shutil
 import time
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import huggingface_hub.utils as hf_hub_utils
 import numpy as np
@@ -141,7 +141,7 @@ if is_deepspeed_available():
 from accelerate.utils import DataLoaderConfiguration, is_torch_version
 
 
-def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple[bool, Dict]:
+def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> tuple[bool, dict]:
     """
     Determines whether the input settings need to be updated.
 
@@ -156,10 +156,10 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> Tuple
         lazy_mode[Optional[bool]]: Whether to use lazy mode for the model (defaults to `None`)
 
     Returns:
-        Tuple[bool, Dict]: A flag indicating whether the input settings should be updated.
+        tuple[bool, dict]: A flag indicating whether the input settings should be updated.
         A dictionary containing the specific input settings that need to be updated, if any
     """
-    inputs_update: Dict = {}
+    inputs_update: dict = {}
 
     should_update_inputs = (getattr(model, "generation_config", None) is not None) and (
         model.config.model_type in ("llama", "qwen2", "starcoder2", "gemma", "baichuan", "chatglm", "deepseek_v2")
@@ -517,12 +517,12 @@ class GaudiTrainer(Trainer):
                 If a `str`, local path to a saved checkpoint as saved by a previous instance of [`Trainer`]. If a
                 `bool` and equals `True`, load the last checkpoint in *args.output_dir* as saved by a previous instance
                 of [`Trainer`]. If present, training will resume from the model/optimizer/scheduler states loaded here.
-            trial (`optuna.Trial` or `Dict[str, Any]`, *optional*):
+            trial (`optuna.Trial` or `dict[str, Any]`, *optional*):
                 The trial run or the hyperparameter dictionary for hyperparameter search.
             ignore_keys_for_eval (`List[str]`, *optional*)
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
                 gathering predictions for evaluation during the training.
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments used to hide deprecated arguments
         """
         if resume_from_checkpoint is False:
@@ -1533,7 +1533,7 @@ class GaudiTrainer(Trainer):
         Subclass and override this method to inject custom behavior.
 
         Args:
-            logs (`Dict[str, float]`):
+            logs (`dict[str, float]`):
                 The values to log.
             start_time (`Optional[float]`):
                 The start of training.
@@ -1605,7 +1605,10 @@ class GaudiTrainer(Trainer):
         return ctx_manager
 
     def training_step(
-        self, model: torch.nn.Module, inputs: dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
+        self,
+        model: torch.nn.Module,
+        inputs: dict[str, Union[torch.Tensor, Any]],
+        num_items_in_batch: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
@@ -1615,7 +1618,7 @@ class GaudiTrainer(Trainer):
         Args:
             model (`torch.nn.Module`):
                 The model to train.
-            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, Union[torch.Tensor, Any]]`):
                 The inputs and targets of the model.
 
                 The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
@@ -2171,7 +2174,7 @@ class GaudiTrainer(Trainer):
         Args:
             model (`torch.nn.Module`):
                 The model to evaluate.
-            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, Union[torch.Tensor, Any]]`):
                 The inputs and targets of the model.
                 The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
                 argument `labels`. Check your model's documentation for all accepted arguments.
@@ -2181,7 +2184,7 @@ class GaudiTrainer(Trainer):
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
                 gathering predictions.
         Return:
-            Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
+            tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
         has_labels = False if len(self.label_names) == 0 else all(inputs.get(k) is not None for k in self.label_names)
@@ -2654,7 +2657,9 @@ class GaudiTrainer(Trainer):
                 model.zero_grad()
                 model._zero_grad_kwargs = {}
 
-    def get_batch_samples_transformers(self, epoch_iterator, num_batches, device):
+    def get_batch_samples_transformers(
+        self, epoch_iterator: Iterator, num_batches: int, device: torch.device
+    ) -> tuple[list, Optional[torch.Tensor]]:
         batch_samples = []
         num_items_in_batch = None
 
