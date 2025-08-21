@@ -14,7 +14,7 @@
 # limitations under the License.
 """PyTorch Idefics2 model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -77,7 +77,7 @@ class GaudiIdefics2Model(Idefics2Model):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         pixel_attention_mask: Optional[torch.BoolTensor] = None,
@@ -87,7 +87,7 @@ class GaudiIdefics2Model(Idefics2Model):
         output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, Idefics2BaseModelOutputWithPast]:
+    ) -> Union[tuple, Idefics2BaseModelOutputWithPast]:
         """
         Inherits from Idefics2Model::forward https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L1303
         The only differences are:
@@ -249,7 +249,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         pixel_attention_mask: Optional[torch.BoolTensor] = None,
@@ -262,7 +262,7 @@ class GaudiIdefics2ForConditionalGeneration(Idefics2ForConditionalGeneration):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
-    ) -> Union[Tuple, Idefics2CausalLMOutputWithPast]:
+    ) -> Union[tuple, Idefics2CausalLMOutputWithPast]:
         """
         Inherits from Idefics2ForConditionalGeneration::forward https://github.com/huggingface/transformers/blob/v4.43.4/src/transformers/models/idefics2/modeling_idefics2.py#L1505
         The only differences are:

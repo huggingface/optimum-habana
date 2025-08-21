@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple
-
 import torch
 from transformers.modeling_utils import ModuleUtilsMixin, PretrainedConfig
 from transformers.utils.import_utils import is_torch_sdpa_available
@@ -135,7 +133,7 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
 
 
 def gaudi_get_extended_attention_mask(
-    self, attention_mask: torch.Tensor, input_shape: Tuple[int], device: torch.device = None, dtype: torch.float = None
+    self, attention_mask: torch.Tensor, input_shape: tuple[int], device: torch.device = None, dtype: torch.float = None
 ) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L692

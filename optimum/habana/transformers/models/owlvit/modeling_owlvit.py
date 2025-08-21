@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 
@@ -8,7 +8,7 @@ def gaudi_owlvitclasspredictionhead_forward(
     image_embeds: torch.FloatTensor,
     query_embeds: Optional[torch.FloatTensor],
     query_mask: Optional[torch.Tensor],
-) -> Tuple[torch.FloatTensor]:
+) -> tuple[torch.FloatTensor]:
     """
     Copied from modeling_owlvit: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/owlvit/modeling_owlvit.py#L1233
     The only modification is:

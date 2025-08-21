@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -21,12 +21,12 @@ def gaudi_BertModel_forward(
     inputs_embeds: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.Tensor] = None,
     encoder_attention_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/15c74a28294fe9082b81b24efe58df16fed79a9e/src/transformers/models/bert/modeling_bert.py
     Changes:
@@ -135,9 +135,9 @@ def gaudi_Bert_Sdpa_SelfAttention_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/v4.46.3/src/transformers/models/bert/modeling_bert.py
     Changes:

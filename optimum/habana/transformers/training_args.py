@@ -18,7 +18,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch.distributed as dist
 from accelerate import DistributedType, PartialState
@@ -964,7 +964,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         # We delay the init of `PartialState` to the end for clarity
-        accelerator_state_kwargs = {"enabled": True, "use_configured_state": False}
+        accelerator_state_kwargs: dict[str, Any] = {"enabled": True, "use_configured_state": False}
         if isinstance(self.accelerator_config, AcceleratorConfig):
             accelerator_state_kwargs["use_configured_state"] = self.accelerator_config.pop(
                 "use_configured_state", False

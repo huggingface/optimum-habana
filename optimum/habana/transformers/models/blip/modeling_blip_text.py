@@ -1,5 +1,5 @@
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -23,10 +23,10 @@ def gaudi_BlipTextSelfAttention_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     """
     Copied from BlipTextSelfAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L143
     The only differences are:
@@ -116,10 +116,10 @@ def gaudi_BlipTextAttention_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     """
     Copied from BlipTextAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L265
     The only differences are:
@@ -147,10 +147,10 @@ def gaudi_BlipTextLayer_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     """
     Copied from BlipTextLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L333
     The only differences are:
@@ -198,13 +198,13 @@ def gaudi_BlipTextEncoder_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = False,
     output_hidden_states: Optional[bool] = False,
     return_dict: Optional[bool] = True,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from BlipTextEncoder.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L391
     The only differences are:
@@ -295,14 +295,14 @@ def gaudi_BlipTextModel_forward(
     encoder_embeds: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.Tensor] = None,
     encoder_attention_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     is_decoder: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
     """
     Copied from BlipTextModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L666
     The only differences are:
@@ -424,7 +424,7 @@ def gaudi_BlipTextLMHead_forward(
     encoder_hidden_states: Optional[torch.Tensor] = None,
     encoder_attention_mask: Optional[torch.Tensor] = None,
     labels: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.Tensor]] = None,
+    past_key_values: Optional[list[torch.Tensor]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
@@ -433,7 +433,7 @@ def gaudi_BlipTextLMHead_forward(
     is_decoder: Optional[bool] = True,
     reduction: Optional[str] = "mean",
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
     """
     Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L820
     The only differences are:

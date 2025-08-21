@@ -14,7 +14,7 @@
 # limitations under the License.
 """PyTorch FALCONMAMBA model."""
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -45,7 +45,7 @@ def gaudi_FalconMambaModel_forward(
     cache_position: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.LongTensor] = None,
     lazy_mode: Optional[bool] = True,
-) -> Union[Tuple, FalconMambaOutput]:
+) -> Union[tuple, FalconMambaOutput]:
     output_hidden_states = (
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
     )

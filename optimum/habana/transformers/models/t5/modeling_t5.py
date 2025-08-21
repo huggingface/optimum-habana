@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -506,8 +506,8 @@ def gaudi_T5ForConditionalGeneration_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     decoder_head_mask: Optional[torch.FloatTensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    encoder_outputs: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+    encoder_outputs: Optional[tuple[tuple[torch.Tensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -518,7 +518,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.LongTensor] = None,
     **kwargs,
-) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
+) -> Union[tuple[torch.FloatTensor], Seq2SeqLMOutput]:
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
