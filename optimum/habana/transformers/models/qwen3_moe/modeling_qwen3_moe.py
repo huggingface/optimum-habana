@@ -591,16 +591,16 @@ class GaudiQwen3MoeAttention(Qwen3MoeAttention):
             return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
+
 @lru_cache(None)
 def _is_deepspeed_initialized(self) -> bool:
     if not is_deepspeed_available():
         return False
     from deepspeed import comm as dist
     from deepspeed.module_inject.layers import LinearAllreduce
-    return (
-        dist.is_initialized()
-        and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
-    )
+
+    return dist.is_initialized() and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
+
 
 class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
     def __init__(self, config: Qwen3MoeConfig):
@@ -655,6 +655,7 @@ class GaudiQwen3MoeSparseMoeBlock(Qwen3MoeSparseMoeBlock):
 
         if not self.training and _is_deepspeed_initialized(self):
             from deepspeed import comm as dist
+
             dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
         final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)

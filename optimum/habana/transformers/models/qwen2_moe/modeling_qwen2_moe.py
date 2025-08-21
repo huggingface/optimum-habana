@@ -527,16 +527,16 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
             return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
+
 @lru_cache(None)
 def _is_deepspeed_initialized(self) -> bool:
     if not is_deepspeed_available():
         return False
     from deepspeed import comm as dist
     from deepspeed.module_inject.layers import LinearAllreduce
-    return (
-        dist.is_initialized()
-        and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
-    )
+
+    return dist.is_initialized() and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
+
 
 def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -577,6 +577,7 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
 
     if not self.training and _is_deepspeed_initialized(self):
         from deepspeed import comm as dist
+
         dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
     shared_expert_output = self.shared_expert(hidden_states)
