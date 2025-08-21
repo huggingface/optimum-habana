@@ -19,7 +19,7 @@
 # limitations under the License.
 """PyTorch Llava model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -108,13 +108,13 @@ def _merge_input_ids_with_image_features(image_features, inputs_embeds, input_id
 class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        pixel_values: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor = None,
+        pixel_values: torch.FloatTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[Union[int, List[int]]] = None,
+        vision_feature_layer: Optional[Union[int, list[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -130,7 +130,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         **lm_kwargs,
-    ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
+    ) -> Union[tuple, LlavaCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/llava/modeling_llava.py#L362
         The only differences are:

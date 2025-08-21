@@ -16,7 +16,7 @@
 
 import os
 import random
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from habana_frameworks.torch.hpu import get_device_name
@@ -47,7 +47,7 @@ except ImportError:
 
 
 def _gaudi_wav2vec2_compute_mask_indices(
-    shape: Tuple[int, int],
+    shape: tuple[int, int],
     mask_prob: float,
     mask_length: int,
     attention_mask: Optional[torch.LongTensor] = None,
@@ -160,7 +160,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
 
 
 def _gaudi_wav2vec2_sample_negative_indices(
-    features_shape: Tuple, num_negatives: int, mask_time_indices: Optional[torch.Tensor] = None
+    features_shape: tuple, num_negatives: int, mask_time_indices: Optional[torch.Tensor] = None
 ):
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L254
@@ -283,7 +283,7 @@ def gaudi_wav2vec2_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-) -> Union[Tuple, Wav2Vec2BaseModelOutput]:
+) -> Union[tuple, Wav2Vec2BaseModelOutput]:
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1282
     The only difference is that a clone of `hidden_states` is given to _mask_hidden_states to avoid an error.
@@ -393,7 +393,7 @@ def gaudi_wav2vec2forctc_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     labels: Optional[torch.Tensor] = None,
-) -> Union[Tuple, CausalLMOutput]:
+) -> Union[tuple, CausalLMOutput]:
     """
     copied from Transformers https://github.com/huggingface/transformers/blob/e770f0316d2a9b787c9d1440f204fcb65e176682/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1950
     only differences are (1) attention_mask tensor generation using ones_like is done on HPU, (2) masked_select is not applied on labels to compute flattened_targets to avoid
@@ -506,11 +506,11 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
         self,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         Copied from Wav2Vec2SdpaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/wav2vec2/modeling_wav2vec2.py
         The only difference is If the `USE_FLASH_ATTENTION` switch is enabled, then use the HPU's fused SDPA; otherwise, use PyTorch's native SDPA
@@ -567,10 +567,10 @@ class GaudiWav2Vec2SdpaAttention(Wav2Vec2Attention):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`

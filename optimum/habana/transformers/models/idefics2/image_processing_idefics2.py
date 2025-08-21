@@ -14,7 +14,7 @@
 # limitations under the License.
 
 
-from typing import Iterable, List, Optional, Union
+from typing import Iterable, Optional, Union
 
 import numpy as np
 from transformers.image_processing_utils import BatchFeature
@@ -30,7 +30,7 @@ from transformers.utils import TensorType
 class Gaudi2Idefics2ImageProcessor(Idefics2ImageProcessor):
     def pad(
         self,
-        images: List[np.ndarray],
+        images: list[np.ndarray],
         constant_values: Union[float, Iterable[float]] = 0,
         return_pixel_mask: bool = True,
         return_tensors: Optional[Union[str, TensorType]] = None,
