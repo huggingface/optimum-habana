@@ -111,7 +111,6 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
             bf16_full_eval,
             sdp_on_bf16,
         )
-        #import pdb;pdb.set_trace()
         WanImageToVideoPipeline.__init__(
             self,
             tokenizer=tokenizer,
@@ -126,10 +125,11 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
             expand_timesteps=expand_timesteps,
         )
         self.to(self._device)
-        self.transformer.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer)
-        for block in self.transformer.blocks:
-            block.attn1.processor = GaudiWanAttnProcessor(is_training)
-            block.attn2.processor = GaudiWanAttnProcessor(is_training)
+        if self.transformer is not None:
+            self.transformer.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer)
+            for block in self.transformer.blocks:
+                block.attn1.processor = GaudiWanAttnProcessor(is_training)
+                block.attn2.processor = GaudiWanAttnProcessor(is_training)
         if self.transformer_2 is not None:
             self.transformer_2.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer_2)
             for block in self.transformer_2.blocks:
@@ -141,7 +141,8 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            self.transformer = wrap_in_hpu_graph(transformer)
+            if self.transformer is not None:
+                self.transformer = wrap_in_hpu_graph(transformer)
             if self.transformer_2 is not None:
                 self.transformer_2 = wrap_in_hpu_graph(transformer_2)
 

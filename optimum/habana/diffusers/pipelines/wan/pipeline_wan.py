@@ -115,10 +115,11 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             expand_timesteps=expand_timesteps,
         )
         self.to(self._device)
-        self.transformer.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer)
-        for block in self.transformer.blocks:
-            block.attn1.processor = GaudiWanAttnProcessor(is_training)
-            block.attn2.processor = GaudiWanAttnProcessor(is_training)
+        if self.transformer is not None:
+            self.transformer.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer)
+            for block in self.transformer.blocks:
+                block.attn1.processor = GaudiWanAttnProcessor(is_training)
+                block.attn2.processor = GaudiWanAttnProcessor(is_training)
         if self.transformer_2 is not None:
             self.transformer_2.forward = types.MethodType(WanTransformer3DModleForwardGaudi, self.transformer_2)
             for block in self.transformer_2.blocks:
@@ -129,7 +130,8 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            self.transformer = wrap_in_hpu_graph(transformer)
+            if self.transformer is not None:
+                self.transformer = wrap_in_hpu_graph(transformer)
             if self.transformer_2 is not None:
                 self.transformer_2 = wrap_in_hpu_graph(transformer_2)
 
@@ -291,7 +293,7 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             device=device,
         )
 
-        transformer_dtype = self.transformer.dtype
+        transformer_dtype = self.transformer.dtype if self.transformer is not None else self.transformer_2.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
@@ -301,7 +303,11 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
+        num_channels_latents = (
+            self.transformer.config.in_channels
+            if self.transformer is not None
+            else self.transformer_2.config.in_channels
+        )
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
