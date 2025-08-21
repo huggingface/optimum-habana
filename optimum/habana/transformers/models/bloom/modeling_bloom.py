@@ -37,7 +37,7 @@ def gaudi_bloom_build_alibi_tensor(
     attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype, training: bool
 ) -> torch.Tensor:
     """
-    Link to paper: https://arxiv.org/abs/2108.12409 Alibi tensor is not causal as the original paper mentions, it
+    Link to paper: https://huggingface.co/papers/2108.12409 Alibi tensor is not causal as the original paper mentions, it
     relies on a translation invariance of softmax for quick implementation: with l being a tensor, and a fixed value
     `softmax(l+a) = softmax(l)`. Based on
     https://github.com/ofirpress/attention_with_linear_biases/blob/a35aaca144e0eb6b789dfcb46784c4b8e31b7983/fairseq/models/transformer.py#L742
