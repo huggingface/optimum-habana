@@ -2579,7 +2579,7 @@ class GaudiTrainer(Trainer):
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics
 
-        if "use_gather_object" in inspect.signature(self.gather_function).parameters.keys():
+        if "use_gather_object" in inspect.signature(self.gather_function).parameters:
             self.gather_function = functools.partial(
                 self.gather_function, use_gather_object=self.args.eval_use_gather_object
             )
