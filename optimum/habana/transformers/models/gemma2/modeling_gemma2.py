@@ -451,6 +451,26 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         The only differences are:
         - add new args token_idx
         """
+        """
+        sliding_window mask from here: https://github.com/huggingface/transformers/blob/v4.51.3/src/transformers/models/gemma2/modeling_gemma2.py#L295-L315 with:
+        - token_idx used for last_cache_position and cache_position.shape[0] (during prefill, otherwise cache_postion.shape[0] is 1 during decode)
+        """
+        if self.is_sliding and attention_mask is not None and token_idx is not None:
+            effective_seq_len = (
+                max(token_idx.item(), self.sliding_window) if past_key_value is None else self.sliding_window
+            )
+            if self.config._attn_implementation == "flash_attention_2":
+                attention_mask = attention_mask[:, -effective_seq_len:]
+            else:
+                min_dtype = torch.finfo(attention_mask.dtype).min
+                sliding_window_mask = torch.tril(
+                    torch.ones_like(attention_mask, dtype=torch.bool), diagonal=-self.sliding_window
+                )
+                attention_mask = torch.where(sliding_window_mask, min_dtype, attention_mask)
+                offset = token_idx.item() - effective_seq_len
+                offset = max(0, offset)
+                attention_mask = attention_mask[:, :, :, offset : offset + effective_seq_len]
+
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states,
