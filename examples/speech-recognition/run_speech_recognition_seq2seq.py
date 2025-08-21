@@ -23,7 +23,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import datasets
 import evaluate
@@ -118,11 +118,11 @@ class ModelArguments:
     freeze_encoder: bool = field(
         default=False, metadata={"help": "Whether to freeze the entire encoder of the seq2seq model."}
     )
-    forced_decoder_ids: List[List[int]] = field(
+    forced_decoder_ids: list[list[int]] = field(
         default=None,
         metadata={"help": "Deprecated. Please use the `language` and `task` arguments instead."},
     )
-    suppress_tokens: List[int] = field(
+    suppress_tokens: list[int] = field(
         default=None,
         metadata={
             "help": (
@@ -260,7 +260,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     forward_attention_mask: bool
     label_features_max_length: int
 
-    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+    def __call__(self, features: list[dict[str, Union[list[int], torch.Tensor]]]) -> dict[str, torch.Tensor]:
         # split inputs and labels since they have to be of different lengths and need
         # different padding methods
         model_input_name = self.processor.model_input_names[0]

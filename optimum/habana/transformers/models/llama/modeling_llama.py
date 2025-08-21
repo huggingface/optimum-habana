@@ -1,6 +1,6 @@
 import copy
 from functools import partial
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.distributed.distributed_c10d import ProcessGroup
@@ -219,10 +219,10 @@ class TPGaudiLlamaMLP(GaudiLlamaMLP, TPModule):
         GaudiLlamaMLP.__init__(self, self.config)
         self.setup_tp(rank, world_size)
 
-    def colwise_param_names(self) -> List[str]:
+    def colwise_param_names(self) -> list[str]:
         return ["up_proj", "gate_proj"]
 
-    def rowwise_param_names(self) -> List[str]:
+    def rowwise_param_names(self) -> list[str]:
         return ["down_proj"]
 
     @staticmethod
@@ -559,7 +559,7 @@ class GaudiLlamaAttention(LlamaAttention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
@@ -577,7 +577,7 @@ class GaudiLlamaAttention(LlamaAttention):
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -631,7 +631,7 @@ class GaudiLlamaAttention(LlamaAttention):
         # logger.warning_once(
         # "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
         # "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-        # "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
+        # "`position_embeddings` (tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
         # "removed and `position_embeddings` will be mandatory."
         # )
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
@@ -843,14 +843,14 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         )
         self.setup_tp(rank, world_size)
 
-    def colwise_param_names(self) -> List[str]:
+    def colwise_param_names(self) -> list[str]:
         colwise_weights = ["q_proj"]
         if self.pre_tp_kvheads != 1:
             colwise_weights.append("k_proj")
             colwise_weights.append("v_proj")
         return colwise_weights
 
-    def rowwise_param_names(self) -> List[str]:
+    def rowwise_param_names(self) -> list[str]:
         return ["o_proj"]
 
     @staticmethod
@@ -867,7 +867,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -877,7 +877,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         hidden_states, attn_weights, present_key_value = GaudiLlamaAttention.pre_attn_forward(
             self,
             hidden_states=hidden_states,
@@ -931,7 +931,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -945,7 +945,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attn_batch_split: int = 1,
         prev_layer_residual: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -1065,11 +1065,11 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -1080,7 +1080,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         valid_sequence_lengths: Optional[torch.Tensor] = None,
         cache_idx: int = None,
         num_virtual_tokens: int = None,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states=hidden_states,
@@ -1179,7 +1179,7 @@ class GaudiLlamaModel(LlamaModel):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -1443,7 +1443,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -1526,8 +1526,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
     @staticmethod
     def _reorder_cache(
-        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        past: tuple[tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor], ...]:
         """
         This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
         [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct

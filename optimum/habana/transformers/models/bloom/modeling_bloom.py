@@ -17,7 +17,7 @@
 ###############################################################################
 import math
 import os
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.nn import functional as F
@@ -279,8 +279,8 @@ def gaudi_bloom_block_forward(
 
 
 def gaudi_bloom_convert_to_standard_cache(
-    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]], batch_size: int, training: bool
-) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    self, past_key_value: tuple[tuple[torch.Tensor, torch.Tensor]], batch_size: int, training: bool
+) -> tuple[tuple[torch.Tensor, torch.Tensor]]:
     """
     Standardizes the format of the cache so as to match most implementations, i.e. to tuple(tuple([batch_size,
     num_heads, ...]))
@@ -305,8 +305,8 @@ def gaudi_bloom_convert_to_standard_cache(
 
 
 def gaudi_bloom_convert_to_bloom_cache(
-    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]]
-) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    self, past_key_value: tuple[tuple[torch.Tensor, torch.Tensor]]
+) -> tuple[tuple[torch.Tensor, torch.Tensor]]:
     """
     Converts the cache to the format expected by Bloom, i.e. to tuple(tuple([batch_size * num_heads, ...]))
     """
@@ -326,7 +326,7 @@ def gaudi_bloom_convert_to_bloom_cache(
 def gaudi_bloom_model_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
+    past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor, torch.Tensor], ...]]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.LongTensor] = None,
@@ -337,7 +337,7 @@ def gaudi_bloom_model_forward(
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     **deprecated_arguments,
-) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
     if deprecated_arguments.pop("position_ids", False) is not False:
         # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
         warn0(
@@ -525,7 +525,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
+        past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor, torch.Tensor], ...]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
@@ -537,7 +537,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **deprecated_arguments,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
@@ -601,8 +601,8 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         )
 
     def _reorder_cache(
-        self, past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        self, past: tuple[tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor], ...]:
         """
         This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
         [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
