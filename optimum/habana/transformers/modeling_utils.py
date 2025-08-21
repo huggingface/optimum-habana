@@ -106,7 +106,7 @@ from .models import (
     GaudiGptOssModel,
     GaudiGptOssDecoderLayer,
     GaudiGptOssAttention,
-    GaudiGptOssExperts,
+    #GaudiGptOssExperts,
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
@@ -521,7 +521,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
     #transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts #can't use dyn moe due to bias term is missing 
     #transformers.models.gpt_oss.modeling_gpt_oss.GptOssMLP.forward = gaudi_gpt_oss_mlp_forward
-    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward
+    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward #by using fused rmsnorm, the output diverges from the transformers result, check full accuracy 
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM

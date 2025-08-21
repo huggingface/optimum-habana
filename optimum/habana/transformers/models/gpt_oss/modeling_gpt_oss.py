@@ -42,9 +42,10 @@ from transformers.models.gpt_oss.modeling_gpt_oss import (
     GptOssMLP,
     GptOssModel,
     GptOssExperts,
-    GptOssRMSNorm
+    GptOssRMSNorm,
+    apply_rotary_pos_emb,
 )
-from ..modeling_all_models import KVCache, apply_customized_rope_module
+from ..modeling_all_models import KVCache
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -57,11 +58,20 @@ try:
 except ImportError:
     has_fused_rope = False
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
-    
-from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
+
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm
+except ImportError:
+    print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
+
+class GaudiGptOssRotaryEmbedding(GaudiRotaryEmbedding):
+    def __init__(self, config: GptOssConfig):
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
+        super().__init__(config=config)
 
 def gaudi_gpt_oss_rmsnorm_forward(self, hidden_states):
-    if hidden_states.device.type == "hpu":# and has_fused_rms_norm:
+    if hidden_states.device.type == "hpu" and FusedRMSNorm is not None:
         hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
         return hidden_states
     else:
@@ -88,41 +98,17 @@ class GptOssRMSNorm(nn.Module):
 
     def extra_repr(self):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
-"""
+
 
 class GaudiGptOssExperts(GptOssExperts):
     def __init__(self, config):
         super().__init__(config)
-        """"
-        self.intermediate_size = config.intermediate_size
-        self.num_experts = config.num_local_experts
-        self.hidden_size = config.hidden_size
-        self.expert_dim = self.intermediate_size
-        self.gate_up_proj = nn.Parameter(torch.empty(self.num_experts, self.hidden_size, 2 * self.expert_dim))
-        self.gate_up_proj_bias = nn.Parameter(torch.empty(self.num_experts, 2 * self.expert_dim))
-        self.down_proj = nn.Parameter(torch.empty((self.num_experts, self.expert_dim, self.hidden_size)))
-        self.down_proj_bias = nn.Parameter(torch.empty(self.num_experts, self.hidden_size))
-        self.alpha = 1.702
-        self.limit = 7.0
-        """
+
         self.experts_min = 0 
         self.experts_max = self.num_experts - 1
         self.gate_up_list = []
 
     def forward(self, hidden_states: torch.Tensor, router_indices=None, routing_weights=None) -> torch.Tensor:
-        """
-        When training it is more efficient to just loop over the experts and compute the output for each expert
-        as otherwise the memory would explode.
-
-        For inference we can sacrifice some memory and compute the output for all experts at once. By repeating the inputs.
-
-        Args:
-            hidden_states (torch.Tensor): (batch_size, seq_len, hidden_size)
-            selected_experts (torch.Tensor): (batch_size * token_num, top_k)
-            routing_weights (torch.Tensor): (batch_size * token_num, num_experts)
-        Returns:
-            torch.Tensor
-        """
         original_shape = hidden_states.shape
         batch_size = hidden_states.shape[0]
         hidden_states = hidden_states.reshape(-1, self.hidden_size)  # (num_tokens, hidden_size)
@@ -163,44 +149,29 @@ class GaudiGptOssExperts(GptOssExperts):
             next_states = next_states.view(num_experts, batch_size, -1, self.hidden_size)
             next_states = next_states * routing_weights.transpose(0, 1).view(num_experts, batch_size, -1)[..., None]
             next_states = next_states.sum(dim=0)
-            """
-            w1_list = [self.gate_up_proj[i,:,::2] for i in range(self.num_experts)]
-            w3_list = [self.gate_up_proj[i,:,1::2] for i in range(self.num_experts)]
-            w2_list = [self.down_proj[i] for i in range(self.num_experts)]
-            w12_list = [self.gate_up_proj[i] for i in range(self.num_experts)]
-            w3_list = [self.down_proj[i] for i in range(self.num_experts)]
-            import pdb;pdb.set_trace()
-            next_states = torch.ops.hpu.mixture_of_experts(
-                hidden_states=hidden_states,
-                expert_routing_table=router_indices,
-                router_weights=routing_weights,
-                w1=w1_list,
-                w3=w3_list,
-                w2=w2_list,
-                #w12=w12_list,
-                #w3=w3_list,
-                permuted_weights=True,
-                activation="silu",
-                experts_min=self.experts_min,
-                experts_max=self.experts_max,
-            )
-            """        
+            
+            #w1_list = [self.gate_up_proj[i,:,::2] for i in range(self.num_experts)]
+            #w3_list = [self.gate_up_proj[i,:,1::2] for i in range(self.num_experts)]
+            #w2_list = [self.down_proj[i] for i in range(self.num_experts)]
+            #w12_list = [self.gate_up_proj[i] for i in range(self.num_experts)]
+            #w3_list = [self.down_proj[i] for i in range(self.num_experts)]
+            
+            #next_states = torch.ops.hpu.mixture_of_experts(
+            #    hidden_states=hidden_states,
+            #    expert_routing_table=router_indices,
+            #    router_weights=routing_weights,
+            #    w1=w1_list,
+            #    w3=w3_list,
+            #    w2=w2_list,
+            #    permuted_weights=True,
+            #    activation="silu",
+            #    experts_min=self.experts_min,
+            #    experts_max=self.experts_max,
+            #)
+     
 
         #return next_states.view(original_shape)
         return next_states
-
-"""
-class GptOssMLP(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.router = GptOssTopKRouter(config)
-        self.experts = GptOssExperts(config)
-
-    def forward(self, hidden_states):
-        router_scores, router_indices = self.router(hidden_states)  # (num_experts, seq_len)
-        routed_out = self.experts(hidden_states, router_indices=router_indices, routing_weights=router_scores)
-        return routed_out, router_scores
-"""
 
 class GptOssRotaryEmbedding(nn.Module):
     inv_freq: torch.Tensor  # fix linting for `register_buffer`
@@ -238,18 +209,17 @@ class GptOssRotaryEmbedding(nn.Module):
         return cos.to(x.dtype), sin.to(x.dtype)
 
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-    """
-    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
-    """
     batch, num_key_value_heads, slen, head_dim = hidden_states.shape
     if n_rep == 1:
         return hidden_states
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+"""
 
 def gaudi_repeat_kv(query_states: torch.Tensor, key_states: torch.Tensor, value_states: torch.Tensor, attention_mask: torch.Tensor, n_rep: int) -> torch.Tensor:
-
+    """
+    Copied from gaudi_llama_repeat_kv: https://github.com/huggingface/optimum-habana/blob/2e8f7724a1974af32a42baf091f82ac4ae88a4bf/optimum/habana/transformers/models/llama/modeling_llama.py#L240
+    """
     batch, num_key_value_heads, slen, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
         return query_states, key_states, value_states, attention_mask
@@ -266,27 +236,8 @@ def gaudi_repeat_kv(query_states: torch.Tensor, key_states: torch.Tensor, value_
         # Add groups dim and set to 1
         attention_mask = attention_mask.unsqueeze(1)
 
-    #hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    #return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
     return query_states, key_states, value_states, attention_mask
 
-
-def _apply_rotary_emb(
-    x: torch.Tensor,
-    cos: torch.Tensor,
-    sin: torch.Tensor,
-) -> torch.Tensor:
-    first_half, second_half = torch.chunk(x, 2, dim=-1)
-    first_ = first_half * cos - second_half * sin
-    second_ = second_half * cos + first_half * sin
-    return torch.cat((first_, second_), dim=-1)
-
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
-    cos = cos.unsqueeze(unsqueeze_dim)
-    sin = sin.unsqueeze(unsqueeze_dim)
-    q_embed = _apply_rotary_emb(q, cos, sin)
-    k_embed = _apply_rotary_emb(k, cos, sin)
-    return q_embed, k_embed
 
 def apply_customized_rope(q, k, cos, sin, position_ids, training=True):
     if q.device.type == "hpu" and has_fused_rope:
@@ -320,15 +271,18 @@ def eager_attention_forward(
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
-    #import pdb;pdb.set_trace()
+    
     #sinks = module.sinks.reshape(1, -1, 1, 1).expand(query_states.shape[0], -1, query.shape[.-2], -1)
     sinks = module.sinks.reshape(1, query_states.shape[1], query_states.shape[2], 1, 1).expand(query_states.shape[0], -1, -1, query_states.shape[-2], -1)
     
     #if token_idx == attn_weights.shape[-1]-1:
     #    combined_logits = torch.cat([attn_weights, sinks], dim=-1)
     #else:
-    combined_logits = attn_weights.clone()
-    combined_logits = attn_weights.index_copy_(-1, token_idx, sinks)#+1, sinks)
+    if token_idx is not None:
+        combined_logits = attn_weights.clone()
+        combined_logits = combined_logits.index_copy_(-1, token_idx, sinks)#+1, sinks)
+    else:
+        combined_logits = torch.cat([attn_weights, sinks], dim=-1)
 
     # This was not in the original implementation and slightly affect results; it prevents overflow in BF16/FP16
     # when training with bsz>1 we clamp max values.
@@ -343,8 +297,12 @@ def eager_attention_forward(
     #if token_idx == attn_weights.shape[-1]-1:
     #    scores = probs[..., :-1]
     #else:
-    probs[..., token_idx]=0#+1] = 0
-    scores = probs
+    if token_idx is not None:
+        probs[..., token_idx]=0#+1] = 0
+        scores = probs
+    else:
+        scores = probs[..., :-1]
+    
     attn_weights = nn.functional.dropout(scores, p=dropout, training=module.training)
 
     attn_output = torch.matmul(attn_weights, value_states)
@@ -442,9 +400,9 @@ class GaudiGptOssAttention(GptOssAttention):
         cos, sin = position_embeddings
         ######TODO: apply_customized_rope
 
-        #query_states, key_states = apply_customized_rope(
-        #    query_states, key_states, cos, sin, position_ids, self.training)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, self.training)
+        #query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         """
         kv_seq_len = key_states.shape[-2]
@@ -624,7 +582,7 @@ class GaudiGptOssModel(GptOssModel):
         # Initialize weights and apply final processing
         self.post_init()
         """
-        #self.rotary_emb = GaudiRotaryEmbedding(config=config)
+        self.rotary_emb = GaudiGptOssRotaryEmbedding(config=config)
 
     #def gaudi_gpt_oss_model_forward(
     def forward(
@@ -730,7 +688,7 @@ class GaudiGptOssModel(GptOssModel):
                                     attention_mask,
                                     input_ids.shape if input_ids is not None else (batch_size, seq_length),
                                     inputs_embeds,
-                                    token_idx,#past_seen_tokens,
+                                    past_seen_tokens,
                                     self.config.sliding_window,
                                 ), #(8,283) -> (8,1,283,283)
             }
@@ -744,8 +702,8 @@ class GaudiGptOssModel(GptOssModel):
             else:
                 kv_seq_len += past_key_values[0][0].shape[-2]
 
-        #position_embeddings = self.rotary_emb(hidden_states, seq_len=kv_seq_len)#position_ids) #cos, sin up to seq_len
-        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        position_embeddings = self.rotary_emb(hidden_states, seq_len=kv_seq_len)#position_ids) #cos, sin up to seq_len
+        #position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         if use_cache:
             next_decoder_cache = ()

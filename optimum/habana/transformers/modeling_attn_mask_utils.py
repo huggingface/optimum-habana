@@ -33,13 +33,14 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         input_ids_shape: torch.Size,
         dtype: torch.dtype,
         device: torch.device,
-        total_len: int,
         past_key_values_length: int = 0, #=0 when prefill, =token_idx(current idx) when decode
         sliding_window: Optional[int] = None,
+        token_idx: Optional[int] = 0,
     ):
         """
         Make causal mask used for bi-directional self-attention.
         """
+        token_idx = token_idx if token_idx is not None else past_key_values_length
         bsz, tgt_len = input_ids_shape #tgt_len = q_len
 
         mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, device=device) #(q_len, q_len) filled with -inf
@@ -49,11 +50,12 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         mask = mask.to(dtype)
 
         if past_key_values_length > 0:
-            mask = torch.cat([torch.zeros(tgt_len, total_len-tgt_len, dtype=dtype, device=device), mask], dim=-1)
+            mask = torch.cat([torch.zeros(tgt_len, past_key_values_length-tgt_len, dtype=dtype, device=device), mask], dim=-1)
 
         # add lower triangular sliding window mask if necessary
         if sliding_window is not None:
-            diagonal = past_key_values_length - sliding_window - 1
+            #diagonal = past_key_values_length - sliding_window - 1 #############  this works only for prefill. for decode mask has only 1 row and it is all False
+            diagonal = token_idx - sliding_window - 1
 
             # Replace tril with below
             row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector #(q_len, 1)
@@ -67,8 +69,12 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
                 mask = mask.clone()
 
             mask.masked_fill_(context_mask, torch.finfo(dtype).min) #when context_mask is True, fill with -inf
-
-        return mask[None, None, :, :].expand(bsz, 1, tgt_len, total_len)#tgt_len + past_key_values_length)
+            
+            if past_key_values_length > 0:
+                return mask[None, None, :, :].expand(bsz, 1, tgt_len, past_key_values_length)
+            else:
+                return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len)
+        return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
 
     def to_4d(
         self,
@@ -82,7 +88,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         key_value_length) shape and by adding a large negative bias to not-attended positions. If attention_mask is
         causal, a causal mask will be added.
         """
-        total_len = attention_mask_2d.shape[1] #(bs, in+out)
+        #total_len = attention_mask_2d.shape[1] #(bs, in+out)
         input_shape = (attention_mask_2d.shape[0], query_length) #bs, 19->1
         device = attention_mask_2d.device
 
@@ -93,19 +99,26 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
                 raise ValueError(
                     "This attention mask converter is causal. Make sure to pass `key_value_length` to correctly create a causal mask."
                 )
-            #past_key_values_length = key_value_length - query_length
+
+            #when sliding_window is not None, find the token_idx by chechking the last idx of 1 in attention_mask_2d
+            if input_shape[-1] == 1:
+                cumsum = attention_mask_2d.cumsum(dim=1)
+                token_idx = cumsum.argmax(dim=1, keepdim=True)[0]
+            else: token_idx = None
+            
+            past_key_values_length = key_value_length - query_length #this is pure kv_len (key_value_length was q_len + kv_len)
             causal_4d_mask = self._make_causal_mask(
                 input_shape,
                 dtype,
                 device=device,
-                total_len=total_len,
-                past_key_values_length=key_value_length, #0 when prefill, token_idx when decode ###sc#past_key_values_length,
+                past_key_values_length=past_key_values_length, #0 when prefill, token_idx when decode ###sc#past_key_values_length,
                 sliding_window=self.sliding_window,
-            )
+                token_idx=token_idx,
+            ) #####make lower triangle -inf
 
             # just create a bool tensor with shape [bsz, 1, tgt_seq_len, src_seq_len]
             # OOM problem can be prevent by using bool tensor
-            bsz, src_len = attention_mask_2d.size()
+            bsz, src_len = attention_mask_2d.size() #bs, kv_len
             tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
             bool_mask = attention_mask_2d != 1.0
             expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
@@ -133,10 +146,8 @@ def _gaudi_prepare_4d_causal_attention_mask(
     """
     attn_mask_converter = GaudiAttentionMaskConverter(is_causal=True, sliding_window=sliding_window)
 
-    if input_shape[-1]>1: #when prompt, q_len == kv_len
-        key_value_length = 0
-    else: #when decode, q_len=1
-        key_value_length = past_key_values_length
+    #input_shape is input + output len
+    key_value_length = input_shape[-1] + past_key_values_length
 
     # 4d mask is passed through the layers
     if attention_mask is not None and len(attention_mask.shape) == 2:
@@ -159,5 +170,5 @@ def _gaudi_prepare_4d_causal_attention_mask(
         attention_mask = attn_mask_converter.to_causal_4d(
             input_shape[0], input_shape[-1], key_value_length, dtype=inputs_embeds.dtype, device=inputs_embeds.device
         )
-    ####check if attention_mask is correct
+
     return attention_mask

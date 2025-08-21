@@ -4,7 +4,7 @@ from .modeling_gpt_oss import (
     GaudiGptOssModel,
     GaudiGptOssDecoderLayer,
     GaudiGptOssAttention,
-    GaudiGptOssExperts,
+    #GaudiGptOssExperts,
     #gaudi_gpt_oss_model_forward,
     gaudi_gpt_oss_rmsnorm_forward,
 )
