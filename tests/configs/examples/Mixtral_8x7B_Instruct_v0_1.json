@@ -1,0 +1,70 @@
+ {
+    "gaudi2": {
+        "trl-sft-mixtral": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 0.0001,
+                    "train_batch_size": 2,
+                    "metrics": [
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
+                    "extra_arguments": [
+                        "--bf16 True",
+                        "--subset data/",
+                        "--streaming False",
+                        "--gradient_accumulation_steps 2",
+                        "--warmup_steps 100",
+                        "--lr_scheduler_type cosine",
+                        "--logging_steps 10",
+                        "--lora_target_modules q_proj v_proj",
+                        "--max_seq_length 512",
+                        "--weight_decay 0.05",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--optim paged_adamw_32bit",
+                        "--remove_unused_columns False",
+                        "--use_zero3_leaf_promotion True",
+                        "--deepspeed examples/language-modeling/mixtral_ds_zero3_config.json"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi3": {
+        "trl-sft-mixtral": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 0.0001,
+                    "train_batch_size": 2,
+                    "metrics": [
+                        "train_runtime",
+                        "train_samples_per_second"
+                    ],
+                    "extra_arguments": [
+                        "--bf16 True",
+                        "--subset data/",
+                        "--streaming False",
+                        "--gradient_accumulation_steps 2",
+                        "--warmup_steps 100",
+                        "--lr_scheduler_type cosine",
+                        "--logging_steps 10",
+                        "--lora_target_modules q_proj v_proj",
+                        "--max_seq_length 512",
+                        "--weight_decay 0.05",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--optim paged_adamw_32bit",
+                        "--remove_unused_columns False",
+                        "--use_zero3_leaf_promotion True",
+                        "--deepspeed examples/language-modeling/mixtral_ds_zero3_config.json"
+                    ]
+                }
+            }
+        }
+    }
+}

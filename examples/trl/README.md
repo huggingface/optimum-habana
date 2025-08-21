@@ -116,7 +116,7 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --wo
         --dataset_name "philschmid/dolly-15k-oai-style" \
         --subset 'data/' \
         --streaming False \
-        --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+        --deepspeed ../language-modeling/mixtral_ds_zero3_config.json \
         --output_dir="./model_mixtral" \
         --do_train \
         --max_steps=500 \
@@ -137,7 +137,8 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=10 PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py --wo
         --run_name="sft_mixtral" \
         --report_to=none \
         --use_habana \
-        --use_lazy_mode
+        --use_lazy_mode \
+        --use_zero3_leaf_promotion
     ```
 
 ## DPO pipeline
