@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import types
 from diffusers.pipelines.wan.pipeline_wan_i2v import WanImageToVideoPipeline
 from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
@@ -21,10 +21,12 @@ from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models.transformers import WanTransformer3DModel
 from transformers import UMT5EncoderModel
 from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
+from diffusers.pipelines.wan.pipeline_wan_i2v import retrieve_latents
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     logging, replace_example_docstring
 )
+from diffusers.utils.torch_utils import randn_tensor
 from diffusers.image_processor import PipelineImageInput
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel
 
@@ -145,6 +147,99 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 self.transformer = wrap_in_hpu_graph(transformer)
             if self.transformer_2 is not None:
                 self.transformer_2 = wrap_in_hpu_graph(transformer_2)
+
+    def prepare_latents(
+        self,
+        image: PipelineImageInput,
+        batch_size: int,
+        num_channels_latents: int = 16,
+        height: int = 480,
+        width: int = 832,
+        num_frames: int = 81,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        last_image: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if latents is None:
+            # torch.randn is broken on HPU so running it on CPU
+            rand_device = "cpu" if device.type == "hpu" else device
+            rand_device = torch.device(rand_device)
+            latents = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
+
+        image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
+
+        if self.config.expand_timesteps:
+            video_condition = image
+
+        elif last_image is None:
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+            )
+        else:
+            last_image = last_image.unsqueeze(2)
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
+                dim=2,
+            )
+        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            latents.device, latents.dtype
+        )
+
+        if isinstance(generator, list):
+            latent_condition = [
+                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
+            ]
+            latent_condition = torch.cat(latent_condition)
+        else:
+            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
+            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+
+        latent_condition = latent_condition.to(dtype)
+        latent_condition = (latent_condition - latents_mean) * latents_std
+
+        if self.config.expand_timesteps:
+            first_frame_mask = torch.ones(
+                1, 1, num_latent_frames, latent_height, latent_width, dtype=dtype, device=device
+            )
+            first_frame_mask[:, :, 0] = 0
+            return latents, latent_condition, first_frame_mask
+
+        mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
+
+        if last_image is None:
+            mask_lat_size[:, :, list(range(1, num_frames))] = 0
+        else:
+            mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.to(latent_condition.device)
+
+        return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

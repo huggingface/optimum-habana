@@ -25,6 +25,7 @@ from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     logging, replace_example_docstring
 )
+from diffusers.utils.torch_utils import randn_tensor
 from transformers import AutoTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
@@ -134,6 +135,42 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                 self.transformer = wrap_in_hpu_graph(transformer)
             if self.transformer_2 is not None:
                 self.transformer_2 = wrap_in_hpu_graph(transformer_2)
+
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int = 16,
+        height: int = 480,
+        width: int = 832,
+        num_frames: int = 81,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_latent_frames,
+            int(height) // self.vae_scale_factor_spatial,
+            int(width) // self.vae_scale_factor_spatial,
+        )
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        # torch.randn is broken on HPU so running it on CPU
+        rand_device = "cpu" if device.type == "hpu" else device
+        rand_device = torch.device(rand_device)
+        latents = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+
+        return latents
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
