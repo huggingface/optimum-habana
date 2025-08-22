@@ -1,5 +1,5 @@
-datasets
-peft
+datasets == 3.6.0
+peft == 0.11.1
 sentencepiece
 tiktoken
 blobfile
