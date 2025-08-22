@@ -45,7 +45,7 @@ TESTS_REQUIRE = [
     "GitPython",
     "optuna",
     "sentencepiece",
-    "datasets",
+    "datasets == 3.6.0",
     "timm",
     "safetensors",
     "pytest < 8.0.0",

@@ -1,6 +1,6 @@
-datasets >= 2.14.0
+datasets >= 2.14.0, <= 2.19.2
 sentencepiece != 0.1.92
-protobuf
-evaluate
+protobuf == 3.20.3
+evaluate == 0.4.3
 scikit-learn == 1.5.2
 peft == 0.12.0

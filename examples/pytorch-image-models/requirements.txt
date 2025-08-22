@@ -1,2 +1,2 @@
 timm
-datasets
+datasets == 3.6.0
