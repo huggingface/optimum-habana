@@ -23,7 +23,7 @@ from diffusers.utils import deprecate, logging
 from diffusers.utils.import_utils import is_xformers_available
 from torch import nn
 
-from .embeddings import apply_rotary_emb
+from .embeddings import RotaryPosEmbedding
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -255,10 +255,11 @@ class CogVideoXAttnProcessorGaudi:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
+            query[:, :, text_seq_length:] = RotaryPosEmbedding.apply(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
+                key[:, :, text_seq_length:] = RotaryPosEmbedding.apply(key[:, :, text_seq_length:], image_rotary_emb)
 
+        softmax_mode = "None" if attn.training else "fast"
         hidden_states = self.fused_scaled_dot_product_attention(
             query,
             key,
@@ -267,7 +268,7 @@ class CogVideoXAttnProcessorGaudi:
             dropout_p=0.0,
             is_casual=False,
             scale=None,
-            softmax_mode="fast",
+            softmax_mode=softmax_mode,
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
