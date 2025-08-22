@@ -525,12 +525,10 @@ class GaudiDeepseekV3MoE(nn.Module):
         self.num_experts = config.n_routed_experts
         self.num_experts_per_tok = config.num_experts_per_tok
         self.num_experts = config.n_routed_experts  # Added to support INC FP8 quantization
+
         self.fp8_method = get_fp8_method(config)
         if self.fp8_method == FP8Method.FP8_DYNAMIC:
-            self.call_dynamic_moe_op = self.dynamic_moe_op_fp8
             self.weight_block_size = config.quantization_config.weight_block_size
-        else:
-            self.call_dynamic_moe_op = self.dynamic_moe_op
 
         if hasattr(config, "ep_size") and config.ep_size > 1:
             assert config.ep_size == dist.get_world_size()
@@ -633,7 +631,7 @@ class GaudiDeepseekV3MoE(nn.Module):
 
         return final_hidden_states
 
-    def dynamic_moe_op(
+    def call_dynamic_moe_op(
         self,
         hidden_states,
         expert_routing_table,
@@ -644,49 +642,40 @@ class GaudiDeepseekV3MoE(nn.Module):
         down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in self.experts_range]
         up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in self.experts_range]
 
-        return torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=expert_routing_table,
-            router_weights=router_weights,
-            w1=gate_proj_list,
-            w2=up_proj_list,
-            w3=down_proj_list,
-            permuted_weights=True,
-            activation="silu",
-            experts_min=self.experts_min,
-            experts_max=self.experts_max,
-        )
+        if self.fp8_method == FP8Method.FP8_DYNAMIC:
+            scale_gate_proj = [self.experts[i].gate_proj.weight_scale_inv for i in self.experts_range]
+            scale_down_proj = [self.experts[i].down_proj.weight_scale_inv for i in self.experts_range]
+            scale_up_proj = [self.experts[i].up_proj.weight_scale_inv for i in self.experts_range]
 
-    def dynamic_moe_op_fp8(
-        self,
-        hidden_states,
-        expert_routing_table,
-        router_weights,
-    ):
-        # pre-processing for custom op inputs
-        gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in self.experts_range]
-        down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in self.experts_range]
-        up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in self.experts_range]
-        scale_gate_proj = [self.experts[i].gate_proj.weight_scale_inv for i in self.experts_range]
-        scale_down_proj = [self.experts[i].down_proj.weight_scale_inv for i in self.experts_range]
-        scale_up_proj = [self.experts[i].up_proj.weight_scale_inv for i in self.experts_range]
-
-        return torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=expert_routing_table,
-            router_weights=router_weights,
-            w1=gate_proj_list,
-            w2=up_proj_list,
-            w3=down_proj_list,
-            d_scale_w1=scale_gate_proj,
-            d_scale_w2=scale_up_proj,
-            d_scale_w3=scale_down_proj,
-            permuted_weights=True,
-            block_size=self.weight_block_size[0],
-            activation="silu",
-            experts_min=self.experts_min,
-            experts_max=self.experts_max,
-        )
+            return torch.ops.hpu.mixture_of_experts(
+                hidden_states=hidden_states,
+                expert_routing_table=expert_routing_table,
+                router_weights=router_weights,
+                w1=gate_proj_list,
+                w2=up_proj_list,
+                w3=down_proj_list,
+                d_scale_w1=scale_gate_proj,
+                d_scale_w2=scale_up_proj,
+                d_scale_w3=scale_down_proj,
+                permuted_weights=True,
+                activation="silu",
+                block_size=self.weight_block_size[0],
+                experts_min=self.experts_min,
+                experts_max=self.experts_max,
+            )
+        else:
+            return torch.ops.hpu.mixture_of_experts(
+                hidden_states=hidden_states,
+                expert_routing_table=expert_routing_table,
+                router_weights=router_weights,
+                w1=gate_proj_list,
+                w2=up_proj_list,
+                w3=down_proj_list,
+                permuted_weights=True,
+                activation="silu",
+                experts_min=self.experts_min,
+                experts_max=self.experts_max,
+            )
 
 
 def gaudi_deepseekv3_repeat_kv(
