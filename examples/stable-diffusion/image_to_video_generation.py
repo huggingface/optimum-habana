@@ -22,6 +22,7 @@ import torch
 from diffusers.utils import export_to_gif, export_to_video, load_image
 
 from optimum.habana.diffusers import (
+    GaudiCogVideoXImageToVideoPipeline,
     GaudiEulerDiscreteScheduler,
     GaudiI2VGenXLPipeline,
     GaudiStableVideoDiffusionPipeline,
@@ -233,7 +234,8 @@ def main():
 
     i2v_models = ["i2vgen-xl"]
     is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
-
+    cogvideo_models = ["cogvideo"]
+    is_cogvideo_model = any(model in args.model_name_or_path.lower() for model in cogvideo_models)
     # Load input image(s)
     input = []
     logger.info("Input image(s):")
@@ -322,6 +324,22 @@ def main():
             num_inference_steps=args.num_inference_steps,
             negative_prompt=args.negative_prompts,
             guidance_scale=9.0,
+            generator=generator,
+        )
+    elif is_cogvideo_model:
+        del kwargs["scheduler"]
+        pipeline = GaudiCogVideoXImageToVideoPipeline.from_pretrained(args.model_name_or_path, **kwargs)
+        pipeline.vae.enable_tiling()
+        pipeline.vae.enable_slicing()
+        generator = generator = torch.Generator(device="cpu").manual_seed(args.seed)
+        outputs = pipeline(
+            image=input,
+            prompt=args.prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            height=args.height,
+            width=args.width,
+            num_inference_steps=args.num_inference_steps,
+            num_frames=args.num_frames,
             generator=generator,
         )
     else:
