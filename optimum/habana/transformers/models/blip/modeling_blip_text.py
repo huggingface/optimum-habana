@@ -25,6 +25,7 @@ def gaudi_BlipTextSelfAttention_forward(
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor]:
     """
@@ -32,20 +33,42 @@ def gaudi_BlipTextSelfAttention_forward(
     The only differences are:
         - add token_idx
     """
-    mixed_query_layer = self.query(hidden_states)
+    batch_size, seq_length, _ = hidden_states.shape
+    query_layer = (
+        self.query(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
 
     # If this is instantiated as a cross-attention module, the keys
     # and values come from an encoder; the attention mask needs to be
     # such that the encoder's padding tokens are not attended to.
     is_cross_attention = encoder_hidden_states is not None
+    attention_mask = encoder_attention_mask if is_cross_attention else attention_mask
 
     if is_cross_attention:
-        key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
-        value_layer = self.transpose_for_scores(self.value(encoder_hidden_states))
+        key_layer = (
+            self.key(encoder_hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
+        value_layer = (
+            self.value(encoder_hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
         attention_mask = encoder_attention_mask
     elif past_key_value is not None:
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
+        key_layer = (
+            self.key(hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
+        value_layer = (
+            self.value(hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_layer)
             past_key_value[1].index_copy_(2, token_idx - 1, value_layer)
@@ -55,10 +78,16 @@ def gaudi_BlipTextSelfAttention_forward(
             key_layer = torch.cat([past_key_value[0], key_layer], dim=2)
             value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
     else:
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
-
-    query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = (
+            self.key(hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
+        value_layer = (
+            self.value(hidden_states)
+            .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
 
     past_key_value = (key_layer, value_layer)
 
@@ -115,9 +144,9 @@ def gaudi_BlipTextAttention_forward(
     attention_mask: Optional[torch.FloatTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
-    encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor]:
     """
@@ -127,12 +156,12 @@ def gaudi_BlipTextAttention_forward(
     """
     self_outputs = self.self(
         hidden_states,
-        attention_mask,
-        head_mask,
-        encoder_hidden_states,
-        encoder_attention_mask,
-        past_key_value,
-        output_attentions,
+        attention_mask=attention_mask,
+        head_mask=head_mask,
+        encoder_hidden_states=encoder_hidden_states,
+        past_key_value=past_key_value,
+        output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     attention_output = self.output(self_outputs[0], hidden_states)
@@ -149,6 +178,7 @@ def gaudi_BlipTextLayer_forward(
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor]:
     """
@@ -159,10 +189,11 @@ def gaudi_BlipTextLayer_forward(
     self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
     self_attention_outputs = self.attention(
         hidden_states,
-        attention_mask,
-        head_mask,
+        attention_mask=attention_mask,
+        head_mask=head_mask,
         output_attentions=output_attentions,
         past_key_value=self_attn_past_key_value,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     attention_output = self_attention_outputs[0]
@@ -173,11 +204,12 @@ def gaudi_BlipTextLayer_forward(
     if encoder_hidden_states is not None:
         cross_attention_outputs = self.crossattention(
             attention_output,
-            attention_mask,
-            head_mask,
-            encoder_hidden_states,
-            encoder_attention_mask,
+            attention_mask=encoder_attention_mask,
+            head_mask=head_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            past_key_value=past_key_value,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         attention_output = cross_attention_outputs[0]
         outputs = outputs + cross_attention_outputs[1:-1]  # add cross attentions if we output attention weights
@@ -203,6 +235,7 @@ def gaudi_BlipTextEncoder_forward(
     output_attentions: Optional[bool] = False,
     output_hidden_states: Optional[bool] = False,
     return_dict: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
@@ -230,28 +263,17 @@ def gaudi_BlipTextEncoder_forward(
         layer_head_mask = head_mask[i] if head_mask is not None else None
         past_key_value = past_key_values[i] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                layer_module.__call__,
-                hidden_states,
-                attention_mask,
-                layer_head_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                past_key_value,
-                output_attentions,
-            )
-        else:
-            layer_outputs = layer_module(
-                hidden_states,
-                attention_mask,
-                layer_head_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                past_key_value,
-                output_attentions,
-                token_idx=token_idx,
-            )
+        layer_outputs = layer_module(
+            hidden_states,
+            attention_mask,
+            layer_head_mask,
+            encoder_hidden_states,
+            encoder_attention_mask,
+            past_key_value,
+            output_attentions,
+            cache_position,
+            token_idx=token_idx,
+        )
 
         hidden_states = layer_outputs[0]
         if use_cache:
@@ -301,6 +323,7 @@ def gaudi_BlipTextModel_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     is_decoder: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
     """
@@ -341,7 +364,7 @@ def gaudi_BlipTextModel_forward(
     past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
     if attention_mask is None:
-        attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length))).to(device)
+        attention_mask = torch.ones((batch_size, seq_length + past_key_values_length)).to(device)
 
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
@@ -396,6 +419,7 @@ def gaudi_BlipTextModel_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     sequence_output = encoder_outputs[0]
@@ -432,6 +456,7 @@ def gaudi_BlipTextLMHead_forward(
     return_logits: Optional[bool] = False,
     is_decoder: Optional[bool] = True,
     reduction: Optional[str] = "mean",
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
     """
@@ -457,6 +482,7 @@ def gaudi_BlipTextLMHead_forward(
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
         is_decoder=is_decoder,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 

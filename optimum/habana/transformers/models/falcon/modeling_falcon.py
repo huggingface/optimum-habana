@@ -858,43 +858,24 @@ class GaudiFalconModel(FalconModel):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                outputs = self._gradient_checkpointing_func(
-                    block.__call__,
-                    hidden_states,
-                    alibi,
-                    attention_mask,
-                    position_ids,
-                    head_mask[i],
-                    layer_past,
-                    use_cache,
-                    output_attentions,
-                    cache_position,
-                    position_embeddings,
-                    None,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                )
-            else:
-                outputs = block(
-                    hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    head_mask=head_mask[i],
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    alibi=alibi,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    token_idx=token_idx,
-                    reuse_cache=reuse_cache,
-                    cache_idx=cache_idx,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                )
+            outputs = block(
+                hidden_states,
+                layer_past=layer_past,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                head_mask=head_mask[i],
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                alibi=alibi,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+            )
 
             hidden_states = outputs[0]
             if use_cache is True:

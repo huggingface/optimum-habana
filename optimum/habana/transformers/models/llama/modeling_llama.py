@@ -1,5 +1,4 @@
 import copy
-from functools import partial
 from typing import Optional, Union
 
 import torch
@@ -9,7 +8,6 @@ from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from transformers.models.llama.modeling_llama import (
-    KwargsForCausalLM,
     LlamaAttention,
     LlamaDecoderLayer,
     LlamaForCausalLM,
@@ -17,9 +15,9 @@ from transformers.models.llama.modeling_llama import (
     LlamaModel,
     LlamaRMSNorm,
     apply_rotary_pos_emb,
-    logger,
 )
 from transformers.processing_utils import Unpack
+from transformers.utils import TransformersKwargs
 
 from .... import distributed
 from ....distributed import parallel_state
@@ -86,7 +84,7 @@ class GaudiLlamaRotaryEmbedding(torch.nn.Module):
         super().__init__()
 
         # BC: "rope_type" was originally "type"
-        if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
+        if hasattr(config, "rope_scaling") and isinstance(config.rope_scaling, dict):
             self.rope_type = config.rope_scaling.get("rope_type", config.rope_scaling.get("type"))
         else:
             self.rope_type = "default"
@@ -928,7 +926,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
@@ -986,7 +983,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                     attention_mask=sub_attention_mask[i],
                     position_ids=sub_position_ids[i],
                     past_key_value=past_key_value,
-                    output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=position_embeddings,
@@ -1003,8 +999,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                     **kwargs,
                 )
                 self.self_attn.attention_all_reduce(split_hidden_states[i])
-                if output_attentions:
-                    split_attn_weights.append(self_attn_weights)
                 if use_cache:
                     split_present_key_values.append(present_key_value)
 
@@ -1030,7 +1024,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_value=past_key_value,
-                output_attentions=output_attentions,
                 use_cache=use_cache,
                 cache_position=cache_position,
                 position_embeddings=position_embeddings,
@@ -1052,8 +1045,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
-        if output_attentions:
-            outputs += (self_attn_weights,)
         if use_cache:
             outputs += (present_key_value,)
         # Store the residual splits to add them in the beginning of the next layer
@@ -1183,10 +1174,8 @@ class GaudiLlamaModel(LlamaModel):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -1213,10 +1202,6 @@ class GaudiLlamaModel(LlamaModel):
         - add new arg flash_attention_fast_softmax
         - add new arg lazy_mode
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if (input_ids is None) ^ (inputs_embeds is not None):
@@ -1235,14 +1220,8 @@ class GaudiLlamaModel(LlamaModel):
             global has_fused_rms_norm
             has_fused_rms_norm = False
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
-
         if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds: torch.Tensor = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
         use_new_cache = False  # Ignoring new Cache path for HPU
@@ -1290,15 +1269,9 @@ class GaudiLlamaModel(LlamaModel):
         else:
             causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
 
-        # embed positions
         hidden_states = inputs_embeds
-
-        # create position embeddings to be shared across the decoder layers
         position_embeddings = None  # self.rotary_emb(hidden_states, position_ids)
 
-        # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
         next_decoder_cache = () if not use_new_cache else None
 
         if lazy_mode:
@@ -1324,80 +1297,46 @@ class GaudiLlamaModel(LlamaModel):
             ):
                 htcore.mark_step()
 
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    partial(decoder_layer.__call__, **kwargs),
-                    hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    position_embeddings,
-                    None,
-                    attn_softmax_bf16,
-                    False,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                    flash_attention_fast_softmax,
-                    valid_sequence_lengths,
-                    None,
-                )
-                hidden_states = layer_outputs[0]
+            # Calling the layer with positional arguments
+            # This is a workaround for an issue with DeepSpeed where
+            # it cannot handle keyword arguments and throws a RuntimError
+            use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
+            layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
+            layer_hidden_states = hidden_states_split if split_prompt else hidden_states
+            past_key_value = None if past_key_values is None else past_key_values[layer_idx]
+            layer_outputs = decoder_layer(
+                layer_hidden_states,
+                causal_mask,
+                position_ids,
+                past_key_value,
+                use_cache,
+                cache_position,
+                position_embeddings,
+                token_idx,
+                attn_softmax_bf16,
+                reuse_cache,
+                use_flash_attention,
+                flash_attention_recompute,
+                flash_attention_causal_mask,
+                flash_attention_fast_softmax,
+                valid_sequence_lengths,
+                cache_idx,
+                num_virtual_tokens,
+                attn_batch_split,
+                layer_prev_layer_residual,
+            )
+            if use_prev_layer_residual:
+                index = 1 + int(use_cache)
+                prev_layer_residual = layer_outputs[index]
+            if split_prompt:
+                hidden_states_split = layer_outputs[0]
             else:
-                # Calling the layer with positional arguments
-                # This is a workaround for an issue with DeepSpeed where
-                # it cannot handle keyword arguments and throws a RuntimError
-                use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
-                layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
-                layer_hidden_states = hidden_states_split if split_prompt else hidden_states
-                past_key_value = None if past_key_values is None else past_key_values[layer_idx]
-                layer_outputs = decoder_layer(
-                    layer_hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_value,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    position_embeddings,
-                    token_idx,
-                    attn_softmax_bf16,
-                    reuse_cache,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                    flash_attention_fast_softmax,
-                    valid_sequence_lengths,
-                    cache_idx,
-                    num_virtual_tokens,
-                    attn_batch_split,
-                    layer_prev_layer_residual,
-                )
-                if use_prev_layer_residual:
-                    index = 1 + int(use_cache) + int(output_attentions)
-                    prev_layer_residual = layer_outputs[index]
-                if split_prompt:
-                    hidden_states_split = layer_outputs[0]
-                else:
-                    hidden_states = layer_outputs[0]
+                hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+                next_decoder_cache += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
 
         next_cache = next_decoder_cache if use_cache else None
         if not use_new_cache and isinstance(next_cache, Cache):
@@ -1406,8 +1345,6 @@ class GaudiLlamaModel(LlamaModel):
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
         )
 
 
@@ -1449,8 +1386,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -1466,17 +1401,12 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         attn_batch_split: int = 1,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs: Unpack[TransformersKwargs],
     ) -> CausalLMOutputWithPast:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1484,8 +1414,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,

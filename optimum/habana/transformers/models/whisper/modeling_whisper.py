@@ -5,6 +5,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
+from transformers.masking_utils import create_causal_mask
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -15,10 +16,8 @@ from transformers.models.whisper.modeling_whisper import (
     WhisperAttention,
     WhisperDecoder,
     WhisperDecoderLayer,
-    WhisperFlashAttention2,
     WhisperForConditionalGeneration,
     WhisperModel,
-    WhisperSdpaAttention,
     shift_tokens_right,
 )
 from transformers.utils import logging
@@ -27,7 +26,7 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 
-class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
+class GaudiWhisperSdpaAttention(WhisperAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -141,14 +140,6 @@ class GaudiWhisperSdpaAttention(WhisperSdpaAttention):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, None, past_key_value
-
-
-# Now only support the default GaudiWhisperSdpaAttention
-GAUDI_WHISPER_ATTENTION_CLASSES = {
-    "eager": WhisperAttention,
-    "flash_attention_2": WhisperFlashAttention2,
-    "sdpa": GaudiWhisperSdpaAttention,
-}
 
 
 class GaudiWhisperDecoderLayer(WhisperDecoderLayer):
@@ -314,12 +305,13 @@ class GaudiWhisperDecoder(WhisperDecoder):
         hidden_states = inputs_embeds + positions.to(inputs_embeds.device)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-        causal_mask = self._update_causal_mask(
-            attention_mask,
-            inputs_embeds,
-            cache_position,
-            past_key_values.self_attention_cache if past_key_values is not None else None,
-            output_attentions,
+        causal_mask = create_causal_mask(
+            config=self.config,
+            input_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            cache_position=cache_position,
+            past_key_values=past_key_values,
+            position_ids=position_ids,
         )
 
         if self.gradient_checkpointing and self.training:
@@ -349,35 +341,18 @@ class GaudiWhisperDecoder(WhisperDecoder):
                 if dropout_probability < self.layerdrop:
                     continue
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    causal_mask,
-                    encoder_hidden_states,
-                    None,  # encoder attention mask
-                    head_mask[idx] if head_mask is not None else None,
-                    cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                    None,  # past_key_value
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    encoder_hidden_states=encoder_hidden_states,
-                    layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                    cross_attn_layer_head_mask=(
-                        cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
-                    ),
-                    past_key_value=past_key_values if use_cache else None,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                encoder_hidden_states=encoder_hidden_states,
+                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+                past_key_value=past_key_values if use_cache else None,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                token_idx=token_idx,
+            )
             hidden_states = layer_outputs[0]
 
             if output_attentions:

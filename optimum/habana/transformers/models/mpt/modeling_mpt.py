@@ -43,8 +43,8 @@ logger = logging.get_logger(__name__)
 
 
 class GaudiMptAttention(MptAttention):
-    def __init__(self, config: MptConfig):
-        super().__init__(config)
+    def __init__(self, config: MptConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
 
     def forward(
         self,
@@ -52,6 +52,7 @@ class GaudiMptAttention(MptAttention):
         position_bias: torch.Tensor,
         past_key_value: Optional[tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -154,9 +155,9 @@ class GaudiMptAttention(MptAttention):
 
 
 class GaudiMptBlock(MptBlock):
-    def __init__(self, config: MptConfig):
-        super().__init__(config)
-        self.attn = GaudiMptAttention(config)
+    def __init__(self, config: MptConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
+        self.attn = GaudiMptAttention(config, layer_idx)
 
     def forward(
         self,
@@ -166,6 +167,7 @@ class GaudiMptBlock(MptBlock):
         layer_past: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -191,6 +193,7 @@ class GaudiMptBlock(MptBlock):
             position_bias=position_bias,
             attention_mask=attention_mask,
             past_key_value=layer_past,
+            cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
@@ -211,9 +214,6 @@ class GaudiMptBlock(MptBlock):
         if use_cache:
             outputs += (past_key_value,)
 
-        if output_attentions:
-            outputs += (attn_weights,)
-
         return outputs  # hidden_states, present, attentions
 
 
@@ -228,6 +228,7 @@ class GaudiMptModel(MptModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -270,13 +271,6 @@ class GaudiMptModel(MptModel):
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
 
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
-
         # Compute alibi tensor: check build_alibi_tensor documentation
         seq_length_with_past = seq_length
         past_key_values_length = 0
@@ -299,30 +293,18 @@ class GaudiMptModel(MptModel):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                outputs = self._gradient_checkpointing_func(
-                    block.__call__,
-                    hidden_states,
-                    alibi,
-                    causal_mask,
-                    layer_past,
-                    use_cache,
-                    output_attentions,
-                    None,
-                )
-            else:
-                outputs = block(
-                    hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=causal_mask,
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    position_bias=alibi,
-                    token_idx=token_idx,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    cache_idx=cache_idx,
-                )
+            outputs = block(
+                hidden_states,
+                layer_past=layer_past,
+                attention_mask=causal_mask,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                position_bias=alibi,
+                token_idx=token_idx,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                cache_idx=cache_idx,
+            )
 
             hidden_states = outputs[0]
             if use_cache is True:
@@ -429,6 +411,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -454,6 +437,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,

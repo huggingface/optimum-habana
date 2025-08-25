@@ -98,10 +98,8 @@ class GaudiCodeGenAttention(CodeGenAttention):
         attn_output = self.resid_dropout(attn_output)
 
         outputs = (attn_output, present)
-        if output_attentions:
-            outputs += (attn_weights,)
 
-        return outputs  # a, present, (attentions)
+        return outputs, attn_weights
 
 
 def gaudi_codegen_block_forward(
@@ -123,7 +121,7 @@ def gaudi_codegen_block_forward(
     """
     residual = hidden_states
     hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
+    attn_outputs, attn_weights = self.attn(
         hidden_states=hidden_states,
         layer_past=layer_past,
         attention_mask=attention_mask,
@@ -134,18 +132,10 @@ def gaudi_codegen_block_forward(
         cache_position=cache_position,
         token_idx=token_idx,
     )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
-
     feed_forward_hidden_states = self.mlp(hidden_states)
-    hidden_states = attn_output + feed_forward_hidden_states + residual
+    hidden_states = attn_outputs + feed_forward_hidden_states + residual
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
-
-    return outputs  # hidden_states, present, (attentions)
+    return hidden_states, attn_weights
 
 
 def gaudi_codegen_model_forward(
@@ -261,31 +251,17 @@ def gaudi_codegen_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                position_ids,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states=hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:

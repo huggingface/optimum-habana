@@ -33,9 +33,9 @@ def gaudi_XLMRoberta_Sdpa_SelfAttention_forward(
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
-    encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/v4.46.3/src/transformers/models/xlm_roberta/modeling_xlm_roberta.py#L295
@@ -56,21 +56,20 @@ def gaudi_XLMRoberta_Sdpa_SelfAttention_forward(
             attention_mask,
             head_mask,
             encoder_hidden_states,
-            encoder_attention_mask,
             past_key_value,
             output_attentions,
+            cache_position,
         )
 
     bsz, tgt_len, _ = hidden_states.size()
 
-    query_layer = self.transpose_for_scores(self.query(hidden_states))
+    query_layer = (
+        self.query(hidden_states).view(bsz, -1, self.num_attention_heads, self.attention_head_size).transpose(1, 2)
+    )
 
-    # If this is instantiated as a cross-attention module, the keys and values come from an encoder; the attention
-    # mask needs to be such that the encoder's padding tokens are not attended to.
     is_cross_attention = encoder_hidden_states is not None
 
     current_states = encoder_hidden_states if is_cross_attention else hidden_states
-    attention_mask = encoder_attention_mask if is_cross_attention else attention_mask
 
     # Check `seq_length` of `past_key_value` == `len(current_states)` to support prefix tuning
     if is_cross_attention and past_key_value and past_key_value[0].shape[2] == current_states.shape[1]:
@@ -85,9 +84,7 @@ def gaudi_XLMRoberta_Sdpa_SelfAttention_forward(
     if self.is_decoder:
         past_key_value = (key_layer, value_layer)
 
-    is_causal = (
-        True if self.is_decoder and not is_cross_attention and attention_mask is None and tgt_len > 1 else False
-    )
+    is_causal = self.is_decoder and not is_cross_attention and attention_mask is None and tgt_len > 1
 
     attn_output = FusedSDPA.apply(
         query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal, None, "fast", False

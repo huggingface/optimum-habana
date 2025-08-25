@@ -32,7 +32,7 @@ from transformers.modeling_outputs import (
     Seq2SeqLMOutput,
     Seq2SeqModelOutput,
 )
-from transformers.models.bart.modeling_bart import shift_tokens_right
+from transformers.models.bart.modeling_bart import eager_attention_forward, shift_tokens_right
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
@@ -58,7 +58,12 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
 
-    def forward(self, input_ids: torch.Tensor, past_key_values_length: torch.Tensor = torch.tensor(0)):
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        past_key_values_length: torch.Tensor = torch.tensor(0),
+        position_ids: torch.Tensor = None,
+    ):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
 
         bsz, seq_len = input_ids.shape[:2]
@@ -76,7 +81,11 @@ def gaudi_BartAttention_forward(
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    # TODO: we need a refactor so that the different attention modules can get their specific kwargs
+    # ATM, we have mixed things encoder, decoder, and encoder-decoder attn
+    **kwargs,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """Input shape: Batch x Time x Channel"""
 
@@ -84,7 +93,8 @@ def gaudi_BartAttention_forward(
     # for the decoder
     is_cross_attention = key_value_states is not None
 
-    bsz, tgt_len, _ = hidden_states.size()
+    # determine input shapes
+    bsz, tgt_len = hidden_states.shape[:-1]
 
     # get query proj
     query_states = self.q_proj(hidden_states) * self.scaling
@@ -136,63 +146,23 @@ def gaudi_BartAttention_forward(
     key_states = key_states.reshape(*proj_shape)
     value_states = value_states.reshape(*proj_shape)
 
-    src_len = key_states.size(1)
-    attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+    attn_output, attn_weights = eager_attention_forward(
+        self,
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        dropout=0.0 if not self.training else self.dropout,
+        scaling=self.scaling,
+        output_attentions=output_attentions,
+        head_mask=layer_head_mask,
+        **kwargs,
+    )
 
-    if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
-        raise ValueError(
-            f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
-            f" {attn_weights.size()}"
-        )
-
-    if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, tgt_len, src_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
-            )
-        attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
-        attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-
-    if layer_head_mask is not None:
-        if layer_head_mask.size() != (self.num_heads,):
-            raise ValueError(
-                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is {layer_head_mask.size()}"
-            )
-        attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-        attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
-    if output_attentions:
-        # this operation is a bit awkward, but it's required to
-        # make sure that attn_weights keeps its gradient.
-        # In order to do so, attn_weights have to be reshaped
-        # twice and have to be reused in the following
-        attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-        attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
-    else:
-        attn_weights_reshaped = None
-
-    attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-
-    attn_output = torch.bmm(attn_probs, value_states)
-
-    if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz * self.num_heads, tgt_len, self.head_dim)}, but is"
-            f" {attn_output.size()}"
-        )
-
-    attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
-    attn_output = attn_output.transpose(1, 2)
-
-    # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-    # partitioned across GPUs when using tensor-parallelism.
-    attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
-
+    attn_output = attn_output.reshape(bsz, tgt_len, -1).contiguous()
     attn_output = self.out_proj(attn_output)
 
-    return attn_output, attn_weights_reshaped, past_key_value
+    return attn_output, attn_weights, past_key_value
 
 
 def gaudi_BartEncoderLayer_forward(
@@ -242,6 +212,7 @@ def gaudi_BartDecoderLayer_forward(
     past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
     residual = hidden_states
@@ -256,6 +227,7 @@ def gaudi_BartDecoderLayer_forward(
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -283,6 +255,7 @@ def gaudi_BartDecoderLayer_forward(
             layer_head_mask=cross_attn_layer_head_mask,
             past_key_value=cross_attn_past_key_value,
             output_attentions=output_attentions,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -353,16 +326,10 @@ def gaudi_BartEncoder_forward(
     hidden_states = self.layernorm_embedding(hidden_states)
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-    # expand attention_mask
-    if attention_mask is not None:
-        if self._use_sdpa and head_mask is None and not output_attentions:
-            # output_attentions=True & head_mask can not be supported when using SDPA, fall back to
-            # the manual implementation that requires a 4D causal mask in all cases.
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            attention_mask = _prepare_4d_attention_mask_for_sdpa(attention_mask, inputs_embeds.dtype)
-        else:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            attention_mask = _prepare_4d_attention_mask(attention_mask, inputs_embeds.dtype)
+    attention_mask = self._update_full_mask(
+        attention_mask,
+        inputs_embeds,
+    )
 
     encoder_states = () if output_hidden_states else None
     all_attentions = () if output_attentions else None
@@ -388,23 +355,13 @@ def gaudi_BartEncoder_forward(
         if to_drop:
             layer_outputs = (None, None)
         else:
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    encoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    (head_mask[idx] if head_mask is not None else None),
-                    output_attentions,
-                    None,
-                )
-            else:
-                layer_outputs = encoder_layer(
-                    hidden_states,
-                    attention_mask,
-                    layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                    output_attentions=output_attentions,
-                    token_idx=token_idx,
-                )
+            layer_outputs = encoder_layer(
+                hidden_states,
+                attention_mask,
+                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+                output_attentions=output_attentions,
+                token_idx=token_idx,
+            )
 
             hidden_states = layer_outputs[0]
 
@@ -433,6 +390,7 @@ def gaudi_BartDecoder_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -442,8 +400,15 @@ def gaudi_BartDecoder_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+    if self.gradient_checkpointing and self.training:
+        if use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+            )
+            use_cache = False
+
     # retrieve input_ids and inputs_embeds
-    if input_ids is not None and inputs_embeds is not None:
+    if (input_ids is None) ^ (inputs_embeds is not None):
         raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
     elif input_ids is not None:
         input = input_ids
@@ -508,13 +473,6 @@ def gaudi_BartDecoder_forward(
 
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-            )
-            use_cache = False
-
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
@@ -541,33 +499,19 @@ def gaudi_BartDecoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                head_mask[idx] if head_mask is not None else None,
-                cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                None,
-                output_attentions,
-                use_cache,
-                None,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask,
+            encoder_hidden_states,  # as a positional argument for gradient checkpointing
+            encoder_attention_mask=encoder_attention_mask,
+            layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+            cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
@@ -616,6 +560,7 @@ def gaudi_BartModel_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, Seq2SeqModelOutput]:
     # different to other models, Bart automatically creates decoder_input_ids from
@@ -670,6 +615,7 @@ def gaudi_BartModel_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 
@@ -706,6 +652,7 @@ def gaudi_BartForConditionalGeneration_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, Seq2SeqLMOutput]:
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -735,6 +682,7 @@ def gaudi_BartForConditionalGeneration_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 

@@ -46,6 +46,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         vision_feature_layer: Optional[Union[int, list[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         vision_aspect_ratio: Optional[str] = None,
+        batch_num_images: Optional[torch.LongTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -56,6 +57,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **kwargs,
     ) -> Union[tuple, LlavaOnevisionCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
@@ -151,6 +153,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 vision_feature_layer=vision_feature_layer,
                 vision_feature_select_strategy=vision_feature_select_strategy,
                 vision_aspect_ratio=vision_aspect_ratio,
+                batch_num_images=batch_num_images,
                 labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,

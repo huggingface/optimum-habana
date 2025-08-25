@@ -287,12 +287,14 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        **kwargs,
     ) -> Union[
         tuple[torch.Tensor, Optional[torch.Tensor]],
         tuple[torch.Tensor, Optional[torch.Tensor], tuple[torch.Tensor, ...]],
@@ -410,6 +412,7 @@ def gaudi_gpt_bigcode_block_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     use_flash_attention: Optional[bool] = False,
     flash_attention_recompute: Optional[bool] = False,
@@ -432,12 +435,14 @@ def gaudi_gpt_bigcode_block_forward(
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
         use_flash_attention=use_flash_attention,
         flash_attention_recompute=flash_attention_recompute,
         flash_attention_fast_softmax=flash_attention_fast_softmax,
         flash_attention_causal_mask=flash_attention_causal_mask,
         cache_idx=cache_idx,
+        **kwargs,
     )
     attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
     outputs = attn_outputs[1:]
@@ -460,6 +465,8 @@ def gaudi_gpt_bigcode_block_forward(
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
+            cache_position=cache_position,
+            **kwargs,
         )
         attn_output = cross_attn_outputs[0]
         # residual connection
@@ -495,12 +502,14 @@ def gaudi_gpt_bigcode_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     use_flash_attention: Optional[bool] = False,
     flash_attention_recompute: Optional[bool] = False,
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
     cache_idx: Optional[int] = None,
+    **kwargs,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTBigCodeModel.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -519,10 +528,9 @@ def gaudi_gpt_bigcode_model_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-    if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+    if (input_ids is None) ^ (inputs_embeds is not None):
+        raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
-        self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
         input_ids = input_ids.view(-1, input_shape[-1])
         batch_size = input_ids.shape[0]
@@ -636,36 +644,24 @@ def gaudi_gpt_bigcode_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                head_mask[i],
-                encoder_hidden_states,
-                encoder_attention_mask,
-                use_cache,
-                output_attentions,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                head_mask=head_mask[i],
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-                use_flash_attention=use_flash_attention,
-                flash_attention_recompute=flash_attention_recompute,
-                flash_attention_fast_softmax=flash_attention_fast_softmax,
-                flash_attention_causal_mask=flash_attention_causal_mask,
-                cache_idx=cache_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            head_mask=head_mask[i],
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            cache_idx=cache_idx,
+            **kwargs,
+        )
 
         hidden_states = outputs[0]
         if use_cache:
@@ -798,6 +794,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -828,6 +825,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
