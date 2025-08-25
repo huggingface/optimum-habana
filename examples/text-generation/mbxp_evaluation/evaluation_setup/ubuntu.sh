@@ -1,18 +1,18 @@
 #!/usr/bin/bash
 
-apt update
+apt update -y
 echo "--> Ruby"
 apt install -y ruby-full
 
 echo "--> PHP"
 apt install -y software-properties-common ca-certificates lsb-release apt-transport-https
-add-apt-repository ppa:ondrej/php
+add-apt-repository -y ppa:ondrej/php
 apt update -y
 apt install -y php-{pear,cgi,common,curl,mbstring,gd,bcmath,json,xml,fpm,intl,zip} php8.0
 
 
 echo "--> JavaScript"
-apt install curl
+apt install -y curl
 curl https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
 # Check if the lines containing NVM_DIR already exist in .bashrc
 if ! grep -q 'NVM_DIR' ~/.bashrc; then
@@ -20,7 +20,7 @@ if ! grep -q 'NVM_DIR' ~/.bashrc; then
   grep 'NVM_DIR' ~/.zshrc >> ~/.bashrc
 fi
 PS1=1 source ~/.bashrc
-apt install npm
+apt install -y npm
 nvm install 20.17.0
 node -e "console.log('Running Node.js ' + process.version)"
 npm i -g npm
