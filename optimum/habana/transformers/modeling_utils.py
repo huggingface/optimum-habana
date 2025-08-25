@@ -104,7 +104,7 @@ from .models import (
     GaudiGPTNeoXLayer,
     GaudiGptOssForCausalLM,
     GaudiGptOssModel,
-    GaudiGptOssDecoderLayer,
+    #GaudiGptOssDecoderLayer,
     GaudiGptOssAttention,
     #GaudiGptOssExperts,
     GaudiIdefics2ForConditionalGeneration,
@@ -269,6 +269,7 @@ from .models import (
     gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
     #gaudi_gpt_oss_model_forward,
+    gaudi_gpt_oss_decoder_layer_forward,
     gaudi_gpt_oss_rmsnorm_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
@@ -517,7 +518,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM = GaudiGptOssForCausalLM
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel = GaudiGptOssModel
     #transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel.forward = gaudi_gpt_oss_model_forward
-    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer = GaudiGptOssDecoderLayer
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward #GaudiGptOssDecoderLayer
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
     #transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts #can't use dyn moe due to bias term is missing 
     #transformers.models.gpt_oss.modeling_gpt_oss.GptOssMLP.forward = gaudi_gpt_oss_mlp_forward
