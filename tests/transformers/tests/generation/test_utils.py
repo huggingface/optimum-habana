@@ -2155,7 +2155,7 @@ class GenerationTesterMixin:
 
             # This test is for decoder-only models (encoder-decoder models have native input embeddings support in the
             # decoder)
-            if config.is_encoder_decoder:
+            if config.is_encoder_decoder or not config.is_decoder:
                 continue
 
             # Skip models without explicit support
