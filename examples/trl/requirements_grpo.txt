@@ -1,5 +1,5 @@
 trl == 0.17.0
-peft == 0.12.0
+peft == 0.15.0
 datasets
 tyro
 evaluate
