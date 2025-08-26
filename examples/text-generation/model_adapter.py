@@ -23,11 +23,16 @@ from typing import List, Literal, Optional, Union
 
 import torch
 import torch.nn.functional as F
+from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
 from lm_eval.models.utils import get_dtype, stop_sequences_criteria
 
+# Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class HabanaModelAdapter(HFLM):
