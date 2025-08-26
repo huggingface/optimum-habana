@@ -17,7 +17,7 @@
 ###############################################################################
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -169,8 +169,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
         q_padding = q_tiles * q_block_size - q_len
         query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
-        if attention_mask is not None:
-            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
         row_o_list = []
         for i in range(q_tiles):
             s, e = i * q_block_size, (i + 1) * q_block_size
@@ -295,8 +294,8 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: Optional[int] = None,
     ) -> Union[
-        Tuple[torch.Tensor, Optional[torch.Tensor]],
-        Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, ...]],
+        tuple[torch.Tensor, Optional[torch.Tensor]],
+        tuple[torch.Tensor, Optional[torch.Tensor], tuple[torch.Tensor, ...]],
     ]:
         """
         Copied from GPTBigCodeAttention.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -403,7 +402,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
 def gaudi_gpt_bigcode_block_forward(
     self,
-    hidden_states: Optional[Tuple[torch.Tensor]],
+    hidden_states: Optional[tuple[torch.Tensor]],
     layer_past: Optional[torch.Tensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
@@ -418,7 +417,7 @@ def gaudi_gpt_bigcode_block_forward(
     flash_attention_causal_mask: Optional[bool] = False,
     cache_idx: Optional[int] = None,
     **kwargs,
-) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+) -> Union[tuple[torch.Tensor], tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
     The only differences are:
@@ -484,7 +483,7 @@ def gaudi_gpt_bigcode_block_forward(
 def gaudi_gpt_bigcode_model_forward(
     self,
     input_ids: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.Tensor]] = None,
+    past_key_values: Optional[list[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     token_type_ids: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
@@ -502,7 +501,7 @@ def gaudi_gpt_bigcode_model_forward(
     flash_attention_fast_softmax: Optional[bool] = False,
     flash_attention_causal_mask: Optional[bool] = False,
     cache_idx: Optional[int] = None,
-) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTBigCodeModel.forward: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
     The only differences are:
@@ -786,7 +785,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
@@ -806,7 +805,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         **kwargs,
-    ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set

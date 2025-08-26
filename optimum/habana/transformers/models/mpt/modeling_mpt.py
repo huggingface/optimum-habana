@@ -15,7 +15,7 @@
 ###############################################################################
 # Copyright (C) 2022-2023 Habana Labs, Ltd. an Intel Company
 ###############################################################################
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -50,7 +50,7 @@ class GaudiMptAttention(MptAttention):
         self,
         hidden_states: torch.Tensor,
         position_bias: torch.Tensor,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
@@ -66,7 +66,7 @@ class GaudiMptAttention(MptAttention):
         - add new arg flash_attention_recompute
         - add new args cache_idx
         """
-
+        assert position_bias is not None
         batch_size, seq_length = hidden_states.shape[:2]
 
         mixed_qkv = self.Wqkv(hidden_states)
@@ -107,17 +107,16 @@ class GaudiMptAttention(MptAttention):
             else:
                 past_key_value = [key_states.clone(), value_states.clone()]
 
-        query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
+        query_length = seq_length + past_key_value[0].shape[2]
 
-        if position_bias is not None:
-            if len(position_bias.shape) != 3:
-                raise ValueError(f"Expecting position_bias shape to be 3 dimensions, got {len(position_bias.shape)}")
-            key_length = key_states.shape[-2]
+        if len(position_bias.shape) != 3:
+            raise ValueError(f"Expecting position_bias shape to be 3 dimensions, got {len(position_bias.shape)}")
+        key_length = key_states.shape[-2]
 
-            position_bias_query_index = max(0, position_bias.size(1) - query_length)
-            position_bias_key_index = max(0, position_bias.size(2) - key_length)
+        position_bias_query_index = max(0, position_bias.size(1) - query_length)
+        position_bias_key_index = max(0, position_bias.size(2) - key_length)
 
-            position_bias = position_bias[:, position_bias_query_index:, position_bias_key_index:]
+        position_bias = position_bias[:, position_bias_query_index:, position_bias_key_index:]
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
@@ -164,7 +163,7 @@ class GaudiMptBlock(MptBlock):
         hidden_states: torch.Tensor,
         position_bias: torch.Tensor,
         attention_mask: torch.Tensor,
-        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        layer_past: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
         token_idx: Optional[torch.Tensor] = None,
@@ -222,7 +221,7 @@ class GaudiMptModel(MptModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[tuple[tuple[torch.Tensor, torch.Tensor], ...]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -234,7 +233,7 @@ class GaudiMptModel(MptModel):
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: Optional[torch.Tensor] = None,
         **kwargs,  # NOOP kwargs, for now
-    ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         """
         Copied from MptModel.forward: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
         The only differences are:
@@ -389,7 +388,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
                 idx = token_idx + kwargs.get("inputs_embeds_offset", 0) - 1
                 input_ids = torch.index_select(input_ids, 1, idx)
 
-                if bucket_internal and token_idx is not None:
+                if bucket_internal:
                     attention_mask = attention_mask[:, :cache_idx]
         elif bucket_internal and token_idx is not None:
             # for the 1st token we can slice the inputs till token idx for the fwd pass.
@@ -422,7 +421,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[tuple[tuple[torch.Tensor, torch.Tensor], ...]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
@@ -435,7 +434,7 @@ class GaudiMptForCausalLM(MptForCausalLM):
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         """
         Inherits from MptForCausalLM: https://github.com/huggingface/transformers/blob/v4.32.0/src/transformers/models/mpt/modeling_mpt.py
         The only differences are:

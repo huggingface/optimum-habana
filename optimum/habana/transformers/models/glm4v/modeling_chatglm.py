@@ -1265,9 +1265,7 @@ class GLM4VModel(GLM4VPreTrainedModel):
                     device=expanded_attn_mask.device,
                 )
                 expanded_attn_mask = torch.cat([pre_seq_mask, expanded_attn_mask], dim=-1)
-            combined_attention_mask = (
-                expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
-            )
+            combined_attention_mask = expanded_attn_mask
 
         return combined_attention_mask
 
@@ -1303,12 +1301,15 @@ class GLM4VModel(GLM4VPreTrainedModel):
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """take care of image_encode, position_ids and (attention_mask = None is fine)"""
 
+        if input_ids is None:
+            raise ValueError("input_ids cannot be None")
         batch_size, seq_length = input_ids.shape
 
         # generate mode with past_key_values. the image features are already mapped
         if past_key_values is None:
             # not allow for inputs_embeds, because we want to process image feature
-            assert input_ids is not None and inputs_embeds is None, f"{input_ids} {inputs_embeds}"
+            if inputs_embeds is not None:
+                raise ValueError("inputs_embeds cannot be passed when past_key_values is None")
             if not is_empty(images):  # multi-modality
                 assert len(input_ids) == len(images), f"{len(input_ids)} {len(images)}"
                 # Please make sure to provide position_ids in inputs for Gaudi.
@@ -1398,7 +1399,7 @@ class GLM4VModel(GLM4VPreTrainedModel):
         else:
             attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                 attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                input_ids.shape,
                 inputs_embeds,
                 past_key_values_length,
             )

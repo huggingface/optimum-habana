@@ -61,11 +61,13 @@ MODELS_TO_TEST_MAPPING = {
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
     "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
     "qwen2": [("Qwen/Qwen2-7B", "Habana/qwen"), ("Qwen/Qwen2-72B", "Habana/qwen")],
+    "qwen3": [("Qwen/Qwen3-8B", "Habana/qwen")],
     "idefics2": [("HuggingFaceM4/idefics2-8b", "Habana/gpt2")],
     "mllama": [("meta-llama/Llama-3.2-11B-Vision-Instruct", "Habana/gpt2")],
     "gemma": [("google/gemma-2b-it", "Habana/gpt2")],
     "chatglm": [("THUDM/chatglm3-6b", "Habana/gpt2")],
     "llava": [("llava-hf/llava-1.5-7b-hf", "Habana/gpt2")],
+    "mixtral": [("mistralai/Mixtral-8x7B-Instruct-v0.1", "")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -79,6 +81,8 @@ MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
 MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
     "llama_guard",
+    "qwen2",
+    "qwen3",
     # "roberta",
     # "albert",
     # "distilbert",

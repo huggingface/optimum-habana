@@ -15,7 +15,7 @@
 """PyTorch Llava-Onevision model."""
 # Portions copied from optimum.habana.transformers.models.llava_next and transformers.models.llava_onevision
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -41,9 +41,9 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         image_sizes_videos: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[int] = None,
+        vision_feature_layer: Optional[Union[int, list[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         vision_aspect_ratio: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -56,7 +56,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-    ) -> Union[Tuple, LlavaOnevisionCausalLMOutputWithPast]:
+    ) -> Union[tuple, LlavaOnevisionCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
         The only differences are:
@@ -274,9 +274,7 @@ class GaudiLlavaOnevisionForConditionalGeneration(LlavaOnevisionForConditionalGe
                 **kwargs,
             )
         else:
-            legacy_processing = (
-                input_ids.shape[-1] == 1 if token_idx is None else token_idx == 1
-            ) and pixel_values is not None
+            legacy_processing = token_idx == 1 and pixel_values is not None
             use_flash_attention = kwargs.get("use_flash_attention", False)
             flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
             position_ids = kwargs.get("position_ids", None)

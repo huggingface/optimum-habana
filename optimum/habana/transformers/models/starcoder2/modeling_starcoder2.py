@@ -18,12 +18,12 @@
 
 import math
 import os
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.starcoder2.configuration_starcoder2 import Starcoder2Config
 from transformers.models.starcoder2.modeling_starcoder2 import (
@@ -211,7 +211,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
         use_cache: bool = False,
@@ -224,7 +224,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         The only differences are:
         - add new args token_idx
@@ -371,11 +371,11 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -383,7 +383,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states=hidden_states,
@@ -422,11 +422,11 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -434,7 +434,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states,
@@ -513,7 +513,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -553,20 +553,12 @@ class GaudiStarcoder2Model(Starcoder2Model):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        use_new_cache = False  # Ignoring new Cache path for HPU
         past_seen_tokens = 0
-
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_usable_length(seq_length)
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                past_seen_tokens = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             position_ids = torch.arange(
@@ -591,7 +583,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
@@ -686,7 +678,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
