@@ -19,7 +19,7 @@
 
 import argparse
 import logging
-from typing import List, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -191,7 +191,7 @@ class HabanaModelAdapter(HFLM):
         logits = logits.to(torch.float32)
         return logits
 
-    def generate_until(self, requests: List[Instance], disable_tqdm: bool = False) -> List[str]:
+    def generate_until(self, requests: list[Instance], disable_tqdm: bool = False) -> list[str]:
         """
         Override to change only max_length property
         """
