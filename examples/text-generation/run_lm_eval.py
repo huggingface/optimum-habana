@@ -116,7 +116,13 @@ def main() -> None:
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
             log_samples = args.log_samples
-            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=log_samples, system_instruction=args.system_instruction)
+            results = evaluator.simple_evaluate(
+                lm,
+                tasks=args.tasks,
+                limit=args.limit_iters,
+                log_samples=log_samples,
+                system_instruction=args.system_instruction,
+            )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
 
