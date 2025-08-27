@@ -87,6 +87,12 @@ def setup_lm_eval_parser():
         action="store_true",
         help="If True, prints extra-logs for all tasks",
     )
+    parser.add_argument(
+        "--system_instruction",
+        type=str,
+        default=None,
+        help="System instruction to be used in the prompt",
+    )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     args = setup_parser(parser)
 
@@ -113,7 +119,13 @@ def main() -> None:
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
             log_samples = args.log_samples
-            results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters, log_samples=log_samples)
+            results = evaluator.simple_evaluate(
+                lm,
+                tasks=args.tasks,
+                limit=args.limit_iters,
+                log_samples=log_samples,
+                system_instruction=args.system_instruction,
+            )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
 
