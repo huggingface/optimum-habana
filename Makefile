@@ -224,5 +224,9 @@ clean:
 test_installs:
 	python -m pip install .[tests]
 
+DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
+
 install_deepspeed:
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
+	@set -eu
+	@echo "Installing DeepSpeed (customizable via DEEPSPEED_SPEC env var)"
+	python -m pip install --upgrade --prefer-binary "$(DEEPSPEED_SPEC)"
