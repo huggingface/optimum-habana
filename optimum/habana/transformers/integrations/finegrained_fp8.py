@@ -4,16 +4,11 @@ from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
+from accelerate import init_empty_weights
 from torch.nn import functional as F
-from transformers.utils import (
-    is_accelerate_available,
-)
 
 from optimum.utils import logging
 
-
-if is_accelerate_available():
-    from accelerate import init_empty_weights
 
 logger = logging.get_logger(__name__)
 
@@ -103,19 +98,19 @@ class GaudiFP8Linear(nn.Module):
             output = F.linear(input, self.weight, self.bias)
         else:
             input_fp8, input_scale = torch.ops.hpu.cast_to_fp8_just_in_time(
-                input, [1, self.block_size[1]], out_dtype=torch.float8_e4m3fn, scale_dtype=torch.bfloat16
+                input, [1, self.block_size[1]], out_dtype=GaudiFP8Linear.dtype, scale_dtype=torch.bfloat16
             )
             output = torch.ops.hpu.fp8_gemm_v2(
-                input_fp8,
-                False,
-                self.weight,
-                True,
-                None,
-                torch.bfloat16,
-                input_scale,
-                self.weight_scale_inv.t(),
-                None,
-                False,
+                A=input_fp8,
+                trans_A=False,
+                B=self.weight,
+                trans_B=True,
+                D=None,
+                out_dtype=torch.bfloat16,
+                A_scale_inv=input_scale,
+                B_scale_inv=self.weight_scale_inv.t(),
+                bias=None,
+                accumulate=False,
             )
         return output
 
