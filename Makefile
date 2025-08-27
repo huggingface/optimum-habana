@@ -226,5 +226,4 @@ DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
 install_deepspeed:
 	@set -eu
 	@echo "Installing DeepSpeed (customizable via DEEPSPEED_SPEC env var)"
-	# Uwaga: nie echo-ujemy wartości z tokenem
 	python -m pip install --upgrade --prefer-binary "$(DEEPSPEED_SPEC)"
