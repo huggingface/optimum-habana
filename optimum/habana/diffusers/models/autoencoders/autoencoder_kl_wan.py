@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
 
-import torch
 import habana_frameworks.torch.core as htcore
+import torch
+
+
 CACHE_T = 2
 
 
@@ -61,6 +62,7 @@ def WanDecoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0], first_chunk
     else:
         x = self.conv_out(x)
     return x
+
 
 def WanEncoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0]):
     r"""

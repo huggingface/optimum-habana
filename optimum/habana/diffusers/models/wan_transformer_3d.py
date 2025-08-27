@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
-#from diffusers.models.transformers.transformer_wan import WanTransformer3DModel
+
+# from diffusers.models.transformers.transformer_wan import WanTransformer3DModel
 from diffusers.utils import (
     USE_PEFT_BACKEND,
-    is_torch_version,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
@@ -28,14 +28,15 @@ from diffusers.utils import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 def WanTransformer3DModleForwardGaudi(
-        self,
-        hidden_states: torch.Tensor,
-        timestep: torch.LongTensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+    self,
+    hidden_states: torch.Tensor,
+    timestep: torch.LongTensor,
+    encoder_hidden_states: torch.Tensor,
+    encoder_hidden_states_image: Optional[torch.Tensor] = None,
+    return_dict: bool = True,
+    attention_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_wan.py#L597
@@ -52,9 +53,7 @@ def WanTransformer3DModleForwardGaudi(
         scale_lora_layers(self, lora_scale)
     else:
         if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-            logger.warning(
-                "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-            )
+            logger.warning("Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective.")
 
     batch_size, num_channels, num_frames, height, width = hidden_states.shape
     p_t, p_h, p_w = self.config.patch_size
@@ -89,6 +88,7 @@ def WanTransformer3DModleForwardGaudi(
 
     # 4. Transformer blocks
     import habana_frameworks.torch.core as htcore
+
     if torch.is_grad_enabled() and self.gradient_checkpointing:
         for block in self.blocks:
             hidden_states = self._gradient_checkpointing_func(

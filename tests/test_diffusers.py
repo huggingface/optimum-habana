@@ -124,8 +124,8 @@ from optimum.habana.diffusers import (
     GaudiStableVideoDiffusionControlNetPipeline,
     GaudiStableVideoDiffusionPipeline,
     GaudiTextToVideoSDPipeline,
-    GaudiWanPipeline,
     GaudiWanImageToVideoPipeline,
+    GaudiWanPipeline,
 )
 from optimum.habana.diffusers.models import (
     ControlNetSDVModel,
@@ -7193,25 +7193,22 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
     """
 
     pipeline_class = GaudiWanPipeline
-    params = frozenset([
-        "prompt",
-        "height",
-        "width",
-        "guidance_scale",
-        "negative_prompt",
-        "num_frames",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    ])
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "guidance_scale",
+            "negative_prompt",
+            "num_frames",
+            "prompt_embeds",
+            "negative_prompt_embeds",
+        ]
+    )
     batch_params = frozenset(["prompt", "negative_prompt"])
-    required_optional_params = frozenset([
-        "num_inference_steps",
-        "generator",
-        "latents",
-        "output_type",
-        "return_dict",
-        "num_videos_per_prompt"
-    ])
+    required_optional_params = frozenset(
+        ["num_inference_steps", "generator", "latents", "output_type", "return_dict", "num_videos_per_prompt"]
+    )
 
     @pytest.fixture(autouse=True)
     def _use_(self, baseline):
@@ -7228,6 +7225,7 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
 
         # Transformer
         from diffusers.models.transformers import WanTransformer3DModel
+
         torch.manual_seed(0)
         transformer = WanTransformer3DModel(
             patch_size=(1, 2, 2),
@@ -7263,6 +7261,7 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
         # VAE
         torch.manual_seed(0)
         from diffusers.models.autoencoders import AutoencoderKLWan
+
         vae = AutoencoderKLWan(
             base_dim=3,
             z_dim=16,
@@ -7274,6 +7273,7 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
 
         # Scheduler
         from diffusers.schedulers import UniPCMultistepScheduler
+
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
 
         components = {
@@ -7324,7 +7324,26 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
         generated_video = output.frames[0].to("cpu")
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
 
-        expected_slice = torch.tensor([0.4525, 0.452, 0.4485, 0.4534, 0.4524, 0.4529, 0.454, 0.453, 0.5127, 0.5326, 0.5204, 0.5253, 0.5439, 0.5424, 0.5133, 0.5078])
+        expected_slice = torch.tensor(
+            [
+                0.4525,
+                0.452,
+                0.4485,
+                0.4534,
+                0.4524,
+                0.4529,
+                0.454,
+                0.453,
+                0.5127,
+                0.5326,
+                0.5204,
+                0.5253,
+                0.5439,
+                0.5424,
+                0.5133,
+                0.5078,
+            ]
+        )
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
@@ -7379,24 +7398,27 @@ class GaudiWanPipelineTester(PipelineTesterMixin, TestCase):
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
 
+
 class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
     """
     Tests the WAN Image-to-Video Pipeline for Gaudi.
     """
-    
+
     pipeline_class = GaudiWanImageToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset([
-        "num_inference_steps",
-        "generator",
-        "latents",
-        "return_dict",
-        "callback_on_step_end",
-        "callback_on_step_end_tensor_inputs",
-    ])
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
+    )
     test_xformers_attention = False
     supports_dduf = False
 
@@ -7410,6 +7432,7 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
     def get_dummy_components(self):
         # VAE
         from diffusers.models.autoencoders import AutoencoderKLWan
+
         torch.manual_seed(0)
         vae = AutoencoderKLWan(
             base_dim=3,
@@ -7421,12 +7444,9 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
 
         # Scheduler
         from diffusers.schedulers import UniPCMultistepScheduler
+
         torch.manual_seed(0)
-        scheduler = UniPCMultistepScheduler(
-            prediction_type="flow_prediction", 
-            use_flow_sigmas=True, 
-            flow_shift=3.0
-        )
+        scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
 
         # Text encoder
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -7434,6 +7454,7 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
 
         # Transformer
         from diffusers.models.transformers import WanTransformer3DModel
+
         torch.manual_seed(0)
         transformer = WanTransformer3DModel(
             patch_size=(1, 2, 2),
@@ -7475,11 +7496,11 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
             "transformer_2": transformer_2,
             "image_encoder": None,
             "image_processor": None,
-            #"boundary_ratio": 0.875,
+            # "boundary_ratio": 0.875,
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": GaudiConfig(use_torch_autocast=False),
-            "bf16_full_eval": True
+            "bf16_full_eval": True,
         }
         return components
 
@@ -7488,11 +7509,11 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         image_height = 16
         image_width = 16
         image = Image.new("RGB", (image_width, image_height))
-        
+
         inputs = {
             "image": image,
             "prompt": "dance monkey",
@@ -7516,20 +7537,36 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
 
         inputs = self.get_dummy_inputs(device)
         output = wan_i2v_pipe(**inputs)
-        
+
         # Check output structure
         self.assertIsNotNone(output.frames)
         self.assertEqual(len(output.frames), 1)  # num_videos_per_prompt=1
-        
+
         # Check video dimensions
         generated_video = output.frames[0]
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
 
         # Expected slice from original test
-        expected_slice = torch.tensor([
-            0.4527, 0.4526, 0.4498, 0.4539, 0.4521, 0.4524, 0.4533, 0.4535, 
-            0.5154, 0.5353, 0.5200, 0.5174, 0.5434, 0.5301, 0.5199, 0.5216
-        ])
+        expected_slice = torch.tensor(
+            [
+                0.4527,
+                0.4526,
+                0.4498,
+                0.4539,
+                0.4521,
+                0.4524,
+                0.4533,
+                0.4535,
+                0.5154,
+                0.5353,
+                0.5200,
+                0.5174,
+                0.5434,
+                0.5301,
+                0.5199,
+                0.5216,
+            ]
+        )
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
@@ -7588,4 +7625,3 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
 
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
-

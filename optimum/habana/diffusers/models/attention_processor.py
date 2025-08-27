@@ -19,13 +19,12 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from diffusers.models.attention_processor import Attention
-from diffusers.models.attention_dispatch import dispatch_attention_fn
+from diffusers.models.transformers.transformer_wan import WanAttention, _get_added_kv_projections, _get_qkv_projections
 from diffusers.utils import deprecate, logging
 from diffusers.utils.import_utils import is_xformers_available
 from torch import nn
 
 from .embeddings import RotaryPosEmbedding
-from diffusers.models.transformers.transformer_wan import WanAttention, _get_qkv_projections, _get_added_kv_projections
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -547,17 +546,20 @@ class GaudiWanAttnProcessor:
             )
         self.is_training = is_training
 
-    def _native_attention(self, query: torch.Tensor,
-                          key: torch.Tensor,
-                          value: torch.Tensor,
-                          attn_mask: Optional[torch.Tensor] = None,
-                          dropout_p: float = 0.0,
-                          is_causal: bool = False,
-                          scale: Optional[float] = None,
-                          enable_gqa: bool = False,
+    def _native_attention(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
     ) -> torch.Tensor:
-        #apply gaudi fused SDPA
+        # apply gaudi fused SDPA
         from habana_frameworks.torch.hpex.kernels import FusedSDPA
+
         # Fast FSDPA is not supported in training mode
         fsdpa_mode = "None" if self.is_training else "fast"
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
@@ -590,7 +592,6 @@ class GaudiWanAttnProcessor:
         value = value.unflatten(2, (attn.heads, -1))
 
         if rotary_emb is not None:
-
             """
             Wan's ROPE is pairwised, like this:
             def apply_rotary_emb(
@@ -606,7 +607,8 @@ class GaudiWanAttnProcessor:
                 out[..., 1::2] = x1 * sin + x2 * cos
                 return out.type_as(hidden_states)
             """
-            from habana_frameworks.torch.hpex.kernels import apply_rotary_pos_emb, RotaryPosEmbeddingMode
+            from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingMode, apply_rotary_pos_emb
+
             query = apply_rotary_pos_emb(query, *rotary_emb, None, 0, RotaryPosEmbeddingMode.PAIRWISE)
             key = apply_rotary_pos_emb(key, *rotary_emb, None, 0, RotaryPosEmbeddingMode.PAIRWISE)
 
@@ -635,5 +637,6 @@ class GaudiWanAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
 
 AttentionProcessor = Union[AttnProcessor2_0,]

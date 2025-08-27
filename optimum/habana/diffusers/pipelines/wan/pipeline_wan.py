@@ -12,28 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-from typing import Any, Callable, Dict, List, Optional, Union
 import types
-from diffusers.pipelines.wan.pipeline_wan import WanPipeline
-from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import torch
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
+from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from diffusers.models.transformers import WanTransformer3DModel
-from transformers import UMT5EncoderModel
 from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
+from diffusers.pipelines.wan.pipeline_wan import WanPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import (
-    logging, replace_example_docstring
-)
+from diffusers.utils import logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile
 from ...models.attention_processor import GaudiWanAttnProcessor
-from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
 from ...models.autoencoders.autoencoder_kl_wan import WanDecoder3dForwardGaudi
+from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -43,7 +42,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from optimum.habana.diffusers import GaudiWanPipeline
 
-        >>> pipe = GaudiWanPipeline.from_pretrained(       
+        >>> pipe = GaudiWanPipeline.from_pretrained(
         ...    "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
         ...     torch_dtype=torch.bfloat16,
         ...     use_habana=True,
@@ -65,6 +64,7 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
 """
+
 
 class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
     r"""
@@ -274,7 +274,6 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
-        import habana_frameworks.torch as ht
         import habana_frameworks.torch.core as htcore
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
@@ -334,7 +333,7 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
-        
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
