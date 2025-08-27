@@ -561,7 +561,7 @@ class GaudiWanAttnProcessor:
         # Fast FSDPA is not supported in training mode
         fsdpa_mode = "None" if self.is_training else "fast"
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-        out = FusedSDPA.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, "fast", None)
+        out = FusedSDPA.apply(query, key, value, attn_mask, dropout_p, is_causal, scale, fsdpa_mode, None)
         out = out.permute(0, 2, 1, 3)
         return out
 

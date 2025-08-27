@@ -237,7 +237,8 @@ def main():
     i2v_models = ["i2vgen-xl"]
     is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
     cogvideo_models = ["cogvideo"]
-    is_cogvideo_model = any(model in args.model_name_or_path.lower() for model in cogvideo_models)    wan_i2v_models = ["Wan2.2"]
+    is_cogvideo_model = any(model in args.model_name_or_path.lower() for model in cogvideo_models)
+    wan_i2v_models = ["Wan2.2"]
     is_wan_i2v_model = any(model in args.model_name_or_path for model in wan_i2v_models)
 
     if is_wan_i2v_model:
