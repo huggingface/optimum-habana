@@ -28,7 +28,7 @@ The main differences are:
 """
 
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
@@ -105,57 +105,6 @@ def _get_unpad_data(attention_mask):
         cu_seqlens,
         max_seqlen_in_batch,
     )
-
-
-class GaudiDeepseekV3LinearFP8(nn.Linear):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        device=None,
-        dtype=None,
-        block_size: Tuple[int, int] = (128, 128),
-        high_precision=torch.bfloat16,
-    ) -> None:
-        super().__init__(in_features, out_features, bias, device, dtype)
-        self.block_size = block_size
-        self.high_precision = high_precision
-
-    def set_scale_inv_fp8(self, scale_inv_fp8: torch.Tensor):
-        self.scale_inv_fp8 = scale_inv_fp8
-
-    def dequant_block_fp8_weight(self) -> torch.Tensor:
-        # This function is called by INC during either the measurement or quantization phase.
-        # - In the quantization phase, INC requantizes the BF16 weight to FP8 and updates the weight.
-        # - In the measurement phase, INC only measures the BF16 weight without updating it.
-        # Tracking the BF16 weight can lead to Out of Memory (OoM) issues, so we avoid storing it.
-        # If the weight has already been updated, we return it directly.
-        if hasattr(self, "updated_fp8_weight") and self.updated_fp8_weight:
-            return self.weight
-
-        dequant_weight = self.get_dequant_weight()
-        self.is_dequantized = True
-
-        return dequant_weight
-
-    def get_dequant_weight(self):
-        # FIXME: (Yi) move `dequant_block_fp8_weight_naive` to extension as well.
-        from optimum.habana.transformers.modesls.deepseek_v3.fp8_utils import (
-            dequant_block_fp8_weight_naive,
-        )
-
-        return dequant_block_fp8_weight_naive(
-            self.weight,
-            self.scale_inv_fp8,
-            block_size=self.block_size,
-            dtype=self.high_precision,
-        )
-
-    def get_dequant_weights_func(
-        self,
-    ) -> Optional[Callable[[torch.nn.Module], torch.Tensor]]:
-        return self.dequant_block_fp8_weight
 
 
 class DeepseekV3RMSNorm(nn.Module):
@@ -428,11 +377,8 @@ def apply_rotary_pos_emb(q: torch.Tensor, cos, sin, position_ids, unsqueeze_dim=
 
 
 class GaudiDeepseekV3MLP(nn.Module):
-    def __init__(self, config, hidden_size=None, intermediate_size=None, add_dummy_quant_input=False):
+    def __init__(self, config, hidden_size=None, intermediate_size=None):
         super().__init__()
-        # Dummy quant input used when quantizing linear layers of routed experts
-        # with intel neural compressor
-        self.add_dummy_quant_input = add_dummy_quant_input
         self.config = config
         self.hidden_size = config.hidden_size if hidden_size is None else hidden_size
         self.intermediate_size = config.intermediate_size if intermediate_size is None else intermediate_size
@@ -521,8 +467,6 @@ class GaudiDeepseekV3MoE(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        # num_experts used during quantization with neural compressor
-        self.num_experts = config.n_routed_experts
         self.num_experts_per_tok = config.num_experts_per_tok
         self.num_experts = config.n_routed_experts  # Added to support INC FP8 quantization
 
@@ -541,9 +485,7 @@ class GaudiDeepseekV3MoE(nn.Module):
             self.experts = nn.ModuleList(
                 [
                     (
-                        GaudiDeepseekV3MLP(
-                            config, intermediate_size=config.moe_intermediate_size, add_dummy_quant_input=True
-                        )
+                        GaudiDeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
                         if i in self.experts_range
                         else None
                     )
@@ -559,9 +501,7 @@ class GaudiDeepseekV3MoE(nn.Module):
             self.experts_range = range(self.experts_min, self.experts_max + 1)
             self.experts = nn.ModuleList(
                 [
-                    GaudiDeepseekV3MLP(
-                        config, intermediate_size=config.moe_intermediate_size, add_dummy_quant_input=True
-                    )
+                    GaudiDeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
                     for i in range(config.n_routed_experts)
                 ]
             )

@@ -7,7 +7,7 @@ import torch
 from packaging import version
 from transformers.quantizers.quantizer_finegrained_fp8 import FineGrainedFP8HfQuantizer
 from transformers.quantizers.quantizers_utils import get_module_from_name
-from transformers.utils import is_accelerate_available, is_torch_available
+from transformers.utils import is_torch_available
 
 from optimum.utils import logging
 
@@ -17,9 +17,11 @@ if TYPE_CHECKING:
 
 if htexp._get_device_type() == htexp.synDeviceType.synDeviceGaudi2:
     ON_GAUDI2 = True
+    FP8_MIN = torch.finfo(torch.float8_e4m3fnuz).min
     FP8_MAX = torch.finfo(torch.float8_e4m3fnuz).max
 else:
     ON_GAUDI2 = False
+    FP8_MIN = torch.finfo(torch.float8_e4m3fn).min
     FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
 
 logger = logging.get_logger(__name__)
@@ -36,14 +38,11 @@ class GaudiFineGrainedFP8HfQuantizer(FineGrainedFP8HfQuantizer):
         - Overrides all methods to bypass import errors from triton package
         - Removes check for cuda and CPU devices
         """
-        if not is_torch_available() or version.parse(importlib.metadata.version("torch")) < version.parse("2.1.0"):
+        if not is_torch_available() or version.parse(importlib.metadata.version("torch")) < version.parse("2.6.0"):
             raise ImportError(
-                "Using fp8 quantization requires torch >= 2.1.0"
+                "Using fp8 quantization requires torch >= 2.6.0"
                 "Please install the latest version of torch ( pip install --upgrade torch )"
             )
-
-        if not is_accelerate_available():
-            raise ImportError("Loading an FP8 quantized model requires accelerate (`pip install accelerate`)")
 
         if kwargs.get("from_tf", False) or kwargs.get("from_flax", False):
             raise ValueError(
@@ -69,10 +68,6 @@ class GaudiFineGrainedFP8HfQuantizer(FineGrainedFP8HfQuantizer):
 
         module, tensor_name = get_module_from_name(model, param_name)
 
-        # Get FP8 min/max values
-        fp8_min = torch.finfo(torch.float8_e4m3fn).min
-        fp8_max = FP8_MAX
-
         block_size_m, block_size_n = self.quantization_config.weight_block_size
 
         rows, cols = param_value.shape[-2:]
@@ -89,12 +84,12 @@ class GaudiFineGrainedFP8HfQuantizer(FineGrainedFP8HfQuantizer):
 
         # Calculate scaling factor for each block
         max_abs = torch.amax(torch.abs(param_value), dim=(-1, -2))
-        scale = fp8_max / max_abs
+        scale = FP8_MAX / max_abs
         scale_orig_shape = scale.shape
         scale = scale.unsqueeze(-1).unsqueeze(-1)
 
         # Quantize the weights
-        quantized_param = torch.clamp(param_value * scale, min=fp8_min, max=fp8_max).to(torch.float8_e4m3fn)
+        quantized_param = torch.clamp(param_value * scale, min=FP8_MIN, max=FP8_MAX).to(torch.float8_e4m3fn)
 
         quantized_param = quantized_param.permute(0, 1, 3, 2, 4)
         # Reshape back to matrix shape
