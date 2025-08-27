@@ -110,6 +110,12 @@ def setup_lm_eval_parser():
         action="store_true",
         help="If True, prints extra-logs for all tasks",
     )
+    parser.add_argument(
+        "--system_instruction",
+        type=str,
+        default=None,
+        help="System instruction to be used in the prompt",
+    )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
     parser.add_argument(
         "--gen_kwargs",
