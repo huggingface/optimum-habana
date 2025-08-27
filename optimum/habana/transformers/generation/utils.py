@@ -132,6 +132,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "deepseek_v3",
     "chatglm",
     "qwen2_vl",
+    "qwen2_5_vl",
     "qwen3",
     "qwen3_moe",
 ]
