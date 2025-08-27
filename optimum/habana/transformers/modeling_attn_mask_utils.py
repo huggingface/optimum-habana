@@ -33,7 +33,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         input_ids_shape: torch.Size,
         dtype: torch.dtype,
         device: torch.device,
-        past_key_values_length: int = 0, #=0 when prefill, =token_idx(current idx) when decode
+        past_key_values_length: int = 0,
         sliding_window: Optional[int] = None,
         token_idx: Optional[int] = 0,
     ):
@@ -41,35 +41,37 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         Make causal mask used for bi-directional self-attention.
         """
         token_idx = token_idx if token_idx is not None else past_key_values_length
-        bsz, tgt_len = input_ids_shape #tgt_len = q_len
+        bsz, tgt_len = input_ids_shape
 
-        mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, device=device) #(q_len, q_len) filled with -inf
+        mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, device=device)
         mask_cond = torch.arange(mask.size(-1), device=device)
-        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0) #lower triangle and diagonal filled with 0, upper triangles are -inf
+        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
 
         mask = mask.to(dtype)
 
         if past_key_values_length > 0:
-            mask = torch.cat([torch.zeros(tgt_len, past_key_values_length-tgt_len, dtype=dtype, device=device), mask], dim=-1)
+            mask = torch.cat(
+                [torch.zeros(tgt_len, past_key_values_length - tgt_len, dtype=dtype, device=device), mask],
+                dim=-1,
+            )
 
         # add lower triangular sliding window mask if necessary
         if sliding_window is not None:
-            #diagonal = past_key_values_length - sliding_window - 1 #############  this works only for prefill. for decode mask has only 1 row and it is all False
             diagonal = token_idx - sliding_window - 1
 
             # Replace tril with below
-            row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector #(q_len, 1)
-            col_indices = torch.arange(mask.size(1), device=mask.device) #(q_len) -> broadcasted to (q_len, q_len)
+            row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector
+            col_indices = torch.arange(mask.size(1), device=mask.device)
             context_mask = (col_indices <= row_indices + diagonal).bool().expand_as(mask)  # Expand to match mask shape
-            # lower triangle of context_mask (in_len + out_len - sliding_window) is True 
+            # lower triangle of context_mask (in_len + out_len - sliding_window) is True
 
             # Recent changes in PyTorch prevent mutations on tensors converted with aten::_to_copy
             # See https://github.com/pytorch/pytorch/issues/127571
             if is_torchdynamo_compiling():
                 mask = mask.clone()
 
-            mask.masked_fill_(context_mask, torch.finfo(dtype).min) #when context_mask is True, fill with -inf
-            
+            mask.masked_fill_(context_mask, torch.finfo(dtype).min)
+
             if past_key_values_length > 0:
                 return mask[None, None, :, :].expand(bsz, 1, tgt_len, past_key_values_length)
             else:
@@ -88,8 +90,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         key_value_length) shape and by adding a large negative bias to not-attended positions. If attention_mask is
         causal, a causal mask will be added.
         """
-        #total_len = attention_mask_2d.shape[1] #(bs, in+out)
-        input_shape = (attention_mask_2d.shape[0], query_length) #bs, 19->1
+        input_shape = (attention_mask_2d.shape[0], query_length)
         device = attention_mask_2d.device
 
         # create causal mask
@@ -100,25 +101,26 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
                     "This attention mask converter is causal. Make sure to pass `key_value_length` to correctly create a causal mask."
                 )
 
-            #when sliding_window is not None, find the token_idx by chechking the last idx of 1 in attention_mask_2d
+            # When sliding_window is not None, find the token_idx by chechking the last idx of 1 in attention_mask_2d
             if input_shape[-1] == 1:
                 cumsum = attention_mask_2d.cumsum(dim=1)
                 token_idx = cumsum.argmax(dim=1, keepdim=True)[0]
-            else: token_idx = None
-            
-            past_key_values_length = key_value_length - query_length #this is pure kv_len (key_value_length was q_len + kv_len)
+            else:
+                token_idx = None
+
+            past_key_values_length = key_value_length - query_length
             causal_4d_mask = self._make_causal_mask(
                 input_shape,
                 dtype,
                 device=device,
-                past_key_values_length=past_key_values_length, #0 when prefill, token_idx when decode ###sc#past_key_values_length,
+                past_key_values_length=past_key_values_length,
                 sliding_window=self.sliding_window,
                 token_idx=token_idx,
-            ) #####make lower triangle -inf
+            )
 
             # just create a bool tensor with shape [bsz, 1, tgt_seq_len, src_seq_len]
             # OOM problem can be prevent by using bool tensor
-            bsz, src_len = attention_mask_2d.size() #bs, kv_len
+            bsz, src_len = attention_mask_2d.size()
             tgt_len = input_shape[-1] if input_shape[-1] is not None else src_len
             bool_mask = attention_mask_2d != 1.0
             expanded_attn_mask = bool_mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(device=device)
@@ -146,7 +148,6 @@ def _gaudi_prepare_4d_causal_attention_mask(
     """
     attn_mask_converter = GaudiAttentionMaskConverter(is_causal=True, sliding_window=sliding_window)
 
-    #input_shape is input + output len
     key_value_length = input_shape[-1] + past_key_values_length
 
     # 4d mask is passed through the layers

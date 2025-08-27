@@ -145,21 +145,18 @@ from .gpt_neo import (
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
 )
-from .gpt_oss import (
-    GaudiGptOssForCausalLM,
-    GaudiGptOssModel,
-    #GaudiGptOssDecoderLayer,
-    GaudiGptOssAttention,
-    #GaudiGptOssExperts,
-    #gaudi_gpt_oss_model_forward,
-    gaudi_gpt_oss_decoder_layer_forward,
-    gaudi_gpt_oss_rmsnorm_forward,
-)
 from .gpt_neox import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
     gaudi_gpt_neox_model_forward,
+)
+from .gpt_oss import (
+    GaudiGptOssAttention,
+    GaudiGptOssForCausalLM,
+    GaudiGptOssModel,
+    gaudi_gpt_oss_decoder_layer_forward,
+    gaudi_gpt_oss_rmsnorm_forward,
 )
 from .gptj import (
     GaudiGPTJAttention,

@@ -102,11 +102,11 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    # GaudiGptOssDecoderLayer,
+    GaudiGptOssAttention,
     GaudiGptOssForCausalLM,
     GaudiGptOssModel,
-    #GaudiGptOssDecoderLayer,
-    GaudiGptOssAttention,
-    #GaudiGptOssExperts,
+    # GaudiGptOssExperts,
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
@@ -268,7 +268,6 @@ from .models import (
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
-    #gaudi_gpt_oss_model_forward,
     gaudi_gpt_oss_decoder_layer_forward,
     gaudi_gpt_oss_rmsnorm_forward,
     gaudi_invert_attention_mask,
@@ -517,12 +516,9 @@ def adapt_transformers_to_gaudi():
     # Optimization for gpt-oss generation on Gaudi
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM = GaudiGptOssForCausalLM
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel = GaudiGptOssModel
-    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel.forward = gaudi_gpt_oss_model_forward
-    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward #GaudiGptOssDecoderLayer
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
-    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts #can't use dyn moe due to bias term is missing 
-    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssMLP.forward = gaudi_gpt_oss_mlp_forward
-    #transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward #by using fused rmsnorm, the output diverges from the transformers result, check full accuracy 
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM

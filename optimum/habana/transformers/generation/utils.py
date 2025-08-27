@@ -1394,7 +1394,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     else:
                         inputs_tensor = torch.nn.functional.pad(
                             inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
-                        ) ##padded to the max seq len
+                        )
                     model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                     model_kwargs["token_idx_cpu"] = token_idx
 
