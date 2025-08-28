@@ -142,12 +142,7 @@ def gaudi_eager_attention_forward(
 class GaudiGemma2Attention(Gemma2Attention):
     def __init__(self, config: Gemma2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-        self.layer_idx = layer_idx
-        self._sliding_window_pattern = 2
-        self.layer_type = (
-            "sliding_attention" if bool((layer_idx + 1) % self._sliding_window_pattern) else "full_attention"
-        )
-        self.sliding_window = config.sliding_window if self.layer_type == "sliding_attention" else None
+        self.layer_type = "sliding_attention" if self.sliding_window else "full_attention"
 
         self.rotary_emb = GaudiGemma2RotaryEmbedding(config=self.config)
 
@@ -377,6 +372,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     def __init__(self, config: Gemma2Config, layer_idx: int):
         super().__init__(config, layer_idx)
         self.self_attn = GaudiGemma2Attention(config, layer_idx)
+        # in ver 4.55 onward, here we can use config.layer_types[layer_idx]: https://github.com/huggingface/transformers/blob/v4.55.0/src/transformers/models/gemma2/modeling_gemma2.py#L245
         self.attention_type = self.self_attn.layer_type
         self.mlp = GaudiGemma2MLP(config)
 
