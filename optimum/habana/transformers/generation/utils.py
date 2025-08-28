@@ -2872,19 +2872,16 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if batch_size > 1 and has_eos_stopping_criteria:
             eos_token_id = generation_config.eos_token_id
+            # Init eos_positions
+            eos_positions = torch.full((batch_size,), start_token_idx, dtype=torch.long, device=input_ids.device)
             # Find the positions of the first eos_token_id in each sequence
-            _, seq_len = input_ids.shape
-            if start_token_idx >= seq_len:
-                # All slices are empty, so no EOS can be found
-                eos_positions = torch.full((batch_size,), seq_len, dtype=torch.long, device=input_ids.device)
-            else:
-                mask_ = torch.isin(input_ids[:, start_token_idx:], torch.tensor(eos_token_id, device=input_ids.device))
-                # If mask is all False for a row, argmax returns 0, which is incorrect.
-                # So, set eos_positions to seq_len if no EOS is found.
-                found = mask_.any(dim=1)
-                first_eos = mask_.int().argmax(dim=1) + start_token_idx
-                eos_positions = torch.full((batch_size,), seq_len, dtype=torch.long, device=input_ids.device)
-                eos_positions[found] = first_eos[found]
+            eos_positions_tmp = torch.isin(
+                input_ids[:, start_token_idx:], torch.tensor(eos_token_id).to(device=input_ids.device)
+            ).int()
+            if eos_positions_tmp.numel() != 0:
+                # argmax(dim=1) is throwing this error in eager mode, if the tensor is empty
+                eos_positions = eos_positions + eos_positions_tmp.argmax(dim=1)
+
             # Create a mask for positions greater than the first eos_token_id
             mask = torch.arange(generation_config.max_length, device="hpu").expand(
                 batch_size, generation_config.max_length
