@@ -37,6 +37,9 @@ from transformers.models.phi.modeling_phi import (
 from transformers.processing_utils import Unpack
 from transformers.utils import logging
 
+import habana_frameworks.torch.core as htcore
+import habana_frameworks.torch.hpu as hthpu
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -89,6 +92,7 @@ def gaudi_eager_attention_forward(
     attention_mask: Optional[torch.Tensor],
     scaling: float,
     dropout: float = 0.0,
+    attn_softmax_bf16: Optional[bool] = False,
     **kwargs,
 ):
     bsz, q_len = kwargs["input_shape"]
@@ -100,8 +104,12 @@ def gaudi_eager_attention_forward(
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
+    
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=value_states.dtype)
+    else:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(value_states.dtype)
 
-    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
     attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout, training=module.training)
     attn_output = module.matmul_av(attn_weights, value_states)
     attn_output = attn_output.reshape(bsz, -1, q_len, module.head_dim)
@@ -138,6 +146,7 @@ class GaudiPhiAttention(PhiAttention):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         **kwargs,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
@@ -234,6 +243,7 @@ class GaudiPhiAttention(PhiAttention):
             dropout=0.0 if not self.training else self.attention_dropout,
             scaling=self.scaling,
             input_shape=input_shape,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
@@ -267,6 +277,7 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -294,6 +305,7 @@ class GaudiPhiDecoderLayer(torch.nn.Module):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
         attn_outputs = self.resid_dropout(attn_outputs)
 
@@ -329,6 +341,9 @@ class GaudiPhiModel(PhiModel):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        lazy_mode: Optional[bool] = True,
+        attn_softmax_bf16: Optional[bool] = False,
+        fp8: Optional[bool] = False,
         **kwargs,
     ) -> BaseModelOutputWithPast:
         """
@@ -397,6 +412,15 @@ class GaudiPhiModel(PhiModel):
         next_decoder_cache = ()
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
+            if (
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+                and not fp8  # mark_step impacts fp8 performance
+                and hthpu.get_device_name() != "GAUDI3" # mark_step improves gaudi 2 performance but impacts gaudi 3
+            ):
+                htcore.mark_step()
+
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -411,6 +435,7 @@ class GaudiPhiModel(PhiModel):
                     use_cache,
                     cache_position,
                     None,
+                    attn_softmax_bf16=attn_softmax_bf16
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -424,6 +449,7 @@ class GaudiPhiModel(PhiModel):
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
+                    attn_softmax_bf16=attn_softmax_bf16
                 )
 
             hidden_states = layer_outputs[0]
@@ -475,6 +501,7 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         **kwargs: Unpack[KwargsForCausalLM],
     ) -> CausalLMOutputWithPast:
         """
@@ -503,6 +530,8 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            fp8=kwargs.get("fp8"),
         )
 
         hidden_states = outputs.last_hidden_state
@@ -601,6 +630,9 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
                 "reuse_cache": kwargs.get("reuse_cache"),
                 "trim_logits": kwargs.get("trim_logits"),
                 "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "fp8": kwargs.get("fp8"),
             }
         )
 
