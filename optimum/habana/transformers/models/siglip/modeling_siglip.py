@@ -74,6 +74,7 @@ class GaudiSiglipAttention(SiglipAttention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
+        **kwargs,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
@@ -245,21 +246,14 @@ class GaudiSiglipEncoder(SiglipEncoder):
         for encoder_layer in self.layers:
             if output_hidden_states:
                 encoder_states = encoder_states + (hidden_states,)
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    encoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = encoder_layer(
-                    hidden_states,
-                    attention_mask,
-                    output_attentions=output_attentions,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                )
+
+            layer_outputs = encoder_layer(
+                hidden_states,
+                attention_mask,
+                output_attentions=output_attentions,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+            )
 
             hidden_states = layer_outputs[0]
 

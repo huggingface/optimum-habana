@@ -27,7 +27,6 @@ from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.starcoder2.configuration_starcoder2 import Starcoder2Config
 from transformers.models.starcoder2.modeling_starcoder2 import (
-    KwargsForCausalLM,
     Starcoder2Attention,
     Starcoder2DecoderLayer,
     Starcoder2ForCausalLM,
@@ -36,7 +35,7 @@ from transformers.models.starcoder2.modeling_starcoder2 import (
     apply_rotary_pos_emb,
 )
 from transformers.processing_utils import Unpack
-from transformers.utils import logging
+from transformers.utils import TransformersKwargs, logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -372,7 +371,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
@@ -383,6 +381,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
@@ -390,7 +389,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
-            output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
@@ -401,6 +399,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
+            **kwargs,
         )
         self.self_attn.attention_all_reduce(hidden_states)
         hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
@@ -408,9 +407,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
 
         if use_cache:
             outputs += (present_key_value,)
@@ -423,7 +419,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
@@ -434,6 +429,7 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -516,8 +512,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
         past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
@@ -527,11 +521,8 @@ class GaudiStarcoder2Model(Starcoder2Model):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
+        **kwargs,
     ) -> BaseModelOutputWithPast:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         # retrieve input_ids and inputs_embeds
@@ -543,12 +534,6 @@ class GaudiStarcoder2Model(Starcoder2Model):
             batch_size, seq_length = inputs_embeds.shape[:2]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
-
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -580,77 +565,45 @@ class GaudiStarcoder2Model(Starcoder2Model):
             hidden_states, p=self.embedding_dropout, training=self.training
         )  # main diff with Llama
 
-        # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
         next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    None,
-                    attn_softmax_bf16,
-                    False,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    cache_idx=cache_idx,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                use_cache=use_cache,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
+                reuse_cache=reuse_cache,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                cache_idx=cache_idx,
+                **kwargs,
+            )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+                next_decoder_cache += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
 
         next_cache = None
         if use_cache:
             next_cache = (
                 next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
             )
+
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
         )
 
 
@@ -682,8 +635,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -695,19 +646,13 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs: Unpack[TransformersKwargs],
     ) -> CausalLMOutputWithPast:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-
         if not hasattr(self.config, "_attn_implementation"):
             setattr(self.config, "_attn_implementation", "eager")
         else:
             self.config._attn_implementation = "eager"
 
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -715,8 +660,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
             cache_position=cache_position,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
@@ -726,6 +669,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
+            **kwargs,
         )
 
         hidden_states = outputs.last_hidden_state

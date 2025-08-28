@@ -263,10 +263,8 @@ class GaudiGPTJAttention(GPTJAttention):
         attn_output = self.resid_dropout(attn_output)
 
         outputs = (attn_output, present)
-        if output_attentions:
-            outputs += (attn_weights,)
 
-        return outputs  # a, present, (attentions)
+        return outputs
 
 
 class GaudiGPTJBlock(GPTJBlock):
@@ -491,37 +489,21 @@ class GaudiGPTJModel(GPTJModel):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                outputs = self._gradient_checkpointing_func(
-                    block.__call__,
-                    hidden_states,
-                    None,
-                    attention_mask,
-                    position_ids,
-                    head_mask[i],
-                    use_cache,
-                    output_attentions,
-                    cache_position,
-                    None,
-                    sin,
-                    cos,
-                )
-            else:
-                outputs = block(
-                    hidden_states=hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    head_mask=head_mask[i],
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                    reuse_cache=reuse_cache,
-                    cache_idx=cache_idx,
-                    sin=sin,
-                    cos=cos,
-                )
+            outputs = block(
+                hidden_states,
+                layer_past=layer_past,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                head_mask=head_mask[i],
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+                sin=sin,
+                cos=cos,
+            )
 
             hidden_states = outputs[0]
             if use_cache is True:

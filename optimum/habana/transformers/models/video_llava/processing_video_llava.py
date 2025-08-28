@@ -21,6 +21,7 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
     def __init__(
         self,
         image_processor=None,
+        video_processor=None,
         tokenizer=None,
         patch_size=None,
         vision_feature_select_strategy=None,
@@ -33,7 +34,7 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
         Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/processing_video_llava.py#L61
         except move super().__init__ to the top of the function so that it will not change the default value for self.patch_size and self.vision_feature_select_strategy
         """
-        super().__init__(image_processor, tokenizer, chat_template=chat_template)
+        super().__init__(image_processor, video_processor, tokenizer, chat_template=chat_template)
         self.patch_size = patch_size
         self.vision_feature_select_strategy = vision_feature_select_strategy
         self.image_token = image_token
@@ -53,15 +54,16 @@ class GaudiVideoLlavaProcessor(VideoLlavaProcessor):
         Copied from https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/video_llava/processing_video_llava.py#L78
         Here we use the processor logit in transformers 4.45.2 to avoid the performance regression for op `masked_scatter` in transformers 4.49 on Gaudi3
         """
-        data = {}
-        if images is not None or videos is not None:
-            encoded_images = self.image_processor(images=images, videos=videos, return_tensors=return_tensors)
-            data.update(encoded_images)
 
         if isinstance(text, str):
             text = [text]
         elif not isinstance(text, list) and not isinstance(text[0], str):
-            raise ValueError("Invalid input text. Please provide a string, or a list of strings")
+            raise TypeError("Invalid input text. Please provide a string, or a list of strings")
+
+        data = {}
+        if images is not None or videos is not None:
+            encoded_images = self.image_processor(images=images, videos=videos, return_tensors=return_tensors)
+            data.update(encoded_images)
 
         prompt_strings = text
         if encoded_images is not None and (self.patch_size is None or self.vision_feature_select_strategy is None):

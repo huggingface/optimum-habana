@@ -220,7 +220,7 @@ def postprocess_qa_predictions(
     # If we have an output_dir, let's save all those dicts.
     if output_dir is not None:
         if not os.path.isdir(output_dir):
-            raise EnvironmentError(f"{output_dir} is not a directory.")
+            raise OSError(f"{output_dir} is not a directory.")
 
         prediction_file = os.path.join(
             output_dir, "predictions.json" if prefix is None else f"{prefix}_predictions.json"
@@ -413,7 +413,7 @@ def postprocess_qa_predictions_with_beam_search(
     # If we have an output_dir, let's save all those dicts.
     if output_dir is not None:
         if not os.path.isdir(output_dir):
-            raise EnvironmentError(f"{output_dir} is not a directory.")
+            raise OSError(f"{output_dir} is not a directory.")
 
         prediction_file = os.path.join(
             output_dir, "predictions.json" if prefix is None else f"{prefix}_predictions.json"

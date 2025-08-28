@@ -204,10 +204,7 @@ def gaudi_bloom_attention_forward(
         output_tensor = self.dense(context_layer)
 
     output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
-
     outputs = (output_tensor, present)
-    if output_attentions:
-        outputs += (attention_probs,)
 
     return outputs
 
@@ -242,7 +239,7 @@ def gaudi_bloom_block_forward(
         residual = hidden_states
 
     # Self attention.
-    attn_outputs = self.self_attention(
+    attention_output, attn_weights = self.self_attention(
         layernorm_output,
         residual,
         layer_past=layer_past,
@@ -255,10 +252,6 @@ def gaudi_bloom_block_forward(
         token_idx=token_idx,
     )
 
-    attention_output = attn_outputs[0]
-
-    outputs = attn_outputs[1:]
-
     layernorm_output = self.post_attention_layernorm(attention_output)
 
     # Get residual
@@ -270,12 +263,7 @@ def gaudi_bloom_block_forward(
     # MLP.
     output = self.mlp(layernorm_output, residual)
 
-    if use_cache:
-        outputs = (output,) + outputs
-    else:
-        outputs = (output,) + outputs[1:]
-
-    return outputs  # hidden_states, present, attentions
+    return output, attn_weights  # hidden_states, present, attentions
 
 
 def gaudi_bloom_convert_to_standard_cache(
@@ -421,31 +409,17 @@ def gaudi_bloom_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                alibi,
-                causal_mask,
-                layer_past,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                alibi=alibi,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=causal_mask,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            alibi=alibi,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
@@ -599,28 +573,3 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
-
-    def _reorder_cache(
-        self, past: tuple[tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
-    ) -> tuple[tuple[torch.Tensor, torch.Tensor], ...]:
-        """
-        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
-        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
-        beam_idx at every generation step.
-
-        Output shares the same memory storage as `past`.
-        """
-        standardized_past = self._convert_to_standard_cache(past, batch_size=len(beam_idx), training=self.training)
-
-        # Get a copy of `beam_idx` on all the devices where we need those indices.
-        device_to_beam_idx = {
-            past_state.device: beam_idx.to(past_state.device) for layer_past in past for past_state in layer_past
-        }
-        reordered_past = tuple(
-            (
-                layer_past[0].index_select(0, device_to_beam_idx[layer_past[0].device]),
-                layer_past[1].index_select(0, device_to_beam_idx[layer_past[0].device]),
-            )
-            for layer_past in standardized_past
-        )
-        return self._convert_to_bloom_cache(reordered_past)

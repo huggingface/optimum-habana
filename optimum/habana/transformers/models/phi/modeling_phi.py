@@ -19,7 +19,6 @@
 # limitations under the License.
 """PyTorch Phi model."""
 
-from functools import partial
 from typing import Optional, Union
 
 import torch
@@ -27,7 +26,6 @@ from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.phi.configuration_phi import PhiConfig
 from transformers.models.phi.modeling_phi import (
-    KwargsForCausalLM,
     PhiAttention,
     PhiForCausalLM,
     PhiMLP,
@@ -35,7 +33,7 @@ from transformers.models.phi.modeling_phi import (
     apply_rotary_pos_emb,
 )
 from transformers.processing_utils import Unpack
-from transformers.utils import logging
+from transformers.utils import TransformersKwargs, logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -400,31 +398,19 @@ class GaudiPhiModel(PhiModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    partial(decoder_layer.__call__, **kwargs),
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
-                    None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    None,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                    reuse_cache=reuse_cache,
-                    cache_idx=cache_idx,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+                **kwargs,
+            )
 
             hidden_states = layer_outputs[0]
 
@@ -467,15 +453,13 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs: Unpack[TransformersKwargs],
     ) -> CausalLMOutputWithPast:
         """
         Inherits from PhiForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/phi/modeling_phi.py
@@ -484,12 +468,6 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
         - add new args reuse_cache
         - add new args cache_idx
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -497,8 +475,6 @@ class GaudiPhiForCausalLM(PhiForCausalLM):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
             cache_position=cache_position,
             token_idx=token_idx,
             reuse_cache=reuse_cache,

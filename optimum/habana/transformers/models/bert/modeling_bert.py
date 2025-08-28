@@ -3,6 +3,7 @@ from typing import Optional, Union
 import torch
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
+from transformers.cache_utils import Cache, EncoderDecoderCache
 from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions, BertSdpaSelfAttention
 
 from optimum.utils import logging
@@ -26,6 +27,7 @@ def gaudi_BertModel_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
 ) -> Union[tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/15c74a28294fe9082b81b24efe58df16fed79a9e/src/transformers/models/bert/modeling_bert.py
@@ -56,8 +58,13 @@ def gaudi_BertModel_forward(
     batch_size, seq_length = input_shape
     device = input_ids.device if input_ids is not None else inputs_embeds.device
 
-    # past_key_values_length
-    past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+    past_key_values_length = 0
+    if past_key_values is not None:
+        past_key_values_length = (
+            past_key_values[0][0].shape[-2]
+            if not isinstance(past_key_values, Cache)
+            else past_key_values.get_seq_length()
+        )
 
     if token_type_ids is None:
         if hasattr(self.embeddings, "token_type_ids"):
@@ -111,6 +118,7 @@ def gaudi_BertModel_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
     )
     sequence_output = encoder_outputs[0]
     pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
@@ -137,6 +145,7 @@ def gaudi_Bert_Sdpa_SelfAttention_forward(
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
     past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
+    cache_position: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor]:
     r"""
     Copied from https://github.com/huggingface/transformers/blob/v4.46.3/src/transformers/models/bert/modeling_bert.py
@@ -160,32 +169,54 @@ def gaudi_Bert_Sdpa_SelfAttention_forward(
             encoder_attention_mask,
             past_key_value,
             output_attentions,
+            cache_position,
         )
 
     bsz, tgt_len, _ = hidden_states.size()
 
-    query_layer = self.transpose_for_scores(self.query(hidden_states))
+    query_layer = (
+        self.query(hidden_states).view(bsz, -1, self.num_attention_heads, self.attention_head_size).transpose(1, 2)
+    )
 
     is_cross_attention = encoder_hidden_states is not None
+    current_states = encoder_hidden_states if is_cross_attention else hidden_states
+    if past_key_value is not None:
+        if isinstance(past_key_value, EncoderDecoderCache):
+            is_updated = past_key_value.is_updated.get(self.layer_idx)
+            if is_cross_attention:
+                # after the first generated id, we can subsequently re-use all key/value_states from cache
+                curr_past_key_value = past_key_value.cross_attention_cache
+            else:
+                curr_past_key_value = past_key_value.self_attention_cache
+        else:
+            curr_past_key_value = past_key_value
 
     current_states = encoder_hidden_states if is_cross_attention else hidden_states
-    attention_mask = encoder_attention_mask if is_cross_attention else attention_mask
-
-    if is_cross_attention and past_key_value and past_key_value[0].shape[2] == current_states.shape[1]:
-        key_layer, value_layer = past_key_value
+    if is_cross_attention and past_key_value is not None and is_updated:
+        # reuse k,v, cross_attentions
+        key_layer = curr_past_key_value.layers[self.layer_idx].keys
+        value_layer = curr_past_key_value.layers[self.layer_idx].values
     else:
-        key_layer = self.transpose_for_scores(self.key(current_states))
-        value_layer = self.transpose_for_scores(self.value(current_states))
-        if past_key_value is not None and not is_cross_attention:
-            key_layer = torch.cat([past_key_value[0], key_layer], dim=2)
-            value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
+        key_layer = (
+            self.key(current_states).view(bsz, -1, self.num_attention_heads, self.attention_head_size).transpose(1, 2)
+        )
+        value_layer = (
+            self.value(current_states)
+            .view(bsz, -1, self.num_attention_heads, self.attention_head_size)
+            .transpose(1, 2)
+        )
 
-    if self.is_decoder:
-        past_key_value = (key_layer, value_layer)
+    if past_key_value is not None:
+        # save all key/value_layer to cache to be re-used for fast auto-regressive generation
+        cache_position = cache_position if not is_cross_attention else None
+        key_layer, value_layer = curr_past_key_value.update(
+            key_layer, value_layer, self.layer_idx, {"cache_position": cache_position}
+        )
+        # set flag that curr layer for cross-attn is already updated so we can re-use in subsequent calls
+        if is_cross_attention:
+            past_key_value.is_updated[self.layer_idx] = True
 
-    is_causal = (
-        True if self.is_decoder and not is_cross_attention and attention_mask is None and tgt_len > 1 else False
-    )
+    is_causal = self.is_decoder and not is_cross_attention and attention_mask is None and tgt_len > 1
 
     attention_mask = attention_mask.to(query_layer.dtype)
     softmax_algo = "None"
@@ -198,7 +229,4 @@ def gaudi_Bert_Sdpa_SelfAttention_forward(
     attn_output = attn_output.transpose(1, 2)
     attn_output = attn_output.reshape(bsz, tgt_len, self.all_head_size)
 
-    outputs = (attn_output,)
-    if self.is_decoder:
-        outputs = outputs + (past_key_value,)
-    return outputs
+    return attn_output, None

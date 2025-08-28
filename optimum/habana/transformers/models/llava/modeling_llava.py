@@ -129,7 +129,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         tokens_pos: Optional[torch.LongTensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-        **lm_kwargs,
+        **kwargs,
     ) -> Union[tuple, LlavaCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/llava/modeling_llava.py#L362
@@ -138,7 +138,6 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         - add new args image_offset
         - add new args tokens_pos
         """
-
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -203,7 +202,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 token_idx=token_idx + image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
-                **lm_kwargs,
+                **kwargs,
             )
 
             if input_ids.shape[1] != 1 and pixel_values is not None and tokens_pos is not None:
@@ -242,7 +241,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 logits_to_keep=logits_to_keep,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
-                **lm_kwargs,
+                **kwargs,
             )
 
             logits = outputs[0]
