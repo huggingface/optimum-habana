@@ -147,12 +147,6 @@ def setup_lm_eval_parser():
         help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
     )
     parser.add_argument(
-        "--system_instruction",
-        type=str,
-        default=None,
-        help="System instruction to be used in the prompt",
-    )
-    parser.add_argument(
         "--apply_chat_template",
         type=str,
         nargs="?",
