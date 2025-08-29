@@ -43,6 +43,7 @@ class HabanaModelAdapter(HFLM):
         args: argparse.Namespace,
         options: GenerationConfig,
         backend: Literal["default", "causal", "seq2seq"] = "default",
+        truncation: Optional[bool] = False,
         logits_cache: bool = True,
         max_length: Optional[int] = None,
         softmax_dtype: Union[str, torch.dtype, None] = None,
@@ -80,6 +81,7 @@ class HabanaModelAdapter(HFLM):
 
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
+        self.truncation = truncation
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = max_length
@@ -154,7 +156,8 @@ class HabanaModelAdapter(HFLM):
 
     @property
     def max_length(self) -> int:
-        return self.buckets[-1]
+        # Legacy
+        return self._max_length if self._max_length else self.buckets[-1]
 
     @property
     def device(self):
