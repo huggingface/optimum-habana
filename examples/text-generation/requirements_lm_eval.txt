@@ -1,5 +1,7 @@
-lm-eval==0.4.7
+lm-eval==0.4.9.1
 datasets==3.6.0
+langdetect<=1.0.9
+immutabledict<=4.2.1
 tiktoken
 blobfile
 sentencepiece

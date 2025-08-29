@@ -22,6 +22,8 @@ import json
 import logging
 import multiprocessing as mp
 import os
+from pathlib import Path
+from typing import Union
 
 import psutil
 
@@ -53,6 +55,20 @@ def LimitedSpawnPool(_):
 mp.Pool = LimitedSpawnPool
 
 
+def try_parse_json(value: str) -> Union[str, dict, None]:
+    """
+    From https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py
+    """
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        if "{" in value:
+            raise argparse.ArgumentTypeError(f"Invalid JSON: {value}. Hint: Use double quotes for JSON strings.")
+        return value
+
+
 def setup_lm_eval_parser():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter, description="Evaluation script for HPU"
@@ -75,7 +91,14 @@ def setup_lm_eval_parser():
         help="Tasks to run",
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
-    parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument(
+        "--limit",
+        "-L",
+        type=float,
+        default=None,
+        metavar="N|0<N<1",
+        help="Limit the number of examples per task. If <1, limit is a percentage of the total number of examples.",
+    )
     parser.add_argument(
         "--show_config",
         action="store_true",
@@ -94,13 +117,67 @@ def setup_lm_eval_parser():
         help="System instruction to be used in the prompt",
     )
     parser.add_argument("--max_graphs", type=int, help="Maximum number of HPU graphs", default=None)
+    parser.add_argument(
+        "--gen_kwargs",
+        type=try_parse_json,
+        default=None,
+        help=(
+            "Either comma delimited string or JSON formatted arguments for model generation on greedy_until tasks,"
+            """ e.g. '{"temperature":0.7,"until":["hello"]}' or temperature=0,top_p=0.1."""
+        ),
+    )
+    parser.add_argument(
+        "--num_fewshot",
+        "-f",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of examples in few-shot context",
+    )
+    parser.add_argument(
+        "--fewshot_as_multiturn",
+        action="store_true",
+        default=False,
+        help="If True, uses the fewshot as a multi-turn conversation",
+    )
+    parser.add_argument(
+        "--metadata",
+        type=json.loads,
+        default=None,
+        help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
+    )
+    parser.add_argument(
+        "--apply_chat_template",
+        type=str,
+        nargs="?",
+        const=True,
+        default=False,
+        help=(
+            "If True, apply chat template to the prompt. "
+            "Providing `--apply_chat_template` without an argument will apply the default chat template to the prompt. "
+            "To apply a specific template from the available list of templates, provide the template name as an argument. "
+            "E.g. `--apply_chat_template template_name`"
+        ),
+    )
+    parser.add_argument(
+        "--samples",
+        "-E",
+        default=None,
+        type=str,
+        metavar="/path/to/json",
+        help='JSON string or path to JSON file containing doc indices of selected examples to test. Format: {"task_name":[indices],...}',
+    )
+    parser.add_argument(
+        "--confirm_run_unsafe_code",
+        action="store_true",
+        help="Confirm that you understand the risks of running unsafe code for tasks that require it",
+    )
     args = setup_parser(parser)
-
     return args
 
 
 def main() -> None:
-    # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
+    # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py#L301
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
@@ -108,20 +185,43 @@ def main() -> None:
     from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter
 
+    max_length = None
+    metadata = None
+    if args.metadata:
+        metadata = args.metadata if isinstance(args.metadata, dict) else utils.sample_parse_args_string(args.metadata)
+        max_length = args.metadata.get("max_length")
+
+    if args.fewshot_as_multiturn and args.apply_chat_template is False:
+        raise ValueError(
+            "When `fewshot_as_multiturn` is selected, `apply_chat_template` must be set (either to `True` or to the chosen template name)."
+        )
+    if args.samples:
+        assert args.limit is None, "If --samples is not None, then --limit must be None."
+        if (samples := Path(args.samples)).is_file():
+            args.samples = json.loads(samples.read_text())
+        else:
+            args.samples = json.loads(args.samples)
+
     with torch.no_grad():
-        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
+        lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
 
     from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     with HabanaGenerationTime() as timer:
         with torch.no_grad():
-            log_samples = args.log_samples
             results = evaluator.simple_evaluate(
                 lm,
                 tasks=args.tasks,
-                limit=args.limit_iters,
-                log_samples=log_samples,
+                limit=args.limit,
+                samples=args.samples,
+                log_samples=args.log_samples,
+                num_fewshot=args.num_fewshot,
+                fewshot_as_multiturn=args.fewshot_as_multiturn,
+                gen_kwargs=args.gen_kwargs,
                 system_instruction=args.system_instruction,
+                apply_chat_template=args.apply_chat_template,
+                metadata=metadata,
+                confirm_run_unsafe_code=args.confirm_run_unsafe_code,
             )
         if args.device == "hpu":
             import habana_frameworks.torch.hpu as torch_hpu
