@@ -824,6 +824,14 @@ pip install -r requirements_lm_eval.txt
 >
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==3.6.0
 
+> param --system_instruction adds a system message to the beginning of the prompt.
+> This instruction is treated as part of the input context and can influence how the model interprets the task or responds.
+> usage:
+> python  ./run_lm_eval.py \
+>  --model_name_or_path <model_name> \
+>  --tasks <task_name> \
+>  --system_instruction "You are a helpful assistant that thinks step-by-step before answering."
+>  --buckets=256
 
 ### Examples
 
