@@ -27,6 +27,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("tiiuae/falcon-11B-vlm", 1),
             ("Qwen/Qwen2-VL-2B-Instruct", 1),
             ("Qwen/Qwen2-VL-7B-Instruct", 1),
+            ("Qwen/Qwen2.5-VL-3B-Instruct", 1),
             ("THUDM/glm-4v-9b", 1),
         ],
         "fp8": [
