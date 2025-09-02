@@ -277,6 +277,11 @@ def setup_parser(parser):
         help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
     )
     parser.add_argument(
+        "--use_flex_attention",
+        action="store_true",
+        help="Whether to enable Habana Flex Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
         "--use_flash_attention",
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
