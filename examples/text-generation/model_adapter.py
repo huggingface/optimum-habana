@@ -19,13 +19,13 @@
 
 import argparse
 import logging
-from typing import List, Literal, Optional
+from typing import Literal, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import stop_sequences_criteria
+from lm_eval.models.utils import get_dtype, stop_sequences_criteria
 
 # Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -46,9 +46,15 @@ class HabanaModelAdapter(HFLM):
         truncation: Optional[bool] = False,
         logits_cache: bool = True,
         max_length: Optional[int] = None,
+        softmax_dtype: Union[str, torch.dtype, None] = None,
         add_bos_token: Optional[bool] = True,
         prefix_token_id: Optional[int] = None,
         delta: Optional[str] = None,
+        # end token for thinking, either the string or int token id.
+        # splits to get response after this token (if provided).
+        think_end_token: Optional[Union[str, int]] = None,
+        enable_thinking: Optional[bool] = None,
+        chat_template_args: Optional[dict] = None,
         **kwargs,
     ) -> None:
         # To skip cuda code of the HFLM init
@@ -64,12 +70,22 @@ class HabanaModelAdapter(HFLM):
         self.peft = args.peft_model
         self.delta = delta
         self.custom_prefix_token_id = prefix_token_id
+        if isinstance(think_end_token, str) and think_end_token.isdigit():
+            self.think_end_token = int(think_end_token)
+        else:
+            self.think_end_token = think_end_token
+
+        self.chat_template_args = chat_template_args or {}
+        if enable_thinking is not None:
+            self.chat_template_args.update({"enable_thinking": enable_thinking})
+
         # determine which of 'causal' and 'seq2seq' backends to use for HF models
         self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
         self.truncation = truncation
         self.logits_cache = logits_cache
         self.add_bos_token = add_bos_token
         self._max_length = max_length
+        self.softmax_dtype = get_dtype(softmax_dtype) if softmax_dtype is not None else None
         self.hpu_graphs = args.use_hpu_graphs
         self.use_lazy_mode = True
         if args.torch_compile:
@@ -153,8 +169,14 @@ class HabanaModelAdapter(HFLM):
     def max_length(self, value: int) -> None:
         self._max_length = value
 
-    def find_bucket(self, length: int) -> list[int]:
-        return [b for b in self.buckets if b >= length][0]
+    def find_bucket(self, length: int, key=lambda b, length: b >= length) -> int:
+        for b in self.buckets:
+            if key(b, length):
+                return b
+        new_bucket = length
+        self.buckets.append(new_bucket)
+        self.buckets.sort()
+        return new_bucket
 
     def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
         bs, seq_length = inps.shape
@@ -173,7 +195,7 @@ class HabanaModelAdapter(HFLM):
 
         return logits
 
-    def generate_until(self, requests: List[Instance], disable_tqdm: bool = False) -> List[str]:
+    def generate_until(self, requests: list[Instance], disable_tqdm: bool = False) -> list[str]:
         """
         Override to change only max_length property
         """
@@ -207,18 +229,15 @@ class HabanaModelAdapter(HFLM):
         stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
         # to avoid graph recompilation
         if self.options.static_shapes:
-            # Filter buckets greater than or equal to the given number
-            greater_or_equal = [x for x in self.buckets if x >= context.shape[1]]
-            # Return the smallest value from the filtered list, or the context shape, if no such value exists
-            bucket = min(greater_or_equal, default=context.shape[1])
+            self.options.bucket_internal = True
+            _ = self.find_bucket(context.shape[1])
             max_gen_toks = max_length - context.shape[1]
-            max_length = max(max_length, max_gen_toks + bucket)
         # move context & attention_mask to hpu
         context = context.to("hpu")
         generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
         return self.model.generate(
             input_ids=context,
-            max_length=max_length,
+            max_new_tokens=max_gen_toks,
             stopping_criteria=stopping_criteria,
             pad_token_id=self.tokenizer.pad_token_id,
             use_cache=True,
@@ -226,39 +245,3 @@ class HabanaModelAdapter(HFLM):
             lazy_mode=self.use_lazy_mode,
             **generation_kwargs,
         )
-
-    def get_model_info(self) -> dict:
-        """
-        Patched method to get Hugging Face model information for experiment reproducibility.
-        source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/models/huggingface.py/#L1375
-        Remove from SynapseAI 1.21
-        """
-
-        def get_model_num_params(model) -> int:
-            if hasattr(model, "num_parameters"):
-                return model.num_parameters()
-            if hasattr(model, "parameters"):
-                return sum(p.numel() for p in model.parameters())
-            else:
-                return -1
-
-        def get_model_dtype(model) -> str:
-            if hasattr(model, "dtype"):
-                return model.dtype
-            else:
-                return ""
-
-        def get_model_sha(pretrained: str, revision: str) -> str:
-            return ""
-
-        model_info = {
-            "model_num_parameters": get_model_num_params(self._model),
-            "model_dtype": get_model_dtype(self._model),
-            "model_revision": self.revision,
-            "model_sha": get_model_sha(self.pretrained, self.revision),
-        }
-        if self.peft:
-            model_info["peft_sha"] = get_model_sha(self.peft, self.revision)
-        if self.delta:
-            model_info["delta_sha"] = get_model_sha(self.delta, self.revision)
-        return model_info
