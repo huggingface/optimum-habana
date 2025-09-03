@@ -336,8 +336,9 @@ class HabanaProfile:
             for p in running_others:
                 try:
                     p.stop()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to stop another Habana profiler instance: {e}")
+
 
         self._running = True
         self._profiler.start()
@@ -358,8 +359,8 @@ class HabanaProfile:
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
             self.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to stop Habana profiler during context exit: {e}")
 
 
 def check_optimum_habana_min_version(min_version):
