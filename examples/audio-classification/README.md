@@ -150,10 +150,10 @@ PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
 $ apt install git-lfs
 ```
 
-2. Log in with your HuggingFace account credentials using `huggingface-cli`
+2. Log in with your HuggingFace account credentials using `hf`
 
 ```bash
-$ huggingface-cli login
+$ hf auth login
 # ...follow the prompts
 ```
 

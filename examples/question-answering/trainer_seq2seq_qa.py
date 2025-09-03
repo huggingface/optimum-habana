@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2021 The HuggingFace Team All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +17,7 @@ A subclass of `GaudiSeq2SeqTrainer` specific to Question-Answering tasks
 
 import math
 import time
-from typing import Dict, List, Optional
+from typing import Optional
 
 from torch.utils.data import Dataset
 from transformers.trainer_utils import PredictionOutput, speed_metrics
@@ -37,10 +36,10 @@ class QuestionAnsweringSeq2SeqTrainer(GaudiSeq2SeqTrainer):
         self,
         eval_dataset: Optional[Dataset] = None,
         eval_examples=None,
-        ignore_keys: Optional[List[str]] = None,
+        ignore_keys: Optional[list[str]] = None,
         metric_key_prefix: str = "eval",
         **gen_kwargs,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         gen_kwargs = gen_kwargs.copy()
 
         # Use legacy argument setting if a) the option is not explicitly passed; and b) the argument is set in the

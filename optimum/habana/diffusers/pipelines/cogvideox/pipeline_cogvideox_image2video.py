@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,39 +13,39 @@
 # limitations under the License.
 
 import math
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
-from diffusers import CogVideoXPipeline
+from diffusers import CogVideoXImageToVideoPipeline
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
+from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from diffusers.models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3d
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import retrieve_timesteps
 from diffusers.pipelines.cogvideo.pipeline_output import CogVideoXPipelineOutput
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from diffusers.utils import (
-    logging,
-)
-from diffusers.utils.torch_utils import randn_tensor
+from diffusers.utils import logging
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ....transformers.gaudi_configuration import GaudiConfig
+from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+
 from ...models.attention_processor import CogVideoXAttnProcessorGaudi
 from ...models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3dforwardGaudi, tiled_decode_gaudi
 from ...models.transformers.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
-from ..pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 setattr(CogVideoXCausalConv3d, "forward", CogVideoXCausalConv3dforwardGaudi)
 setattr(AutoencoderKLCogVideoX, "tiled_decode", tiled_decode_gaudi)
 
 
-class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
+class GaudiCogVideoXImageToVideoPipeline(GaudiDiffusionPipeline, CogVideoXImageToVideoPipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py#L84
-    The cogVideoX pipeline for text-to-video generation.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.34.0/src/diffusers/pipelines/cogvideo/pipeline_cogvideox_image2video.py#L164
     """
 
     def __init__(
@@ -59,7 +59,6 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
-        sdp_on_bf16: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -67,9 +66,8 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             use_hpu_graphs,
             gaudi_config,
             bf16_full_eval,
-            sdp_on_bf16,
         )
-        CogVideoXPipeline.__init__(
+        CogVideoXImageToVideoPipeline.__init__(
             self,
             tokenizer,
             text_encoder,
@@ -93,37 +91,10 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         else:
             return super().enable_model_cpu_offload(*args, **kwargs)
 
-    def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
-    ):
-        shape = (
-            batch_size,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
-            num_channels_latents,
-            height // self.vae_scale_factor_spatial,
-            width // self.vae_scale_factor_spatial,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if latents is None:
-            # torch.randn is broken on HPU so running it on CPU
-            rand_device = "cpu" if device.type == "hpu" else device
-            rand_device = torch.device(rand_device)
-            latents = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
-        else:
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
-
     @torch.no_grad()
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
@@ -141,6 +112,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -151,6 +123,8 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            image (`PipelineImageInput`):
+                    The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -223,30 +197,30 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-            if num_frames > 49:
-                raise ValueError(
-                    "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
-                )
-
             if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
                 callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
             # 0. Default height and width to unet
             height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
             width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
+            num_frames = num_frames or self.transformer.config.sample_frames
+
             num_videos_per_prompt = 1
 
             # 1. Check inputs. Raise error if not correct
             self.check_inputs(
-                prompt,
-                height,
-                width,
-                negative_prompt,
-                callback_on_step_end_tensor_inputs,
-                prompt_embeds,
-                negative_prompt_embeds,
+                image=image,
+                prompt=prompt,
+                height=height,
+                width=width,
+                negative_prompt=negative_prompt,
+                callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+                latents=latents,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
             )
             self._guidance_scale = guidance_scale
+            self._attention_kwargs = attention_kwargs
             self._interrupt = False
 
             # 2. Define call parameters
@@ -258,6 +232,7 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                 batch_size = prompt_embeds.shape[0]
 
             device = self._execution_device
+
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
             # corresponds to doing no classifier free guidance.
@@ -265,9 +240,9 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
 
             # 3. Encode input prompt
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-                prompt,
-                negative_prompt,
-                do_classifier_free_guidance,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                do_classifier_free_guidance=do_classifier_free_guidance,
                 num_videos_per_prompt=num_videos_per_prompt,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
@@ -281,17 +256,23 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             self._num_timesteps = len(timesteps)
 
-            # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+            # 5. Prepare latents
             latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
+            # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
             patch_size_t = self.transformer.config.patch_size_t
             additional_frames = 0
             if patch_size_t is not None and latent_frames % patch_size_t != 0:
                 additional_frames = patch_size_t - latent_frames % patch_size_t
                 num_frames += additional_frames * self.vae_scale_factor_temporal
 
-            # 5. Prepare latent variables
-            latent_channels = self.transformer.config.in_channels
-            latents = self.prepare_latents(
+            image = self.video_processor.preprocess(image, height=height, width=width).to(
+                device, dtype=prompt_embeds.dtype
+            )
+
+            latent_channels = self.transformer.config.in_channels // 2
+            latents, image_latents = self.prepare_latents(
+                image,
                 batch_size * num_videos_per_prompt,
                 latent_channels,
                 num_frames,
@@ -306,16 +287,18 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+            # 7. Create rotary embeds if required
             image_rotary_emb = (
                 self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
 
-            # 7. Denoising loop
+            # 8. Create ofs embeds if required
+            ofs_emb = None if self.transformer.config.ofs_embed_dim is None else latents.new_full((1,), fill_value=2.0)
+
+            # 8. Denoising loop
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-            outputs = []
-            import habana_frameworks.torch.core as htcore
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 # for DPM-solver++
@@ -323,9 +306,13 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
                         continue
-
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    latent_image_input = (
+                        torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+                    )
+                    latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
@@ -334,9 +321,10 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                         latent_model_input=latent_model_input,
                         prompt_embeds=prompt_embeds,
                         timestep=timestep,
+                        ofs_emb=ofs_emb,
                         image_rotary_emb=image_rotary_emb,
+                        attention_kwargs=attention_kwargs,
                     )
-
                     noise_pred = noise_pred.float()
 
                     # perform guidance
@@ -402,22 +390,32 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         return CogVideoXPipelineOutput(frames=video)
 
     @torch.no_grad()
-    def transformer_hpu(self, latent_model_input, prompt_embeds, timestep, image_rotary_emb):
+    def transformer_hpu(
+        self, latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb, attention_kwargs
+    ):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, prompt_embeds, timestep, image_rotary_emb)
+            return self.capture_replay(latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb)
         else:
             return self.transformer(
                 self.transformer,
                 hidden_states=latent_model_input,
                 encoder_hidden_states=prompt_embeds,
                 timestep=timestep,
+                ofs=ofs_emb,
                 image_rotary_emb=image_rotary_emb,
                 return_dict=False,
             )[0]
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, prompt_embeds, timestep, image_rotary_emb):
-        inputs = [latent_model_input.clone(), prompt_embeds.clone(), timestep.clone(), image_rotary_emb, False]
+    def capture_replay(self, latent_model_input, prompt_embeds, timestep, ofs_emb, image_rotary_emb):
+        inputs = [
+            latent_model_input.clone(),
+            prompt_embeds.clone(),
+            timestep.clone(),
+            ofs_emb,
+            image_rotary_emb,
+            False,
+        ]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
@@ -431,8 +429,9 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                     hidden_states=inputs[0],
                     encoder_hidden_states=inputs[1],
                     timestep=inputs[2],
-                    image_rotary_emb=inputs[3],
-                    return_dict=inputs[4],
+                    ofs=inputs[3],
+                    image_rotary_emb=inputs[4],
+                    return_dict=inputs[5],
                 )[0]
                 graph.capture_end()
                 graph_inputs = inputs

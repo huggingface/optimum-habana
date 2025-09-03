@@ -438,6 +438,12 @@ def setup_parser(parser):
         help="Set torch._dynamo.config.specialize_float to True.",
     )
 
+    parser.add_argument(
+        "--dynamo_allow_unspec_int_on_nn_module",
+        action="store_true",
+        help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -544,6 +550,9 @@ def main():
         ds = get_ds(args)
         input_sentences = get_input(ds, args.batch_size)
 
+        if args.dataset_max_samples > 0:
+            input_sentences = input_sentences[: args.dataset_max_samples]
+
         def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
 
@@ -643,6 +652,9 @@ def main():
             acc_file = []
             num_token = 0
             for i, idx in enumerate(ds.index):
+                if args.dataset_max_samples > 0 and i >= args.dataset_max_samples:
+                    break
+
                 pred = results[i]
                 eos_token_id = 2
                 try:
