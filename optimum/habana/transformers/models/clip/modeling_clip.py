@@ -1,9 +1,9 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
-from transformers.models.clip.configuration_clip import CLIPConfig
+from transformers.models.clip.configuration_clip import CLIPTextConfig, CLIPVisionConfig
 from transformers.models.clip.modeling_clip import (
     CLIPMLP,
     CLIPAttention,
@@ -61,11 +61,11 @@ class Softmax(nn.Module):
         super().__init__()
 
     def forward(self, x, dim=None, invAttnHead=None):
-        return torch.nn.functional.softmax(x, dim)
+        return torch.nn.functional.softmax(x, dim, dtype=torch.float32)
 
 
 class GaudiCLIPAttention(CLIPAttention):
-    def __init__(self, config):
+    def __init__(self, config: Union[CLIPVisionConfig, CLIPTextConfig]):
         super().__init__(config=config)
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.bmm1 = Matmul()
@@ -89,28 +89,34 @@ class GaudiCLIPAttention(CLIPAttention):
         - add new args flash_attention_recompute
         - add new args flash_attention_fast_softmax
         """
-        bsz, tgt_len, _ = hidden_states.size()
-        attn_weights_reshaped = None
-        # get query proj
-        query_states = self.q_proj(hidden_states) * self.scale
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        batch_size, seq_length, embed_dim = hidden_states.shape
 
-        proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-        query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
-        key_states = key_states.view(*proj_shape)
-        value_states = value_states.view(*proj_shape)
+        queries = self.q_proj(hidden_states)
+        keys = self.k_proj(hidden_states)
+        values = self.v_proj(hidden_states)
 
-        src_len = key_states.size(1)
+        queries = queries.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
+        keys = keys.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
+        values = values.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
+        # CLIP text model uses both `causal_attention_mask` and `attention_mask`
+        # in case FA2 kernel is called, `is_causal` should be inferred from `causal_attention_mask`
+        if self.config._attn_implementation == "flash_attention_2":
+            self.is_causal = causal_attention_mask is not None
+        else:
+            if attention_mask is not None and causal_attention_mask is not None:
+                attention_mask = attention_mask + causal_attention_mask
+            elif causal_attention_mask is not None:
+                attention_mask = causal_attention_mask
+
         if FusedSDPA and use_flash_attention:
             import habana_frameworks.torch.hpu as ht
 
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
             with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                 attn_output = self.fused_scaled_dot_product_attention(
-                    query_states,
-                    key_states,
-                    value_states,
+                    queries,
+                    keys,
+                    values,
                     attention_mask,
                     self.dropout,
                     False,
@@ -118,64 +124,27 @@ class GaudiCLIPAttention(CLIPAttention):
                     softmax_mode,
                 )
         else:
-            attn_weights = self.bmm1(query_states, key_states.transpose(1, 2))
-            if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
-                raise ValueError(
-                    f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
-                    f" {attn_weights.size()}"
-                )
-
-            # apply the causal_attention_mask first
-            if causal_attention_mask is not None:
-                if causal_attention_mask.size() != (bsz, 1, tgt_len, src_len):
-                    raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is"
-                        f" {causal_attention_mask.size()}"
-                    )
-                attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + causal_attention_mask
-                attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
+            attn_weights = self.bmm1(queries, keys.transpose(1, 2)) * self.scale
             if attention_mask is not None:
-                if attention_mask.size() != (bsz, 1, tgt_len, src_len):
-                    raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
-                    )
-                attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
-                attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+                attn_weights = attn_weights + attention_mask
+            attn_weights = self.softmax(attn_weights, dim=-1).to(queries.dtype)
+            attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
-            attn_weights = self.softmax(attn_weights, dim=-1)
+            attn_output = self.bmm2(attn_weights, values)
 
-            if output_attentions:
-                # this operation is a bit awkward, but it's required to
-                # make sure that attn_weights keeps its gradient.
-                # In order to do so, attn_weights have to reshaped
-                # twice and have to be reused in the following
-                attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-                attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
-            else:
-                attn_weights_reshaped = None
+        # attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous()
 
-            attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-
-            attn_output = self.bmm2(attn_probs, value_states)
-
-        if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
-            )
-
-        attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
-        attn_output = attn_output.transpose(1, 2)
-        attn_output = attn_output.reshape(bsz, tgt_len, -1)
-
+        attn_output = attn_output.reshape(batch_size, seq_length, embed_dim).contiguous()
         attn_output = self.out_proj(attn_output)
 
-        return attn_output, attn_weights_reshaped
+        if not output_attentions:
+            attn_weights = None
+        return attn_output, attn_weights
 
 
 class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
-    def __init__(self, config: CLIPConfig):
+    def __init__(self, config: Union[CLIPVisionConfig, CLIPTextConfig]):
         super(CLIPEncoderLayer, self).__init__()
         self.embed_dim = config.hidden_size
         self.self_attn = GaudiCLIPAttention(config)
@@ -253,23 +222,14 @@ class GaudiCLIPEncoder(CLIPEncoder):
         for idx, encoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 encoder_states = encoder_states + (hidden_states,)
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    encoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    causal_attention_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = encoder_layer(
-                    hidden_states,
-                    attention_mask,
-                    causal_attention_mask,
-                    output_attentions=output_attentions,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                )
+            layer_outputs = encoder_layer(
+                hidden_states,
+                attention_mask,
+                causal_attention_mask,
+                output_attentions=output_attentions,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+            )
 
             hidden_states = layer_outputs[0]
 

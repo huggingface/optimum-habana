@@ -222,7 +222,6 @@ class GaudiMllamaVisionEncoderLayer(MllamaVisionEncoderLayer):
         self,
         hidden_state: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ):
         """
@@ -248,12 +247,7 @@ class GaudiMllamaVisionEncoderLayer(MllamaVisionEncoderLayer):
             hidden_state = self.gate_ffn.tanh() * hidden_state
         hidden_state = residual + hidden_state
 
-        outputs = (hidden_state,)
-
-        if output_attentions:
-            outputs += (attn_weights,)
-
-        return outputs
+        return hidden_state
 
 
 class GaudiMllamaVisionEncoder(MllamaVisionEncoder):
@@ -261,9 +255,6 @@ class GaudiMllamaVisionEncoder(MllamaVisionEncoder):
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[tuple, BaseModelOutput]:
         """
@@ -271,46 +262,16 @@ class GaudiMllamaVisionEncoder(MllamaVisionEncoder):
         The only differences are:
             - add use_flash_attention
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        encoder_states = () if output_hidden_states else None
-        all_attentions = () if output_attentions else None
-
         for encoder_layer in self.layers:
-            if output_hidden_states:
-                encoder_states = encoder_states + (hidden_states,)
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    encoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = encoder_layer(
-                    hidden_state=hidden_states,
-                    attention_mask=attention_mask,
-                    output_attentions=output_attentions,
-                    use_flash_attention=use_flash_attention,
-                )
+            hidden_states = encoder_layer(
+                hidden_state=hidden_states,
+                attention_mask=attention_mask,
+                use_flash_attention=use_flash_attention,
+            )
 
-            if output_attentions:
-                all_attentions = all_attentions + (layer_outputs[1],)
             htcore.mark_step()
-            hidden_states = layer_outputs[0]
 
-        if output_hidden_states:
-            encoder_states = encoder_states + (hidden_states,)
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
-        )
+        return BaseModelOutput(last_hidden_state=hidden_states)
 
 
 class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
@@ -324,12 +285,12 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         cross_attention_states: Optional[torch.Tensor] = None,
         past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **kwargs,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         Copied from MllamaTextCrossAttention::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L512
@@ -350,9 +311,7 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
             value_states = self.v_proj(cross_attention_states)
             key_states = key_states.view(bsz, -1, self.num_key_value_heads, self.head_dim).transpose(1, 2)
             value_states = value_states.view(bsz, -1, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-            if not (FusedSDPA and use_flash_attention):
-                key_states = repeat_kv(key_states, self.num_key_value_groups)
-                value_states = repeat_kv(value_states, self.num_key_value_groups)
+
             key_states = self.k_norm(key_states)
             if past_key_value is not None:
                 # if we have a new image + new tokens, we only computed key_states on that new image
@@ -376,8 +335,8 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
             key_states, value_states = (past_key_value[0], past_key_value[1])
         elif cache_position is not None and cache_position[0] != 0:
             key_states, value_states = (
-                past_key_value.key_cache[self.layer_idx],
-                past_key_value.value_cache[self.layer_idx],
+                past_key_value.layers[self.layer_idx].keys,
+                past_key_value.layers[self.layer_idx].values,
             )
         else:
             raise ValueError(
@@ -413,9 +372,6 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         attn_output = attn_output.reshape(bsz, q_len, -1)
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
-            attn_weights = None
-
         return attn_output, attn_weights, past_key_value
 
 
@@ -429,7 +385,6 @@ class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         position_embeddings: torch.Tensor,
-        output_attentions: bool = False,
         use_cache: bool = False,
         past_key_value=None,
         cache_position=None,
@@ -512,9 +467,6 @@ class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
 
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
-            attn_weights = None
-
         return attn_output, attn_weights, past_key_value
 
 
@@ -534,13 +486,13 @@ class GaudiMllamaSelfAttentionDecoderLayer(MllamaSelfAttentionDecoderLayer):
         full_text_row_masked_out_mask: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from MllamaSelfAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L904
@@ -558,13 +510,13 @@ class GaudiMllamaSelfAttentionDecoderLayer(MllamaSelfAttentionDecoderLayer):
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
-            output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            **kwargs,
         )
         hidden_states = residual + hidden_states
 
@@ -575,9 +527,6 @@ class GaudiMllamaSelfAttentionDecoderLayer(MllamaSelfAttentionDecoderLayer):
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
 
         if use_cache:
             outputs += (present_key_value,)
@@ -599,13 +548,13 @@ class GaudiMllamaCrossAttentionDecoderLayer(MllamaCrossAttentionDecoderLayer):
         full_text_row_masked_out_mask: tuple[torch.Tensor, torch.Tensor],
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **kwargs,
     ) -> tuple[torch.Tensor]:
         """
         Copied from MllamaCrossAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L989
@@ -622,12 +571,12 @@ class GaudiMllamaCrossAttentionDecoderLayer(MllamaCrossAttentionDecoderLayer):
             attention_mask=cross_attention_mask,
             cross_attention_states=cross_attention_states,
             past_key_value=past_key_value,
-            output_attentions=output_attentions,
             cache_position=cache_position,
             use_cache=use_cache,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            **kwargs,
         )
         hidden_states = residual + self.cross_attn_attn_gate.tanh() * hidden_states
 
@@ -639,9 +588,6 @@ class GaudiMllamaCrossAttentionDecoderLayer(MllamaCrossAttentionDecoderLayer):
         hidden_states = residual + self.cross_attn_mlp_gate.tanh() * hidden_states
 
         outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (attn_weights,)
 
         if use_cache:
             outputs += (past_key_value,)
@@ -661,13 +607,11 @@ class GaudiMllamaTextModel(MllamaTextModel):
         past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        **kwargs,
     ) -> Union[tuple, BaseModelOutputWithPast]:
         """
         Copied from MllamaTextModel::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1617
@@ -676,21 +620,10 @@ class GaudiMllamaTextModel(MllamaTextModel):
             - add support if past_key_value is not Cache
             - add use_flash_attention and flash_attention_recompute
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
-
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -708,9 +641,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
                 )
             if position_ids is None:
                 position_ids = cache_position.unsqueeze(0)
-            causal_mask = self._update_causal_mask(
-                attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-            )
+            causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_key_values)
         else:
             if position_ids is None:
                 position_ids = torch.arange(
@@ -732,8 +663,6 @@ class GaudiMllamaTextModel(MllamaTextModel):
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
         next_decoder_cache = None if isinstance(past_key_values, Cache) else ()
 
         for idx, decoder_layer in enumerate(self.layers):
@@ -741,8 +670,6 @@ class GaudiMllamaTextModel(MllamaTextModel):
                 not torch.distributed.is_initialized() or torch.distributed.get_world_size() == 1
             ):
                 htcore.mark_step()
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
 
             # For text-only path we should skip cross attention layers.
             # Let's check if the layer is cross attention layer and if we have cross attention states
@@ -757,69 +684,42 @@ class GaudiMllamaTextModel(MllamaTextModel):
             if is_cross_attention_layer and cross_attention_states is None and is_cross_attention_cache_empty:
                 continue
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    cross_attention_states,
-                    cross_attention_mask,
-                    causal_mask,
-                    full_text_row_masked_out_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    position_embeddings,
-                )
+            if isinstance(past_key_values, Cache):
+                past_key_value = past_key_values
             else:
-                if isinstance(past_key_values, Cache):
-                    past_key_value = past_key_values
-                else:
-                    past_key_value = None if past_key_values is None else past_key_values[idx]
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    cross_attention_states=cross_attention_states,
-                    cross_attention_mask=cross_attention_mask,
-                    attention_mask=causal_mask,
-                    full_text_row_masked_out_mask=full_text_row_masked_out_mask,
-                    position_ids=position_ids,
-                    past_key_value=past_key_value,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    token_idx=token_idx,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                )
+                past_key_value = None if past_key_values is None else past_key_values[idx]
+            layer_outputs = decoder_layer(
+                hidden_states,
+                cross_attention_states=cross_attention_states,
+                cross_attention_mask=cross_attention_mask,
+                attention_mask=causal_mask,
+                full_text_row_masked_out_mask=full_text_row_masked_out_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+                token_idx=token_idx,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                **kwargs,
+            )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
                 if isinstance(past_key_values, Cache):
-                    next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+                    next_decoder_cache = layer_outputs[1]
                 else:
-                    next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+                    next_decoder_cache += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
 
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
-
         next_cache = next_decoder_cache if use_cache else None
 
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
         )
 
     def _update_causal_mask(
@@ -828,7 +728,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         input_tensor: torch.Tensor,
         cache_position: torch.Tensor,
         past_key_values: Cache,
-        output_attentions: bool,
+        output_attentions: bool = False,
     ):
         """
         Copied from MllamaTextModel::_update_causal_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1768
@@ -908,9 +808,6 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -918,7 +815,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        **loss_kwargs,
+        **kwargs,
     ) -> Union[tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1871
@@ -927,12 +824,6 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
             - add logits handle if token_idx is not None
             - add use_flash_attention and flash_attention_recompute
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -944,16 +835,14 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
             token_idx=token_idx,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            **kwargs,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -972,11 +861,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
         return CausalLMOutputWithPast(
             loss=loss,
@@ -1007,9 +892,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
@@ -1017,7 +899,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        **loss_kwargs,
+        **kwargs,
     ) -> Union[tuple, CausalLMOutputWithPast]:
         """
         Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2077
@@ -1025,12 +907,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             - add token_idx input
             - add use_flash_attention and flash_attention_recompute
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
@@ -1050,9 +926,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 pixel_values=pixel_values,
                 aspect_ratio_ids=aspect_ratio_ids,
                 aspect_ratio_mask=aspect_ratio_mask,
-                output_hidden_states=output_hidden_states,
-                output_attentions=output_attentions,
-                return_dict=return_dict,
                 use_flash_attention=use_flash_attention,
             )
             cross_attention_states = vision_outputs[0]
@@ -1095,9 +968,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             use_cache=use_cache,
             inputs_embeds=inputs_embeds,
             labels=labels,
-            output_hidden_states=output_hidden_states,
-            output_attentions=output_attentions,
-            return_dict=return_dict,
             cache_position=cache_position,
             logits_to_keep=logits_to_keep,
             token_idx=token_idx,
@@ -1105,7 +975,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
-            **loss_kwargs,
+            **kwargs,
         )
 
         return outputs
@@ -1238,22 +1108,14 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         pixel_values: torch.Tensor,
         aspect_ratio_ids: torch.Tensor,
         aspect_ratio_mask: torch.Tensor,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
+        **kwargs,
     ) -> Union[BaseModelOutput, tuple[torch.Tensor, ...]]:
         """
         Copied from MllamaVisionModel::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1425
         The only differences are:
             - optimize perf of stage "Collect intermediate layer outputs from encoder output"
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         batch_size, num_concurrent_media, num_tiles, num_channels, height, width = pixel_values.shape
 
         pixel_values = pixel_values.reshape(batch_size * num_concurrent_media * num_tiles, num_channels, height, width)
@@ -1303,11 +1165,9 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         output = self.transformer(
             hidden_state,
             attention_mask=attention_mask,
-            output_hidden_states=True,
-            output_attentions=output_attentions,
             use_flash_attention=use_flash_attention,
         )
-        hidden_state = output[0]
+        hidden_state = output.last_hidden_state
 
         hidden_state = self.layernorm_post(hidden_state)
 
@@ -1322,11 +1182,9 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         global_output = self.global_transformer(
             hidden_state,
             attention_mask=attention_mask,
-            output_hidden_states=output_hidden_states,
-            output_attentions=output_attentions,
             use_flash_attention=use_flash_attention,
         )
-        hidden_state = global_output[0]
+        hidden_state = global_output.last_hidden_state
 
         # Remove padding form hidden state
         hidden_state = hidden_state.reshape(
@@ -1336,7 +1194,7 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
 
         # Collect intermediate layer outputs from encoder output
-        all_intermediate_hidden_states = [output[1][i] for i in self.intermediate_layers_indices]
+        all_intermediate_hidden_states = [output.last_hidden_state for _ in self.intermediate_layers_indices]
         intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
 
         """
@@ -1356,23 +1214,4 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         # Concatenate final hidden state and intermediate hidden states
         hidden_state = torch.cat([hidden_state, intermediate_hidden_states], dim=-1)
 
-        if output_hidden_states:
-            hidden_states = tuple(all_intermediate_hidden_states) + tuple(global_output[1])
-        else:
-            hidden_states = None
-
-        if output_attentions:
-            # global transformer in contrast to `self.transformer` doesn't always return hidden states so we might go index out-of-range
-            global_attn = tuple(global_output[2]) if output_hidden_states else tuple(global_output[1])
-            attentions = tuple(output[2]) + global_attn
-        else:
-            attentions = None
-
-        if not return_dict:
-            return tuple(v for v in [hidden_state, hidden_states, attentions] if v is not None)
-
-        return BaseModelOutput(
-            last_hidden_state=hidden_state,
-            hidden_states=hidden_states,
-            attentions=attentions,
-        )
+        return BaseModelOutput(last_hidden_state=hidden_state)
