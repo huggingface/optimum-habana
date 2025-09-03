@@ -339,7 +339,6 @@ class HabanaProfile:
                 except Exception as e:
                     logger.warning(f"Failed to stop another Habana profiler instance: {e}")
 
-
         self._running = True
         self._profiler.start()
 
