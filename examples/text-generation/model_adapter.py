@@ -90,6 +90,7 @@ class HabanaModelAdapter(HFLM):
         self.mixed_precision_dtype = get_dtype(mixed_precision_dtype) if mixed_precision_dtype is not None else None
         self.hpu_graphs = args.use_hpu_graphs
         self.use_lazy_mode = True
+        self.ignore_eos = args.ignore_eos
         if args.torch_compile:
             self.use_lazy_mode = False
         self.vocab_size = self._model.config.vocab_size
@@ -224,7 +225,6 @@ class HabanaModelAdapter(HFLM):
         # and we don't want a warning from HF
         generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
         do_sample = generation_kwargs.get("do_sample")
-
         # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
         if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
             generation_kwargs["do_sample"] = do_sample = False
@@ -233,12 +233,17 @@ class HabanaModelAdapter(HFLM):
             generation_kwargs.pop("temperature")
         # build stopping criteria
         stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
-
         # to avoid graph recompilation
         if self.options.static_shapes:
             self.options.bucket_internal = True
-            _ = self.find_bucket(context.shape[1])
-            max_gen_toks = max_length - context.shape[1]
+            bucket_length = self.find_bucket(context.shape[1])
+            padding_length = bucket_length - context.shape[1]
+            if padding_length > 0:
+                # Left-padding
+                context = F.pad(context, (padding_length, 0), value=self.tokenizer.pad_token_id)
+                generation_kwargs["attention_mask"] = F.pad(
+                    generation_kwargs["attention_mask"], (padding_length, 0), value=0
+                )
         # move context & attention_mask to hpu
         context = context.to("hpu")
         generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
@@ -249,7 +254,7 @@ class HabanaModelAdapter(HFLM):
         ):
             return self.model.generate(
                 input_ids=context,
-                max_new_tokens=max_gen_toks,
+                max_new_tokens=self.max_gen_toks,
                 stopping_criteria=stopping_criteria,
                 pad_token_id=self.tokenizer.pad_token_id,
                 use_cache=True,
