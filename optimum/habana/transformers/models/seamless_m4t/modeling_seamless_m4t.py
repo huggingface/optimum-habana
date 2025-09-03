@@ -35,6 +35,7 @@ def gaudi_SeamlessM4TAttention_forward(
     past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
@@ -159,6 +160,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
     past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
@@ -178,6 +180,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
         past_key_value=self_attn_past_key_value,
         attention_mask=attention_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = self.attn_dropout(hidden_states)
@@ -199,6 +202,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
             past_key_value=cross_attn_past_key_value,
             attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         hidden_states = self.attn_dropout(hidden_states)
         hidden_states = residual + hidden_states
@@ -236,6 +240,7 @@ def gaudi_SeamlessM4TDecoder_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
@@ -290,13 +295,6 @@ def gaudi_SeamlessM4TDecoder_forward(
 
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing`. Setting `use_cache=False`..."
-            )
-            use_cache = False
-
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
@@ -314,28 +312,17 @@ def gaudi_SeamlessM4TDecoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                None,
-                output_attentions,
-                use_cache,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
@@ -383,6 +370,7 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple[torch.Tensor], Seq2SeqModelOutput]:
     """
@@ -426,6 +414,7 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 
@@ -459,6 +448,7 @@ def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Seq2SeqLMOutput, tuple[torch.FloatTensor]]:
     """
@@ -490,6 +480,7 @@ def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     lm_logits = self.lm_head(outputs[0])
@@ -612,6 +603,7 @@ def gaudi_SeamlessM4TForTextToSpeech_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Seq2SeqLMOutput, tuple[torch.FloatTensor]]:
     """
@@ -672,6 +664,7 @@ def gaudi_SeamlessM4TForTextToSpeech_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 

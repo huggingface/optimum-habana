@@ -70,7 +70,6 @@ from .decilm import (
     DeciLMForCausalLM,
 )
 from .deepseek_v2 import (
-    DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
@@ -337,11 +336,10 @@ from .starcoder2 import (
     GaudiStarcoder2Model,
 )
 from .t5 import (
+    GaudiT5ForConditionalGeneration,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
-    gaudi_T5ForConditionalGeneration_forward,
-    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
@@ -363,7 +361,6 @@ from .wav2vec2 import (
     gaudi_wav2vec2forctc_forward,
 )
 from .whisper import (
-    GAUDI_WHISPER_ATTENTION_CLASSES,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,

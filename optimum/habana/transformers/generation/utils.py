@@ -27,8 +27,6 @@ from transformers.cache_utils import (
     DynamicCache,
     EncoderDecoderCache,
     OffloadedCache,
-    QuantizedCacheConfig,
-    StaticCache,
 )
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
@@ -39,7 +37,6 @@ from transformers.generation.candidate_generator import (
     EarlyExitCandidateGenerator,
     PromptLookupCandidateGenerator,
     UniversalSpeculativeDecodingGenerator,
-    _crop_past_key_values,
     _prepare_attention_mask,
     _prepare_token_type_ids,
 )
@@ -69,6 +66,7 @@ from transformers.generation.utils import (
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
+from transformers.masking_utils import create_masks_for_generate
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available
 
@@ -177,6 +175,34 @@ def get_final_stopping_criteria(x):
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
 
+# Auxiliary functions for beam search
+def _temporary_reorder_cache(self, past_key_values, beam_idx):
+    """
+    Temporary function to handle the different types of cache reordering processes while we roll out `Cache`.
+
+    TODO: standardize cache formats and make all models compatible with `Cache`. It would remove the need
+    for this function, with `Cache.reorder_cache` being the sole remaining code path
+    """
+    model_class = self.__class__.__name__.lower()
+    # Exception 1: code path for models using the legacy cache format
+    if isinstance(past_key_values, (tuple, list)):
+        past_key_values = self._reorder_cache(past_key_values, beam_idx)
+    # Exception 2: models with different cache formats. These are limited to `DynamicCache` until their
+    # cache format is standardized, to avoid adding complexity to the codebase.
+    elif "gptbigcode" in model_class:
+        if not isinstance(past_key_values, (DynamicCache, EncoderDecoderCache)):
+            raise ValueError(
+                f"Using an unsupported cache format with {model_class}. Currently, it only supports the "
+                "legacy tuple format or `DynamicCache`"
+            )
+        past_key_values = self._reorder_cache(past_key_values, beam_idx)
+        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+    # Standard code path: use the `Cache.reorder_cache`
+    else:
+        past_key_values.reorder_cache(beam_idx)
+    return past_key_values
+
+
 class GaudiGenerationMixin(GenerationMixin):
     """
     This class enables to perform fast generation in lazy mode and with HPU graphs.
@@ -268,32 +294,46 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_input = model_input.clone(memory_format=torch.contiguous_format)
                 model_inputs[model_input_name] = model_input
 
-        # 6. Create 4D attention mask is we are using a `StaticCache` (important for performant compiled forward pass)
-        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-            if model_inputs["inputs_embeds"] is not None:
+        # 6. Create 4D attention mask is we are using a compilable cache (important for performant compiled forward
+        # pass)
+        if (
+            isinstance(past_key_values, Cache)
+            and past_key_values.is_compileable
+            and attention_mask is not None
+            and attention_mask.ndim == 2
+        ):
+            if not self.config.is_encoder_decoder and model_inputs["inputs_embeds"] is not None:
                 batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
-                device = model_inputs["inputs_embeds"].device
             else:
-                batch_size, sequence_length = model_inputs[input_ids_key].shape
-                device = model_inputs[input_ids_key].device
+                batch_size, sequence_length = model_inputs[input_ids_key].shape[:2]
 
             # Create the causal mask with fixed shape in advance, to reduce recompilations. If the function to create
-            # the 4D causal mask exists, it should be present in the base model (XXXModel class).
-            base_model = getattr(self, self.base_model_prefix, None)
-            if base_model is None:
+            # the 4D causal mask exists, it should be present in the base model (XXXModel class) or in its decoder.
+            base_model = getattr(self, self.base_model_prefix, self)
+            decoder = base_model.get_decoder() if hasattr(base_model, "get_decoder") else None
+            causal_mask_creation_function = getattr(
+                base_model, "_prepare_4d_causal_attention_mask_with_cache_position", None
+            )
+            if causal_mask_creation_function is None and decoder is not None:  # it may be in the decoder
                 causal_mask_creation_function = getattr(
-                    self, "_prepare_4d_causal_attention_mask_with_cache_position", None
+                    decoder, "_prepare_4d_causal_attention_mask_with_cache_position", None
                 )
-            else:
-                causal_mask_creation_function = getattr(
-                    base_model, "_prepare_4d_causal_attention_mask_with_cache_position", None
-                )
-            if causal_mask_creation_function is None:
-                logger.warning_once(
-                    f"{self.__class__.__name__} has no `_prepare_4d_causal_attention_mask_with_cache_position` method "
-                    "defined in its base modeling class. Compiled forward passes will be sub-optimal. If you're "
-                    "writing code, see Llama for an example implementation. If you're a user, please report this "
-                    "issue on GitHub."
+
+            # If it's not defined, it means the model uses the new general mask API
+            if causal_mask_creation_function is None:  # can't be found
+                token_type_ids = model_inputs.get("token_type_ids", None)
+                position_ids = model_inputs.get(position_ids_key, None)
+                # Some models may overwrite the general one
+                causal_mask_creation_function = getattr(self, "create_masks_for_generate", create_masks_for_generate)
+                attention_mask = causal_mask_creation_function(
+                    config=self.config,
+                    # we only need batch size, seq_length and dtype here - we don't care about the values of the embeddings
+                    input_embeds=torch.empty((batch_size, sequence_length), dtype=self.dtype),
+                    attention_mask=attention_mask,
+                    cache_position=cache_position,
+                    past_key_values=past_key_values,
+                    position_ids=position_ids,
+                    token_type_ids=token_type_ids,
                 )
             else:
                 attention_mask = causal_mask_creation_function(
@@ -301,7 +341,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     sequence_length=sequence_length,
                     target_length=past_key_values.get_max_cache_shape(),
                     dtype=self.dtype,
-                    device=device,
                     cache_position=cache_position,
                     batch_size=batch_size,
                     config=self.config,
@@ -759,8 +798,14 @@ class GaudiGenerationMixin(GenerationMixin):
         elif different_tokenizers:
             if generation_config.do_sample is True:
                 atm_translator = AssistantVocabTranslatorCache.get_translator(
-                    target_tokenizer, assistant_tokenizer, self.config.vocab_size, assistant_model.device
+                    target_tokenizer,
+                    assistant_tokenizer,
+                    self.config.get_text_config().vocab_size,
+                    assistant_model=assistant_model,
+                    assistant_prune_lm_head=True,  # prune LM head of assistant model
                 )
+                # Since we prune the LM head, we cannot use the repetition penalty on the assistant model due to mismatches between token ids and logits index
+                assistant_model.generation_config.repetition_penalty = None
                 candidate_generator = UniversalSpeculativeDecodingGenerator(
                     input_ids=input_ids,
                     assistant_model=assistant_model,
@@ -956,16 +1001,25 @@ class GaudiGenerationMixin(GenerationMixin):
                 use_model_defaults is None and model_base_version >= version.parse("4.50.0")
             ):
                 modified_values = {}
-                default_generation_config = GaudiGenerationConfig()
-                for key, default_value in default_generation_config.__dict__.items():
+                global_default_generation_config = GaudiGenerationConfig()
+                model_generation_config = self.generation_config
+                # we iterate over the model's generation config: it may hold custom keys, which we'll want to copy
+                for key, model_gen_config_value in model_generation_config.__dict__.items():
                     if key.startswith("_") or key == "transformers_version":  # metadata
                         continue
-                    custom_gen_config_value = getattr(generation_config, key)
-                    model_gen_config_value = getattr(self.generation_config, key)
-                    if custom_gen_config_value == default_value and model_gen_config_value != default_value:
+                    global_default_value = getattr(global_default_generation_config, key, None)
+                    custom_gen_config_value = getattr(generation_config, key, None)
+                    if (
+                        custom_gen_config_value == global_default_value
+                        and model_gen_config_value != global_default_value
+                    ):
                         modified_values[key] = model_gen_config_value
                         setattr(generation_config, key, model_gen_config_value)
-                if len(modified_values) > 0:
+                # edge case: we may set `temperature=0.0` and `do_sample=False`, but the model defaults to
+                # `do_sample=True`
+                if generation_config.temperature == 0.0:
+                    generation_config.do_sample = False
+                if use_model_defaults is None and len(modified_values) > 0:
                     logger.warning_once(
                         f"`generation_config` default values have been modified to match model-specific defaults: "
                         f"{modified_values}. If this is not desired, please set these values explicitly."
@@ -1014,7 +1068,9 @@ class GaudiGenerationMixin(GenerationMixin):
         - change the default from DynamicCache to tuples
         """
 
-        cache_name = "past_key_values" if "mamba" not in self.__class__.__name__.lower() else "cache_params"
+        is_hybrid_cache = any(class_name in self.__class__.__name__.lower() for class_name in ["mamba", "falconh1"])
+        cache_name = "past_key_values" if not is_hybrid_cache else "cache_params"
+
         requires_cross_attention_cache = (
             self.config.is_encoder_decoder or model_kwargs.get("encoder_outputs") is not None
         )
@@ -1042,7 +1098,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.use_cache is False:
             return
 
-        # Quick escape route 3: model that only supports legacy caches = nothing to prepare
+        # Quick escape route 3: model that only supports legacy caches or models that supply it in `prepare_inputs_for_generation` (mamba, zamba, ...)
         if not self._supports_default_dynamic_cache():
             if generation_config.cache_implementation is not None:
                 warn0(
@@ -1065,11 +1121,11 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config.cache_implementation = None
 
         # generation_config.cache_implementation = generation_config.cache_implementation or getattr(
-        #     self.config.get_text_config(), "cache_implementation", None
+        #     self.config.get_text_config(decoder=True), "cache_implementation", None
         # )
         if generation_config.cache_implementation is not None:
             if generation_config.cache_implementation in NEED_SETUP_CACHE_CLASSES_MAPPING:
-                if generation_config.cache_implementation == "static" and not self._supports_static_cache:
+                if generation_config.cache_implementation == "static" and not self._can_compile_fullgraph:
                     raise ValueError(
                         "This model does not support `cache_implementation='static'`. Please check the following "
                         "issue: https://github.com/huggingface/transformers/issues/28981"
@@ -1082,7 +1138,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs=model_kwargs,
                 )
             elif generation_config.cache_implementation == "quantized":
-                if not self._supports_quantized_cache:
+                if self.config.is_encoder_decoder or not self._supports_default_dynamic_cache():
                     raise ValueError(
                         "This model does not support the quantized cache. If you want your model to support quantized "
                         "cache, please open an issue and tag @zucchini-nlp."
@@ -1091,22 +1147,22 @@ class GaudiGenerationMixin(GenerationMixin):
                 cache_config = (
                     generation_config.cache_config
                     if generation_config.cache_config is not None
-                    else QuantizedCacheConfig()
+                    else {"backend": "quanto"}
                 )
-                cache_class = QUANT_BACKEND_CLASSES_MAPPING[cache_config.backend]
+                cache_class = QUANT_BACKEND_CLASSES_MAPPING[cache_config["backend"]]
 
-                if cache_config.backend == "quanto" and not is_optimum_quanto_available():
+                if cache_config["backend"] == "quanto" and not is_optimum_quanto_available():
                     raise ImportError(
                         "You need to install optimum-quanto in order to use KV cache quantization with optimum-quanto backend. "
                         "Please install it via  with `pip install optimum-quanto`"
                     )
-                elif cache_config.backend == "HQQ" and not is_hqq_available():
+                elif cache_config["backend"] == "HQQ" and not is_hqq_available():
                     raise ImportError(
                         "You need to install `HQQ` in order to use KV cache quantization with HQQ backend. "
                         "Please install it via  with `pip install hqq`"
                     )
 
-                model_kwargs[cache_name] = cache_class(cache_config)
+                model_kwargs[cache_name] = cache_class(**cache_config)
             elif generation_config.cache_implementation == "offloaded":
                 model_kwargs[cache_name] = OffloadedCache()
             elif generation_config.cache_implementation == "dynamic":
@@ -1130,6 +1186,7 @@ class GaudiGenerationMixin(GenerationMixin):
         negative_prompt_ids: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         use_model_defaults: Optional[bool] = None,
+        custom_generate: Optional[str] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
         iteration_times: Optional[list[float]] = None,
@@ -1204,6 +1261,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation configuration (`model.generation_config`), as opposed to the global defaults
                 (`GenerationConfig()`). If unset, models saved starting from `v4.50` will consider this flag to be
                 `True`.
+            custom_generate (`str`, *optional*):
+                A string containing the name of a huggingface.co repository. If provided, the custom `generate`
+                function defined in that reposity's `custom_generate/generate.py` file will be executed instead of the
+                standard `generate` method. Note that the logic is for generation is entirely defined in that
+                repository, and the return type may be different from the standard `generate` method.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             hpu_graphs (`bool`, *optional*, defaults to `False`):
@@ -1239,8 +1301,28 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 synced_gpus = False
 
+        # 0. If requested, load an arbitrary generation recipe from the Hub and run it instead
+        trust_remote_code = kwargs.pop("trust_remote_code", None)
+        if custom_generate is not None:
+            # Get all `generate` arguments in a single variable. Custom functions are responsible for handling them:
+            # they receive the same inputs as `generate`, with `model` instead of `self` and excluding the arguments to
+            # trigger the custom generation. They can access to methods from `GenerationMixin` through `model`.
+            global_keys_to_exclude = {
+                "self",
+                "kwargs",
+                "global_keys_to_exclude",
+                "trust_remote_code",
+                "custom_generate",
+            }
+            generate_arguments = {key: value for key, value in locals().items() if key not in global_keys_to_exclude}
+            generate_arguments.update(kwargs)
+
+            custom_generate_function = self.load_custom_generate(
+                custom_generate, trust_remote_code=trust_remote_code, **kwargs
+            )
+            return custom_generate_function(model=self, **generate_arguments)
+
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
-        self._validate_model_class()
         tokenizer = kwargs.pop("tokenizer", None)  # Pull this out first, we only use it for stopping criteria
         assistant_tokenizer = kwargs.pop("assistant_tokenizer", None)  # only used for assisted generation
         if hpu_graphs and not lazy_mode:
@@ -1682,6 +1764,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 **model_kwargs,
             )
         elif generation_mode == GenerationMode.DOLA_GENERATION:
+            if not trust_remote_code:
+                logger.warning_once(
+                    "DoLa Decoding is scheduled to be moved to a `custom_generate` repository in v4.55.0. "
+                    "To prevent loss of backward compatibility, add `trust_remote_code=True` to your `generate` call."
+                )
             if self._is_stateful:
                 # DoLa decoding was not designed for stateful models, and would require some changes
                 raise ValueError(
@@ -1699,6 +1786,11 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         elif generation_mode == GenerationMode.CONTRASTIVE_SEARCH:
+            if not trust_remote_code:
+                logger.warning_once(
+                    "Contrastive Search is scheduled to be moved to a `custom_generate` repository in v4.55.0. "
+                    "To prevent loss of backward compatibility, add `trust_remote_code=True` to your `generate` call."
+                )
             if not model_kwargs["use_cache"]:
                 raise ValueError("Contrastive search requires `use_cache=True`")
             if self._is_stateful:
@@ -1780,6 +1872,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         elif generation_mode == GenerationMode.GROUP_BEAM_SEARCH:
+            logger.warning_once(
+                "Group Beam Search is scheduled to be moved to a `custom_generate` repository in v4.55.0. "
+                "To prevent loss of backward compatibility, add `trust_remote_code=True` to your `generate` call."
+            )
             # 11. prepare beam search scorer
             beam_scorer = BeamSearchScorer(
                 batch_size=batch_size,
@@ -1813,6 +1909,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         elif generation_mode == GenerationMode.CONSTRAINED_BEAM_SEARCH:
+            logger.warning_once(
+                "Constrained Beam Search is scheduled to be moved to a `custom_generate` repository in v4.55.0. "
+                "To prevent loss of backward compatibility, add `trust_remote_code=True` to your `generate` call."
+            )
             final_constraints = []
             if generation_config.constraints is not None:
                 final_constraints = generation_config.constraints
@@ -2034,7 +2134,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        batch_size, cur_len = input_ids.shape
+        batch_size, cur_len = input_ids.shape[:2]
 
         if not ignore_eos:
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
@@ -2629,11 +2729,11 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        batch_size, cur_len = input_ids.shape
+        batch_size, cur_len = input_ids.shape[:2]
         this_peer_finished = False
         if not ignore_eos:
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
-        model_kwargs = self._get_initial_cache_position(input_ids, model_kwargs)
+        model_kwargs = self._get_initial_cache_position(cur_len, input_ids.device, model_kwargs)
 
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
@@ -2986,7 +3086,7 @@ class GaudiGenerationMixin(GenerationMixin):
         batch_size = len(beam_scorer._beam_hyps)
         num_beams = beam_scorer.num_beams
 
-        batch_beam_size, cur_len = input_ids.shape
+        batch_beam_size, cur_len = input_ids.shape[:2]
         if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
         token_idx = model_kwargs.get("token_idx", None)
@@ -3335,8 +3435,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 if model_kwargs["reuse_cache"]:
                     model_kwargs["past_key_values"] = unwrap_deepspeed_model(self).reorder_kv_cache(beam_idx)
                 else:
-                    model_kwargs["past_key_values"] = self._temporary_reorder_cache(
-                        model_kwargs["past_key_values"], beam_idx
+                    model_kwargs["past_key_values"] = _temporary_reorder_cache(
+                        self, model_kwargs["past_key_values"], beam_idx
                     )
 
             if return_dict_in_generate and output_scores:
@@ -3595,7 +3695,7 @@ class GaudiGenerationMixin(GenerationMixin):
         batch_size = len(constrained_beam_scorer._beam_hyps)
         num_beams = constrained_beam_scorer.num_beams
 
-        batch_beam_size, cur_len = input_ids.shape
+        batch_beam_size, cur_len = input_ids.shape[:2]
 
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
@@ -3638,7 +3738,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             decoder_prompt_len = cur_len
         else:
-            decoder_prompt_len = input_ids.shape[-1]
+            decoder_prompt_len = input_ids.shape[1]
 
         if profiler is not None:
             profiler.start()
@@ -3760,13 +3860,15 @@ class GaudiGenerationMixin(GenerationMixin):
             # (that way the memory peak does not include outputs.logits)
             del outputs
 
+            # NOTE: we need to check if `self._reorder_cache` exists for special models like RAG, RecurrentGemma etc.
             if model_kwargs.get("past_key_values", None) is not None:
-                model_kwargs["past_key_values"] = self._temporary_reorder_cache(
-                    model_kwargs["past_key_values"], beam_idx
-                )
+                if hasattr(self, "_reorder_cache"):
+                    model_kwargs["past_key_values"] = self._reorder_cache(model_kwargs["past_key_values"], beam_idx)
+                else:
+                    model_kwargs["past_key_values"].reorder_cache(beam_idx)
 
             if return_dict_in_generate and output_scores:
-                beam_indices = tuple((beam_indices[beam_idx[i]] + (beam_idx[i],) for i in range(len(beam_indices))))
+                beam_indices = tuple(beam_indices[beam_idx[i]] + (beam_idx[i],) for i in range(len(beam_indices)))
 
             # increase cur_len
             cur_len = cur_len + 1
@@ -3912,10 +4014,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        batch_size, cur_len = input_ids.shape
+        batch_size, cur_len = input_ids.shape[:2]
         if not ignore_eos:
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
-        model_kwargs = self._get_initial_cache_position(input_ids, model_kwargs)
+        model_kwargs = self._get_initial_cache_position(cur_len, input_ids.device, model_kwargs)
 
         if profiler is not None:
             profiler.start()
@@ -3933,7 +4035,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 # Update cur_len in case of static shapes
                 cur_len = (token_idx + model_kwargs.get("inputs_embeds_offset", 0)).item()
             else:
-                cur_len = input_ids.shape[-1]
+                cur_len = input_ids.shape[1]
 
             # prepare model inputs
             model_kwargs["lazy_mode"] = lazy_mode
@@ -4040,11 +4142,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 input_ids = torch.cat((input_ids, valid_tokens), dim=-1)
             if streamer is not None:
                 streamer.put(valid_tokens.cpu())
-            new_cur_len = input_ids.shape[-1]
+            new_cur_len = input_ids.shape[1]
 
             # 4.2. Discard past key values relative to unused assistant tokens
-            new_cache_size = new_cur_len - 1
-            outputs.past_key_values = _crop_past_key_values(self, outputs.past_key_values, new_cache_size)
+            outputs.past_key_values.crop(new_cur_len - 1)
 
             # 5. Update the candidate generation strategy if needed
             candidate_generator.update_candidate_strategy(input_ids, new_logits, n_matches)

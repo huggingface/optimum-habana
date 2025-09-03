@@ -27,6 +27,7 @@ def gaudi_SpeechT5Attention_forward(
     layer_head_mask: Optional[torch.Tensor] = None,
     position_bias: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
@@ -163,6 +164,7 @@ def gaudi_SpeechT5DecoderLayer_forward(
     past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -182,6 +184,7 @@ def gaudi_SpeechT5DecoderLayer_forward(
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = self.dropout(hidden_states)
@@ -203,6 +206,7 @@ def gaudi_SpeechT5DecoderLayer_forward(
             layer_head_mask=cross_attn_layer_head_mask,
             past_key_value=cross_attn_past_key_value,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         hidden_states = self.dropout(hidden_states)
         hidden_states = residual + hidden_states
@@ -239,6 +243,7 @@ def gaudi_SpeechT5Decoder_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
@@ -307,32 +312,19 @@ def gaudi_SpeechT5Decoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                head_mask[idx] if head_mask is not None else None,
-                cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                None,
-                output_attentions,
-                use_cache,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+            cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
