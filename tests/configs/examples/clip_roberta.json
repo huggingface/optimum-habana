@@ -1,6 +1,6 @@
 {
     "gaudi1": {
-        "ydshieh/coco_dataset_script": {
+         "imagefolder":  {
             "num_train_epochs": 1,
             "eval_batch_size": 64,
             "distribution": {
@@ -30,7 +30,7 @@
         }
     },
     "gaudi2": {
-        "ydshieh/coco_dataset_script": {
+         "imagefolder":  {
             "eval_batch_size": 64,
             "num_train_epochs": 1,
             "distribution": {
@@ -62,7 +62,7 @@
         }
     },
     "gaudi3": {
-        "ydshieh/coco_dataset_script": {
+         "imagefolder":  {
             "eval_batch_size": 64,
             "num_train_epochs": 1,
             "distribution": {

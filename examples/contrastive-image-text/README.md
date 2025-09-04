@@ -45,7 +45,7 @@ wget http://images.cocodataset.org/annotations/image_info_test2017.zip
 cd ..
 ```
 
-Having downloaded COCO dataset manually you should be able to load with the `ydshieh/coco_dataset_script` dataset loading script:
+Having downloaded COCO dataset manually you should be able to load with the `imagefolder` ImageFolder builder:
 
 ```python
 import os
@@ -100,7 +100,7 @@ python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
-    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_name imagefolder \
     --dataset_config_name=2017 \
     --image_column image_path \
     --caption_column caption \
@@ -133,7 +133,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir=/tmp/clip_roberta \
     --model_name_or_path=./clip-roberta \
     --data_dir $PWD/data \
-    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_name imagefolder \
     --dataset_config_name 2017 \
     --image_column image_path \
     --caption_column caption \
@@ -210,7 +210,7 @@ PT_HPU_LAZY_MODE=1 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
-    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_name imagefolder \
     --dataset_config_name=2017 \
     --image_column image_path \
     --caption_column caption \
