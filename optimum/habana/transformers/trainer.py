@@ -1677,27 +1677,6 @@ class GaudiTrainer(Trainer):
                 return data.to(**kwargs)
         return data
 
-    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
-        """
-        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-        arguments, depending on the situation.
-
-        Modified by Habana to enable using `autocast` on Gaudi devices.
-        """
-        if self.use_cpu_amp:
-            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
-        elif self.use_hpu_amp:
-            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
-        else:
-            ctx_manager = contextlib.nullcontext()
-
-        # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
-        # Currently FP8 is enabled only for training.
-        if self.accelerator.fp8_enabled and self.model.training:
-            ctx_manager = FP8ContextWrapper(ctx_manager, fp8_recipe=self.accelerator.fp8_recipe)
-
-        return ctx_manager
-
     def training_step(
         self,
         model: torch.nn.Module,
@@ -1722,9 +1701,8 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
-        # TODO
-        # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
-        #     self.optimizer.train()
+        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+            self.optimizer.train()
 
         inputs = self._prepare_inputs(inputs)
 
@@ -1767,6 +1745,7 @@ class GaudiTrainer(Trainer):
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
             if self.accelerator.fp8_enabled and self.args.gradient_checkpointing:
+                # TODO: check if this is needed with accelerate's fp8 forward wrapper
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -1775,6 +1754,7 @@ class GaudiTrainer(Trainer):
                     self.accelerator.backward(loss, **kwargs)
             else:
                 self.accelerator.backward(loss, **kwargs)
+
         return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
@@ -2668,8 +2648,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "use_regional_compilation": self.args.use_regional_compilation,
-            "compiled_autograd_enable": self.args.use_compiled_autograd,
+            "compiled_autograd_enabled": self.args.use_compiled_autograd,
         }
         # tp is initialized at Accelerator init phase so
         # args should be prepared here
