@@ -17,7 +17,7 @@ limitations under the License.
 
 This folder contains actively maintained examples of use of 🤗 Optimum Habana for various ML tasks.
 
-Other [examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library can be adapted the same way to enable deployment on Gaudi processors. This simply consists in:
+Other [examples](https://github.com/huggingface/transformers/tree/v1.20-release/examples/pytorch) from the 🤗 Transformers library can be adapted the same way to enable deployment on Gaudi processors. This simply consists in:
 - replacing the `Trainer` from 🤗 Transformers with the `GaudiTrainer` from 🤗 Optimum Habana,
 - replacing the `TrainingArguments` from 🤗 Transformers with the `GaudiTrainingArguments` from 🤗 Optimum Habana.
 
@@ -70,7 +70,7 @@ ip_2 slots=8
 ip_n slots=8
 ```
 
-You can find more information about multi-node training in the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) and in the [`multi-node-training`](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) folder where a Dockerfile is provided to easily set up your environment.
+You can find more information about multi-node training in the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) and in the [`multi-node-training`](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/multi-node-training) folder where a Dockerfile is provided to easily set up your environment.
 
 
 ## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model

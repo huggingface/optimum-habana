@@ -283,7 +283,7 @@ def gaudi_chatglm_repeat_kv(
     attention_mask: torch.Tensor,
 ):
     """
-    Refer https://github.com/huggingface/optimum-habana/blob/main/optimum/habana/transformers/models/llama/modeling_llama.py#L109
+    Refer https://github.com/huggingface/optimum-habana/blob/v1.20-release/optimum/habana/transformers/models/llama/modeling_llama.py#L109
     Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
         - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.

@@ -15,11 +15,11 @@ limitations under the License.
 -->
 
 <a href="https://github.com/huggingface/optimum-habana#gh-light-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_light.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/v1.20-release/readme_logo_light.png"/>
 </a>
 
 <a href="https://github.com/huggingface/optimum-habana#gh-dark-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_dark.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/v1.20-release/readme_logo_dark.png"/>
 </a>
 
 
@@ -123,8 +123,8 @@ The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/
 [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to
 make it work with Intel Gaudi accelerators will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 
-That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their
-[original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
+That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples) were adapted from their
+[original counterparts](https://github.com/huggingface/transformers/tree/v1.20-release/examples/pytorch).
 
 Here is an example:
 ```diff
@@ -230,62 +230,62 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture | Training | Inference | Tasks |
 |:-------------|:--------:|:---------:|:------|
-| BERT         | :heavy_check_mark: | :heavy_check_mark: | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text feature extraction](https://github.com/huggingface/optimum-habana/tree/main/examples/text-feature-extraction)</li> |
-| RoBERTa | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
-| ALBERT | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
-| DistilBERT |:heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
-| GPT2             | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| BLOOM(Z) |   | <li>DeepSpeed</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| StarCoder / StarCoder2 | :heavy_check_mark:  | <li>Single-card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| GPT-J | <li>DeepSpeed</li> | <li>Single card</li><li>DeepSpeed</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| GPT-Neo |      | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| GPT-NeoX | <li>DeepSpeed</li> | <li>DeepSpeed</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| OPT |   | <li>DeepSpeed</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Llama 2 / CodeLlama / Llama 3 / Llama Guard / Granite | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification) (Llama Guard)</li> |
-| StableLM |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Falcon | <li>LoRA</li> | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| CodeGen |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| MPT |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Mistral |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Phi | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Mixtral |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Persimmon |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Qwen2 / Qwen3 | <li>Single card</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Qwen2-MoE |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Gemma | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Gemma2 |  | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| XGLM | | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Cohere       |          | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
-| BART |   | <li>Single card</li> | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
-| ViT | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
-| Swin | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
-| Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
-| Whisper | :heavy_check_mark: | :heavy_check_mark: | <li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
-| SpeechT5 |   | <li>Single card</li> | <li>[text to speech](https://github.com/huggingface/optimum-habana/tree/main/examples/text-to-speech)</li> |
-| CLIP | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
-| BridgeTower | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
-| ESMFold |   | <li>Single card</li> | <li>[protein folding](https://github.com/huggingface/optimum-habana/tree/main/examples/protein-folding)</li> |
-| Blip |   | <li>Single card</li> | <li>[visual question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/visual-question-answering)</li><li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| OWLViT |   | <li>Single card</li> | <li>[zero shot object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/zero-shot-object-detection)</li> |
-| ClipSeg |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
-| Llava / Llava-next / Llava-onevision |    | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| idefics2 | <li>LoRA</li> | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| Paligemma | | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| Segment Anything Model |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
-| VideoMAE | | <li>Single card</li> | <li>[Video classification](https://github.com/huggingface/optimum-habana/tree/main/examples/video-classification)</li> |
-| TableTransformer |   | <li>Single card</li> | <li>[table object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/table-detection) </li> |
-| DETR |   | <li>Single card</li> | <li>[object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/object-detection)</li> |
-| Mllama     | <li>LoRA</li> | :heavy_check_mark: | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| MiniCPM3 |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Baichuan2 | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| DeepSeek-V3 / Moonlight |   | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/main/examples/video-comprehension)</li> |
-| GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
-| Arctic |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| BERT         | :heavy_check_mark: | :heavy_check_mark: | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text feature extraction](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-feature-extraction)</li> |
+| RoBERTa | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li> |
+| ALBERT | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li> |
+| DistilBERT |:heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li> |
+| GPT2             | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| BLOOM(Z) |   | <li>DeepSpeed</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| StarCoder / StarCoder2 | :heavy_check_mark:  | <li>Single-card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| GPT-J | <li>DeepSpeed</li> | <li>Single card</li><li>DeepSpeed</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| GPT-Neo |      | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| GPT-NeoX | <li>DeepSpeed</li> | <li>DeepSpeed</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| OPT |   | <li>DeepSpeed</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Llama 2 / CodeLlama / Llama 3 / Llama Guard / Granite | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering)</li><li>[text classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-classification) (Llama Guard)</li> |
+| StableLM |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Falcon | <li>LoRA</li> | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| CodeGen |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| MPT |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Mistral |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Phi | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Mixtral |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Persimmon |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Qwen2 / Qwen3 | <li>Single card</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Qwen2-MoE |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Gemma | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Gemma2 |  | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| XGLM | | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Cohere       |          | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
+| BART |   | <li>Single card</li> | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
+| ViT | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-classification)</li> |
+| Swin | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-classification)</li> |
+| Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/speech-recognition)</li> |
+| Whisper | :heavy_check_mark: | :heavy_check_mark: | <li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/speech-recognition)</li> |
+| SpeechT5 |   | <li>Single card</li> | <li>[text to speech](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-to-speech)</li> |
+| CLIP | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/contrastive-image-text)</li> |
+| BridgeTower | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/contrastive-image-text)</li> |
+| ESMFold |   | <li>Single card</li> | <li>[protein folding](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/protein-folding)</li> |
+| Blip |   | <li>Single card</li> | <li>[visual question answering](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/visual-question-answering)</li><li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| OWLViT |   | <li>Single card</li> | <li>[zero shot object detection](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/zero-shot-object-detection)</li> |
+| ClipSeg |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/object-segementation)</li> |
+| Llava / Llava-next / Llava-onevision |    | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| idefics2 | <li>LoRA</li> | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| Paligemma | | <li>Single card</li> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| Segment Anything Model |   | <li>Single card</li> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/object-segementation)</li> |
+| VideoMAE | | <li>Single card</li> | <li>[Video classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/video-classification)</li> |
+| TableTransformer |   | <li>Single card</li> | <li>[table object detection](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/table-detection) </li> |
+| DETR |   | <li>Single card</li> | <li>[object detection](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/object-detection)</li> |
+| Mllama     | <li>LoRA</li> | :heavy_check_mark: | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| MiniCPM3 |   | <li>Single card</li> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Baichuan2 | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| DeepSeek-V3 / Moonlight |   | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/video-comprehension)</li> |
+| GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
+| Arctic |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
 
 </div>
 
@@ -294,33 +294,33 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture        | Training | Inference | Tasks |
 |:--------------------|:--------:|:---------:|:------|
-| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#image-to-image-generation)</li> |
-| Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-xl-refiner)</li> |
-| Stable Diffusion Depth2img |         | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
-| Stable Diffusion 3  | :heavy_check_mark: | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
-| LDM3D            |               | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-image-generation)</li> |
-| FLUX.1           | <li>LoRA</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#flux1-image-to-image)</li> |
-| Text to Video    |               | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#text-to-video-generation)</li> |
-| Image to Video   |               | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#image-to-video-generation)</li> |
-| i2vgen-xl   |               | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion#I2vgen-xl)</li> |
+| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#image-to-image-generation)</li> |
+| Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#stable-diffusion-xl-refiner)</li> |
+| Stable Diffusion Depth2img |         | <li>Single card</li> | <li>[depth-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion)</li> |
+| Stable Diffusion 3  | :heavy_check_mark: | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
+| LDM3D            |               | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#text-to-image-generation)</li> |
+| FLUX.1           | <li>LoRA</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#flux1-image-to-image)</li> |
+| Text to Video    |               | <li>Single card</li> | <li>[text-to-video generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#text-to-video-generation)</li> |
+| Image to Video   |               | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#image-to-video-generation)</li> |
+| i2vgen-xl   |               | <li>Single card</li> | <li>[image-to-video generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/stable-diffusion#I2vgen-xl)</li> |
 
 ### PyTorch Image Models/TIMM:
 
 | Architecture        | Training | Inference | Tasks |
 |:--------------------|:--------:|:---------:|:------|
-| FastViT       |          | <li>Single card</li> | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| FastViT       |          | <li>Single card</li> | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-classification)</li> |
 
 ### TRL:
 
 | Architecture     | Training | Inference            | Tasks                                                                                          |
 |:-----------------|:--------:|:--------------------:|:-----------------------------------------------------------------------------------------------|
-| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl#dpo-pipeline)</li>  |
-| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl#ppo-pipeline)</li>  |
-| Stable Diffusion | :heavy_check_mark: |           | <li>[DDPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl#ddpo-pipeline)</li> |
+| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/trl#dpo-pipeline)</li>  |
+| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/trl#ppo-pipeline)</li>  |
+| Stable Diffusion | :heavy_check_mark: |           | <li>[DDPO Pipeline](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/trl#ddpo-pipeline)</li> |
 
 Other models and tasks supported by the Transformers and Diffusers libraries may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it)
-for using them with Optimum for Intel Gaudi. In addition, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any
-[example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the Transformers library to make it work with Optimum for Intel Gaudi.
+for using them with Optimum for Intel Gaudi. In addition, [this page](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples) explains how to modify any
+[example](https://github.com/huggingface/transformers/tree/v1.20-release/examples/pytorch) from the Transformers library to make it work with Optimum for Intel Gaudi.
 
 If you find any issues while using those, please open an issue or a pull request.
 
@@ -328,8 +328,8 @@ After training your model, feel free to submit it to the Intel [leaderboard](htt
 to evaluate, score, and rank open-source LLMs that have been pre-trained or fine-tuned on Intel Hardwares. Models submitted to the leaderboard will be evaluated on
 the Intel Developer Cloud. The evaluation platform consists of Gaudi Accelerators and Xeon CPUs running benchmarks from the Eleuther AI Language Model Evaluation Harness.
 
-The list of validated models through continuous integration tests is posted [here](https://github.com/huggingface/optimum-habana/tree/main/tests/Habana_Validated_Models.md)
+The list of validated models through continuous integration tests is posted [here](https://github.com/huggingface/optimum-habana/tree/v1.20-release/tests/Habana_Validated_Models.md)
 
 ## Development
 
-Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
+Check the [contributor guide](https://github.com/huggingface/optimum/blob/v1.20-release/CONTRIBUTING.md) for instructions.
