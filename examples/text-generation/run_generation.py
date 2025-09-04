@@ -1004,7 +1004,7 @@ def main():
         )
         # After tokenization, we can remove the column of interest
         raw_dataset = raw_dataset.remove_columns([column_name])
-        raw_dataset.set_format(type="torch")
+        raw_dataset = raw_dataset.with_format("torch")
 
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model

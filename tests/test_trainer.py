@@ -713,7 +713,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             self.check_trained_model(trainer.model)
 
             # Can return tensors.
-            train_dataset.set_format(type="torch", dtype=torch.float32)
+            train_dataset = train_dataset.with_format("torch")
             model = RegressionModel()
             trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
             trainer.train()
