@@ -14,8 +14,6 @@ from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.models.llama.modeling_llama import (
-    LLAMA_INPUTS_DOCSTRING,
-    LLAMA_START_DOCSTRING,
     BaseModelOutputWithPast,
     LlamaAttention,
     LlamaDecoderLayer,
@@ -27,7 +25,7 @@ from transformers.models.llama.modeling_llama import (
     apply_rotary_pos_emb,
     repeat_kv,
 )
-from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging
+from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ..llama.modeling_llama import GaudiLlamaRotaryEmbedding
@@ -228,20 +226,12 @@ class DeciLMDecoderLayer(LlamaDecoderLayer):
         return outputs
 
 
-@add_start_docstrings(
-    "The bare DeciLM Model outputting raw hidden-states without any specific head on top.",
-    LLAMA_START_DOCSTRING,
-)
 class DeciLMPreTrainedModel(LlamaPreTrainedModel):
     config_class = DeciLMConfig
     _no_split_modules = ["DeciLMDecoderLayer"]
     _keys_to_ignore_on_load_missing = ["self_attn.rotary_emb.inv_freq"]
 
 
-@add_start_docstrings(
-    "The bare DeciLM Model outputting raw hidden-states without any specific head on top.",
-    LLAMA_START_DOCSTRING,
-)
 class DeciLMModel(LlamaModel, DeciLMPreTrainedModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`DeciLMDecoderLayer`]
@@ -265,7 +255,6 @@ class DeciLMModel(LlamaModel, DeciLMPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -392,6 +381,8 @@ class DeciLMModel(LlamaModel, DeciLMPreTrainedModel):
 
 
 class DeciLMForCausalLM(LlamaForCausalLM, DeciLMPreTrainedModel):
+    config_class = DeciLMConfig
+
     def __init__(self, config):
         DeciLMPreTrainedModel.__init__(self, config)
         self.model = DeciLMModel(config)

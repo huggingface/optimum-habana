@@ -78,6 +78,7 @@ class GaudiGPT2Attention(GPT2Attention):
         self,
         hidden_states: Optional[tuple[torch.FloatTensor]],
         layer_past: Optional[tuple[torch.Tensor]] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
@@ -85,6 +86,7 @@ class GaudiGPT2Attention(GPT2Attention):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> tuple[Union[torch.Tensor, tuple[torch.Tensor]], ...]:
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn"):
@@ -169,6 +171,7 @@ class GaudiGPT2Block(torch.nn.Module):
         self,
         hidden_states: Optional[tuple[torch.FloatTensor]],
         layer_past: Optional[tuple[torch.Tensor]] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
@@ -176,6 +179,7 @@ class GaudiGPT2Block(torch.nn.Module):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[tuple[torch.Tensor], Optional[tuple[torch.Tensor, tuple[torch.FloatTensor, ...]]]]:
         """
         Copied from GPT2Block.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
@@ -194,6 +198,7 @@ class GaudiGPT2Block(torch.nn.Module):
             use_cache=use_cache,
             output_attentions=output_attentions,
             token_idx=token_idx,
+            **kwargs,
         )
         attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
         outputs = attn_outputs[1:]
@@ -241,6 +246,7 @@ def gaudi_gpt2_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
+    cache_position: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.FloatTensor] = None,
     token_type_ids: Optional[torch.LongTensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
@@ -253,6 +259,7 @@ def gaudi_gpt2_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPT2Model.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
@@ -358,45 +365,22 @@ def gaudi_gpt2_forward(
     all_hidden_states = () if output_hidden_states else None
     for i in range(len(self.h)):
         block, layer_past = self.h[i], past_key_values[i]
-        # Model parallel
-        if self.model_parallel:
-            torch.cuda.set_device(hidden_states.device)
-            # Ensure layer_past is on same device as hidden_states (might not be correct)
-            if layer_past is not None:
-                layer_past = tuple(past_state.to(hidden_states.device) for past_state in layer_past)
-            # Ensure that attention_mask is always on the same device as hidden_states
-            if attention_mask is not None:
-                attention_mask = attention_mask.to(hidden_states.device)
-            if isinstance(head_mask, torch.Tensor):
-                head_mask = head_mask.to(hidden_states.device)
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                head_mask[i],
-                encoder_hidden_states,
-                encoder_attention_mask,
-                use_cache,
-                output_attentions,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                head_mask=head_mask[i],
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            cache_position=cache_position,
+            attention_mask=attention_mask,
+            head_mask=head_mask[i],
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+            **kwargs,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
@@ -504,6 +488,7 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -516,6 +501,7 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Union[tuple, CausalLMOutputWithCrossAttentions]:
@@ -525,6 +511,7 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
+            cache_position=cache_position,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
@@ -539,30 +526,26 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         )
         hidden_states = transformer_outputs[0]
 
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.transformer.first_device)
-            hidden_states = hidden_states.to(self.lm_head.weight.device)
-
-        lm_logits = self.lm_head(hidden_states)
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:
             # Flatten the tokens
             loss = self.loss_function(
-                lm_logits,
+                logits,
                 labels,
                 vocab_size=self.config.vocab_size,
                 **kwargs,
             )
 
         if not return_dict:
-            output = (lm_logits,) + transformer_outputs[1:]
+            output = (logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
         return CausalLMOutputWithCrossAttentions(
             loss=loss,
-            logits=lm_logits,
+            logits=logits,
             past_key_values=transformer_outputs.past_key_values,
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
@@ -641,6 +624,7 @@ class GaudiGPT2DoubleHeadsModel(GPT2DoubleHeadsModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[tuple[tuple[torch.Tensor]]] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -661,6 +645,7 @@ class GaudiGPT2DoubleHeadsModel(GPT2DoubleHeadsModel):
         transformer_outputs = self.transformer(
             input_ids,
             past_key_values=past_key_values,
+            cache_position=cache_position,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,

@@ -23,7 +23,6 @@ from typing import Any, Optional, Union
 import torch.distributed as dist
 from accelerate import DistributedType, PartialState
 from accelerate.state import AcceleratorState
-from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_pt_utils import AcceleratorConfig
@@ -544,10 +543,11 @@ class GaudiTrainingArguments(TrainingArguments):
                             "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
                             f"steps, but found {self.save_steps}, which is not a multiple of {self.eval_steps}."
                         )
-                raise ValueError(
-                    "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
-                    f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
-                )
+                else:
+                    raise ValueError(
+                        "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
+                        f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
+                    )
 
         safetensors_available = is_safetensors_available()
         if self.save_safetensors and not safetensors_available:
@@ -565,9 +565,7 @@ class GaudiTrainingArguments(TrainingArguments):
         ) and self.metric_for_best_model is None:
             self.metric_for_best_model = "loss"
         if self.greater_is_better is None and self.metric_for_best_model is not None:
-            self.greater_is_better = not (self.metric_for_best_model.endswith("loss"))
-        if self.run_name is None:
-            self.run_name = self.output_dir
+            self.greater_is_better = not self.metric_for_best_model.endswith("loss")
 
         if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
             if self.eval_strategy == IntervalStrategy.NO:
@@ -585,9 +583,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
             self.optim = OptimizerNames.ADAFACTOR
-        if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
-            if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
-                raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
         # We need to setup the accelerator config here *before* the first call to `self.device`
         if is_accelerate_available():
@@ -605,17 +600,24 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
                 else:
                     self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
-
+            if self.accelerator_config.split_batches:
+                logger.info(
+                    "Using `split_batches=True` in `accelerator_config` will override the `per_device_train_batch_size` "
+                    "Batches will be split across all processes equally when using `split_batches=True`."
+                )
             if self.dataloader_drop_last:
                 self.accelerator_config.even_batches = False
+
+        # This call to self.device is necessary to call _setup_devices so that
+        # torch.distributed is initialized
+        device_is_hpu = self.device.type == "hpu"
 
         # Disable average tokens when using single device
         if self.average_tokens_across_devices:
             try:
                 if self.world_size == 1:
-                    logger.warning(
-                        "average_tokens_across_devices is set to True but it is invalid when world size is"
-                        "1. Turn it to False automatically."
+                    logger.info(
+                        "average_tokens_across_devices is True but world size is 1. Setting it to False automatically."
                     )
                     self.average_tokens_across_devices = False
             except ImportError as e:
@@ -640,6 +642,8 @@ class GaudiTrainingArguments(TrainingArguments):
                 os.environ[prefix + "MODE"] = self.torch_compile_mode
             if self.compile_dynamic is not None:
                 os.environ[prefix + "USE_DYNAMIC"] = str(self.compile_dynamic)
+            if self.use_regional_compilation:
+                os.environ[prefix + "USE_REGIONAL_COMPILATION"] = str(self.use_regional_compilation)
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
@@ -715,10 +719,12 @@ class GaudiTrainingArguments(TrainingArguments):
                 warn0("`--fsdp_config` is useful only when `--fsdp` is specified.")
             with open(self.fsdp_config, encoding="utf-8") as f:
                 self.fsdp_config = json.load(f)
-                for k in list(self.fsdp_config.keys()):
-                    if k.startswith("fsdp_"):
-                        v = self.fsdp_config.pop(k)
-                        self.fsdp_config[k[5:]] = v
+
+        if self.fsdp_config is not None and isinstance(self.fsdp_config, dict):
+            for k in list(self.fsdp_config.keys()):
+                if k.startswith("fsdp_"):
+                    v = self.fsdp_config.pop(k)
+                    self.fsdp_config[k[5:]] = v
 
         if self.fsdp_min_num_params > 0:
             warn0("using `--fsdp_min_num_params` is deprecated. Use fsdp_config instead ", FutureWarning)
@@ -754,9 +760,6 @@ class GaudiTrainingArguments(TrainingArguments):
         self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
-        if self.tp_size > 1:
-            os.environ["ACCELERATE_USE_TP"] = "true"
-            os.environ["TP_SIZE"] = str(self.tp_size)
         # accelerate integration for FSDP
         if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
@@ -809,9 +812,6 @@ class GaudiTrainingArguments(TrainingArguments):
         elif self.debug is None:
             self.debug = []
 
-        # This call to self.device is necessary to call _setup_devices so that
-        # torch.distributed is initialized
-        device_is_hpu = self.device.type == "hpu"
         self.deepspeed_plugin = None
         if self.deepspeed:
             if not device_is_hpu:

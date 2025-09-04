@@ -220,12 +220,10 @@ def gaudi_wav2vec2_encoder_forward(
         expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
         hidden_states[~expand_attention_mask] = 0
 
-        # extend attention_mask
-        attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
-        attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
-        attention_mask = attention_mask.expand(
-            attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
-        )
+    attention_mask = self._update_full_mask(
+        attention_mask,
+        hidden_states,
+    )
 
     position_embeddings = self.pos_conv_embed(hidden_states)
     hidden_states = hidden_states + position_embeddings
@@ -241,20 +239,10 @@ def gaudi_wav2vec2_encoder_forward(
         # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         dropout_probability = torch.rand([])
 
-        skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
+        skip_the_layer = self.training and (dropout_probability < self.config.layerdrop)
         if not skip_the_layer or synced_gpus:
             # under fsdp or deepspeed zero3 all gpus must run in sync
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    output_attentions,
-                )
-            else:
-                layer_outputs = layer(
-                    hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
-                )
+            layer_outputs = layer(hidden_states, attention_mask=attention_mask, output_attentions=output_attentions)
             hidden_states = layer_outputs[0]
 
         if skip_the_layer:

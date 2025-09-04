@@ -12,32 +12,6 @@ from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoForCausalLM, logg
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
-def gaudi_gpt_neo_attention_forward(
-    self,
-    hidden_states,
-    attention_mask=None,
-    layer_past=None,
-    head_mask=None,
-    use_cache=False,
-    output_attentions=False,
-    token_idx=None,
-):
-    """
-    Copied from GPTNeoAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
-    The only differences are:
-    - add new args token_idx
-    """
-    return self.attention(
-        hidden_states,
-        attention_mask=attention_mask,
-        layer_past=layer_past,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-    )
-
-
 def gaudi_gpt_neo_selfattention_forward(
     self,
     hidden_states,
@@ -86,10 +60,34 @@ def gaudi_gpt_neo_selfattention_forward(
     attn_output = self.resid_dropout(attn_output)
 
     outputs = (attn_output, present)
-    if output_attentions:
-        outputs += (attn_weights,)
 
     return outputs  # a, present, (attentions)
+
+
+def gaudi_gpt_neo_attention_forward(
+    self,
+    hidden_states,
+    attention_mask=None,
+    layer_past=None,
+    head_mask=None,
+    use_cache=False,
+    output_attentions=False,
+    token_idx=None,
+):
+    """
+    Copied from GPTNeoAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+    The only differences are:
+    - add new args token_idx
+    """
+    return self.attention(
+        hidden_states,
+        attention_mask=attention_mask,
+        layer_past=layer_past,
+        head_mask=head_mask,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+    )
 
 
 def gaudi_gpt_neo_block_forward(
@@ -109,7 +107,7 @@ def gaudi_gpt_neo_block_forward(
     """
     residual = hidden_states
     hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
+    attn_output, attn_weights = self.attn(
         hidden_states,
         layer_past=layer_past,
         attention_mask=attention_mask,
@@ -118,8 +116,7 @@ def gaudi_gpt_neo_block_forward(
         output_attentions=output_attentions,
         token_idx=token_idx,
     )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
+
     # residual connection
     hidden_states = attn_output + residual
 
@@ -129,12 +126,7 @@ def gaudi_gpt_neo_block_forward(
     # residual connection
     hidden_states = residual + feed_forward_hidden_states
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
-
-    return outputs  # hidden_states, present, (attentions, cross_attentions)
+    return hidden_states, attn_weights
 
 
 def gaudi_gpt_neo_model_forward(
@@ -234,26 +226,15 @@ def gaudi_gpt_neo_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
