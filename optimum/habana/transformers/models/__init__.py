@@ -316,6 +316,7 @@ from .siglip import (
     GaudiSiglipVisionModel,
     GaudiSiglipVisionTransformer,
 )
+from .snowflake import ArcticConfig, ArcticForCausalLM, ArcticTokenizer
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -343,7 +344,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaProcessor
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )

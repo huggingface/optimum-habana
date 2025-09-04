@@ -78,7 +78,7 @@ def setup_lm_eval_parser():
         type=int,
         nargs="+",
         help="Input length buckets to use with static_shapes",
-        default=[16, 32, 64, 128, 189, 284, 384, 985],
+        default=[16, 32, 64, 128, 189, 284, 384],
     )
 
     parser.add_argument(
@@ -181,6 +181,9 @@ def main() -> None:
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
+    # Delayed imports: external modules are imported here to ensure that
+    # environment variables and runtime configurations are properly initialized
+    # before loading modules that depend on them.
     import torch
     from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter

@@ -36,6 +36,7 @@ INSTALL_REQUIRES = [
     "diffusers >= 0.34.0, < 0.34.1",
     "huggingface_hub[hf_xet] >= 0.24.7",
     "sentence-transformers == 3.3.1",
+    "sentencepiece",
 ]
 
 TESTS_REQUIRE = [
@@ -52,6 +53,7 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "bitsandbytes",
     "tiktoken",
     "blobfile",
 ]
