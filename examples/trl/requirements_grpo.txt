@@ -1,6 +1,6 @@
 trl == 0.17.0
 peft == 0.15.0
-datasets
+datasets>=4.0.0
 tyro
 evaluate
 scikit-learn == 1.5.2
