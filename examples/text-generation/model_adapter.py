@@ -239,7 +239,7 @@ class HabanaModelAdapter(HFLM):
             bucket_length = self.find_bucket(context.shape[1])
             padding_length = bucket_length - context.shape[1]
             max_gen_toks = max_length - context.shape[1]
-            if padding_length > 0:
+            if padding_length > 0 and self.hpu_graphs:
                 # Left-padding
                 context = F.pad(context, (padding_length, 0), value=self.tokenizer.pad_token_id)
                 generation_kwargs["attention_mask"] = F.pad(
