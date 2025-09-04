@@ -155,7 +155,7 @@ def to_gb_rounded(mem: float) -> float:
     Returns:
         float: memory in GB rounded to the second decimal
     """
-    return np.round(mem / 1024**3, 2)
+    return float(np.round(mem / 1024**3, 2))
 
 
 def get_hpu_memory_stats(device=None) -> Dict[str, float]:
