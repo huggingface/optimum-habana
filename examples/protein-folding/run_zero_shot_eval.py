@@ -133,7 +133,7 @@ def main(args):
     device = torch.device("hpu")
     model_dtype = torch.bfloat16 if args.bf16 else None
     protst_model = AutoModel.from_pretrained(
-        "mila-intel/ProtST-esm1b", trust_remote_code=True, torch_dtype=model_dtype
+        "mila-intel/ProtST-esm1b", torch_dtype=model_dtype
     ).to(device)
     protein_model = protst_model.protein_model
     text_model = protst_model.text_model

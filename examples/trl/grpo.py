@@ -143,7 +143,7 @@ if __name__ == "__main__":
     else:
         peft_config = None
 
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path )
     if training_args.chat_template is not None:
         tokenizer.chat_template = training_args.chat_template
 

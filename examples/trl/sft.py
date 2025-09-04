@@ -170,7 +170,7 @@ if __name__ == "__main__":
     if is_zero3_enabled and training_args.use_zero3_leaf_promotion:
         apply_zero3_leaf_promotion(base_model)
 
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path )
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"  # Fix weird overflow issue with fp16 training
 
