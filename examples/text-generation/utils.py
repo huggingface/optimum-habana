@@ -125,7 +125,6 @@ def setup_env(args):
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
     if args.world_size > 0:
-        os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
     if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache and args.bucket_internal:
