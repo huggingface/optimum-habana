@@ -26,9 +26,6 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from .utils import OH_DEVICE_CONTEXT
 
 
-MODEL_ID = "meta-llama/Llama-3.2-1B"
-
-
 def print_model_size(model):
     """
     Prints the model size in GB.
@@ -59,12 +56,12 @@ def get_data(tokenizer, dataset_name, max_seq_length=1024):
     data = dataset.map(
         lambda example: tokenizer(example["text"], max_length=max_seq_length, padding="max_length"), batched=True
     )
-    split_data = data["train"].train_test_split(test_size=0.1, seed=42)
+    split_data = data["train"].train_test_split(test_size=0.01, seed=42)
 
     return split_data
 
 
-def get_model(token: str):
+def get_model(token: str, model_id: str):
     nf4_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -72,25 +69,42 @@ def get_model(token: str):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
+        model_id, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
     )
 
     return model
 
 
+modeldata = [
+    ("meta-llama/Llama-3.2-1B", 8, 8),
+    ("meta-llama/Llama-3.1-8B", 4, 4),
+    ("meta-llama/Llama-3.1-70B", 1, 1),
+]
+
+
 @pytest.mark.skipif("gaudi1" == OH_DEVICE_CONTEXT, reason="execution not supported on gaudi1")
-def test_nf4_quantization_finetuning(token: str, baseline):
+@pytest.mark.parametrize("model_id, train_bs, eval_bs", modeldata)
+@pytest.mark.parametrize("compile_on", [True, False])
+def test_nf4_quantization_finetuning(
+    token: str, baseline, model_id: str, train_bs: int, eval_bs: int, compile_on: bool
+):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     from optimum.habana.transformers import modeling_utils
 
     modeling_utils.adapt_transformers_to_gaudi()
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token.value, padding_side="right")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=token.value, padding_side="right")
     # needed for llama tokenizer
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = get_model(token)
+    model = get_model(token, model_id)
     model.gradient_checkpointing_enable()
+    model.generation_config.use_flash_attention = True
+    model.generation_config.flash_attention_recompute = False
+    model.generation_config.flash_attention_causal_mask = True
+    model.generation_config.attn_softmax_bf16 = True
+    model.generation_config.use_fused_rope = True
+    is_large_model = "70B" in model_id
     print_model_size(model)
 
     model = prepare_model_for_kbit_training(model)
@@ -118,9 +132,9 @@ def test_nf4_quantization_finetuning(token: str, baseline):
     )
 
     training_args = GaudiTrainingArguments(
-        eval_strategy="steps",
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
+        eval_strategy="no",
+        per_device_train_batch_size=train_bs,
+        per_device_eval_batch_size=eval_bs,
         gradient_accumulation_steps=2,
         max_steps=50,
         eval_steps=10,
@@ -131,9 +145,12 @@ def test_nf4_quantization_finetuning(token: str, baseline):
         lr_scheduler_type="linear",
         use_habana=True,
         use_lazy_mode=False,
-        pipelining_fwd_bwd=True,
         adjust_throughput=True,
-        throughput_warmup_steps=2,
+        throughput_warmup_steps=3,
+        torch_compile=compile_on,
+        torch_compile_backend="hpu_backend" if compile_on else None,
+        gradient_checkpointing=is_large_model,
+        use_regional_compilation=compile_on and is_large_model,
     )
 
     trainer = GaudiTrainer(
@@ -149,7 +166,7 @@ def test_nf4_quantization_finetuning(token: str, baseline):
     trainer.train()
 
     baseline.assertRef(
-        compare=lambda actual, ref: abs(actual - ref) < 5e2,
+        compare=lambda actual, ref: abs(actual - ref) < 5e-2,
         context=[OH_DEVICE_CONTEXT],
         eval_loss=trainer.evaluate()["eval_loss"],
     )
