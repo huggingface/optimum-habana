@@ -238,6 +238,7 @@ class HabanaModelAdapter(HFLM):
             self.options.bucket_internal = True
             bucket_length = self.find_bucket(context.shape[1])
             padding_length = bucket_length - context.shape[1]
+            max_gen_toks = max_length - context.shape[1]
             if padding_length > 0:
                 # Left-padding
                 context = F.pad(context, (padding_length, 0), value=self.tokenizer.pad_token_id)
@@ -254,7 +255,7 @@ class HabanaModelAdapter(HFLM):
         ):
             return self.model.generate(
                 input_ids=context,
-                max_new_tokens=self.max_gen_toks,
+                max_new_tokens=max_gen_toks,
                 stopping_criteria=stopping_criteria,
                 pad_token_id=self.tokenizer.pad_token_id,
                 use_cache=True,
