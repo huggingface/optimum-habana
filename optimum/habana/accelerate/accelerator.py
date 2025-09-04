@@ -54,10 +54,9 @@ class GaudiAccelerator(Accelerator):
         super().__init__(*args, **kwargs)
 
         self.mpu = parallel_state
-        self.force_autocast = force_autocast
         self.distribution_strategy = distribution_strategy
         self.compiled_autograd_enabled = compiled_autograd_enabled
-        self.native_amp = self.native_amp and self.force_autocast
+        self.native_amp = self.native_amp and force_autocast
 
         # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
         # we can clean this up later when the upstream accelerate is fixed
