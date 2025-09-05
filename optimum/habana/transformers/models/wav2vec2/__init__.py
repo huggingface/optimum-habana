@@ -1,5 +1,5 @@
 from .modeling_wav2vec2 import (
-    GaudiWav2Vec2SdpaAttention,
+    GaudiWav2Vec2Attention,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,

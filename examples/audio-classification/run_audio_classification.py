@@ -401,6 +401,7 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+        attn_implementation="sdpa",
     )
 
     # freeze the convolutional waveform encoder if supported by model
