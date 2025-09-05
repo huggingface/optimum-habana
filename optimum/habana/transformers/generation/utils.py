@@ -1608,6 +1608,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["logits_bf16"] = kwargs.get("logits_bf16")
 
         # determine whether flash attention needs to be used
+        model_kwargs["use_flex_attention"] = generation_config.use_flex_attention
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
         model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
