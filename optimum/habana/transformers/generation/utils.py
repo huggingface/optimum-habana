@@ -2680,13 +2680,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
+            #print("?????????????????????model", self)
             # forward pass to get next token
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 **hpu_graphs_kwargs,
             )
-
             # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 continue

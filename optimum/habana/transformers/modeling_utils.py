@@ -106,7 +106,7 @@ from .models import (
     GaudiGptOssAttention,
     GaudiGptOssForCausalLM,
     GaudiGptOssModel,
-    # GaudiGptOssExperts,
+    GaudiGptOssExperts,
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
@@ -516,6 +516,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for gpt-oss generation on Gaudi
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM = GaudiGptOssForCausalLM
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel = GaudiGptOssModel
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
     transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward

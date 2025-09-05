@@ -155,6 +155,7 @@ from .gpt_oss import (
     GaudiGptOssAttention,
     GaudiGptOssForCausalLM,
     GaudiGptOssModel,
+    GaudiGptOssExperts,
     gaudi_gpt_oss_decoder_layer_forward,
     gaudi_gpt_oss_rmsnorm_forward,
 )

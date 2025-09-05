@@ -12,6 +12,7 @@ from transformers.models.gpt_oss.modeling_gpt_oss import (
     GptOssAttention,
     GptOssForCausalLM,
     GptOssModel,
+    GptOssExperts,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
@@ -22,9 +23,9 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 from ...modeling_rope_utils import GaudiRotaryEmbedding
-from ..modeling_all_models import KVCache, apply_customized_rope_module
+from ..modeling_all_models import KVCache, Matmul, apply_customized_rope_module
 from .configuration_gpt_oss import GptOssConfig
-
+import torch.distributed as dist
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE  # noqa
@@ -104,18 +105,24 @@ def eager_attention_forward(
     scaling: float,
     dropout: float = 0.0,
     token_idx: Optional[torch.Tensor] = None,
+    s_aux: Optional[torch.Tensor] = None,
     **kwargs,
 ):
     query_states, key_states, value_states, attention_mask = gaudi_repeat_kv(
         query, key, value, attention_mask, module.num_key_value_groups
     )
-    attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
+    #attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
+    attn_weights = module.matmul_qk(query_states, key_states.transpose(-2, -1)) * scaling
 
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
 
-    sinks = module.sinks.reshape(1, query_states.shape[1], query_states.shape[2], 1, 1).expand(
+    #print("****OH", query_states.shape, key_states.shape, module.sinks.shape)
+    #withoutDS[8, 8, 8, 306, 64], [8,8,1,306,64]  #with DS=2 [8, 4, 8, 306, 64], [8, 4, 1, 306, 64], [64]
+    #bs, n_kv_head, n_kv_group, seq_len, head_dim) => DS split n_kv_head
+    #sinks = module.sinks.reshape(1, query_states.shape[1], query_states.shape[2], 1, 1).expand(
+    sinks = s_aux.reshape(1, query_states.shape[1], query_states.shape[2], 1, 1).expand(
         query_states.shape[0], -1, -1, query_states.shape[-2], -1
     )
 
@@ -139,9 +146,80 @@ def eager_attention_forward(
 
     attn_weights = nn.functional.dropout(scores, p=dropout, training=module.training)
 
-    attn_output = torch.matmul(attn_weights, value_states)
+    #attn_output = torch.matmul(attn_weights, value_states)
+    attn_output = module.matmul_av(attn_weights, value_states)
     return attn_output, attn_weights
 
+
+class GaudiGptOssExperts(GptOssExperts):
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        #self.gate_up_bmm = nn.Linear(in_features=self.hidden_size, out_features=2*self.expert_dim, bias=False)#Matmul()
+        #self.next_states_bmm = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size, bias=False)#Matmul()
+
+        """
+        num_experts, hidden_size, intermediate_size = self.gate_up_proj.shape
+        self.experts = nn.ModuleList([
+            nn.Linear(hidden_size, intermediate_size, bias=True)
+            for _ in range(num_experts)])
+        """
+
+    def forward(self, hidden_states: torch.Tensor, router_indices=None, routing_weights=None):
+        batch_size = hidden_states.shape[0]
+        self.hidden_size = self.config.hidden_size ####DS changes this number hidden_size/num_worker
+
+        hidden_states = hidden_states.reshape(-1, self.hidden_size)  # (num_tokens, hidden_size)
+        num_experts = routing_weights.shape[1]
+        if hidden_states.device.type == "cpu" or self.training:
+            next_states = torch.zeros_like(hidden_states, dtype=hidden_states.dtype, device=hidden_states.device)
+            with torch.no_grad():
+                expert_mask = torch.nn.functional.one_hot(router_indices, num_classes=num_experts)
+                expert_mask = expert_mask.permute(2, 1, 0)
+                # we sum on the top_k and on the sequence length to get which experts
+                # are hit this time around
+                expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+            for expert_idx in expert_hit[:]:
+                # expert_idx only have 1 element, so we can use scale for fast indexing
+                expert_idx = expert_idx[0]
+                with torch.no_grad():
+                    _, token_idx = torch.where(expert_mask[expert_idx])
+                current_state = hidden_states[token_idx]
+                gate_up = current_state @ self.gate_up_proj[expert_idx] + self.gate_up_proj_bias[expert_idx]
+                gate, up = gate_up[..., ::2], gate_up[..., 1::2]
+                gate = gate.clamp(min=None, max=self.limit)
+                up = up.clamp(min=-self.limit, max=self.limit)
+                glu = gate * torch.sigmoid(gate * self.alpha)
+                gated_output = (up + 1) * glu
+                out = gated_output @ self.down_proj[expert_idx] + self.down_proj_bias[expert_idx]
+                weighted_output = out * routing_weights[token_idx, expert_idx, None]
+                next_states.index_add_(0, token_idx, weighted_output.to(hidden_states.dtype))
+            next_states = next_states.view(batch_size, -1, self.hidden_size)
+        else:
+            """
+            transposed_weights = self.gate_up_proj.transpose(1, 2)
+            biases = self.gate_up_proj_bias
+            for i, e in enumerate(self.experts):
+                #print("**********166", e.weight.data.shape, self.gate_up_proj[i].t().shape)
+                #e.weight.data.copy_(self.gate_up_proj[i].t()) #transposed
+                e.weight.data.copy_(transposed_weights[i])
+                e.bias.data.copy_(biases[i])
+            """
+
+            ###### compute all experts for all tokens
+            hidden_states = hidden_states.repeat(num_experts, 1)
+            hidden_states = hidden_states.view(num_experts, -1, self.hidden_size) #32,6592,1440
+            gate_up = torch.bmm(hidden_states, self.gate_up_proj) + self.gate_up_proj_bias[..., None, :]
+            gate, up = gate_up[..., ::2], gate_up[..., 1::2]
+            gate = gate.clamp(min=None, max=self.limit)
+            up = up.clamp(min=-self.limit, max=self.limit)
+            glu = gate * torch.sigmoid(gate * self.alpha)
+            next_states = torch.bmm(((up + 1) * glu), self.down_proj)
+            next_states = next_states + self.down_proj_bias[..., None, :]
+            next_states = next_states.view(num_experts, batch_size, -1, self.hidden_size)
+            next_states = next_states * routing_weights.transpose(0, 1).view(num_experts, batch_size, -1)[..., None]
+            next_states = next_states.sum(dim=0)
+        return next_states
 
 class GaudiGptOssAttention(GptOssAttention):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -149,9 +227,28 @@ class GaudiGptOssAttention(GptOssAttention):
     def __init__(self, config: GptOssConfig, layer_idx: int):
         super().__init__(config, layer_idx)
         self.config = config
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
+
+        if dist.is_initialized():
+            self.world_size = dist.get_world_size()
+            self.rank = dist.get_rank()
+        else:
+            self.world_size = 1
+            self.rank = 0
+        
+        """
+        split_size = self.config.num_attention_heads // world_size
+        #print("************133 ", split_size, module.sinks.shape[0])
+        #if split_size < module.sinks.shape[0]: #do only once    
+        start_idx = rank * split_size
+        end_idx = start_idx + split_size# if self.rank < self.world_size - 1 else self.num_attention_heads
+        print("****299 sink", rank, start_idx, end_idx, self.sinks[start_idx:end_idx])
+        self.sinks = nn.Parameter(self.sinks[start_idx:end_idx])
+        """
 
     def forward(
         self,
@@ -201,6 +298,10 @@ class GaudiGptOssAttention(GptOssAttention):
         if self.config._attn_implementation != "eager":
             attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
+        if self.world_size > 1:
+            local_sink = torch.chunk(self.sinks, self.world_size)[self.rank]
+        else:
+            local_sink = self.sinks
         attn_output, attn_weights = attention_interface(
             self,
             query_states,
@@ -210,7 +311,7 @@ class GaudiGptOssAttention(GptOssAttention):
             dropout=0.0 if not self.training else self.attention_dropout,
             scaling=self.scaling,
             sliding_window=self.sliding_window,
-            s_aux=self.sinks,
+            s_aux=local_sink,#self.sinks,
             token_idx=token_idx,
             **kwargs,
         )
@@ -221,6 +322,7 @@ class GaudiGptOssAttention(GptOssAttention):
         attn_output = attn_output.reshape(*input_shape, -1)
 
         attn_output = self.o_proj(attn_output)
+        #print("********317", attn_output.shape) #8,412,2880
         return attn_output, attn_weights, past_key_values
 
 
@@ -380,6 +482,8 @@ class GaudiGptOssModel(GptOssModel):
             if use_cache:
                 next_decoder_cache += (layer_outputs[1],)
 
+            #htcore.mark_step()
+
         hidden_states = self.norm(hidden_states)
 
         return MoeModelOutputWithPast(
@@ -405,6 +509,13 @@ class GaudiGptOssForCausalLM(GptOssForCausalLM):
         lazy_mode: Optional[bool] = True,
         **kwargs,
     ) -> MoeCausalLMOutputWithPast:
+        if dist.is_initialized():
+            world_size = dist.get_world_size()
+            rank = dist.get_rank()
+        else:
+            world_size = 1
+            rank = 0
+
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
         )
