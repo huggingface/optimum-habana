@@ -71,7 +71,7 @@ class IsSynapsePublicVersion(Feature):
     """
 
     def __init__(self):
-        super().__init__(SynapseVersionRange(">=1.20.0", "<1.21.0"))
+        super().__init__(SynapseVersionRange(">=1.22.0", "<1.23.0"))
 
 
 class IsSynapseUnreleasedVersion(Feature):
@@ -80,7 +80,7 @@ class IsSynapseUnreleasedVersion(Feature):
     """
 
     def __init__(self):
-        super().__init__(SynapseVersionRange(">=1.21.0"))
+        super().__init__(SynapseVersionRange(">=1.23.0"))
 
 
 @cache
