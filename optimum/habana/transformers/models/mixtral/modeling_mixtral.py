@@ -227,23 +227,7 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
 
         routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
 
-        # pre-processing for custom op inputs
-        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
-        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
-        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
-
-        final_hidden_states = torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=selected_experts,
-            router_weights=routing_weights,
-            w1=w1_list,
-            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
-            w3=w2_list,
-            permuted_weights=True,
-            activation="silu",
-            experts_min=self.experts_min,
-            experts_max=self.experts_max,
-        )
+        final_hidden_states = self.call_dynamic_moe_op(hidden_states, selected_experts, routing_weights)
 
         if not self.training:
             if self.ep_size > 1:
@@ -255,6 +239,25 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
                     comm.all_reduce(final_hidden_states)
 
         return final_hidden_states.view(original_shape), router_logits
+
+    def call_dynamic_moe_op(self, hidden_states, expert_routing_table, router_weights):
+        # pre-processing for custom op inputs
+        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
+        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
+        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
+
+        return torch.ops.hpu.mixture_of_experts(
+            hidden_states=hidden_states,
+            expert_routing_table=expert_routing_table,
+            router_weights=router_weights,
+            w1=w1_list,
+            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+            w3=w2_list,
+            permuted_weights=True,
+            activation="silu",
+            experts_min=self.experts_min,
+            experts_max=self.experts_max,
+        )
 
 
 class GaudiMixtralAttentionLongSequence:
