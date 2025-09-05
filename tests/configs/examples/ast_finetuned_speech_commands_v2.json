@@ -1,6 +1,6 @@
 {
     "gaudi2": {
-        "common_language": {
+        "regisss/common_language": {
             "num_train_epochs": 10,
             "eval_batch_size": 64,
             "distribution": {
@@ -32,7 +32,7 @@
         }
     },
     "gaudi3": {
-        "common_language": {
+        "regisss/common_language": {
             "num_train_epochs": 10,
             "eval_batch_size": 64,
             "distribution": {
