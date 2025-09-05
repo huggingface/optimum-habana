@@ -145,11 +145,6 @@ def get_ds_injection_policy(config):
 
             policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
 
-        #if model_type == "gpt_oss":
-        #    from transformers.models.gpt_oss.modeling_gpt_oss import GptOssDecoderLayer
-
-        #    policy = {GptOssDecoderLayer: ("self_attn.o_proj")}#, "mlp.experts.next_states_bmm")}
-
         if model_type == "llama":
             from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 

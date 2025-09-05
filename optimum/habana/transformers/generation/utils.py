@@ -2680,7 +2680,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
-            #print("?????????????????????model", self)
             # forward pass to get next token
             outputs = self(
                 **model_inputs,

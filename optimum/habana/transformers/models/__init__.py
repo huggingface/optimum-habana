@@ -153,9 +153,9 @@ from .gpt_neox import (
 )
 from .gpt_oss import (
     GaudiGptOssAttention,
+    GaudiGptOssExperts,
     GaudiGptOssForCausalLM,
     GaudiGptOssModel,
-    GaudiGptOssExperts,
     gaudi_gpt_oss_decoder_layer_forward,
     gaudi_gpt_oss_rmsnorm_forward,
 )
