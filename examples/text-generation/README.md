@@ -822,7 +822,7 @@ pip install -r requirements_lm_eval.txt
 >
 > COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
 >
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==3.6.0
+> For lm-eval tasks that still rely on dataset scripts, use a separate env with datasets 3.x or switch to Parquet/Arrow variants. This repo requires datasets>=4.0.0.
 
 
 ### Examples
