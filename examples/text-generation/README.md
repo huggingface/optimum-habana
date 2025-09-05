@@ -393,10 +393,61 @@ PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py  --world_size 8 run_generatio
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-180B and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-180B and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch.
+From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+
+#### Post-processing measurement artifacts before quantization
+
+After the measurement phase finishes (i.e. after running with a QUANT_CONFIG that contains `"mode": "measure"`), you must run the helper script `quantization_tools/postprocess_measure.py` to fix cache input mappings in the collected measurement JSON/NPZ files. The quantization phase (with a `"mode": "quantize"` QUANT_CONFIG) should then use the post‑processed outputs.
+
+Why needed:
+- Ensures K/V cache tensors are properly associated for attention layers (standard, flash attention, DeepSeek MLA, etc.).
+- Prevents incorrect scaling statistics that could degrade accuracy.
+
+Usage:
+```bash
+python quantization_tools/postprocess_measure.py \
+  -m <original_measurements_dir> \
+  -o <fixed_measurements_dir> \
+  [--deepseek]   # add only for DeepSeek / MLA style models
+```
+
+Example end‑to‑end (Mixtral):
+1. Measurement:
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json \
+python run_generation.py \
+  --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+  --use_hpu_graphs --use_kv_cache --limit_hpu_graphs \
+  --bucket_size 128 --max_new_tokens 128 --batch_size 1 --bf16
+```
+2. Post-process:
+```bash
+python quantization_tools/postprocess_measure.py \
+  -m ./measurements_mixtral_bs1 \
+  -o ./measurements_mixtral_bs1_fixed
+```
+(Replace the measurement directory names above with the one actually produced in your run.)
+3. Quantize (now using the fixed measurements):
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json \
+MEASUREMENTS_DIR=./measurements_mixtral_bs1_fixed \
+python run_generation.py \
+  --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+  --use_hpu_graphs --use_kv_cache --limit_hpu_graphs \
+  --bucket_size 128 --max_new_tokens 2048 --batch_size 16 --bf16
+```
+(If your quant config requires an environment variable or a path field for measurements, point it to the fixed directory.)
+
+For DeepSeek models add --deepseek:
+```bash
+python quantization_tools/postprocess_measure.py -m <measure_dir> -o <fixed_dir> --deepseek
+```
+
+#### Measuring Tensor Quantization Statistics Examples
 
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
 ```bash
@@ -410,6 +461,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --batch_size 1 \
 --bf16
 ```
+
+(After this measurement run, execute the post-processing step before proceeding.)
 
 Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
 ```bash
@@ -442,6 +495,7 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_causal_mask \
 --trust_remote_code
 ```
+> Run postprocess_measure.py on the produced measurement directory before executing the corresponding quantization command below.
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
 ```bash
@@ -480,6 +534,7 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_causal_mask \
 --trust_remote_code
 ```
+> Post-process the measurements prior to quantization.
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
 > Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
@@ -502,7 +557,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python .
 ```
 
 Here is an example to measure the tensor quantization statistics on Llama3-8b with 1 card:
-
 ```bash
 PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 -o acc_Llama3-8b_bs1_measure.txt  \
@@ -516,6 +570,7 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --bf16 \
 --trust_remote_code
 ```
+> Run postprocess_measure.py before the quantization example that follows.
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:
 ```bash
@@ -543,6 +598,7 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --bf16 \
 --sdp_on_bf16
 ```
+> Post-process measurements before quantization.
 
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
 ```bash
