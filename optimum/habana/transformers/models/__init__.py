@@ -275,6 +275,14 @@ from .qwen2_vl import (
     GaudiQwen2VLVisionBlock,
     GaudiVisionSdpaAttention,
 )
+from .qwen2_5_vl import (
+    GaudiQwen2_5_VisionTransformerPretrainedModel,
+    GaudiQwen2_5_VLDecoderLayer,
+    GaudiQwen2_5_VLForConditionalGeneration,
+    GaudiQwen2_5_VLModel,
+    GaudiQwen2_5_VLSdpaAttention,
+    GaudiQwen2_5_VLVisionBlock,
+)
 from .qwen3 import (
     GaudiQwen3Attention,
     GaudiQwen3DecoderLayer,

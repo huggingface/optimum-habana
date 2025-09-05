@@ -163,6 +163,12 @@ from .models import (
     GaudiQwen2VLModel,
     GaudiQwen2VLSdpaAttention,
     GaudiQwen2VLVisionBlock,
+    GaudiQwen2_5_VisionTransformerPretrainedModel,
+    GaudiQwen2_5_VLDecoderLayer,
+    GaudiQwen2_5_VLForConditionalGeneration,
+    GaudiQwen2_5_VLModel,
+    GaudiQwen2_5_VLSdpaAttention,
+    GaudiQwen2_5_VLVisionBlock,
     GaudiQwen3Attention,
     GaudiQwen3DecoderLayer,
     GaudiQwen3ForCausalLM,
@@ -716,6 +722,19 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration = (
         GaudiQwen2VLForConditionalGeneration
     )
+
+    # Optimization for qwen2.5-vl on Gaudi
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLVisionBlock = GaudiQwen2_5_VLVisionBlock
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VisionTransformerPretrainedModel = (
+        GaudiQwen2_5_VisionTransformerPretrainedModel
+    )
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLSdpaAttention = GaudiQwen2_5_VLSdpaAttention
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLDecoderLayer = GaudiQwen2_5_VLDecoderLayer
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLModel = GaudiQwen2_5_VLModel
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration = (
+        GaudiQwen2_5_VLForConditionalGeneration
+    )
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2RMSNorm.forward = gaudi_qwen2_rmsnorm_forward
 
     # Optimization for qwen3 on Gaudi
     transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
