@@ -240,10 +240,11 @@ class HabanaModelAdapter(HFLM):
             padding_length = bucket_length - context.shape[1]
             max_gen_toks = max_length - context.shape[1]
             if padding_length > 0 and self.hpu_graphs:
-                # Left-padding
-                context = F.pad(context, (padding_length, 0), value=self.tokenizer.pad_token_id)
+                # Static shapes require right-padding (left-padding due to batch encoding is performed at tok_batch_encode level)
+                # See https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/models/huggingface.py#L869
+                context = F.pad(context, (0, padding_length), value=self.tokenizer.pad_token_id)
                 generation_kwargs["attention_mask"] = F.pad(
-                    generation_kwargs["attention_mask"], (padding_length, 0), value=0
+                    generation_kwargs["attention_mask"], (0, padding_length), value=0
                 )
         # move context & attention_mask to hpu
         context = context.to("hpu")
