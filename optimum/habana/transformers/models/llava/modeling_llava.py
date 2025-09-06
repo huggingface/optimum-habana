@@ -165,7 +165,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
         image_features = None
         # 2. Merge text and images
-        if pixel_values is not None and input_ids.shape[1] != 1:
+        if pixel_values is not None and input_ids is not None and input_ids.shape[1] != 1:
             image_outputs = self.vision_tower(
                 pixel_values,
                 output_hidden_states=True,

@@ -323,7 +323,7 @@ class GaudiCohereForCausalLM(CohereForCausalLM):
             # The clone here is for the same reason as for `position_ids`.
             model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
-        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
+        if isinstance(past_key_values, StaticCache) and attention_mask is not None and attention_mask.ndim == 2:
             if model_inputs["inputs_embeds"] is not None:
                 batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
                 device = model_inputs["inputs_embeds"].device
