@@ -115,7 +115,7 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
     """
     if encoder_attention_mask.dim() == 3:
         encoder_extended_attention_mask = encoder_attention_mask[:, None, :, :]
-    if encoder_attention_mask.dim() == 2:
+    elif encoder_attention_mask.dim() == 2:
         encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
     else:
         raise ValueError(f"encoder_attention_mask must be 2D or 3D, but got shape {encoder_attention_mask.shape}")
