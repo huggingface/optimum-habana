@@ -35,7 +35,7 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         device: torch.device,
         past_key_values_length: int = 0,
         sliding_window: Optional[int] = None,
-        token_idx: Optional[int] = None,
+        token_idx: Optional[torch.Tensor] = None,
     ):
         """
         Make causal mask used for bi-directional self-attention.

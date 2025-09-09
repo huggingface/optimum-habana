@@ -55,6 +55,7 @@ class MistralConfig(MistralConfig):
             attention_dropout,
             **kwargs,
         )
+
         self.rope_scaling = rope_scaling
 
         # Validate the correctness of rotary position embeddings parameters

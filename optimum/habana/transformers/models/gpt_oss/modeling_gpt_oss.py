@@ -135,7 +135,9 @@ def eager_attention_forward(
     probs = F.softmax(combined_logits, dim=-1, dtype=combined_logits.dtype)
 
     if token_idx is not None:
-        probs[..., token_idx] = 0
+        # index_copy_() was used to avoid dynamicity in probs[..., token_idx]
+        zeros = torch.zeros(probs.shape[:-1] + (1,), dtype=probs.dtype, device=probs.device)
+        probs.index_copy_(-1, token_idx, zeros)
         scores = probs
     else:
         scores = probs[..., :-1]
