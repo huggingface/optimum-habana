@@ -25,14 +25,13 @@ from transformers.modeling_outputs import (
 )
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     Qwen2VisionTransformerPretrainedModel,
+    Qwen2VLAttention,
     Qwen2VLCausalLMOutputWithPast,
     Qwen2VLConfig,
     Qwen2VLDecoderLayer,
     Qwen2VLForConditionalGeneration,
     Qwen2VLModel,
-    Qwen2VLSdpaAttention,
     Qwen2VLVisionBlock,
-    VisionSdpaAttention,
     apply_multimodal_rotary_pos_emb,
     apply_rotary_pos_emb_vision,
     repeat_kv,
@@ -59,9 +58,12 @@ class ModuleFusedSDPA(torch.nn.Module):
 
 
 # from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L383
-class GaudiVisionSdpaAttention(VisionSdpaAttention):
+class GaudiVisionSdpaAttention(torch.nn.Module):
     def __init__(self, dim: int, num_heads: int = 16) -> None:
-        super().__init__(dim, num_heads)
+        super().__init__()
+        self.num_heads = num_heads
+        self.qkv = torch.nn.Linear(dim, dim * 3, bias=True)
+        self.proj = torch.nn.Linear(dim, dim)
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
 
     def forward(
@@ -149,7 +151,7 @@ class GaudiQwen2VLVisionBlock(Qwen2VLVisionBlock):
 
 
 # from: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py#L821
-class GaudiQwen2VLSdpaAttention(Qwen2VLSdpaAttention):
+class GaudiQwen2VLSdpaAttention(Qwen2VLAttention):
     """
     Qwen2 attention module using torch.nn.functional.scaled_dot_product_attention. This module inherits from
     `Qwen2Attention` as the weights of the module stays untouched. The only changes are on the forward pass to adapt to

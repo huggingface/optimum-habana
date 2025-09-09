@@ -824,8 +824,25 @@ pip install -r requirements_lm_eval.txt
 >
 > If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==3.6.0
 
+The argument --system_instruction adds a system message to the beginning of the prompt.
+This instruction is treated as part of the input context and can influence how the model interprets the task or responds.
 
 ### Examples
+
+Evaluate [Moonlight-16B-A3B](https://huggingface.co/moonshotai/Moonlight-16B-A3B) (a DeepSeek-V3 like model) on Gaudi on task mmlu_abstract_algebra, with system instruction:
+```bash
+PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
+--model_name_or_path moonshotai/Moonlight-16B-A3B-Instruct \
+--tasks mmlu_abstract_algebra \
+--system_instruction "You are a helpful assistant that thinks step-by-step before answering." \
+--buckets=256 \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=1 \
+--trust_remote_code \
+-o mmlu.json
+```
 
 Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type:
 ```bash
