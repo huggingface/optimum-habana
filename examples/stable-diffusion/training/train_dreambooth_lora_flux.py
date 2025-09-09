@@ -105,7 +105,7 @@ def save_model_card(
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
 The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the
-[Gaudi Flux diffusers trainer](https://github.com/huggingface/optimum-habana/blob/main/examples/stable-diffusion/training/README.md).
+[Gaudi Flux diffusers trainer](https://github.com/huggingface/optimum-habana/blob/v1.20-release/examples/stable-diffusion/training/README.md).
 
 Was LoRA for the text encoder enabled? False.
 
