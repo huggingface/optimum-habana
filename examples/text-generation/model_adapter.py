@@ -142,7 +142,7 @@ class HabanaModelAdapter(HFLM):
             )
             if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
                 self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
-            if self.model_config.model_type in ["llama"]:
+            if self.model.config.model_type in ["llama"]:
                 self.model_inputs.update({"use_flex_attention": self.options.use_flex_attention})
         if args.warmup:
             self.warm_up()
