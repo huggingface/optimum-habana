@@ -179,6 +179,28 @@ def setup_lm_eval_parser():
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py#L301
     args = setup_lm_eval_parser()
+
+    # lm-eval==0.4.9.1 requires datasets<4.0 — fail fast if 4.x detected. Remove this block after upgrading lm-eval.
+    try:
+        import datasets as _ds
+    except ImportError as e:
+        raise RuntimeError(
+            "The 'datasets' package is not installed. Run this script in a separate environment and install:\n"
+            "  pip install -r examples/text-generation/requirements_lm_eval.txt"
+        ) from e
+
+    _major = int((str(_ds.__version__).split(".")[0]) or 0)
+    if _major >= 4:
+        raise RuntimeError(
+            f"lm-eval 0.4.9.1 requires datasets<4.0, but detected datasets=={_ds.__version__}. "
+            "Run this script in a separate environment and install:\n"
+            "  pip install -r examples/text-generation/requirements_lm_eval.txt"
+        )
+
+    # Always enable dataset scripts for lm-eval<=0.4.9.1 (remove when lm-eval supports datasets>=4.0)
+    os.environ["HF_DATASETS_TRUST_REMOTE_CODE"] = "true"
+    print("[lm-eval] HF_DATASETS_TRUST_REMOTE_CODE=true")
+
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     import torch
