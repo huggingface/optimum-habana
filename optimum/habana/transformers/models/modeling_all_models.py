@@ -113,8 +113,10 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
     """
     if encoder_attention_mask.dim() == 3:
         encoder_extended_attention_mask = encoder_attention_mask[:, None, :, :]
-    if encoder_attention_mask.dim() == 2:
+    elif encoder_attention_mask.dim() == 2:
         encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
+    else:
+        raise ValueError(f"encoder_attention_mask must be 2D or 3D, but got shape {encoder_attention_mask.shape}")
     # T5 has a mask that can compare sequence ids, we can simulate this here with this transposition
     # Cf. https://github.com/tensorflow/mesh/blob/8d2465e9bc93129b913b5ccc6a59aa97abd96ec6/mesh_tensorflow
     # /transformer/transformer_layers.py#L270
