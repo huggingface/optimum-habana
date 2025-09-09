@@ -93,8 +93,10 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             batch_size=batch_size,
             remove_columns=["article", "highlights"],
         )
-        train_dataset = train_dataset.with_format("torch",
-            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],)
+        train_dataset = train_dataset.with_format(
+            "torch",
+            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
+        )
 
         # same for validation dataset
         val_dataset = val_dataset.map(
@@ -103,8 +105,10 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             batch_size=batch_size,
             remove_columns=["article", "highlights"],
         )
-        val_dataset = val_dataset.with_format("torch",
-            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],)
+        val_dataset = val_dataset.with_format(
+            "torch",
+            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
+        )
 
         # instantiate trainer
         trainer = GaudiSeq2SeqTrainer(
