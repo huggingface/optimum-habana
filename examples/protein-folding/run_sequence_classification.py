@@ -188,7 +188,7 @@ if __name__ == "__main__":
         model_args.torch_dtype if model_args.torch_dtype in ["auto", None] else getattr(torch, model_args.torch_dtype)
     )
     model = AutoModel.from_pretrained(
-        model_args.model_name_or_path, torch_dtype=torch_dtype
+        model_args.model_name_or_path, trust_remote_code=model_args.trust_remote_code, torch_dtype=torch_dtype
     )
     tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name)
 

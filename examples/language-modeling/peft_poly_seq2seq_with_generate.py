@@ -233,7 +233,7 @@ def main():
 
     # boolq
     boolq_dataset = (
-        load_dataset("super_glue", "boolq" )
+        load_dataset("super_glue", "boolq")
         .map(
             lambda x: {
                 "input": f"{x['passage']}\nQuestion: {x['question']}\nA. Yes\nB. No\nAnswer:",
@@ -248,7 +248,7 @@ def main():
 
     # multirc
     multirc_dataset = (
-        load_dataset("super_glue", "multirc" )
+        load_dataset("super_glue", "multirc")
         .map(
             lambda x: {
                 "input": (
@@ -266,7 +266,7 @@ def main():
 
     # rte
     rte_dataset = (
-        load_dataset("super_glue", "rte" )
+        load_dataset("super_glue", "rte")
         .map(
             lambda x: {
                 "input": (
@@ -284,7 +284,7 @@ def main():
 
     # wic
     wic_dataset = (
-        load_dataset("super_glue", "wic" )
+        load_dataset("super_glue", "wic")
         .map(
             lambda x: {
                 "input": (
