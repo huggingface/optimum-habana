@@ -188,9 +188,6 @@ def main() -> None:
         "  pip install -r examples/text-generation/requirements_lm_eval.txt",
     )
 
-    # Always enable dataset scripts for lm-eval<=0.4.9.1 (remove when lm-eval supports datasets>=4.0)
-    # os.environ["HF_DATASETS_TRUST_REMOTE_CODE"] = "true"
-
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     import torch
