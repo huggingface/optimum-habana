@@ -348,6 +348,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         Intercept to() method and disable gpu-hpu migration before sending to diffusers
         """
         kwargs["hpu_migration"] = False
+        kwargs["sdp_on_bf16"] = False
         return super().to(
             *args,
             **kwargs,
