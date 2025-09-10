@@ -19,7 +19,6 @@ from diffusers import EulerDiscreteScheduler
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteSchedulerOutput
 from diffusers.utils.torch_utils import randn_tensor
-
 from optimum.utils import logging
 
 
