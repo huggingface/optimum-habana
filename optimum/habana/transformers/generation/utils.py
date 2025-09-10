@@ -93,6 +93,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gptj",
     "gpt_neo",
     "gpt_neox",
+    "gpt_oss",
     "llama",
     "falcon",
     "codegen",
@@ -1419,6 +1420,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "phi",
                 "qwen2",
                 "gptj",
+                "gpt_oss",
                 "starcoder2",
                 "qwen2_moe",
                 "gemma",
@@ -2784,7 +2786,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict=True,
                 **hpu_graphs_kwargs,
             )
-
             # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 continue
