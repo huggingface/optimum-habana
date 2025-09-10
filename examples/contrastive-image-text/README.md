@@ -30,30 +30,14 @@ First, you should install the requirements:
 pip install -r requirements.txt
 ```
 
-## Download COCO dataset (2017)
-This example uses COCO dataset (2017) through a custom dataset script, which requires users to manually download the
-COCO dataset before training.
+## Dataset
 
-```bash
-mkdir data
-cd data
-wget http://images.cocodataset.org/zips/train2017.zip
-wget http://images.cocodataset.org/zips/val2017.zip
-wget http://images.cocodataset.org/zips/test2017.zip
-wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip
-wget http://images.cocodataset.org/annotations/image_info_test2017.zip
-cd ..
-```
-
-Having downloaded COCO dataset manually you should be able to load with the `imagefolder` ImageFolder builder:
-
+**Recommended (datasets>=4.0.0):** use the COCO captions dataset hosted on the Hub. It provides image–caption pairs and does **not** require `trust_remote_code`:
 ```python
-import os
 import datasets
-
-COCO_DIR = os.path.join(os.getcwd(), "data")
 ds = datasets.load_dataset("sentence-transformers/coco-captions", split="train")
 ```
+This dataset exposes at least the columns `image` (PIL image) and `caption` (string).
 
 ## CLIP-like models
 
@@ -99,10 +83,8 @@ Run the following command for single-device training:
 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --data_dir $PWD/data \
-    --dataset_name imagefolder \
-    --dataset_config_name=2017 \
-    --image_column image_path \
+    --dataset_name sentence-transformers/coco-captions \
+    --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train  --do_eval \
@@ -132,10 +114,8 @@ PT_ENABLE_INT64_SUPPORT=1 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir=/tmp/clip_roberta \
     --model_name_or_path=./clip-roberta \
-    --data_dir $PWD/data \
-    --dataset_name imagefolder \
-    --dataset_config_name 2017 \
-    --image_column image_path \
+    --dataset_name sentence-transformers/coco-captions \ 
+    --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train --do_eval \
