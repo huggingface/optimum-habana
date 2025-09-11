@@ -20,7 +20,6 @@ from typing import Optional
 import torch
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
-
 from optimum.utils import logging
 
 
