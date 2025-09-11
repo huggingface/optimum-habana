@@ -567,6 +567,7 @@ class GaudiLlamaAttention(LlamaAttention):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -583,6 +584,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - optimize KV cache
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flex_attention
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         - add new arg flash_attention_causal_mask
@@ -869,6 +871,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -889,6 +892,7 @@ class TPGaudiLlamaAttention(GaudiLlamaAttention, TPModule):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            use_flex_attention=use_flex_attention,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -932,6 +936,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -949,6 +954,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new args token_idx
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flex_attention
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         - add new arg flash_attention_causal_mask
@@ -989,6 +995,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                     token_idx=token_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
+                    use_flex_attention=use_flex_attention,
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
                     flash_attention_causal_mask=flash_attention_causal_mask,
@@ -1029,6 +1036,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                 token_idx=token_idx,
                 attn_softmax_bf16=attn_softmax_bf16,
                 reuse_cache=reuse_cache,
+                use_flex_attention=use_flex_attention,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
                 flash_attention_causal_mask=flash_attention_causal_mask,
@@ -1064,6 +1072,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -1085,6 +1094,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            use_flex_attention=use_flex_attention,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -1177,6 +1187,7 @@ class GaudiLlamaModel(LlamaModel):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -1194,6 +1205,7 @@ class GaudiLlamaModel(LlamaModel):
         - add new args token_idx
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flex_attention
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         - add new arg flash_attention_causal_mask
@@ -1313,6 +1325,7 @@ class GaudiLlamaModel(LlamaModel):
                 token_idx,
                 attn_softmax_bf16,
                 reuse_cache,
+                use_flex_attention,
                 use_flash_attention,
                 flash_attention_recompute,
                 flash_attention_causal_mask,
@@ -1390,6 +1403,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flex_attention: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -1416,6 +1430,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            use_flex_attention=use_flex_attention,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -1542,6 +1557,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
                 "reuse_cache": reuse_cache,
+                "use_flex_attention": kwargs.get("use_flex_attention"),
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
