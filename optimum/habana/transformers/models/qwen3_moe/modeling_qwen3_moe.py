@@ -25,7 +25,7 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import (
@@ -906,13 +906,9 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    if past_key_values[0] is not None:  ##added for (None, None)
-                        past_seen_tokens = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                if past_key_values[0] is not None:  ##added for (None, None)
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:
