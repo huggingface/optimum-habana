@@ -864,7 +864,8 @@ class GaudiQwen2Model(Qwen2Model):
         # embed positions
         hidden_states = inputs_embeds
 
-        next_decoder_cache = () if not use_new_cache else None
+        # HPU uses legacy cache path (use_new_cache = False)
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
