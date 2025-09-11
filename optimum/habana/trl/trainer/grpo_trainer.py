@@ -23,6 +23,7 @@ import torch
 import torch.utils.data
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from datasets import Dataset, IterableDataset
+from optimum.utils import logging
 from torch import nn
 from transformers import (
     AutoModelForCausalLM,
@@ -48,8 +49,6 @@ from trl.trainer.utils import (
     print_prompt_completions_sample,
     selective_log_softmax,
 )
-
-from optimum.utils import logging
 
 from ... import GaudiConfig, GaudiTrainer
 from ...transformers import trainer as habana_trainer

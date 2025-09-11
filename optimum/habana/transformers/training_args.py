@@ -23,6 +23,7 @@ from typing import Any, Optional, Union
 import torch.distributed as dist
 from accelerate import DistributedType, PartialState
 from accelerate.state import AcceleratorState
+from optimum.utils import logging
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_pt_utils import AcceleratorConfig
@@ -48,8 +49,6 @@ from transformers.utils import (
     is_safetensors_available,
     strtobool,
 )
-
-from optimum.utils import logging
 
 from ..distributed import parallel_state
 from ..utils import get_habana_frameworks_version, warn0

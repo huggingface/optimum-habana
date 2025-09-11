@@ -18,7 +18,6 @@ import time
 from typing import Union
 
 import torch
-
 from optimum.utils import logging
 
 
