@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import torch
 import torch.distributed as dist
+from optimum.utils import logging
 from packaging import version
 from transformers.cache_utils import (
     Cache,
@@ -69,8 +70,6 @@ from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.masking_utils import create_masks_for_generate
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available
-
-from optimum.utils import logging
 
 from ...utils import HabanaGenerationTime, HabanaProfile, warn0
 from ..integrations.deepspeed import unwrap_deepspeed_model
@@ -1608,6 +1607,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["logits_bf16"] = kwargs.get("logits_bf16")
 
         # determine whether flash attention needs to be used
+        model_kwargs["use_flex_attention"] = generation_config.use_flex_attention
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
         model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
@@ -2972,11 +2972,16 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if batch_size > 1 and has_eos_stopping_criteria:
             eos_token_id = generation_config.eos_token_id
+            # Init eos_positions
+            eos_positions = torch.full((batch_size,), start_token_idx, dtype=torch.long, device=input_ids.device)
             # Find the positions of the first eos_token_id in each sequence
-            eos_positions = (
-                torch.isin(input_ids[:, start_token_idx:], torch.tensor(eos_token_id)).int().argmax(dim=1)
-                + start_token_idx
-            )
+            eos_positions_tmp = torch.isin(
+                input_ids[:, start_token_idx:], torch.tensor(eos_token_id).to(device=input_ids.device)
+            ).int()
+            if eos_positions_tmp.numel() != 0:
+                # argmax(dim=1) is throwing this error in eager mode, if the tensor is empty
+                eos_positions = eos_positions + eos_positions_tmp.argmax(dim=1)
+
             # Create a mask for positions greater than the first eos_token_id
             mask = torch.arange(generation_config.max_length, device="hpu").expand(
                 batch_size, generation_config.max_length

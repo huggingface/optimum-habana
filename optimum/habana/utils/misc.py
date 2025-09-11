@@ -17,14 +17,14 @@ import os
 import random
 import subprocess
 import time
+import weakref
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
+from optimum.utils import logging
 from packaging import version
 from transformers.utils import is_torch_available
-
-from optimum.utils import logging
 
 from ..version import __version__
 
@@ -292,7 +292,7 @@ class HabanaGenerationTime(object):
 
 
 class HabanaProfile:
-    _profilers = []
+    _profilers = weakref.WeakSet()
 
     def __init__(
         self,
@@ -322,11 +322,22 @@ class HabanaProfile:
                 record_shapes=record_shapes,
                 with_stack=with_stack,
             )
-            self._profilers.append(self)
+            self._profilers.add(self)
 
     def start(self):
-        if any(p._running for p in self._profilers):
-            raise RuntimeError("Cannot start profiler, another profiler instance is already running")
+        if self._running:
+            logger.warning("Habana profiler already running on this instance; skipping start()")
+            return
+
+        running_others = [p for p in list(self._profilers) if (p is not self and getattr(p, "_running", False))]
+        if running_others:
+            logger.warning("Another Habana profiler instance is running; stopping it before starting a new one")
+            for p in running_others:
+                try:
+                    p.stop()
+                except Exception as e:
+                    logger.warning(f"Failed to stop another Habana profiler instance: {e}")
+
         self._running = True
         self._profiler.start()
 
@@ -338,6 +349,16 @@ class HabanaProfile:
     def step(self):
         if self._running:
             self._profiler.step()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.stop()
+        except Exception as e:
+            logger.warning(f"Failed to stop Habana profiler during context exit: {e}")
 
 
 def check_optimum_habana_min_version(min_version):

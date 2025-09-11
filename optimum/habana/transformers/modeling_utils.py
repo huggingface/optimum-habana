@@ -195,7 +195,6 @@ from .models import (
     GaudiVideoLlavaForConditionalGeneration,
     GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
-    GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
@@ -350,7 +349,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
     transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
-    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Attention = GaudiWav2Vec2SdpaAttention
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.prepare_inputs_for_generation = (

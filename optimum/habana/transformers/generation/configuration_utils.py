@@ -61,6 +61,7 @@ class GaudiGenerationConfig(GenerationConfig):
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
         self.flash_attention_causal_mask = kwargs.get("flash_attention_causal_mask", None)
         self.flash_attention_fast_softmax = kwargs.get("flash_attention_fast_softmax", None)
+        self.use_flex_attention = kwargs.get("use_flex_attention", None)
         self.use_fused_rope = kwargs.get("use_fused_rope", None)
         self.valid_sequence_lengths = kwargs.get("valid_sequence_lengths", None)
         self.attn_batch_split = kwargs.get("attn_batch_split", 1)

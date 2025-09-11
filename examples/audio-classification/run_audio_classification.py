@@ -390,7 +390,6 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
-        attn_implementation=training_args.attn_implementation,
     )
     model = AutoModelForAudioClassification.from_pretrained(
         model_args.model_name_or_path,
@@ -401,6 +400,7 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+        attn_implementation=training_args.attn_implementation,
     )
 
     # freeze the convolutional waveform encoder if supported by model

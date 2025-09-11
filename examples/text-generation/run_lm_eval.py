@@ -78,7 +78,7 @@ def setup_lm_eval_parser():
         type=int,
         nargs="+",
         help="Input length buckets to use with static_shapes",
-        default=[16, 32, 64, 128, 189, 284, 384, 985],
+        default=[16, 32, 64, 128, 189, 284, 384],
     )
 
     parser.add_argument(

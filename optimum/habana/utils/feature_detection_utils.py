@@ -1,10 +1,10 @@
 from functools import cache
 
+from optimum.utils import logging
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 from optimum.habana.utils.environment import get_environment
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)

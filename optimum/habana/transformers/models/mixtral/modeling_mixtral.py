@@ -28,7 +28,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -591,12 +591,8 @@ class GaudiMixtralModel(MixtralModel):
             if reuse_cache:
                 past_key_values_length = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_key_values_length = past_key_values.get_usable_length()
-                else:
-                    past_key_values_length = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                past_key_values_length = past_key_values[0][0].shape[2]
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
