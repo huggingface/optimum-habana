@@ -19,7 +19,7 @@
 from typing import Optional, Union
 
 import torch
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,

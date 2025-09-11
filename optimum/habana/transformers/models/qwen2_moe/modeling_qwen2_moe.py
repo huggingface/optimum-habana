@@ -26,7 +26,7 @@ from typing import Optional, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.qwen2_moe.configuration_qwen2_moe import Qwen2MoeConfig
