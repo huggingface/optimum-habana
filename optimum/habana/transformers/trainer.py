@@ -45,6 +45,7 @@ from accelerate.utils import (
     save_fsdp_optimizer,
 )
 from huggingface_hub import upload_folder
+from optimum.utils import logging
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -106,8 +107,6 @@ from transformers.utils import (
     is_safetensors_available,
 )
 from transformers.utils.deprecation import deprecate_kwarg
-
-from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper
