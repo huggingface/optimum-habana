@@ -895,7 +895,7 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
+        # use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
