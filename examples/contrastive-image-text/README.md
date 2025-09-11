@@ -38,6 +38,7 @@ import datasets
 ds = datasets.load_dataset("sentence-transformers/coco-captions", split="train")
 ```
 This dataset exposes at least the columns `image` (PIL image) and `caption` (string).
+If you prefer local files, you can also use the built-in Datasets `imagefolder` builder (not a placeholder) to load images/captions from a directory (it typically expects a small CSV/JSON with columns such as `image_path` and `caption`).
 
 ## CLIP-like models
 
@@ -189,10 +190,8 @@ For instance, you can run inference with CLIP on COCO on 1 Gaudi card with the f
 PT_HPU_LAZY_MODE=1 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --data_dir $PWD/data \
-    --dataset_name imagefolder \
-    --dataset_config_name=2017 \
-    --image_column image_path \
+    --dataset_name sentence-transformers/coco-captions \
+    --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_eval \
