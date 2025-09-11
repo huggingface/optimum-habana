@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import torch
 import torch.distributed as dist
+from optimum.utils import logging
 from packaging import version
 from transformers.cache_utils import (
     Cache,
@@ -69,8 +70,6 @@ from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.masking_utils import create_masks_for_generate
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_hqq_available, is_optimum_quanto_available
-
-from optimum.utils import logging
 
 from ...utils import HabanaGenerationTime, HabanaProfile, warn0
 from ..integrations.deepspeed import unwrap_deepspeed_model

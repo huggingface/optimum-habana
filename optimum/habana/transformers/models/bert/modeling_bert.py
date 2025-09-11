@@ -3,10 +3,9 @@ from typing import Optional, Union
 import torch
 import torch.utils.checkpoint
 from habana_frameworks.torch.hpex.kernels import FusedSDPA
+from optimum.utils import logging
 from transformers.cache_utils import Cache, EncoderDecoderCache
 from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions, BertSdpaSelfAttention
-
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
