@@ -25,7 +25,7 @@ from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma.modeling_gemma import (
     GemmaAttention,
@@ -623,13 +623,8 @@ class GaudiGemmaModel(GemmaModel):
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_usable_length(seq_length)
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                past_seen_tokens = past_key_values[0][0].shape[2]
 
         cache_position = None
 
