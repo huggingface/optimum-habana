@@ -45,10 +45,7 @@ def patched_profiler(monkeypatch):
 @pytest.fixture(autouse=True)
 def cleanup():
     shutil.rmtree(PROFILER_OUTPUT_DIR, ignore_errors=True)
-    try:
-        HabanaProfile._profilers.clear()
-    except Exception:
-        HabanaProfile._profilers = weakref.WeakSet()
+    HabanaProfile._profilers = weakref.WeakSet()
 
 
 def run_profiling(profiler):
