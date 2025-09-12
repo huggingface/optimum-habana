@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from transformers.cache_utils import Cache
@@ -10,11 +10,9 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXLayer,
     GPTNeoXMLP,
     GPTNeoXModel,
-    KwargsForCausalLM,
     apply_rotary_pos_emb,
     logger,
 )
-from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ...modeling_rope_utils import GaudiRotaryEmbedding
@@ -96,7 +94,7 @@ class GaudiGPTNeoXAttention(GPTNeoXAttention):
         output_attentions: Optional[bool] = False,
         padding_mask: Optional[torch.Tensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
     ):
         """
@@ -262,7 +260,7 @@ def gaudi_gpt_neox_model_forward(
     position_ids: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
-    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
+    past_key_values: Optional[Union[Cache, tuple[tuple[torch.FloatTensor]]]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
@@ -339,31 +337,17 @@ def gaudi_gpt_neox_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                layer.__call__,
-                hidden_states,
-                attention_mask,
-                position_ids,
-                head_mask[i],
-                use_cache,
-                None,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                head_mask=head_mask[i],
-                layer_past=layer_past,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask[i],
+            layer_past=layer_past,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = outputs[0]
         if use_cache is True:
             presents = presents + (outputs[1],)
@@ -410,7 +394,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
-        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.FloatTensor]]]] = None,
+        past_key_values: Optional[Union[Cache, tuple[tuple[torch.FloatTensor]]]] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -418,8 +402,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
-        **kwargs: Unpack[KwargsForCausalLM],
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        **kwargs,
+    ) -> Union[tuple, CausalLMOutputWithPast]:
         outputs: BaseModelOutputWithPast = self.gpt_neox(
             input_ids,
             attention_mask=attention_mask,

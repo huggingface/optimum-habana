@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -53,8 +53,8 @@ def gaudi_MambaCache_update_conv_state(
 
 
 def gaudi_MambaForCausalLM_update_model_kwargs_for_generation(
-    self, outputs: ModelOutput, model_kwargs: Dict[str, Any], num_new_tokens: int = 1, **kwargs
-) -> Dict[str, Any]:
+    self, outputs: ModelOutput, model_kwargs: dict[str, Any], num_new_tokens: int = 1, **kwargs
+) -> dict[str, Any]:
     model_kwargs["cache_params"] = outputs.get("cache_params", None)
     token_idx = model_kwargs.get("token_idx", None)
     if (

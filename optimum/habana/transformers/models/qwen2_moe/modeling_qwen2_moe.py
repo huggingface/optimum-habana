@@ -20,12 +20,13 @@
 """PyTorch Qwen2MoE model."""
 
 import math
-from typing import List, Optional, Tuple, Union
+from functools import lru_cache
+from typing import Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.qwen2_moe.configuration_qwen2_moe import Qwen2MoeConfig
@@ -322,7 +323,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -334,7 +335,7 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -527,7 +528,17 @@ class GaudiQwen2MoeAttention(Qwen2MoeAttention):
         return attn_output
 
 
-def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+@lru_cache(None)
+def _is_deepspeed_initialized(self) -> bool:
+    if not is_deepspeed_available():
+        return False
+    from deepspeed import comm as dist
+    from deepspeed.module_inject.layers import LinearAllreduce
+
+    return dist.is_initialized() and any(isinstance(m, LinearAllreduce) for _, m in self.named_modules())
+
+
+def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
     - optimize expert forward, remove dynamic control and dynamic shape
     """
@@ -545,53 +556,29 @@ def gaudi_qwen2moe_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    if self.training:
-        final_hidden_states = torch.zeros(
-            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-        )
+    experts_range = range(self.num_experts)
+    w1_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
+    w2_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
+    w3_list = [self.experts[i].up_proj.weight.squeeze() for i in experts_range]
 
-        padded_weights = torch.zeros(
-            (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
-        )
-        padded_weights.scatter_(-1, selected_experts, routing_weights)
-        padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
-        padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+    final_hidden_states = torch.ops.hpu.mixture_of_experts(
+        hidden_states=hidden_states,
+        expert_routing_table=selected_experts,
+        router_weights=routing_weights,
+        w1=w1_list,
+        w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+        w3=w2_list,
+        permuted_weights=True,
+        activation="silu",
+        experts_min=0,
+        experts_max=(self.num_experts - 1),
+    )
+    final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
 
-        # Loop over all available experts in the model and perform the computation on each expert
-        for expert_idx in range(self.num_experts):
-            expert_layer = self.experts[expert_idx]
-            padded_weight = padded_weights[expert_idx]
-            current_state_static = hidden_states.reshape(-1, hidden_dim)
-            current_hidden_states_static = (
-                expert_layer.pre_mlp_forward(current_state_static).reshape(-1, sequence_length, hidden_dim)
-                * padded_weight
-            )
-            final_hidden_states = final_hidden_states + current_hidden_states_static
-    else:
-        experts_range = range(self.num_experts)
-        w1_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
-        w2_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
-        w3_list = [self.experts[i].up_proj.weight.squeeze() for i in experts_range]
+    if not self.training and _is_deepspeed_initialized(self):
+        from deepspeed import comm as dist
 
-        final_hidden_states = torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=selected_experts,
-            router_weights=routing_weights,
-            w1=w1_list,
-            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
-            w3=w2_list,
-            permuted_weights=True,
-            activation="silu",
-            experts_min=0,
-            experts_max=(self.num_experts - 1),
-        )
-        final_hidden_states = final_hidden_states.reshape(-1, sequence_length, hidden_dim)
-
-        if is_deepspeed_available():
-            from deepspeed import comm as dist
-
-            if dist.is_initialized():
-                dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
+        dist.all_reduce(final_hidden_states, op=dist.ReduceOp.SUM)
 
     shared_expert_output = self.shared_expert(hidden_states)
 
@@ -633,12 +620,12 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -650,7 +637,7 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -708,11 +695,11 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -724,7 +711,7 @@ class GaudiQwen2MoeDecoderLayer(Qwen2MoeDecoderLayer):
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states=hidden_states,
@@ -812,7 +799,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -882,13 +869,9 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    if past_key_values[0] is not None:  ##added for (None, None)
-                        past_seen_tokens = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                if past_key_values[0] is not None:  ##added for (None, None)
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:
@@ -935,48 +918,26 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    output_router_logits,
-                    use_cache,
-                    cache_position,
-                    None,
-                    attn_softmax_bf16,
-                    False,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                    flash_attention_fast_softmax,
-                    valid_sequence_lengths,
-                    None,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    output_router_logits=output_router_logits,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    valid_sequence_lengths=valid_sequence_lengths,
-                    cache_idx=cache_idx,
-                    num_virtual_tokens=num_virtual_tokens,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                position_ids=position_ids,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                output_attentions=output_attentions,
+                output_router_logits=output_router_logits,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
+                reuse_cache=reuse_cache,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                flash_attention_fast_softmax=flash_attention_fast_softmax,
+                valid_sequence_lengths=valid_sequence_lengths,
+                cache_idx=cache_idx,
+                num_virtual_tokens=num_virtual_tokens,
+            )
 
             hidden_states = layer_outputs[0]
 
@@ -1034,7 +995,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -1055,7 +1016,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-        **loss_kwargs,
+        **kwargs,
     ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -1108,7 +1069,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
         aux_loss = None
         if output_router_logits:
@@ -1133,8 +1094,8 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
 
     @staticmethod
     def _reorder_cache(
-        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        past: tuple[tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor], ...]:
         """
         This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
         [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct

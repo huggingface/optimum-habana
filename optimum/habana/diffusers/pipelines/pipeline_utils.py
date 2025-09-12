@@ -27,7 +27,6 @@ from diffusers.pipelines.pipeline_utils import _unwrap_model
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
-
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
@@ -349,6 +348,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         Intercept to() method and disable gpu-hpu migration before sending to diffusers
         """
         kwargs["hpu_migration"] = False
+        kwargs["sdp_on_bf16"] = False
         return super().to(
             *args,
             **kwargs,

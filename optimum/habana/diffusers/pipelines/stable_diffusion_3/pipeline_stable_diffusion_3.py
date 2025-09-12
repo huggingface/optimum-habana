@@ -30,6 +30,7 @@ from diffusers.utils import (
     BaseOutput,
     replace_example_docstring,
 )
+from optimum.utils import logging
 from transformers import (
     BaseImageProcessor,
     CLIPTextModelWithProjection,
@@ -38,8 +39,6 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-
-from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
@@ -492,7 +491,7 @@ class GaudiStableDiffusion3Pipeline(GaudiDiffusionPipeline, StableDiffusion3Pipe
 
             device = self._execution_device
 
-            lora_scale = kwargs.get("lora_scale", None) if kwargs is not None else None
+            lora_scale = kwargs.get("lora_scale", None)
 
             (
                 prompt_embeds,

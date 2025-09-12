@@ -1,11 +1,11 @@
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.configuration_opt import OPTConfig
 from transformers.models.opt.modeling_opt import (
-    OPT_ATTENTION_CLASSES,
+    OPTAttention,
     OPTForCausalLM,
     OPTLearnedPositionalEmbedding,
     logger,
@@ -49,14 +49,13 @@ def gaudi_opt_attention_forward(
     self,
     hidden_states: torch.Tensor,
     key_value_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
-    # isn't needed in normal attention, but needed in flash attention so to keep the signature same
-    position_ids: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    **kwargs,
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
     Copied from OPTAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
@@ -69,7 +68,11 @@ def gaudi_opt_attention_forward(
 
     bsz, tgt_len, _ = hidden_states.size()
 
-    # get query proj
+    # Scaling is susceptible to floating point arithmetics' inprecisions
+    # which can lead to different results (this is dependent from model
+    # to model, e.g. whisper is one such case). We therefore keep the
+    # original order of scaling to follow the original implementation
+    # and enforce no scaling (1.0) in the attention call below.
     query_states = self.q_proj(hidden_states) * self.scaling
     # get key, value proj
     if is_cross_attention and past_key_value is not None:
@@ -104,66 +107,21 @@ def gaudi_opt_attention_forward(
     key_states = key_states.view(*proj_shape)
     value_states = value_states.view(*proj_shape)
 
-    src_len = key_states.size(1)
-    attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
-
-    if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
-        raise ValueError(
-            f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
-            f" {attn_weights.size()}"
-        )
-
+    attn_weights = torch.bmm(query_states, key_states.transpose(1, 2)) * self.scaling
     if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, tgt_len, src_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
-            )
-        attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
-        attn_weights = torch.max(
-            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min, device=attn_weights.device)
-        )
-        attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+        attn_weights = attn_weights + attention_mask
 
-    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
+    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = torch.nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
-    if layer_head_mask is not None:
-        if layer_head_mask.size() != (self.num_heads,):
-            raise ValueError(
-                f"Head mask for a single layer should be of size {(self.num_heads,)}, but is {layer_head_mask.size()}"
-            )
-        attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-        attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
-    if output_attentions:
-        # this operation is a bit awkward, but it's required to
-        # make sure that attn_weights keeps its gradient.
-        # In order to do so, attn_weights have to be reshaped
-        # twice and have to be reused in the following
-        attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-        attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
-    else:
-        attn_weights_reshaped = None
-
-    attn_probs = torch.nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-
-    attn_output = torch.bmm(attn_probs, value_states)
-
-    if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
-            f" {attn_output.size()}"
-        )
-
+    attn_output = torch.bmm(attn_weights, value_states)
     attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
-    attn_output = attn_output.transpose(1, 2)
+    attn_output = attn_output.transpose(1, 2).contiguous()
 
-    # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-    # partitioned aross GPUs when using tensor-parallelism.
-    attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
-
+    attn_output = attn_output.reshape(bsz, tgt_len, -1).contiguous()
     attn_output = self.out_proj(attn_output)
 
-    return attn_output, attn_weights_reshaped, past_key_value
+    return attn_output, attn_weights, past_key_value
 
 
 class GaudiOPTDecoderLayer(torch.nn.Module):
@@ -174,7 +132,7 @@ class GaudiOPTDecoderLayer(torch.nn.Module):
         super().__init__()
         self.embed_dim = config.hidden_size
 
-        self.self_attn = OPT_ATTENTION_CLASSES["eager"](config=config, layer_idx=layer_idx)
+        self.self_attn = OPTAttention(config=config, layer_idx=layer_idx)
 
         self.do_layer_norm_before = config.do_layer_norm_before
         self.dropout = config.dropout
@@ -194,12 +152,13 @@ class GaudiOPTDecoderLayer(torch.nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         position_ids: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        **kwargs,
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from OPTDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
         The only differences are:
@@ -220,6 +179,7 @@ class GaudiOPTDecoderLayer(torch.nn.Module):
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,
             token_idx=token_idx,
+            **kwargs,
         )
         hidden_states = torch.nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
@@ -265,7 +225,7 @@ def gaudi_opt_decoder_forward(
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
@@ -273,7 +233,8 @@ def gaudi_opt_decoder_forward(
     return_dict: Optional[bool] = None,
     position_ids: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPast]:
+    **kwargs,
+) -> Union[tuple, BaseModelOutputWithPast]:
     """
     Copied from OPTDecoder.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
@@ -352,7 +313,7 @@ def gaudi_opt_decoder_forward(
                 )
 
     for idx, decoder_layer in enumerate(self.layers):
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
@@ -363,29 +324,17 @@ def gaudi_opt_decoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                causal_attention_mask,
-                head_mask[idx] if head_mask is not None else None,
-                None,
-                output_attentions,
-                use_cache,
-                position_ids,
-                None,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=causal_attention_mask,
-                position_ids=position_ids,
-                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=causal_attention_mask,
+            position_ids=position_ids,
+            layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            token_idx=token_idx,
+            **kwargs,
+        )
 
         hidden_states = layer_outputs[0]
 
@@ -406,8 +355,6 @@ def gaudi_opt_decoder_forward(
         all_hidden_states += (hidden_states,)
 
     next_cache = next_decoder_cache if use_cache else None
-    if not return_dict:
-        return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
         last_hidden_state=hidden_states,
         past_key_values=next_cache,
@@ -421,7 +368,7 @@ def gaudi_opt_model_forward(
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
@@ -429,7 +376,8 @@ def gaudi_opt_model_forward(
     return_dict: Optional[bool] = None,
     position_ids: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPast]:
+    **kwargs,
+) -> Union[tuple, BaseModelOutputWithPast]:
     """
     Copied from OPTModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
@@ -453,12 +401,10 @@ def gaudi_opt_model_forward(
         use_cache=use_cache,
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
+        return_dict=True,
         token_idx=token_idx,
+        **kwargs,
     )
-
-    if not return_dict:
-        return decoder_outputs
 
     return BaseModelOutputWithPast(
         last_hidden_state=decoder_outputs.last_hidden_state,
@@ -482,7 +428,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -492,7 +438,7 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> Union[tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -510,8 +456,9 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            return_dict=True,
             token_idx=token_idx,
+            **kwargs,
         )
 
         logits = self.lm_head(outputs[0]).contiguous()
@@ -526,10 +473,6 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
                 vocab_size=self.config.vocab_size,
                 **kwargs,
             )
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
 
         return CausalLMOutputWithPast(
             loss=loss,

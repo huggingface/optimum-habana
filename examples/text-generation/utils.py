@@ -125,7 +125,6 @@ def setup_env(args):
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
     if args.world_size > 0:
-        os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
     if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache and args.bucket_internal:
@@ -205,6 +204,8 @@ def get_torch_compiled_model(model, logger, args):
         compile_fn = compile_regions
     if args.dynamo_specialize_float:
         torch._dynamo.config.specialize_float = True
+    if args.dynamo_allow_unspec_int_on_nn_module:
+        torch._dynamo.config.allow_unspec_int_on_nn_module = True
 
     compile_kwargs = {
         "backend": "hpu_backend",
@@ -348,10 +349,11 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile:
+        if "PT_HPU_LAZY_MODE" in os.environ:
+            assert os.environ["PT_HPU_LAZY_MODE"] != "1", (
+                "`--torch_compile` is not compatible with PT_HPU_LAZY_MODE=1. Please set it to 0 or unset the variable."
+            )
         model = get_torch_compiled_model(model, logger, args)
-        assert "PT_HPU_LAZY_MODE" in os.environ and os.environ["PT_HPU_LAZY_MODE"] == "0", (
-            "Please set PT_HPU_LAZY_MODE=0 on command line when using `--torch_compile`"
-        )
         # if args.assistant_model is not None:
         #     assistant_model = get_torch_compiled_model(assistant_model, logger)
 
@@ -721,6 +723,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
+    generation_config.use_flex_attention = args.use_flex_attention
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask

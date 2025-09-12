@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -25,8 +25,8 @@ class GaudiCodeGenAttention(CodeGenAttention):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[
-        Tuple[torch.Tensor, Tuple[torch.Tensor]],
-        Optional[Tuple[torch.Tensor, Tuple[torch.Tensor], Tuple[torch.Tensor, ...]]],
+        tuple[torch.Tensor, tuple[torch.Tensor]],
+        Optional[tuple[torch.Tensor, tuple[torch.Tensor], tuple[torch.Tensor, ...]]],
     ]:
         """
         Copied from CodeGenAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
@@ -98,10 +98,8 @@ class GaudiCodeGenAttention(CodeGenAttention):
         attn_output = self.resid_dropout(attn_output)
 
         outputs = (attn_output, present)
-        if output_attentions:
-            outputs += (attn_weights,)
 
-        return outputs  # a, present, (attentions)
+        return outputs, attn_weights
 
 
 def gaudi_codegen_block_forward(
@@ -115,7 +113,7 @@ def gaudi_codegen_block_forward(
     output_attentions: Optional[bool] = False,
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
+) -> Union[tuple[torch.Tensor], Optional[tuple[torch.Tensor, tuple[torch.FloatTensor, ...]]]]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
     The only differences are:
@@ -123,7 +121,7 @@ def gaudi_codegen_block_forward(
     """
     residual = hidden_states
     hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
+    attn_outputs, attn_weights = self.attn(
         hidden_states=hidden_states,
         layer_past=layer_past,
         attention_mask=attention_mask,
@@ -134,24 +132,16 @@ def gaudi_codegen_block_forward(
         cache_position=cache_position,
         token_idx=token_idx,
     )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
-
     feed_forward_hidden_states = self.mlp(hidden_states)
-    hidden_states = attn_output + feed_forward_hidden_states + residual
+    hidden_states = attn_outputs + feed_forward_hidden_states + residual
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
-
-    return outputs  # hidden_states, present, (attentions)
+    return hidden_states, attn_weights
 
 
 def gaudi_codegen_model_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
+    past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor]]]] = None,
     attention_mask: Optional[torch.FloatTensor] = None,
     token_type_ids: Optional[torch.LongTensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
@@ -164,7 +154,7 @@ def gaudi_codegen_model_forward(
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     **kwargs,  # NOOP kwargs, for now
-) -> Union[Tuple, BaseModelOutputWithPast]:
+) -> Union[tuple, BaseModelOutputWithPast]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
     The only differences are:
@@ -261,31 +251,17 @@ def gaudi_codegen_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                None,
-                attention_mask,
-                position_ids,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states=hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
@@ -384,7 +360,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor]]]] = None,
+        past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor]]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -398,7 +374,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> Union[tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set

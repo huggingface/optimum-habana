@@ -22,10 +22,6 @@ from pathlib import Path
 
 import PIL.Image
 import requests
-import torch
-from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
-
-from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
 
 
 logging.basicConfig(
@@ -251,7 +247,10 @@ def main():
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
         os.environ.setdefault("DEEPSPEED_USE_HABANA_FRAMEWORKS_DETERMINISTIC_API", "1")
 
+    from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor, pipeline
+
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats, set_seed
 
     adapt_transformers_to_gaudi()
 
@@ -340,6 +339,8 @@ def main():
 
     for image_path in image_paths:
         images.append(PIL.Image.open(requests.get(image_path, stream=True, timeout=3000).raw))
+
+    import torch
 
     if args.bf16:
         model_dtype = torch.bfloat16

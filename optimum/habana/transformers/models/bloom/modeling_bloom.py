@@ -17,7 +17,7 @@
 ###############################################################################
 import math
 import os
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.nn import functional as F
@@ -37,7 +37,7 @@ def gaudi_bloom_build_alibi_tensor(
     attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype, training: bool
 ) -> torch.Tensor:
     """
-    Link to paper: https://arxiv.org/abs/2108.12409 Alibi tensor is not causal as the original paper mentions, it
+    Link to paper: https://huggingface.co/papers/2108.12409 Alibi tensor is not causal as the original paper mentions, it
     relies on a translation invariance of softmax for quick implementation: with l being a tensor, and a fixed value
     `softmax(l+a) = softmax(l)`. Based on
     https://github.com/ofirpress/attention_with_linear_biases/blob/a35aaca144e0eb6b789dfcb46784c4b8e31b7983/fairseq/models/transformer.py#L742
@@ -204,10 +204,7 @@ def gaudi_bloom_attention_forward(
         output_tensor = self.dense(context_layer)
 
     output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
-
     outputs = (output_tensor, present)
-    if output_attentions:
-        outputs += (attention_probs,)
 
     return outputs
 
@@ -242,7 +239,7 @@ def gaudi_bloom_block_forward(
         residual = hidden_states
 
     # Self attention.
-    attn_outputs = self.self_attention(
+    attention_output, attn_weights = self.self_attention(
         layernorm_output,
         residual,
         layer_past=layer_past,
@@ -255,10 +252,6 @@ def gaudi_bloom_block_forward(
         token_idx=token_idx,
     )
 
-    attention_output = attn_outputs[0]
-
-    outputs = attn_outputs[1:]
-
     layernorm_output = self.post_attention_layernorm(attention_output)
 
     # Get residual
@@ -270,17 +263,12 @@ def gaudi_bloom_block_forward(
     # MLP.
     output = self.mlp(layernorm_output, residual)
 
-    if use_cache:
-        outputs = (output,) + outputs
-    else:
-        outputs = (output,) + outputs[1:]
-
-    return outputs  # hidden_states, present, attentions
+    return output, attn_weights  # hidden_states, present, attentions
 
 
 def gaudi_bloom_convert_to_standard_cache(
-    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]], batch_size: int, training: bool
-) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    self, past_key_value: tuple[tuple[torch.Tensor, torch.Tensor]], batch_size: int, training: bool
+) -> tuple[tuple[torch.Tensor, torch.Tensor]]:
     """
     Standardizes the format of the cache so as to match most implementations, i.e. to tuple(tuple([batch_size,
     num_heads, ...]))
@@ -305,8 +293,8 @@ def gaudi_bloom_convert_to_standard_cache(
 
 
 def gaudi_bloom_convert_to_bloom_cache(
-    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]]
-) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    self, past_key_value: tuple[tuple[torch.Tensor, torch.Tensor]]
+) -> tuple[tuple[torch.Tensor, torch.Tensor]]:
     """
     Converts the cache to the format expected by Bloom, i.e. to tuple(tuple([batch_size * num_heads, ...]))
     """
@@ -326,7 +314,7 @@ def gaudi_bloom_convert_to_bloom_cache(
 def gaudi_bloom_model_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
+    past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor, torch.Tensor], ...]]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.LongTensor] = None,
@@ -337,7 +325,7 @@ def gaudi_bloom_model_forward(
     cache_position: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
     **deprecated_arguments,
-) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
     if deprecated_arguments.pop("position_ids", False) is not False:
         # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
         warn0(
@@ -421,31 +409,17 @@ def gaudi_bloom_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                block.__call__,
-                hidden_states,
-                alibi,
-                causal_mask,
-                layer_past,
-                head_mask[i],
-                use_cache,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                alibi=alibi,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = block(
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=causal_mask,
+            head_mask=head_mask[i],
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            alibi=alibi,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
 
         hidden_states = outputs[0]
         if use_cache is True:
@@ -525,7 +499,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, Tuple[Tuple[torch.Tensor, torch.Tensor], ...]]] = None,
+        past_key_values: Optional[Union[Cache, tuple[tuple[torch.Tensor, torch.Tensor], ...]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
@@ -537,7 +511,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **deprecated_arguments,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
@@ -599,28 +573,3 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
-
-    def _reorder_cache(
-        self, past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
-        """
-        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
-        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
-        beam_idx at every generation step.
-
-        Output shares the same memory storage as `past`.
-        """
-        standardized_past = self._convert_to_standard_cache(past, batch_size=len(beam_idx), training=self.training)
-
-        # Get a copy of `beam_idx` on all the devices where we need those indices.
-        device_to_beam_idx = {
-            past_state.device: beam_idx.to(past_state.device) for layer_past in past for past_state in layer_past
-        }
-        reordered_past = tuple(
-            (
-                layer_past[0].index_select(0, device_to_beam_idx[layer_past[0].device]),
-                layer_past[1].index_select(0, device_to_beam_idx[layer_past[0].device]),
-            )
-            for layer_past in standardized_past
-        )
-        return self._convert_to_bloom_cache(reordered_past)

@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -32,11 +32,12 @@ def gaudi_SeamlessM4TAttention_forward(
     self,
     hidden_states: torch.Tensor,
     encoder_hidden_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
     Copied from SeamlessM4TAttention.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/seamless_m4t/modeling_seamless_m4t.py
     The only differences are:
@@ -85,10 +86,10 @@ def gaudi_SeamlessM4TAttention_forward(
         value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
     if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+        # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
         # Further calls to cross_attention layer can then reuse all cross-attention
         # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+        # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
         # all previous decoder key/value_states. Further calls to uni-directional self-attention
         # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
         # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -156,9 +157,10 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
     attention_mask: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.Tensor] = None,
     encoder_attention_mask: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
@@ -178,6 +180,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
         past_key_value=self_attn_past_key_value,
         attention_mask=attention_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = self.attn_dropout(hidden_states)
@@ -199,6 +202,7 @@ def gaudi_SeamlessM4TDecoderLayer_forward(
             past_key_value=cross_attn_past_key_value,
             attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         hidden_states = self.attn_dropout(hidden_states)
         hidden_states = residual + hidden_states
@@ -230,14 +234,15 @@ def gaudi_SeamlessM4TDecoder_forward(
     attention_mask: Optional[torch.Tensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from SeamlessM4TDecoder.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/seamless_m4t/modeling_seamless_m4t.py
     The only differences are:
@@ -290,13 +295,6 @@ def gaudi_SeamlessM4TDecoder_forward(
 
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing`. Setting `use_cache=False`..."
-            )
-            use_cache = False
-
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
@@ -304,7 +302,7 @@ def gaudi_SeamlessM4TDecoder_forward(
     next_decoder_cache = () if use_cache else None
 
     for idx, decoder_layer in enumerate(self.layers):
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
         if self.training:
@@ -314,28 +312,17 @@ def gaudi_SeamlessM4TDecoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                None,
-                output_attentions,
-                use_cache,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
@@ -375,16 +362,17 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
-    encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    encoder_outputs: Optional[tuple[tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], Seq2SeqModelOutput]:
+) -> Union[tuple[torch.Tensor], Seq2SeqModelOutput]:
     """
     Copied from SeamlessM4TTextToUnitModel.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/seamless_m4t/modeling_seamless_m4t.py
     The only differences are:
@@ -426,6 +414,7 @@ def gaudi_SeamlessM4TTextToUnitModel_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 
@@ -450,8 +439,8 @@ def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
-    encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    encoder_outputs: Optional[tuple[tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -459,8 +448,9 @@ def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Seq2SeqLMOutput, Tuple[torch.FloatTensor]]:
+) -> Union[Seq2SeqLMOutput, tuple[torch.FloatTensor]]:
     """
     Copied from SeamlessM4TTextToUnitForConditionalGeneration.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/seamless_m4t/modeling_seamless_m4t.py
     The only differences are:
@@ -490,6 +480,7 @@ def gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     lm_logits = self.lm_head(outputs[0])
@@ -603,8 +594,8 @@ def gaudi_SeamlessM4TForTextToSpeech_forward(
     attention_mask: Optional[torch.Tensor] = None,
     decoder_input_ids: Optional[torch.LongTensor] = None,
     decoder_attention_mask: Optional[torch.LongTensor] = None,
-    encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    encoder_outputs: Optional[tuple[tuple[torch.FloatTensor]]] = None,
+    past_key_values: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -612,8 +603,9 @@ def gaudi_SeamlessM4TForTextToSpeech_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Seq2SeqLMOutput, Tuple[torch.FloatTensor]]:
+) -> Union[Seq2SeqLMOutput, tuple[torch.FloatTensor]]:
     """
     Copied from SeamlessM4TForTextToSpeech.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/seamless_m4t/modeling_seamless_m4t.py
     The only differences are:
@@ -672,6 +664,7 @@ def gaudi_SeamlessM4TForTextToSpeech_forward(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
 

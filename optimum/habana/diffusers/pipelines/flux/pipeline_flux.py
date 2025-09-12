@@ -24,6 +24,7 @@ from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline, calculate_shift, retrieve_timesteps
 from diffusers.utils import BaseOutput, replace_example_docstring
+from optimum.utils import logging
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -32,8 +33,6 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-
-from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
@@ -530,7 +529,7 @@ class GaudiFluxPipeline(GaudiDiffusionPipeline, FluxPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = timestep.expand(latents_batch.shape[0]).to(latents_batch.dtype)
 
-                if i >= quant_mixed_step:
+                if quant_mode == "quantize-mixed" and i >= quant_mixed_step:
                     # Mixed quantization
                     noise_pred = transformer_bf16(
                         hidden_states=latents_batch,

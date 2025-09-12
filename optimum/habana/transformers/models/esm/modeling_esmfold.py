@@ -108,6 +108,7 @@ def gaudi_esm_for_protein_folding_forward(
     position_ids: Optional[torch.Tensor] = None,
     masking_pattern: Optional[torch.Tensor] = None,
     num_recycles: Optional[int] = None,
+    output_hidden_states: Optional[bool] = False,
 ) -> EsmForProteinFoldingOutput:
     r"""
     Returns:

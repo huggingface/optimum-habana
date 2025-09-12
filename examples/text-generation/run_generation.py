@@ -28,8 +28,6 @@ from itertools import cycle
 from pathlib import Path
 
 import pandas as pd
-import torch
-from transformers import BatchEncoding
 from utils import (
     SetTrueOrFalseOrNone,
     adjust_batch,
@@ -279,6 +277,11 @@ def setup_parser(parser):
         help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
     )
     parser.add_argument(
+        "--use_flex_attention",
+        action="store_true",
+        help="Whether to enable Habana Flex Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
         "--use_flash_attention",
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
@@ -440,6 +443,12 @@ def setup_parser(parser):
         help="Set torch._dynamo.config.specialize_float to True.",
     )
 
+    parser.add_argument(
+        "--dynamo_allow_unspec_int_on_nn_module",
+        action="store_true",
+        help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -490,6 +499,8 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
+
+    import torch
 
     use_lazy_mode = True
     if args.torch_compile or args.pt2e_path:
@@ -543,6 +554,9 @@ def main():
 
         ds = get_ds(args)
         input_sentences = get_input(ds, args.batch_size)
+
+        if args.dataset_max_samples > 0:
+            input_sentences = input_sentences[: args.dataset_max_samples]
 
         def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
@@ -643,6 +657,9 @@ def main():
             acc_file = []
             num_token = 0
             for i, idx in enumerate(ds.index):
+                if args.dataset_max_samples > 0 and i >= args.dataset_max_samples:
+                    break
+
                 pred = results[i]
                 eos_token_id = 2
                 try:
@@ -679,22 +696,29 @@ def main():
             def download_book(book_id):
                 import os
 
-                import requests
+                from accelerate import Accelerator
 
-                url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
-                response = requests.get(url)
-                if response.status_code == 200:
-                    pid = os.getpid()
-                    save_path = f"/tmp/{book_id}_{pid}.txt"
-                    with open(save_path, "wb") as file:
-                        file.write(response.content)
-                    print(f"Book downloaded and saved to: {save_path}")
-                    return save_path
-                else:
-                    print("Failed to download book! Exiting...")
-                    import sys
+                acc = Accelerator()
+                with acc.main_process_first():
+                    save_path = f"/tmp/{book_id}.txt"
+                    if os.path.isfile(save_path):
+                        print(f"Using preexisting file: {save_path}")
+                        return save_path
+                    else:
+                        import requests
 
-                    sys.exit()
+                        url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                        response = requests.get(url)
+                        if response.status_code == 200:
+                            with open(save_path, "wb") as file:
+                                file.write(response.content)
+                            print(f"Book downloaded and saved to: {save_path}")
+                            return save_path
+                        else:
+                            print("Failed to download book! Exiting...")
+                            import sys
+
+                            sys.exit()
 
             def assemble_prompt(prompt_size, book_path):
                 prompt = ""
@@ -735,6 +759,8 @@ def main():
 
         def generate(size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            from transformers import BatchEncoding
+
             profiler = disabled_profiler if disable_profiling else per_token_profiler
             timer = HabanaGenerationTime()
             timer.start()
@@ -937,7 +963,7 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
+        raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
@@ -983,7 +1009,7 @@ def main():
         )
         # After tokenization, we can remove the column of interest
         raw_dataset = raw_dataset.remove_columns([column_name])
-        raw_dataset.set_format(type="torch")
+        raw_dataset = raw_dataset.with_format("torch")
 
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model
