@@ -93,8 +93,8 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             batch_size=batch_size,
             remove_columns=["article", "highlights"],
         )
-        train_dataset.set_format(
-            type="torch",
+        train_dataset = train_dataset.with_format(
+            "torch",
             columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
         )
 
@@ -105,8 +105,8 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             batch_size=batch_size,
             remove_columns=["article", "highlights"],
         )
-        val_dataset.set_format(
-            type="torch",
+        val_dataset = val_dataset.with_format(
+            "torch",
             columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
         )
 
