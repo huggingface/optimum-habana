@@ -924,7 +924,7 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
 class MultiCardVisionLanguageExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True, torch_compile=True
 ):
-    TASK_NAME = "imagefolder"
+    TASK_NAME = "sentence-transformers/coco-captions"
 
 
 class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_esmfold"):
