@@ -180,6 +180,7 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         self.is_scale_input_called = True
         return sample
 
+    @torch.compiler.disable
     def step(
         self,
         model_output: torch.FloatTensor,
