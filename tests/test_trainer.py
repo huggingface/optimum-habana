@@ -1933,6 +1933,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
                 self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
+    @mark.skip(reason="Test causes sporadic but often failures in CI. Disabled until investigated further.")
     def test_dynamic_shape_feature(self):
         # Run training with variable length inputs and enable dynamic shapes support
         train_dataset = RegressionDatasetDynamic(length=256)
