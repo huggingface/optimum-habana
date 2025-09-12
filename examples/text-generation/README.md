@@ -816,7 +816,7 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==2.21.0
+> For lm-eval tasks that still rely on dataset scripts, use a separate env with datasets 3.x or switch to Parquet/Arrow variants. This repo requires datasets>=4.0.0.
 
 The argument --system_instruction adds a system message to the beginning of the prompt.
 This instruction is treated as part of the input context and can influence how the model interprets the task or responds.

@@ -1,4 +1,4 @@
-datasets == 3.6.0
+datasets>=4.0.0
 sentencepiece != 0.1.92
 protobuf == 3.20.3
 sacrebleu >= 1.4.12, <= 2.4.2
