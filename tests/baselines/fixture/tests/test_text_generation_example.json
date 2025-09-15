@@ -391,7 +391,7 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[state-spaces/mamba-130m-hf-1536-False-False]": {
     "gaudi2": {
-      "throughput": 3100.9825044466907
+      "throughput": 20208.867657545277
     },
     "gaudi3": {
       "throughput": 1948.1615848330302
@@ -417,7 +417,7 @@
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[tiiuae/falcon-mamba-7b-1-False-False]": {
     "gaudi2": {
-      "throughput": 47.1464839567739
+      "throughput": 73.36018500761314
     },
     "gaudi3": {
       "throughput": 45.90538768350833
