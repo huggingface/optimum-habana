@@ -152,6 +152,8 @@ class GaudiGptOssExperts(GptOssExperts):
     def __init__(self, config):
         super().__init__(config)
         self.config = config
+        self.matmul_gate_up = Matmul()
+        self.matmul_down = Matmul()
 
     def forward(self, hidden_states: torch.Tensor, router_indices=None, routing_weights=None):
         batch_size = hidden_states.shape[0]
@@ -189,12 +191,12 @@ class GaudiGptOssExperts(GptOssExperts):
         else:
             hidden_states = hidden_states.repeat(num_experts, 1)
             hidden_states = hidden_states.view(num_experts, -1, self.hidden_size)
-            gate_up = torch.bmm(hidden_states, self.gate_up_proj) + self.gate_up_proj_bias[..., None, :]
+            gate_up = self.matmul_gate_up(hidden_states, self.gate_up_proj) + self.gate_up_proj_bias[..., None, :]
             gate, up = gate_up[..., ::2], gate_up[..., 1::2]
             gate = gate.clamp(min=None, max=self.limit)
             up = up.clamp(min=-self.limit, max=self.limit)
             glu = gate * torch.sigmoid(gate * self.alpha)
-            next_states = torch.bmm(((up + 1) * glu), self.down_proj)
+            next_states = self.matmul_down(((up + 1) * glu), self.down_proj)
             next_states = next_states + self.down_proj_bias[..., None, :]
             next_states = next_states.view(num_experts, batch_size, -1, self.hidden_size)
             next_states = next_states * routing_weights.transpose(0, 1).view(num_experts, batch_size, -1)[..., None]
@@ -265,6 +267,7 @@ class GaudiGptOssAttention(GptOssAttention):
         else:
             past_key_values = None
 
+        # TODO: Habana fused SDPA with sink is enabeld in 1.23.0. Update attention after 1.23.0 release
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
             attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
@@ -409,14 +412,15 @@ class GaudiGptOssModel(GptOssModel):
         else:
             next_decoder_cache = None
 
-        if (
-            lazy_mode
-            and not self.training
-            and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
-        ):
-            htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
+            if (
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
+                htcore.mark_step()
+
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
                     partial(decoder_layer.__call__, **kwargs),
