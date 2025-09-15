@@ -412,7 +412,6 @@ class GaudiGptOssModel(GptOssModel):
         else:
             next_decoder_cache = None
 
-
         for layer_idx, decoder_layer in enumerate(self.layers):
             if (
                 lazy_mode
