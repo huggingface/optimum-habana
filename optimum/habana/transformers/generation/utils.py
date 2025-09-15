@@ -131,6 +131,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_vl",
     "qwen3",
     "qwen3_moe",
+    "arctic",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -2573,6 +2574,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     do_padding = (
                         key_to_check is not None
                         and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and generation_config.max_new_tokens > 1
                     )
 
                 if do_padding:
@@ -2937,6 +2939,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     do_padding = (
                         key_to_check is not None
                         and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and generation_config.max_new_tokens > 1
                     )
 
                 if do_padding:

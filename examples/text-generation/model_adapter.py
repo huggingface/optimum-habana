@@ -197,6 +197,7 @@ class HabanaModelAdapter(HFLM):
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
+
         return logits
 
     def generate_until(self, requests: list[Instance], disable_tqdm: bool = False) -> list[str]:
