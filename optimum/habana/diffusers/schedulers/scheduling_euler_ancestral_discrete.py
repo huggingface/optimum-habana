@@ -19,7 +19,6 @@ import torch
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteSchedulerOutput
-
 from optimum.utils import logging
 
 

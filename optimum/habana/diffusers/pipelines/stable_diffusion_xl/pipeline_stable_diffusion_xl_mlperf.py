@@ -32,6 +32,7 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate
+from optimum.utils import logging
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -39,8 +40,6 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
 )
-
-from optimum.utils import logging
 
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ...models.attention_processor import (
@@ -286,6 +285,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         Intercept to() method and disable gpu-hpu migration before sending to diffusers
         """
         kwargs["hpu_migration"] = False
+        kwargs["sdp_on_bf16"] = False
         return super().to(
             *args,
             **kwargs,

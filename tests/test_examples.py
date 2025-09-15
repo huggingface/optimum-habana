@@ -463,10 +463,13 @@ class ExampleTestMeta(type):
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                if os.environ.get("DATA_CACHE", "") == "":
+                coco_config = self._load_dataset_config().get("coco", {})
+
+                if not coco_config.get("dataset_dir"):
                     from .clip_coco_utils import COCO_URLS, download_files
 
                     download_files(COCO_URLS)
+
                 from .clip_coco_utils import create_clip_roberta_model
 
                 create_clip_roberta_model()
@@ -528,8 +531,8 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
-            if os.environ.get("DATA_CACHE", "") != "" and self.EXAMPLE_NAME == "run_clip":
-                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
+
+            extra_command_line_arguments += self._get_dataset_args()
 
             if torch_compile and (
                 model_name == "bert-large-uncased-whole-word-masking"
@@ -807,6 +810,56 @@ class ExampleTesterBase(TestCase):
 
         assert passed, "One or more metrics failed"
 
+    def _load_dataset_config(self) -> dict:
+        config_str = os.environ.get("DATASET_CONFIG")
+        if not config_str:
+            return {}
+        try:
+            return json.loads(config_str)
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Invalid JSON in DATASET_CONFIG") from e
+
+    def _get_dataset_args(self) -> List[str]:
+        dataset_config = self._load_dataset_config()
+        if not dataset_config:
+            return []
+
+        example_paths = {
+            "run_clip": "coco",
+            "run_speech_recognition_ctc": "libri",
+        }
+
+        dataset_key = example_paths.get(self.EXAMPLE_NAME)
+        if dataset_key is None:
+            return []
+
+        dataset_info = dataset_config.get(dataset_key)
+        if not dataset_info:
+            raise RuntimeError(f"No dataset_info found for EXAMPLE_NAME: {self.EXAMPLE_NAME}")
+
+        handler_map = {
+            "coco": self._get_clip_dataset_args,
+            "libri": self._get_speech_dataset_args,
+        }
+
+        return handler_map[dataset_key](dataset_info)
+
+    def _get_clip_dataset_args(self, dataset_info: dict) -> List[str]:
+        try:
+            return [f"--data_dir {dataset_info['dataset_dir']}"]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
+
+    def _get_speech_dataset_args(self, dataset_info: dict) -> List[str]:
+        try:
+            base_dir = dataset_info["dataset_dir"]
+            return [
+                f"--dataset_name {os.path.join(base_dir, dataset_info['dataset_script'])}",
+                f"--dataset_dir {os.path.join(base_dir, dataset_info['dataset_data'])}",
+            ]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
+
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
     TASK_NAME = "mrpc"
@@ -890,7 +943,6 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-    DATASET_NAME = os.environ.get("DATA_CACHE")
 
 
 class MultiCardSummarizationExampleTester(
@@ -924,7 +976,7 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
 class MultiCardVisionLanguageExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True, torch_compile=True
 ):
-    TASK_NAME = "ydshieh/coco_dataset_script"
+    TASK_NAME = "sentence-transformers/coco-captions"
 
 
 class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_esmfold"):

@@ -10,11 +10,9 @@ from transformers.models.gpt_neox.modeling_gpt_neox import (
     GPTNeoXLayer,
     GPTNeoXMLP,
     GPTNeoXModel,
-    KwargsForCausalLM,
     apply_rotary_pos_emb,
     logger,
 )
-from transformers.processing_utils import Unpack
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ...modeling_rope_utils import GaudiRotaryEmbedding
@@ -339,31 +337,17 @@ def gaudi_gpt_neox_model_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if self.gradient_checkpointing and self.training:
-            outputs = self._gradient_checkpointing_func(
-                layer.__call__,
-                hidden_states,
-                attention_mask,
-                position_ids,
-                head_mask[i],
-                use_cache,
-                None,
-                output_attentions,
-                cache_position,
-                None,
-            )
-        else:
-            outputs = layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                head_mask=head_mask[i],
-                layer_past=layer_past,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                cache_position=cache_position,
-                token_idx=token_idx,
-            )
+        outputs = layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask[i],
+            layer_past=layer_past,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = outputs[0]
         if use_cache is True:
             presents = presents + (outputs[1],)
@@ -418,7 +402,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs,
     ) -> Union[tuple, CausalLMOutputWithPast]:
         outputs: BaseModelOutputWithPast = self.gpt_neox(
             input_ids,

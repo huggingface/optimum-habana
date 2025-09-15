@@ -62,9 +62,22 @@ def gaudi_vit_self_attention_forward(
     the division is performed before the matmul for computing attention scores.
     This gives better performance on HPU.
     """
-    key_layer = self.transpose_for_scores(self.key(hidden_states))
-    value_layer = self.transpose_for_scores(self.value(hidden_states))
-    query_layer = self.transpose_for_scores(self.query(hidden_states))
+    batch_size, seq_length, _ = hidden_states.shape
+    key_layer = (
+        self.key(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
+    value_layer = (
+        self.value(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
+    query_layer = (
+        self.query(hidden_states)
+        .view(batch_size, -1, self.num_attention_heads, self.attention_head_size)
+        .transpose(1, 2)
+    )
 
     context_layer, attention_probs = gaudi_eager_attention_forward(
         self,

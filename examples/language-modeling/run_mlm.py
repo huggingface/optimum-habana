@@ -60,10 +60,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.51.0")
-check_optimum_habana_min_version("1.18.0.dev0")
+check_min_version("4.55.0")
+check_optimum_habana_min_version("1.19.0.dev0")
 
-require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
@@ -142,15 +142,6 @@ class ModelArguments:
                 "dtype will be automatically derived from the model's weights."
             ),
             "choices": ["auto", "bfloat16", "float32"],
-        },
-    )
-    low_cpu_mem_usage: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded. "
-                "Setting it to True will benefit LLM loading time and RAM consumption."
-            )
         },
     )
 
@@ -238,7 +229,7 @@ class DataTrainingArguments:
 
     def __post_init__(self):
         if self.streaming:
-            require_version("datasets>=2.0.0", "The streaming feature requires `datasets>=2.0.0`")
+            require_version("datasets>=4.0.0", "The streaming feature requires `datasets>=2.0.0`")
 
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
             raise ValueError("Need either a dataset name or a training/validation file.")
@@ -452,7 +443,6 @@ def main():
             token=model_args.token,
             trust_remote_code=model_args.trust_remote_code,
             torch_dtype=torch_dtype,
-            low_cpu_mem_usage=model_args.low_cpu_mem_usage,
         )
     else:
         logger.info("Training new model from scratch")

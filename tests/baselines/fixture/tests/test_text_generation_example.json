@@ -718,5 +718,17 @@
       "output": "DeepSpeed is a machine learning framework that enables the training of large-scale models with reduced computational resources. It achieves this by using a technique called model parallelism, which allows the model to be split across multiple GPUs. This makes it possible to train models that are too large to fit on a single GPU.\n## What is DeepSpeed?\nDeepSpeed is a machine learning framework that enables the training of large-scale models with reduced computational resources. It achieves this by using a technique called model parallelism, which allows the model to be split across multiple GPUs",
       "throughput": 94.70370546821054
     }
+  },
+  "tests/test_text_generation_example.py::test_text_generation_bnb[unsloth/Meta-Llama-3.1-70B-bnb-4bit-1-20-False-True]": {
+    "gaudi2": {
+      "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and flexible. DeepSpeed can train BERT-Large on",
+      "throughput": 0.7572952
+    }
+  },
+  "tests/test_text_generation_example.py::test_text_generation_bnb[meta-llama/Llama-3.1-70B-1-20-True-True]": {
+    "gaudi2": {
+      "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and effective. It is a deep learning optimization library that makes",
+      "throughput": 0.7583387
+    }
   }
 }

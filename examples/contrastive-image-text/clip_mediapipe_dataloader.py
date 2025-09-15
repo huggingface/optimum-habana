@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import torch
-
 from optimum.utils import logging
 
 
