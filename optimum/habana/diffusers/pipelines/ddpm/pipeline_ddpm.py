@@ -24,7 +24,6 @@ from diffusers.pipelines import DDPMPipeline
 from diffusers.schedulers import DDIMScheduler, DDPMScheduler
 from diffusers.utils import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
-
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig

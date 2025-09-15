@@ -169,7 +169,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "sft": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        ["llama", "qwen2"],
+        ["llama", "qwen2", "mixtral"],
     ),
     "dpo": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
@@ -270,11 +270,15 @@ class ExampleTestMeta(type):
             return False
         elif "Qwen2-72B" in model_name and task_name != "trl-sft-qwen":
             return False
+        elif "Mixtral-8x7B" in model_name and task_name != "trl-sft-mixtral":
+            return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
         elif "llama" in model_name and "trl-sft-qwen" in task_name:
+            return False
+        elif "llama" in model_name and "trl-sft-mixtral" in task_name:
             return False
         elif "Llama-3.1-8B" in model_name:
             if multi_card:
@@ -295,6 +299,16 @@ class ExampleTestMeta(type):
             return False
         elif "gemma" in model_name and IS_GAUDI1:
             return False
+        elif "Qwen2-7B" in model_name and example_name == "run_glue":
+            if deepspeed:
+                return True
+            else:
+                return False
+        elif "Qwen3-8B" in model_name and example_name == "run_glue":
+            if deepspeed:
+                return True
+            else:
+                return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
@@ -310,6 +324,8 @@ class ExampleTestMeta(type):
             # CodeLlama is tested only on Gaudi2+ and with DeepSpeed
             return True
         elif "Qwen2-72B" in model_name and not IS_GAUDI1 and deepspeed:
+            return True
+        elif "Mixtral-8x7B" in model_name and not IS_GAUDI1 and deepspeed:
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -447,10 +463,13 @@ class ExampleTestMeta(type):
                         self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                if os.environ.get("DATA_CACHE", "") == "":
+                coco_config = self._load_dataset_config().get("coco", {})
+
+                if not coco_config.get("dataset_dir"):
                     from .clip_coco_utils import COCO_URLS, download_files
 
                     download_files(COCO_URLS)
+
                 from .clip_coco_utils import create_clip_roberta_model
 
                 create_clip_roberta_model()
@@ -512,8 +531,8 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
-            if os.environ.get("DATA_CACHE", "") != "" and self.EXAMPLE_NAME == "run_clip":
-                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
+
+            extra_command_line_arguments += self._get_dataset_args()
 
             if torch_compile and (
                 model_name == "bert-large-uncased-whole-word-masking"
@@ -528,6 +547,10 @@ class ExampleTestMeta(type):
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
+                env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
+
+            if model_name == "mistralai/Mixtral-8x7B-Instruct-v0.1":
+                env_variables["PT_HPU_LAZY_MODE"] = "1"
                 env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
             if self.EXAMPLE_NAME == "run_audio_classification":
@@ -691,7 +714,6 @@ class ExampleTesterBase(TestCase):
             cmd_line += [
                 f"{script}",
                 f"--model_name_or_path {model_name}",
-                f"--gaudi_config_name {gaudi_config_name}",
                 f"{task_option}",
                 "--do_train",
                 f"--output_dir {output_dir}",
@@ -699,11 +721,15 @@ class ExampleTesterBase(TestCase):
                 f"--learning_rate {lr}",
                 f"--per_device_train_batch_size {train_batch_size}",
                 f"--per_device_eval_batch_size {eval_batch_size}",
-                f" --num_train_epochs {num_epochs}",
+                f"--num_train_epochs {num_epochs}",
                 "--use_habana",
                 "--throughput_warmup_steps 3",
                 "--save_strategy no",
             ]
+            if gaudi_config_name:
+                cmd_line += [
+                    f"--gaudi_config_name {gaudi_config_name}",
+                ]
 
         if "compile" in task or "--torch_compile" in extra_command_line_arguments:
             cmd_line += ["--use_lazy_mode False"]
@@ -783,6 +809,56 @@ class ExampleTesterBase(TestCase):
                 passed = False
 
         assert passed, "One or more metrics failed"
+
+    def _load_dataset_config(self) -> dict:
+        config_str = os.environ.get("DATASET_CONFIG")
+        if not config_str:
+            return {}
+        try:
+            return json.loads(config_str)
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Invalid JSON in DATASET_CONFIG") from e
+
+    def _get_dataset_args(self) -> List[str]:
+        dataset_config = self._load_dataset_config()
+        if not dataset_config:
+            return []
+
+        example_paths = {
+            "run_clip": "coco",
+            "run_speech_recognition_ctc": "libri",
+        }
+
+        dataset_key = example_paths.get(self.EXAMPLE_NAME)
+        if dataset_key is None:
+            return []
+
+        dataset_info = dataset_config.get(dataset_key)
+        if not dataset_info:
+            raise RuntimeError(f"No dataset_info found for EXAMPLE_NAME: {self.EXAMPLE_NAME}")
+
+        handler_map = {
+            "coco": self._get_clip_dataset_args,
+            "libri": self._get_speech_dataset_args,
+        }
+
+        return handler_map[dataset_key](dataset_info)
+
+    def _get_clip_dataset_args(self, dataset_info: dict) -> List[str]:
+        try:
+            return [f"--data_dir {dataset_info['dataset_dir']}"]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
+
+    def _get_speech_dataset_args(self, dataset_info: dict) -> List[str]:
+        try:
+            base_dir = dataset_info["dataset_dir"]
+            return [
+                f"--dataset_name {os.path.join(base_dir, dataset_info['dataset_script'])}",
+                f"--dataset_dir {os.path.join(base_dir, dataset_info['dataset_data'])}",
+            ]
+        except KeyError as e:
+            raise RuntimeError(f"Missing key in dataset_info: {e}")
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
@@ -867,7 +943,6 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-    DATASET_NAME = os.environ.get("DATA_CACHE")
 
 
 class MultiCardSummarizationExampleTester(
@@ -901,7 +976,7 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
 class MultiCardVisionLanguageExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True, torch_compile=True
 ):
-    TASK_NAME = "ydshieh/coco_dataset_script"
+    TASK_NAME = "sentence-transformers/coco-captions"
 
 
 class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_esmfold"):
@@ -960,6 +1035,13 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 
 class DeepspeedSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True):
     TASK_NAME = "trl-sft-qwen"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
+
+
+class DeepspeedSFTMixtralExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", deepspeed=True
+):
+    TASK_NAME = "trl-sft-mixtral"
     DATASET_NAME = "philschmid/dolly-15k-oai-style"
 
 

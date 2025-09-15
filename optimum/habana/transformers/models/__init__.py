@@ -70,7 +70,6 @@ from .decilm import (
     DeciLMForCausalLM,
 )
 from .deepseek_v2 import (
-    DeepseekTokenizerFast,
     DeepseekV2Config,
     DeepseekV2ForCausalLM,
 )
@@ -288,6 +287,8 @@ from .qwen3 import (
     GaudiQwen3Attention,
     GaudiQwen3DecoderLayer,
     GaudiQwen3ForCausalLM,
+    GaudiQwen3ForSequenceClassification,
+    GaudiQwen3ForTokenClassification,
     GaudiQwen3MLP,
     GaudiQwen3Model,
     gaudi_qwen3_rmsnorm_forward,
@@ -296,6 +297,8 @@ from .qwen3_moe import (
     GaudiQwen3MoeAttention,
     GaudiQwen3MoeDecoderLayer,
     GaudiQwen3MoeForCausalLM,
+    GaudiQwen3MoeForSequenceClassification,
+    GaudiQwen3MoeForTokenClassification,
     GaudiQwen3MoeMLP,
     GaudiQwen3MoeModel,
     GaudiQwen3MoeSparseMoeBlock,
@@ -321,6 +324,7 @@ from .siglip import (
     GaudiSiglipVisionModel,
     GaudiSiglipVisionTransformer,
 )
+from .snowflake import ArcticConfig, ArcticForCausalLM, ArcticTokenizer
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -340,23 +344,21 @@ from .starcoder2 import (
     GaudiStarcoder2Model,
 )
 from .t5 import (
+    GaudiT5ForConditionalGeneration,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
-    gaudi_T5ForConditionalGeneration_forward,
-    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaProcessor
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
 from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
-    GaudiWav2Vec2SdpaAttention,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,
@@ -366,7 +368,6 @@ from .wav2vec2 import (
     gaudi_wav2vec2forctc_forward,
 )
 from .whisper import (
-    GAUDI_WHISPER_ATTENTION_CLASSES,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,

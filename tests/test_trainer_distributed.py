@@ -14,14 +14,13 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Dict
 
+from optimum.utils import logging
 from transformers import EvalPrediction, HfArgumentParser, is_torch_available
 from transformers.testing_utils import TestCasePlus
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.distributed import DistributedRunner
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     for dataset_length in [101, 40, 7]:
         dataset = DummyDataset(dataset_length)
 
-        def compute_metrics(p: EvalPrediction) -> Dict:
+        def compute_metrics(p: EvalPrediction) -> dict:
             sequential = list(range(len(dataset)))
             success = p.predictions.tolist() == sequential and p.label_ids.tolist() == sequential
             if not success and training_args.local_rank == 0:

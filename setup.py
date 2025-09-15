@@ -29,13 +29,14 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.51.0, < 4.52.0",
+    "transformers >= 4.55.0, < 4.56.0",
     "optimum ~= 1.25",
     "torch",
     "accelerate >= 1.7.0",
     "diffusers >= 0.34.0, < 0.34.1",
     "huggingface_hub[hf_xet] >= 0.24.7",
     "sentence-transformers == 3.3.1",
+    "sentencepiece",
 ]
 
 TESTS_REQUIRE = [
@@ -52,6 +53,7 @@ TESTS_REQUIRE = [
     "torchsde",
     "timm",
     "peft",
+    "bitsandbytes",
     "tiktoken",
     "blobfile",
 ]

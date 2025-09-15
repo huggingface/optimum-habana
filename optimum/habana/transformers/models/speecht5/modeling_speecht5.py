@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -22,13 +22,14 @@ def gaudi_SpeechT5Attention_forward(
     self,
     hidden_states: torch.Tensor,
     key_value_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     position_bias: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
     Copied from SpeechT5Attention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/speecht5/modeling_speecht5.py
     The only differences are:
@@ -70,10 +71,10 @@ def gaudi_SpeechT5Attention_forward(
         value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
     if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+        # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
         # Further calls to cross_attention layer can then reuse all cross-attention
         # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+        # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
         # all previous decoder key/value_states. Further calls to uni-directional self-attention
         # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
         # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -160,9 +161,10 @@ def gaudi_SpeechT5DecoderLayer_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -182,6 +184,7 @@ def gaudi_SpeechT5DecoderLayer_forward(
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = self.dropout(hidden_states)
@@ -203,6 +206,7 @@ def gaudi_SpeechT5DecoderLayer_forward(
             layer_head_mask=cross_attn_layer_head_mask,
             past_key_value=cross_attn_past_key_value,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         hidden_states = self.dropout(hidden_states)
         hidden_states = residual + hidden_states
@@ -234,13 +238,14 @@ def gaudi_SpeechT5Decoder_forward(
     encoder_attention_mask: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from SpeechT5Decoder.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/speecht5/modeling_speecht5.py
     The only differences are:
@@ -297,7 +302,7 @@ def gaudi_SpeechT5Decoder_forward(
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         skip_the_layer = False
         if self.training:
             dropout_probability = torch.rand([])
@@ -307,32 +312,19 @@ def gaudi_SpeechT5Decoder_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                head_mask[idx] if head_mask is not None else None,
-                cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                None,
-                output_attentions,
-                use_cache,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+            cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
@@ -375,7 +367,7 @@ def gaudi_generate_speech(
     vocoder: Optional[nn.Module] = None,
     output_cross_attentions: bool = False,
     return_output_lengths: bool = False,
-) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, torch.FloatTensor]]:
+) -> Union[torch.FloatTensor, tuple[torch.FloatTensor, torch.FloatTensor]]:
     """
     Copied from _generate_speech: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/speecht5/modeling_speecht5.py
     The only differences are:

@@ -277,6 +277,11 @@ def setup_parser(parser):
         help="Wraps the prompt(s) in a chat template of `{ user: <prompt> }`",
     )
     parser.add_argument(
+        "--use_flex_attention",
+        action="store_true",
+        help="Whether to enable Habana Flex Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
         "--use_flash_attention",
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
@@ -394,6 +399,11 @@ def setup_parser(parser):
         help="Load an AutoAWQ quantized checkpoint using AutoAWQ.",
     )
     quant_parser_group.add_argument(
+        "--quantize_with_bnb",
+        action="store_true",
+        help="Quantize model to NF4 using BnB and then use NF4 weights for text-generation",
+    )
+    quant_parser_group.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
@@ -436,6 +446,12 @@ def setup_parser(parser):
         "--dynamo_specialize_float",
         action="store_true",
         help="Set torch._dynamo.config.specialize_float to True.",
+    )
+
+    parser.add_argument(
+        "--dynamo_allow_unspec_int_on_nn_module",
+        action="store_true",
+        help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
     )
 
     args = parser.parse_args()
@@ -516,7 +532,7 @@ def main():
         per_sequence_profiler = disabled_profiler
         per_token_profiler = active_profiler
 
-    if args.dataset_name == "mlcommons":
+    if args.dataset_name == "openorca" or args.dataset_name == "mlcommons":
         # Benchmark over the prompts below
         def get_ds(args):
             ds = pd.read_pickle(args.mlcommons_dataset)
@@ -544,8 +560,12 @@ def main():
         ds = get_ds(args)
         input_sentences = get_input(ds, args.batch_size)
 
+        if args.dataset_max_samples > 0:
+            input_sentences = input_sentences[: args.dataset_max_samples]
+
         def generate(input_tokens, size=None, reduce_recompile=False, disable_profiling=False):
             """Generates sequences from the input sentences and returns them."""
+            profiler = disabled_profiler if disable_profiling else per_token_profiler
 
             timer = HabanaGenerationTime()
             timer.start()
@@ -565,6 +585,7 @@ def main():
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 ignore_eos=args.ignore_eos,
+                profiler=profiler,
             ).cpu()
             outputs = outputs.tolist()
             for i in range(len(outputs)):
@@ -612,6 +633,7 @@ def main():
         # Benchmark over n_iterations iterations
         N = len(input_sentences)
 
+        per_sequence_profiler.start()
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
                 results = []
@@ -621,6 +643,7 @@ def main():
                     results.extend(generated)
                     print(f"Generating batch {b}/{N}")
                     b += 1
+                per_sequence_profiler.step()
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
@@ -630,8 +653,10 @@ def main():
                 for sentence in input_sentences:
                     generated = generate(sentence, prompt_len, args.reduce_recompile)
                     results.extend(generated)
+                per_sequence_profiler.step()
         timer.step()
         duration = timer.last_duration
+        per_sequence_profiler.stop()
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 
@@ -643,6 +668,9 @@ def main():
             acc_file = []
             num_token = 0
             for i, idx in enumerate(ds.index):
+                if args.dataset_max_samples > 0 and i >= args.dataset_max_samples:
+                    break
+
                 pred = results[i]
                 eos_token_id = 2
                 try:
@@ -866,24 +894,24 @@ def main():
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
                 generated, first_token_time, rest_token_time, e2e_latency = generate(None, args.reduce_recompile)
+                per_sequence_profiler.step()
                 first_token_latencies.append(first_token_time)
                 rest_token_latencies.append(rest_token_time)
                 e2e_latencies.append(e2e_latency)
-                per_sequence_profiler.step()
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
                 prompt_len = next(repeated_prompt_len)
                 print("Generating for shape,", prompt_len)
                 generated, first_token_time, rest_token_time, e2e_latency = generate(prompt_len, args.reduce_recompile)
+                per_sequence_profiler.step()
                 first_token_latencies.append(first_token_time)
                 rest_token_latencies.append(rest_token_time)
                 e2e_latencies.append(e2e_latency)
-                per_sequence_profiler.step()
         timer.step()
+        per_sequence_profiler.stop()
         logger.info("Finished running generate")
         duration = timer.last_duration
-        per_sequence_profiler.stop()
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
         # Calculate average latencies
@@ -946,7 +974,7 @@ def main():
 
         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
-        raw_dataset = load_dataset(args.dataset_name, trust_remote_code=args.trust_remote_code)
+        raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
             split = "test"
         elif "validation" in raw_dataset:
@@ -992,7 +1020,7 @@ def main():
         )
         # After tokenization, we can remove the column of interest
         raw_dataset = raw_dataset.remove_columns([column_name])
-        raw_dataset.set_format(type="torch")
+        raw_dataset = raw_dataset.with_format("torch")
 
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model
@@ -1040,7 +1068,7 @@ def main():
         timer.start()
         for i, batch in enumerate(dataloader):
             timer.step()
-            generate_dataset(batch)
+            generate_dataset(batch, disable_profiling=True)
             timer.step()
             duration = timer.last_duration
             # The first three iterations take longer because of graph compilation
@@ -1049,15 +1077,14 @@ def main():
         torch_hpu.synchronize()
         timer.step()
         compilation_duration = timer.last_duration
+
         total_new_tokens_generated = 0
         duration = 0
         separator = "-" * 50
         logger.info("Running generate dataset...")
-
         timer = HabanaGenerationTime()
         timer.start()
         per_sequence_profiler.start()
-
         for i, batch in enumerate(dataloader):
             timer.step()
             prompt, outputs = generate_dataset(batch)
@@ -1074,8 +1101,8 @@ def main():
             if args.run_partial_dataset and args.n_iterations == i + 1:
                 break
             per_sequence_profiler.step()
-        timer.step()
         per_sequence_profiler.stop()
+        timer.step()
 
         throughput = total_new_tokens_generated / duration
         # Print Stats

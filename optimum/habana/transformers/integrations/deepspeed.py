@@ -17,6 +17,7 @@ Integration with Deepspeed
 """
 
 import torch
+from optimum.utils import logging
 from transformers.dependency_versions_check import dep_version_check
 from transformers.integrations.deepspeed import (
     HfDeepSpeedConfig,
@@ -24,8 +25,6 @@ from transformers.integrations.deepspeed import (
     deepspeed_optim_sched,
     set_hf_deepspeed_config,
 )
-
-from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -136,6 +135,16 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
         model_parameters = None
     else:
         trainer.optimizer = None  # important for when deepspeed_init is used as re-init
+        deepspeed_tp_size = hf_deepspeed_config.config.get("tensor_parallel", {}).get("autotp_size", 1)
+        if deepspeed_tp_size > 1:
+            import deepspeed
+
+            model = deepspeed.tp_model_init(
+                model=model,
+                tp_size=deepspeed_tp_size,
+                dtype=hf_deepspeed_config.dtype(),
+                config=hf_deepspeed_config.config,
+            )
         model_parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
         optimizer, lr_scheduler = deepspeed_optim_sched(
             trainer, hf_deepspeed_config, args, num_training_steps, model_parameters

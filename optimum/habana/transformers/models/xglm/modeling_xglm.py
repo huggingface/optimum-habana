@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -18,12 +18,13 @@ def gaudi_xglm_attention_forward(
     self,
     hidden_states: torch.Tensor,
     key_value_states: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
     """
     Copied from XGLMAttention.forward: https://github.com/huggingface/transformers/blob/v4.44.1/src/transformers/models/xglm/modeling_xglm.py
     The only differences are:
@@ -65,10 +66,10 @@ def gaudi_xglm_attention_forward(
         value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
     if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+        # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
         # Further calls to cross_attention layer can then reuse all cross-attention
         # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+        # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
         # all previous decoder key/value_states. Further calls to uni-directional self-attention
         # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
         # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -153,9 +154,10 @@ def gaudi_xglm_decoder_layer_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
@@ -176,6 +178,7 @@ def gaudi_xglm_decoder_layer_forward(
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
+        cache_position=cache_position,
         token_idx=token_idx,
     )
     hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -197,6 +200,7 @@ def gaudi_xglm_decoder_layer_forward(
             layer_head_mask=cross_attn_layer_head_mask,
             past_key_value=cross_attn_past_key_value,
             output_attentions=output_attentions,
+            cache_position=cache_position,
         )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
@@ -233,14 +237,15 @@ def gaudi_xglm_model_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     head_mask: Optional[torch.Tensor] = None,
     cross_attn_head_mask: Optional[torch.Tensor] = None,
-    past_key_values: Optional[List[torch.FloatTensor]] = None,
+    past_key_values: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.Tensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
+) -> Union[tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from XGLMModel.forward: https://github.com/huggingface/transformers/blob/v4.44.1/src/transformers/models/xglm/modeling_xglm.py
     The only differences are:
@@ -317,7 +322,7 @@ def gaudi_xglm_model_forward(
                     f" {head_mask.size()[0]}."
                 )
     for idx, decoder_layer in enumerate(self.layers):
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        # add LayerDrop (see https://huggingface.co/papers/1909.11556 for description)
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
         if self.training:
@@ -327,32 +332,19 @@ def gaudi_xglm_model_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                head_mask[idx] if head_mask is not None else None,
-                cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                None,
-                output_attentions,
-                use_cache,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            layer_head_mask=(head_mask[idx] if head_mask is not None else None),
+            cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+        )
         hidden_states = layer_outputs[0]
 
         if use_cache:
@@ -396,16 +388,17 @@ class GaudiXGLMForCausalLM(XGLMForCausalLM):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-    ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
+    ) -> Union[tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         """
         Inherits from XGLMForCausalLM: https://github.com/huggingface/transformers/blob/v4.44.1/src/transformers/models/xglm/modeling_xglm.py
         The only differences are:
@@ -433,6 +426,7 @@ class GaudiXGLMForCausalLM(XGLMForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             token_idx=token_idx,
         )
 

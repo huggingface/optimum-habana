@@ -19,7 +19,7 @@
 # limitations under the License.
 """PyTorch Llava-NeXT model."""
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -39,27 +39,26 @@ logger = logging.get_logger(__name__)
 class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        pixel_values: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor = None,
+        pixel_values: torch.FloatTensor = None,
         image_sizes: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[list[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        vision_feature_layer: Optional[Union[int, List[int]]] = None,
+        vision_feature_layer: Optional[Union[int, list[int]]] = None,
         vision_feature_select_strategy: Optional[str] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
-        **lm_kwargs,
-    ) -> Union[Tuple, LlavaNextCausalLMOutputWithPast]:
+        **kwargs,
+    ) -> Union[tuple, LlavaNextCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
         The only differences are:
@@ -74,7 +73,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             output_hidden_states = (
                 output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
             )
-            return_dict = return_dict if return_dict is not None else self.config.use_return_dict
             if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
 
@@ -86,14 +84,14 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
+                return_dict=True,
                 cache_position=cache_position,
                 # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
                 # logits_to_keep=logits_to_keep,
                 token_idx=token_idx + self.image_offset,
                 use_flash_attention=use_flash_attention,
                 flash_attention_recompute=flash_attention_recompute,
-                **lm_kwargs,
+                **kwargs,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None and self.text_tokens_pos is not None:
@@ -123,10 +121,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                     shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
                 )
 
-            if not return_dict:
-                output = (logits,) + outputs[1:]
-                return (loss,) + output if loss is not None else output
-
             return LlavaNextCausalLMOutputWithPast(
                 loss=loss,
                 logits=logits,
@@ -150,10 +144,9 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
                 cache_position=cache_position,
                 logits_to_keep=logits_to_keep,
-                **lm_kwargs,
+                **kwargs,
             )
 
     # Copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L356

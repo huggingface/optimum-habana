@@ -32,7 +32,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ....transformers.gaudi_configuration import GaudiConfig
 from ...models.attention_processor import CogVideoXAttnProcessorGaudi
 from ...models.autoencoders.autoencoder_kl_cogvideox import CogVideoXCausalConv3dforwardGaudi, tiled_decode_gaudi
-from ...models.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
+from ...models.transformers.cogvideox_transformer_3d import cogvideoXTransformerForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -82,9 +82,10 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
         for block in self.transformer.transformer_blocks:
             block.attn1.set_processor(CogVideoXAttnProcessorGaudi())
 
-        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+        if use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
+            self.vae.decoder = wrap_in_hpu_graph(self.vae.decoder)
 
     def enable_model_cpu_offload(self, *args, **kwargs):
         if self.use_habana:
@@ -280,6 +281,14 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             self._num_timesteps = len(timesteps)
 
+            # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+            latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+            patch_size_t = self.transformer.config.patch_size_t
+            additional_frames = 0
+            if patch_size_t is not None and latent_frames % patch_size_t != 0:
+                additional_frames = patch_size_t - latent_frames % patch_size_t
+                num_frames += additional_frames * self.vae_scale_factor_temporal
+
             # 5. Prepare latent variables
             latent_channels = self.transformer.config.in_channels
             latents = self.prepare_latents(
@@ -377,6 +386,8 @@ class GaudiCogVideoXPipeline(GaudiDiffusionPipeline, CogVideoXPipeline):
                     htcore.mark_step()
 
         if not output_type == "latent":
+            # Discard any padding frames that were added for CogVideoX 1.5
+            latents = latents[:, additional_frames:]
             video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:

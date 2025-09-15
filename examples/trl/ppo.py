@@ -176,7 +176,7 @@ def build_dataset(
     )
     ds = ds.filter(lambda x: len(x["input_ids"]) < input_max_length, batched=False)
 
-    ds.set_format(type="torch")
+    ds = ds.with_format("torch")
     return ds
 
 
