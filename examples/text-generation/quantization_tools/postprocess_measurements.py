@@ -14,12 +14,15 @@
 
 import sys
 
-from neural_compressor.torch.algorithms.fp8_quant.scripts.postprocessing_vllm_measurements import main as prostprocess_measurements
+from neural_compressor.torch.algorithms.fp8_quant.scripts.postprocessing_vllm_measurements import (
+    main as prostprocess_measurements,
+)
 
 
 def main(args):
     print("Running postprocessing measurements from neural-compressor")
     prostprocess_measurements(args)
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
