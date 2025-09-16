@@ -123,33 +123,28 @@ def gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation(
     attention_mask: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
-    if use_cache:
-        # `cache_position` should have been initialized in `generate`
-        if cache_position is None:
-            raise ValueError(
-                "`cache_position` should not be None as it should have been initialized in "
-                "`model.generate`, you are responsible for passing in a valid `cache_position` if "
-                "you are calling `prepare_inputs_for_generation` directly with `use_cache=True`"
-            )
-        if cache_position[0] > 0:
-            # input_ids = input_ids[:, -1].unsqueeze(-1)
-            idx = torch.tensor([input_ids.size(1) - 1], device=input_ids.device)
-            input_ids = torch.index_select(input_ids, 1, idx)
-
-            if attention_mask is not None:
-                attention_mask = None
-
+    model_inputs = {"input_ids": input_ids.contiguous()}
+    if use_cache and cache_params is None:
+        # we initialize the `cache_position` to full size of `conv_states` at prefill stage
+        # considering padding will be applied when input length is shorter, and truncation
+        # will be applied when it is longer, so it will be equivalent to always have it match
+        # the length of `cache_params.conv_states`, which is `config.conv_kernel`
+        cache_position = torch.arange(0, self.backbone.config.conv_kernel, device=input_ids.device)
+        if inputs_embeds is not None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+            max_batch_size = inputs_embeds.size(0)
         else:
-            # we initialize the `cache_position` to full size of `conv_states` at prefill stage
-            # considering padding will be applied when input length is shorter, and truncation
-            # will be applied when it is longer, so it will be equivalent to always have it match
-            # the length of `cache_params.conv_states`, which is `config.conv_kernel`
-            cache_position = torch.arange(0, self.config.conv_kernel, device=input_ids.device)
+            max_batch_size = input_ids.size(0)
+        cache_params = FalconMambaCache(self.backbone.config, max_batch_size, device=self.device, dtype=self.dtype)
 
-    if inputs_embeds is not None and cache_params is None:
+    if use_cache and cache_position[0] > 0:
+        # input_ids = input_ids[:, -1].unsqueeze(-1)
+        idx = torch.tensor([input_ids.size(1) - 1], device=input_ids.device)
+        model_inputs["input_ids"] = torch.index_select(input_ids, 1, idx).contiguous()
+        attention_mask = None
+
+    if not use_cache and inputs_embeds is not None:
         model_inputs = {"inputs_embeds": inputs_embeds}
-    else:
-        model_inputs = {"input_ids": input_ids.contiguous()}
 
     model_inputs.update(
         {

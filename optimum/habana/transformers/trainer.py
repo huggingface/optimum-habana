@@ -45,6 +45,7 @@ from accelerate.utils import (
     save_fsdp_optimizer,
 )
 from huggingface_hub import upload_folder
+from optimum.utils import logging
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -106,8 +107,6 @@ from transformers.utils import (
     is_safetensors_available,
 )
 from transformers.utils.deprecation import deprecate_kwarg
-
-from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper
@@ -1391,6 +1390,65 @@ class GaudiTrainer(Trainer):
             timer.step()
             self.log_evaluate_save_time += timer.last_duration
 
+    def _save_checkpoint(self, model, trial):
+        # Copied from https://github.com/huggingface/transformers/blob/v4.51-release/src/transformers/trainer.py#L3187
+        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
+        # want to save except FullyShardedDDP.
+        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model
+
+        # Save model checkpoint
+        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+
+        if self.hp_search_backend is None and trial is None:
+            self.store_flos()
+
+        run_dir = self._get_output_dir(trial=trial)
+        output_dir = os.path.join(run_dir, checkpoint_folder)
+        self.save_model(output_dir, _internal_call=True)
+
+        # NOTE(pbielak): In a multi-card scenario, the model saving is done by the main process (rank zero),
+        # whereas all other ranks continue processing. When checking for the `best_checkpoint_dir` below,
+        # a race condition occurs. This barrier forces other processes to wait till the model is saved.
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+            torch.distributed.barrier()
+
+        if self.args.save_strategy in [SaveStrategy.STEPS, SaveStrategy.EPOCH] and self.state.best_global_step:
+            best_checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.best_global_step}"
+            best_checkpoint_dir = os.path.join(run_dir, best_checkpoint_folder)
+
+            if os.path.exists(best_checkpoint_dir):
+                self.state.best_model_checkpoint = best_checkpoint_dir
+
+        if not self.args.save_only_model:
+            # Save optimizer and scheduler
+            self._save_optimizer_and_scheduler(output_dir)
+            self._save_scaler(output_dir)
+            # Save RNG state
+            self._save_rng_state(output_dir)
+
+        # Save the Trainer state
+        if self.args.should_save:
+            # Update `ExportableState` callbacks and `TrainerControl` state to where we are currently
+            for cb in [
+                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
+            ]:
+                cb_name = cb.__class__.__name__
+                cb_state = cb.state()
+                if isinstance(self.state.stateful_callbacks[cb_name], list):
+                    self.state.stateful_callbacks[cb_name].append(cb_state)
+                else:
+                    self.state.stateful_callbacks[cb_name] = cb_state
+            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(output_dir)
+
+        # Maybe delete some older checkpoints.
+        if self.args.should_save:
+            # Solely rely on numerical checkpoint id for rotation.
+            # mtime is not reliable especially on some fuse fs in cloud environments.
+            self._rotate_checkpoints(use_mtime=False, output_dir=run_dir)
+
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
         if checkpoint is None:
@@ -1619,27 +1677,6 @@ class GaudiTrainer(Trainer):
                 return data.to(**kwargs)
         return data
 
-    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
-        """
-        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-        arguments, depending on the situation.
-
-        Modified by Habana to enable using `autocast` on Gaudi devices.
-        """
-        if self.use_cpu_amp:
-            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
-        elif self.use_hpu_amp:
-            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
-        else:
-            ctx_manager = contextlib.nullcontext()
-
-        # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
-        # Currently FP8 is enabled only for training.
-        if self.accelerator.fp8_enabled and self.model.training:
-            ctx_manager = FP8ContextWrapper(ctx_manager, fp8_recipe=self.accelerator.fp8_recipe)
-
-        return ctx_manager
-
     def training_step(
         self,
         model: torch.nn.Module,
@@ -1664,9 +1701,8 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
-        # TODO
-        # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
-        #     self.optimizer.train()
+        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+            self.optimizer.train()
 
         inputs = self._prepare_inputs(inputs)
 
@@ -1709,6 +1745,7 @@ class GaudiTrainer(Trainer):
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
             if self.accelerator.fp8_enabled and self.args.gradient_checkpointing:
+                # TODO: check if this is needed with accelerate's fp8 forward wrapper
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -1717,6 +1754,7 @@ class GaudiTrainer(Trainer):
                     self.accelerator.backward(loss, **kwargs)
             else:
                 self.accelerator.backward(loss, **kwargs)
+
         return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
@@ -2610,8 +2648,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "use_regional_compilation": self.args.use_regional_compilation,
-            "compiled_autograd_enable": self.args.use_compiled_autograd,
+            "compiled_autograd_enabled": self.args.use_compiled_autograd,
         }
         # tp is initialized at Accelerator init phase so
         # args should be prepared here

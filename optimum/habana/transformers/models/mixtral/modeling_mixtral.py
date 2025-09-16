@@ -28,7 +28,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -227,23 +227,7 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
 
         routing_weights, selected_experts = calculate_routing_tensors(router_logits, self.top_k, hidden_states.dtype)
 
-        # pre-processing for custom op inputs
-        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
-        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
-        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
-
-        final_hidden_states = torch.ops.hpu.mixture_of_experts(
-            hidden_states=hidden_states,
-            expert_routing_table=selected_experts,
-            router_weights=routing_weights,
-            w1=w1_list,
-            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
-            w3=w2_list,
-            permuted_weights=True,
-            activation="silu",
-            experts_min=self.experts_min,
-            experts_max=self.experts_max,
-        )
+        final_hidden_states = self.call_dynamic_moe_op(hidden_states, selected_experts, routing_weights)
 
         if not self.training:
             if self.ep_size > 1:
@@ -255,6 +239,25 @@ class GaudiMixtralSparseMoeBlock(torch.nn.Module):
                     comm.all_reduce(final_hidden_states)
 
         return final_hidden_states.view(original_shape), router_logits
+
+    def call_dynamic_moe_op(self, hidden_states, expert_routing_table, router_weights):
+        # pre-processing for custom op inputs
+        w1_list = [self.experts[i].w1.weight for i in self.experts_range]
+        w2_list = [self.experts[i].w2.weight for i in self.experts_range]
+        w3_list = [self.experts[i].w3.weight for i in self.experts_range]
+
+        return torch.ops.hpu.mixture_of_experts(
+            hidden_states=hidden_states,
+            expert_routing_table=expert_routing_table,
+            router_weights=router_weights,
+            w1=w1_list,
+            w2=w3_list,  # Note that there is a different naming convention of w1, w2, and w3 between optimum habana's mixtral model and dynamic MoE kernel.
+            w3=w2_list,
+            permuted_weights=True,
+            activation="silu",
+            experts_min=self.experts_min,
+            experts_max=self.experts_max,
+        )
 
 
 class GaudiMixtralAttentionLongSequence:
@@ -588,12 +591,8 @@ class GaudiMixtralModel(MixtralModel):
             if reuse_cache:
                 past_key_values_length = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_key_values_length = past_key_values.get_usable_length()
-                else:
-                    past_key_values_length = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                past_key_values_length = past_key_values[0][0].shape[2]
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)

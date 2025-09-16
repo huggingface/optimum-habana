@@ -54,8 +54,8 @@ from transformers.utils import (
 from transformers.utils.import_utils import is_torch_fx_available
 
 from ....utils import warn0
-from .configuration_minicpm import MiniCPM3Config
 from ...generation.utils import GaudiGenerationMixin
+from .configuration_minicpm import MiniCPM3Config
 
 
 try:
@@ -1022,7 +1022,9 @@ MINICPM_START_DOCSTRING = r"""
     "The bare MiniCPM Model outputting raw hidden-states without any specific head on top.",
     MINICPM_START_DOCSTRING,
 )
-class MiniCPM3PreTrainedModel(PreTrainedModel, ):
+class MiniCPM3PreTrainedModel(
+    PreTrainedModel,
+):
     config_class = MiniCPM3Config
     base_model_prefix = "model"
     supports_gradient_checkpointing = True

@@ -125,7 +125,6 @@ def setup_env(args):
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
     if args.world_size > 0:
-        os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
     if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache and args.bucket_internal:
@@ -291,6 +290,22 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         quantization_config = AwqConfig(bits=4, version="hpu")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs
+        )
+    elif args.quantize_with_bnb:
+        from transformers import BitsAndBytesConfig
+
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            quantization_config=nf4_config,
+            device_map={"": "hpu"},
+            torch_dtype=model_dtype,
+            **model_kwargs,
         )
     elif args.load_quantized_model_with_inc:
         # TODO: This will be removed in v1.20 Synapse release
@@ -724,6 +739,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
+    generation_config.use_flex_attention = args.use_flex_attention
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask

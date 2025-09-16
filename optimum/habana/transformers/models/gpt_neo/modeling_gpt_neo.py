@@ -157,7 +157,7 @@ def gaudi_gpt_neo_model_forward(
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-    if input_ids is not None and inputs_embeds is not None:
+    if (input_ids is None) == (inputs_embeds is None):
         raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)

@@ -43,10 +43,10 @@ from transformers.generation.utils import GenerationConfig
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
+from ...generation.utils import GaudiGenerationMixin
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_baichuan import BaichuanConfig
 from .generation_utils import TextIterStreamer, build_chat_input
-from ...generation.utils import GaudiGenerationMixin
 
 
 logger = logging.get_logger(__name__)

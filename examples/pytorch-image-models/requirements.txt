@@ -1,2 +1,2 @@
 timm
-datasets
+datasets>=4.0.0

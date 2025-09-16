@@ -98,7 +98,10 @@ class GaudiPersimmonAttention(PersimmonAttention):
 
         if past_key_value is not None:
             if token_idx is not None:
-                if 0 <= self.layer_idx < len(past_key_value) and past_key_value.layers[self.layer_idx].keys is not None:
+                if (
+                    0 <= self.layer_idx < len(past_key_value)
+                    and past_key_value.layers[self.layer_idx].keys is not None
+                ):
                     past_key_value.layers[self.layer_idx].keys.index_copy_(2, token_idx - 1, key_states)
                     past_key_value.layers[self.layer_idx].values.index_copy_(2, token_idx - 1, value_states)
                     key_states = past_key_value.layers[self.layer_idx].keys

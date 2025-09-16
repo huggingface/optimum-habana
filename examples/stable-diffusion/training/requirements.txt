@@ -1,5 +1,5 @@
 compel
-datasets
+datasets>=4.0.0
 imagesize
 opencv-python
 peft==0.16.0

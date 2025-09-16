@@ -57,7 +57,7 @@ except ImportError:
 check_min_version("4.55.0")
 check_optimum_habana_min_version("1.19.0.dev0")
 
-require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
+require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
 logger = logging.getLogger(__name__)
 

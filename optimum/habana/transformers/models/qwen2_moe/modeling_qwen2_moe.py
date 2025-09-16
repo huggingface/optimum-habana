@@ -26,7 +26,7 @@ from typing import Optional, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.qwen2_moe.configuration_qwen2_moe import Qwen2MoeConfig
@@ -869,13 +869,9 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    if past_key_values[0] is not None:  ##added for (None, None)
-                        past_seen_tokens = past_key_values[0][0].shape[2]
+                # HPU uses legacy cache path (use_new_cache = False)
+                if past_key_values[0] is not None:  ##added for (None, None)
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:

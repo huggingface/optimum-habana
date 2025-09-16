@@ -18,13 +18,6 @@ import os
 import transformers
 import transformers.utils.fx
 
-from ..quantizers.bitsandbytes import (
-    gaudi_bitsandbytesconfig_post_init,
-    gaudi_create_quantized_param,
-    gaudi_is_bitsandbytes_available,
-    gaudi_validate_bnb_backend_availability,
-    gaudi_validate_environment,
-)
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
@@ -42,6 +35,9 @@ from .integrations.awq import (
 )
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
+    ArcticConfig,
+    ArcticForCausalLM,
+    ArcticTokenizer,
     BaichuanConfig,
     BaichuanForCausalLM,
     BaichuanTokenizer,
@@ -193,9 +189,7 @@ from .models import (
     GaudiStarcoder2Model,
     GaudiT5ForConditionalGeneration,
     GaudiVideoLlavaForConditionalGeneration,
-    GaudiVideoLlavaProcessor,
     GaudiVisionSdpaAttention,
-    GaudiWav2Vec2SdpaAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
@@ -323,14 +317,6 @@ def adapt_transformers_to_gaudi():
     for Gaudi.
     """
 
-    transformers.utils.quantization_config.BitsAndBytesConfig.post_init = gaudi_bitsandbytesconfig_post_init
-    transformers.utils.import_utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
-    transformers.utils.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
-    transformers.quantizers.quantizer_bnb_4bit.is_bitsandbytes_available = gaudi_is_bitsandbytes_available
-    transformers.integrations.bitsandbytes.validate_bnb_backend_availability = gaudi_validate_bnb_backend_availability
-    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.validate_environment = gaudi_validate_environment
-    transformers.quantizers.quantizer_bnb_4bit.Bnb4BitHfQuantizer.create_quantized_param = gaudi_create_quantized_param
-
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []
 
@@ -350,7 +336,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
     transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
-    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Attention = GaudiWav2Vec2SdpaAttention
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.prepare_inputs_for_generation = (
@@ -775,7 +760,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
-    transformers.models.video_llava.processing_video_llava.VideoLlavaProcessor = GaudiVideoLlavaProcessor
 
     # Optimization for Whisper on Gaudi
     transformers.models.whisper.modeling_whisper.WhisperAttention = GaudiWhisperSdpaAttention
@@ -868,3 +852,7 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for RT-DETR model on Gaudi
     transformers.loss.loss_rt_detr.RTDetrHungarianMatcher.forward = gaudi_RTDetrHungarianMatcher_forward
+
+    transformers.AutoConfig.register("arctic", ArcticConfig)
+    transformers.AutoModelForCausalLM.register(ArcticConfig, ArcticForCausalLM)
+    transformers.AutoTokenizer.register(ArcticConfig, ArcticTokenizer)
