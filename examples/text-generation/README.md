@@ -395,6 +395,8 @@ PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py  --world_size 8 run_generatio
 
 Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-180B and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
+After measurement, a postprocessing script (quantization_tools/postprocess_measurements.py) should be invoked, to align the scales for matmul_av, matmul_qk with those for k_cache and v_cache, to avoid dequant-quant-scale op before matmul_qk and matmul_av. The `-m <location>` argument should point to measurement directory, specified in json file in quantization_config, usually 'hqt_output' in examples.
+
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
@@ -409,6 +411,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --max_new_tokens 128 \
 --batch_size 1 \
 --bf16
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
@@ -441,6 +445,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_recompute \
 --flash_attention_causal_mask \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -479,6 +485,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_recompute \
 --flash_attention_causal_mask \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
@@ -505,7 +513,7 @@ Here is an example to measure the tensor quantization statistics on Llama3-8b wi
 
 ```bash
 PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
--o acc_Llama3-8b_bs1_measure.txt  \
+-o acc_Llama3-8b_bs1_measure.json  \
 --model_name_or_path meta-llama/Meta-Llama-3-8B \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -515,6 +523,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --reuse_cache \
 --bf16 \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:
@@ -542,6 +552,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --reuse_cache \
 --bf16 \
 --sdp_on_bf16
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
