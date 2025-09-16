@@ -397,7 +397,7 @@ def create_vocabulary_from_data(datasets, word_delimiter_token=None, unk_token=N
     dataset = datasets["train"].map(
         extract_chars,
         batched=True,
-        batch_size=1000,
+        batch_size=-1,
         keep_in_memory=True,
         remove_columns=datasets["train"].column_names,
         desc="Extract characters for vocab",
@@ -417,8 +417,10 @@ def create_vocabulary_from_data(datasets, word_delimiter_token=None, unk_token=N
         else:
             vocab_dict[word_delimiter_token] = len(vocab_dict)
 
+    # add unk and pad token
     if unk_token is not None:
         vocab_dict[unk_token] = len(vocab_dict)
+
     if pad_token is not None:
         vocab_dict[pad_token] = len(vocab_dict)
 
@@ -651,6 +653,7 @@ def main():
         }
     )
 
+    # create model
     model = AutoModelForCTC.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -745,6 +748,7 @@ def main():
         def is_audio_in_length_range(length):
             return length > min_input_length and length < max_input_length
 
+        # filter data that is shorter than min_input_length
         vectorized_datasets = vectorized_datasets.filter(
             is_audio_in_length_range,
             num_proc=num_workers,
@@ -855,6 +859,7 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+    # Evaluation
     results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
