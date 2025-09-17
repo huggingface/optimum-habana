@@ -23,11 +23,6 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
     # Gaudi2+
     MODELS_TO_TEST = {
         "bf16_1x": [
-            ("google/gemma-3-4b-it", 1, False, True, False),
-            ("google/gemma-3-12b-it", 1, False, True, False),
-            ("google/gemma-3-27b-it", 1, False, True, False), 
-        ],
-        "_bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False, False),
             ("gpt2-xl", 1, False, False, False),
             pytest.param("EleutherAI/gpt-j-6b", 1, False, False, False, marks=pytest.mark.skip("Deprecated in v1.20")),
