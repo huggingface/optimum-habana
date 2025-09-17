@@ -465,6 +465,14 @@
       "throughput": 45.90538768350833
     }
   },
+  "tests/test_text_generation_example.py::test_text_generation_bf16_1x[unsloth/gpt-oss-20b-BF16-1-False-False-False]": {
+    "gaudi2": {
+      "throughput": 49.2845966607741
+    },
+    "gaudi3": {
+      "throughput": 59.51780208740626
+    }
+  },
   "tests/test_text_generation_example.py::test_text_generation_contrastive_search[gpt2-xl-1-False]": {
     "gaudi1": {
       "throughput": 34.48141280163397

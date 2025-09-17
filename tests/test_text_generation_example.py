@@ -71,6 +71,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("moonshotai/Moonlight-16B-A3B", 1, False, False, False),
             ("Qwen/Qwen3-8B", 1, False, False, False),
             ("Qwen/Qwen3-30B-A3B", 1, False, False, False),
+            ("unsloth/gpt-oss-20b-BF16", 1, False, False, False),
         ],
         "fp8": [
             pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, False, marks=pytest.mark.x4),
