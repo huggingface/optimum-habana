@@ -2,11 +2,11 @@
 
 We provide 3 examples to show how to use Sentence Transformers with HPU devices.
 
-- **[training_stsbenchmark.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/sts)** - This example shows how to create a Sentence Transformers model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
+- **[training_stsbenchmark.py](/examples/sentence-transformers-training/sts)** - This example shows how to create a Sentence Transformers model from scratch by using a pre-trained transformer model (e.g. [`distilbert-base-uncased`](https://huggingface.co/distilbert/distilbert-base-uncased)) together with a pooling layer.
 
-- **[training_nli.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/nli)** - This example provides two sentences (a premise and a hypothesis), and the task of Natural Language Inference (NLI) is to determine whether the premise entails the hypothesis, contradicts it, or if they are neutral. Commonly the NLI dataset in [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) are used.
+- **[training_nli.py](/examples/sentence-transformers-training/nli)** - This example provides two sentences (a premise and a hypothesis), and the task of Natural Language Inference (NLI) is to determine whether the premise entails the hypothesis, contradicts it, or if they are neutral. Commonly the NLI dataset in [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) are used.
 
-- **[training_paraphrases.py](https://github.com/huggingface/optimum-habana/tree/main/examples/sentence-transformers-training/paraphrases)** - This example loads various datasets from Sentence Transformers. We construct batches by sampling examples from the respective dataset.
+- **[training_paraphrases.py](/examples/sentence-transformers-training/paraphrases)** - This example loads various datasets from Sentence Transformers. We construct batches by sampling examples from the respective dataset.
 
 ### Tested Examples/Models and Configurations
 

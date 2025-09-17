@@ -210,7 +210,7 @@ which will also push the model to your HuggingFace hub account.
 
 ### Running the model
 
-We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
+We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](/examples/text-generation).
 
 ```bash
 PT_HPU_LAZY_MODE=1 PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_generation.py \
@@ -297,7 +297,7 @@ There are three main steps to the PPO training process:
     ```
 
 ### Running the model
-We can load the PPO-trained LoRA adaptors which were saved by the PPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
+We can load the PPO-trained LoRA adaptors which were saved by the PPO training step and run it through the [text-generation example](/examples/text-generation).
 
 ```bash
 PT_HPU_LAZY_MODE=1 PT_ENABLE_INT64_SUPPORT=1 python run_generation.py \
