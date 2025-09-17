@@ -15,7 +15,7 @@
 
 """Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
 
-import functools
+import io
 import json
 import logging
 import os
@@ -24,11 +24,11 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-import datasets
 import evaluate
+import numpy as np
 import torch
 import transformers
-from datasets import DatasetDict, load_dataset
+from datasets import Audio, DatasetDict, load_dataset
 from transformers import (
     AutoConfig,
     AutoFeatureExtractor,
@@ -61,6 +61,9 @@ check_min_version("4.55.0")
 check_optimum_habana_min_version("1.19.0.dev0")
 
 require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
+
+# Disable torchcodec decoding in datasets before any dataset ops
+os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
 
 
 def list_field(default=None, metadata=None):
@@ -385,37 +388,34 @@ class DataCollatorCTCWithPadding:
         return batch
 
 
-def create_vocabulary_from_data(
-    datasets: DatasetDict,
-    word_delimiter_token: Optional[str] = None,
-    unk_token: Optional[str] = None,
-    pad_token: Optional[str] = None,
-):
-    # Given training and test labels create vocabulary
-    def extract_all_chars(batch):
-        all_text = " ".join(batch["target_text"])
-        vocab = list(set(all_text))
-        return {"vocab": [vocab], "all_text": [all_text]}
+def create_vocabulary_from_data(datasets, word_delimiter_token=None, unk_token=None, pad_token=None):
+    """Create a character-level vocabulary from the dataset's target_text."""
 
-    vocabs = datasets.map(
-        extract_all_chars,
+    def extract_chars(batch):
+        return {"chars": list("".join(batch["target_text"]))}
+
+    dataset = datasets["train"].map(
+        extract_chars,
         batched=True,
         batch_size=-1,
         keep_in_memory=True,
         remove_columns=datasets["train"].column_names,
+        desc="Extract characters for vocab",
     )
 
-    # take union of all unique characters in each dataset
-    vocab_set = functools.reduce(
-        lambda vocab_1, vocab_2: set(vocab_1["vocab"][0]) | set(vocab_2["vocab"][0]), vocabs.values()
-    )
+    vocab_set = set()
+    for batch_chars in dataset["chars"]:
+        for ch in batch_chars:
+            if isinstance(ch, str) and len(ch) == 1:
+                vocab_set.add(ch)
 
     vocab_dict = {v: k for k, v in enumerate(sorted(vocab_set))}
 
-    # replace white space with delimiter token
     if word_delimiter_token is not None:
-        vocab_dict[word_delimiter_token] = vocab_dict[" "]
-        del vocab_dict[" "]
+        if " " in vocab_dict:
+            vocab_dict[word_delimiter_token] = vocab_dict.pop(" ")
+        else:
+            vocab_dict[word_delimiter_token] = len(vocab_dict)
 
     # add unk and pad token
     if unk_token is not None:
@@ -671,17 +671,11 @@ def main():
     # so that we just need to set the correct target sampling rate and normalize the input
     # via the `feature_extractor`
 
-    # make sure that dataset decodes audio with correct sampling rate
-    dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
-    if dataset_sampling_rate != feature_extractor.sampling_rate:
-        raise RuntimeError(
-            f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
-            f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
-            " support it on HPUs yet."
-        )
-        raw_datasets = raw_datasets.cast_column(
-            data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
-        )
+    # Make sure datasets does not auto-decode audio (we'll open via soundfile in prepare_dataset).
+    raw_datasets = raw_datasets.cast_column(
+        data_args.audio_column_name,
+        Audio(sampling_rate=feature_extractor.sampling_rate, decode=False),
+    )
 
     # derive max & min input length for sample rate & max duration
     max_input_length = data_args.max_duration_in_seconds * feature_extractor.sampling_rate
@@ -696,19 +690,50 @@ def main():
     # Preprocessing the datasets.
     # We need to read the audio files as arrays and tokenize the targets.
     def prepare_dataset(batch):
-        # load audio
-        sample = batch[audio_column_name]
+        """Open audio via soundfile, downmix to mono if needed, and extract features."""
+        import soundfile as sf
 
-        inputs = feature_extractor(sample["array"], sampling_rate=sample["sampling_rate"])
+        sample = batch[audio_column_name]  # dict with at least "path"; may also include "bytes"
+        if not isinstance(sample, dict):
+            raise RuntimeError(f"Unexpected audio sample structure: {type(sample)} - {sample}")
+
+        wav = None
+        sr = None
+
+        # 1) Try reading from file path (when an absolute/valid path is provided)
+        path = sample.get("path")
+        if isinstance(path, str):
+            try:
+                wav, sr = sf.read(path, dtype="float32", always_2d=False)
+            except Exception:
+                wav, sr = None, None  # fall back to bytes
+
+        # 2) Fallback: read from in-memory bytes (works even if 'path' is relative/missing)
+        if wav is None:
+            raw = sample.get("bytes")
+            if not raw:
+                raise RuntimeError(f"Cannot open audio. Invalid path '{path}' and no 'bytes' present in sample.")
+            fileobj = io.BytesIO(raw)
+            wav, sr = sf.read(fileobj, dtype="float32", always_2d=False)
+
+        # Ensure mono
+        if getattr(wav, "ndim", 1) > 1:
+            wav = wav.mean(axis=1)
+
+        # Validate sample rate (LibriSpeech should be 16 kHz)
+        if sr != feature_extractor.sampling_rate:
+            raise RuntimeError(f"Expected {feature_extractor.sampling_rate} Hz, but got {sr} Hz for {path}")
+
+        # Feature extraction
+        wav = np.ascontiguousarray(wav, dtype=np.float32)
+        inputs = feature_extractor(wav, sampling_rate=sr)
         batch[feature_extractor_input_name] = getattr(inputs, feature_extractor_input_name)[0]
-        # take length of raw audio waveform
-        batch["input_length"] = len(sample["array"].squeeze())
+        batch["input_length"] = int(wav.shape[0])
 
-        # encode targets
+        # Targets
         additional_kwargs = {}
         if phoneme_language is not None:
             additional_kwargs["phonemizer_lang"] = phoneme_language
-
         batch["labels"] = tokenizer(batch["target_text"], **additional_kwargs).input_ids
         return batch
 
