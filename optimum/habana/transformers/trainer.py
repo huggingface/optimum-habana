@@ -1699,7 +1699,6 @@ class GaudiTrainer(Trainer):
 
         return ctx_manager
 
-
     def training_step(
         self,
         model: torch.nn.Module,
