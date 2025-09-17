@@ -94,6 +94,10 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiGptOssAttention,
+    GaudiGptOssExperts,
+    GaudiGptOssForCausalLM,
+    GaudiGptOssModel,
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
@@ -258,6 +262,8 @@ from .models import (
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_oss_decoder_layer_forward,
+    gaudi_gpt_oss_rmsnorm_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
@@ -488,6 +494,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer = GaudiGPTNeoXLayer
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
+
+    # Optimization for gpt-oss generation on Gaudi
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM = GaudiGptOssForCausalLM
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel = GaudiGptOssModel
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM

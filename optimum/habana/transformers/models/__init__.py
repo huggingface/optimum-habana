@@ -150,6 +150,14 @@ from .gpt_neox import (
     GaudiGPTNeoXLayer,
     gaudi_gpt_neox_model_forward,
 )
+from .gpt_oss import (
+    GaudiGptOssAttention,
+    GaudiGptOssExperts,
+    GaudiGptOssForCausalLM,
+    GaudiGptOssModel,
+    gaudi_gpt_oss_decoder_layer_forward,
+    gaudi_gpt_oss_rmsnorm_forward,
+)
 from .gptj import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,

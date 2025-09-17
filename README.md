@@ -286,6 +286,7 @@ The following model architectures, tasks and device distributions have been vali
 | VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/video-comprehension)</li> |
 | GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/image-to-text)</li> |
 | Arctic |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
+| GPT-OSS |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/text-generation)</li> |
 
 </div>
 
