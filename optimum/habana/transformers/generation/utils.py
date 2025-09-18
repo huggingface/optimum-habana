@@ -1033,7 +1033,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if generation_config.decoder_start_token_id is None:
                     generation_config.decoder_start_token_id = self.generation_config.decoder_start_token_id
 
-        if generation_config.static_shapes is None:
+        if getattr(generation_config, "static_shapes") is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
             if self.config.model_type == "vision-encoder-decoder":
                 generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
