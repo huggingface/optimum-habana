@@ -424,7 +424,7 @@ def main():
                 if args.gif:
                     export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
                 else:
-                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=args.fps)
 
                 if args.save_frames_as_images:
                     for j, frame in enumerate(frames):

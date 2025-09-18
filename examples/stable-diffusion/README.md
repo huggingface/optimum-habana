@@ -458,9 +458,9 @@ python image_to_video_generation.py \
 ```
 
 ### Image-to-Video with Wan 2.2
-Wan2.2 is comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
 
-Here is how to generate video with one image and text prompt:
+Here is how to generate a video with one image and text prompt:
 
 ```bash
 PT_HPU_LAZY_MODE=1 \
@@ -480,9 +480,9 @@ python image_to_video_generation.py \
 ```
 
 ### Text-to-Video with Wan 2.2
-Wan2.2 is comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
 
-Here is how to generate video with text prompt:
+Here is how to generate a video with text prompt:
 
 ```bash
 PT_HPU_LAZY_MODE=1 \

@@ -537,6 +537,13 @@ class GaudiFluxAttnProcessor2_0:
 
 
 class GaudiWanAttnProcessor:
+    r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/transformers/transformer_wan.py#L67
+
+    This class copied from `WanAttnProcessor` and overrides methods to use Gaudi-specific implementations.
+    Add a func _native_attention which uses FusedSDPA on Gaudi
+    Use hpex.kernels.apply_rotary_pos_emb on Gaudi
+    """
     _attention_backend = None
 
     def __init__(self, is_training=False):
