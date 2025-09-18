@@ -16,9 +16,7 @@
 import os
 
 import transformers
-import transformers.integrations
 import transformers.utils.fx
-from ..quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 from .generation import (
     GaudiGenerationConfig,
@@ -326,6 +324,7 @@ from .models import (
 )
 from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
 from .pipelines import GaudiImageToTextPipeline
+from .quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 
 def adapt_transformers_to_gaudi():

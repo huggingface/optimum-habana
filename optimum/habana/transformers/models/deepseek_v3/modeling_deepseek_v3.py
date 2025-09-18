@@ -57,10 +57,9 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-from optimum.habana.transformers.integrations.finegrained_fp8 import FP8Method, get_fp8_method
-
 from ....distributed.tensorparallel import _all_reduce
 from ....utils import warn0
+from ...integrations.finegrained_fp8 import FP8Method, get_fp8_method
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_deepseek_v3 import DeepseekV3Config

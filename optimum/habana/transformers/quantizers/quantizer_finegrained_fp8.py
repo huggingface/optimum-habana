@@ -7,9 +7,7 @@ import torch
 from packaging import version
 from transformers.quantizers.quantizer_finegrained_fp8 import FineGrainedFP8HfQuantizer
 from transformers.quantizers.quantizers_utils import get_module_from_name
-from transformers.utils import is_torch_available
-
-from optimum.utils import logging
+from transformers.utils import is_torch_available, logging
 
 
 if TYPE_CHECKING:

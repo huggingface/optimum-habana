@@ -5,9 +5,8 @@ from typing import Callable, Optional, Tuple
 import torch
 import torch.nn as nn
 from accelerate import init_empty_weights
-from torch.nn import functional as F
-
 from optimum.utils import logging
+from torch.nn import functional as F
 
 
 logger = logging.get_logger(__name__)
