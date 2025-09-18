@@ -36,11 +36,11 @@ pip install -r requirements.txt
 
 ## Connectionist Temporal Classification
 
-The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
+The script [`run_speech_recognition_ctc.py`](/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
 
 Speech recognition models that have been pretrained in an unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on automatic speech recognition datasets.
 
-In the script [`run_speech_recognition_ctc`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py), we first create a vocabulary from all unique characters of both the training data and evaluation data. Then, we preprocess the speech recognition dataset, which includes correct resampling, normalization and padding. Finally, the pretrained speech recognition model is fine-tuned on the annotated speech recognition datasets using CTC loss.
+In the script [`run_speech_recognition_ctc`](/examples/speech-recognition/run_speech_recognition_ctc.py), we first create a vocabulary from all unique characters of both the training data and evaluation data. Then, we preprocess the speech recognition dataset, which includes correct resampling, normalization and padding. Finally, the pretrained speech recognition model is fine-tuned on the annotated speech recognition datasets using CTC loss.
 
 <!-- ---
 **NOTE**
@@ -224,7 +224,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
 
 ## Sequence to Sequence
 
-The script [`run_speech_recognition_seq2seq.py`](https://github.com/huggingface/optimum-habana/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech
+The script [`run_speech_recognition_seq2seq.py`](/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech
 recognition on one of the well known speech recognition datasets similar to shown below or a custom dataset. Examples of two datasets using the Whisper model from OpenAI are included below.
 
 ### Whisper Model
