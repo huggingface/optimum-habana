@@ -179,7 +179,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 ## Using DeepSpeed
 
-You can check the [DeepSpeed](https://github.com/huggingface/optimum-habana/tree/main/examples#deepspeed) section in Optimum Habana examples for how to run DeepSpeed.
+You can check the [DeepSpeed](/examples#deepspeed) section in Optimum Habana examples for how to run DeepSpeed.
 You also can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 
 

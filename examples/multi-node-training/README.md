@@ -30,8 +30,8 @@ where `--argX` is an argument of the script to run.
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
 We provide two `Dockerfile` to easily start your multi-node runs:
-- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/Dockerfile) for multi-node runs on AWS.
-- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
+- A `Dockerfile` provided [here](/examples/multi-node-training/EFA/Dockerfile) for multi-node runs on AWS.
+- A `Dockerfile` provided [here](/examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
 
 
 The Dockerfile is based on an image compatible with Ubuntu 22.04 but you can easily adapt it to another OS.
@@ -99,7 +99,7 @@ ip_2 slots=8
 ip_n slots=8
 ```
 
-You can find a template [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/hostfile).
+You can find a template [here](/examples/multi-node-training/hostfile).
 
 
 ## Environment variables
@@ -111,11 +111,11 @@ env_variable_2_name=value
 ...
 ```
 
-You can find an example for GaudiNIC instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/.deepspeed_env).
+You can find an example for GaudiNIC instances [here](/examples/multi-node-training/GaudiNIC/.deepspeed_env).
 
 > Note above environment variables refers to /etc/profile.d/habanalabs.sh inside docker, and should set only on GaudiNIC master node.
 
-You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/.deepspeed_env).
+You can find an example for AWS instances [here](/examples/multi-node-training/EFA/.deepspeed_env).
 
 > Note that one should set `HCCL_OVER_OFI=1` and `LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` only on AWS DL1 instances. *These should not be used otherwise*.
 
