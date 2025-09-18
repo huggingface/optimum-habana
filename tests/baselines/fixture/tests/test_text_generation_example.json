@@ -275,7 +275,6 @@
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bf16_1x[google/gemma-2-27b-1-False-True-False]": {
-
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that enables you to train models with trillions of parameters and beyond, using model parallelism to partition large models over multiple GPUs.\n\nThe following is a brief introduction to the DeepSpeed model parallel training.\n\n<h2>1. Introduction</h2>\n\nThe DeepSpeed model parallel training is a simple and effective way to train large models. It is a framework that enables you to train models with trillions of parameters and beyond.\n\nDeepSpeed is a distributed deep learning optimization toolkit that makes it easy and efficient",
       "throughput": 36.578709544111
