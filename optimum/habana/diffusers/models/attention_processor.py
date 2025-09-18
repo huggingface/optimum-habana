@@ -544,6 +544,7 @@ class GaudiWanAttnProcessor:
     Add a func _native_attention which uses FusedSDPA on Gaudi
     Use hpex.kernels.apply_rotary_pos_emb on Gaudi
     """
+
     _attention_backend = None
 
     def __init__(self, is_training=False):
