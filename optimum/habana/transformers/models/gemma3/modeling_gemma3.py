@@ -299,8 +299,6 @@ class GaudiGemma3Attention(Gemma3Attention):
             attn_weights = None
             import habana_frameworks.torch.hpu as ht
 
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
@@ -309,6 +307,7 @@ class GaudiGemma3Attention(Gemma3Attention):
                     )
             else:
                 # first token
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
