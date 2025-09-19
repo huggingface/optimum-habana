@@ -93,7 +93,11 @@ class HabanaModelAdapter(HFLM):
         self.ignore_eos = args.ignore_eos
         if args.torch_compile:
             self.use_lazy_mode = False
-        self.vocab_size = self._model.config.vocab_size
+        _vision_models = ["gemma-3"]
+        _multimodal = True if any(model in args.model_name_or_path for model in _vision_models) else False
+        self.vocab_size = (
+            self._model.language_model.config.vocab_size if _multimodal else self._model.config.vocab_size
+        )
         if "gemma" in getattr(self._config, "model_type", ""):
             self.add_bos_token = True
             logger.info(
