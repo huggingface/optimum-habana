@@ -60,6 +60,20 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA is not None else None
         self.block_size = 4096
+        # Starting with v4.54 self.attn_dropout in GPTBigCodeAttention constructor is only assigned config.attn_pdrop value
+        # and not a Dropout operator, due to overall refactor of the class. Here we overwrite the value back with correct
+        # OP, to make use of the previous flow without changes.
+        self.attn_dropout = torch.nn.Dropout(config.attn_pdrop)
+
+    def _get_mask_value(self, device, dtype):
+        """
+        This method has been copied from GPT_BigCodeAttention._get_mask_value: https://github.com/huggingface/transformers/blob/v4.53.0/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
+        In further releases whole class has been rewritten and is no longer compatible with our working solution.
+        """
+        # torch.where expects a tensor. We use a cache to avoid recreating it every time.
+        if self.mask_value is None or self.mask_value.dtype != dtype or self.mask_value.device != device:
+            self.mask_value = torch.full([], torch.finfo(dtype).min, dtype=dtype, device=device)
+        return self.mask_value
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
         """
