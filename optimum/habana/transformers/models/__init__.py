@@ -118,6 +118,15 @@ from .gemma2 import (
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
 )
+from .gemma3 import (
+    GaudiGemma3Attention,
+    GaudiGemma3DecoderLayer,
+    GaudiGemma3ForCausalLM,
+    GaudiGemma3ForConditionalGeneration,
+    GaudiGemma3MLP,
+    GaudiGemma3Model,
+    GaudiGemma3TextModel,
+)
 from .glm4v import (
     ChatGLM4Tokenizer,
     GLM4VConfig,
