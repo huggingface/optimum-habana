@@ -76,6 +76,13 @@ from .models import (
     GaudiGemma2MLP,
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
+    GaudiGemma3Attention,
+    GaudiGemma3DecoderLayer,
+    GaudiGemma3ForCausalLM,
+    GaudiGemma3ForConditionalGeneration,
+    GaudiGemma3MLP,
+    GaudiGemma3Model,
+    GaudiGemma3TextModel,
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
@@ -610,6 +617,15 @@ def adapt_transformers_to_gaudi():
     transformers.models.gemma2.modeling_gemma2.Gemma2DecoderLayer = GaudiGemma2DecoderLayer
     transformers.models.gemma2.modeling_gemma2.Gemma2Model = GaudiGemma2Model
     transformers.models.gemma2.modeling_gemma2.Gemma2RotaryEmbedding = GaudiGemma2RotaryEmbedding
+
+    # Optimization for gemma3 on Gaudi
+    transformers.models.gemma3.modeling_gemma3.Gemma3ForCausalLM = GaudiGemma3ForCausalLM
+    transformers.models.gemma3.modeling_gemma3.Gemma3MLP = GaudiGemma3MLP
+    transformers.models.gemma3.modeling_gemma3.Gemma3Attention = GaudiGemma3Attention
+    transformers.models.gemma3.modeling_gemma3.Gemma3DecoderLayer = GaudiGemma3DecoderLayer
+    transformers.models.gemma3.modeling_gemma3.Gemma3TextModel = GaudiGemma3TextModel
+    transformers.models.gemma3.modeling_gemma3.Gemma3Model = GaudiGemma3Model
+    transformers.models.gemma3.modeling_gemma3.Gemma3ForConditionalGeneration = GaudiGemma3ForConditionalGeneration
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward

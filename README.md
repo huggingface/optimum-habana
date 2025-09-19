@@ -254,6 +254,7 @@ The following model architectures, tasks and device distributions have been vali
 | Qwen2-MoE |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
 | Gemma | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
 | Gemma2 |  | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
+| Gemma3 |  | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
 | XGLM | | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
 | Cohere       |          | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
 | T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](/examples/summarization)</li><li>[translation](/examples/translation)</li><li>[question answering](/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
