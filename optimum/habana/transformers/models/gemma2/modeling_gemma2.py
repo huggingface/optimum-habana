@@ -21,6 +21,7 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache
+from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma2.modeling_gemma2 import (
     Gemma2Attention,
@@ -346,7 +347,7 @@ class GaudiGemma2Attention(Gemma2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -500,7 +501,6 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             residual.add_(hidden_states)
             hidden_states = residual
 
-        residual = hidden_states
         hidden_states = self.pre_feedforward_layernorm(hidden_states)
         hidden_states = self.mlp.pre_mlp_forward(hidden_states)
         return hidden_states, residual
@@ -619,16 +619,42 @@ class GaudiGemma2Model(Gemma2Model):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                inputs_embeds,
-                past_seen_tokens,
-            )
+            if not isinstance(causal_mask_mapping := attention_mask, dict):
+                """
+                taken from here: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/gemma2/modeling_gemma2.py#L416-L430
+                with _gaudi_prepare_4d_causal_attention_mask
+                """
+                causal_mask_mapping = {
+                    "full_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                    ),
+                    "sliding_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                        self.config.sliding_window,
+                    ),
+                }
         else:
-            causal_mask = self._update_causal_mask(
-                attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-            )
+            if not isinstance(causal_mask_mapping := attention_mask, dict):
+                # Prepare mask arguments
+                mask_kwargs = {
+                    "config": self.config,
+                    "input_embeds": inputs_embeds,
+                    "attention_mask": attention_mask,
+                    "cache_position": cache_position,
+                    "past_key_values": past_key_values,
+                    "position_ids": position_ids,
+                }
+                # Create the masks
+                causal_mask_mapping = {
+                    "full_attention": create_causal_mask(**mask_kwargs),
+                    "sliding_attention": create_sliding_window_causal_mask(**mask_kwargs),
+                }
 
         # embed positions
         hidden_states = inputs_embeds
@@ -661,7 +687,7 @@ class GaudiGemma2Model(Gemma2Model):
             layer_outputs = decoder_layer(
                 hidden_states,
                 position_embeddings=position_embeddings,
-                attention_mask=causal_mask,
+                attention_mask=causal_mask_mapping[decoder_layer.attention_type],
                 position_ids=position_ids,
                 past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions=output_attentions,
