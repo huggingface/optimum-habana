@@ -26,7 +26,9 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiI2VGenXLPipeline,
     GaudiStableVideoDiffusionPipeline,
+    GaudiWanImageToVideoPipeline,
 )
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
 
@@ -236,6 +238,18 @@ def main():
     is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
     cogvideo_models = ["cogvideo"]
     is_cogvideo_model = any(model in args.model_name_or_path.lower() for model in cogvideo_models)
+    wan_i2v_models = ["Wan2.2"]
+    is_wan_i2v_model = any(model in args.model_name_or_path for model in wan_i2v_models)
+
+    if is_wan_i2v_model:
+        gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
+        if args.bf16:
+            gaudi_config_kwargs["use_torch_autocast"] = True
+
+        gaudi_config = GaudiConfig(**gaudi_config_kwargs)
+        args.gaudi_config_name = gaudi_config
+    logger.info(f"Gaudi Config: {gaudi_config}")
+
     # Load input image(s)
     input = []
     logger.info("Input image(s):")
@@ -245,6 +259,11 @@ def main():
         image = load_image(image_path)
         if is_i2v_model:
             image = image.convert("RGB")
+        elif is_wan_i2v_model:
+            image = image.resize((args.height, args.width))
+            # wan2.2 i2v pipeline only accepts 1 image
+            input = image
+            break
         else:
             image = image.resize((args.height, args.width))
         input.append(image)
@@ -342,6 +361,26 @@ def main():
             num_frames=args.num_frames,
             generator=generator,
         )
+    elif is_wan_i2v_model:
+        del kwargs["scheduler"]  # WAN I2V uses its own scheduler
+        pipeline = GaudiWanImageToVideoPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        outputs = pipeline(
+            image=input,
+            prompt=args.prompts,
+            negative_prompt=args.negative_prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            height=args.height,
+            width=args.width,
+            num_frames=args.num_frames,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=5.0,  # WAN I2V recommended guidance scale
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+        )
     else:
         pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
@@ -385,7 +424,9 @@ def main():
                 if args.gif:
                     export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
                 else:
-                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
+                    export_to_video(
+                        frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=args.fps
+                    )
 
                 if args.save_frames_as_images:
                     for j, frame in enumerate(frames):
