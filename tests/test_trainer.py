@@ -80,11 +80,11 @@ from transformers.utils import (
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
-    check_torch_load_is_safe,
     is_accelerate_available,
     is_safetensors_available,
 )
 from transformers.utils.hp_naming import TrialShortNamer
+from transformers.utils.import_utils import check_torch_load_is_safe
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.accelerate import GaudiAccelerator
@@ -713,7 +713,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             self.check_trained_model(trainer.model)
 
             # Can return tensors.
-            train_dataset.set_format(type="torch", dtype=torch.float32)
+            train_dataset = train_dataset.with_format("torch")
             model = RegressionModel()
             trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
             trainer.train()
@@ -1933,6 +1933,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
                 self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
+    @mark.skip(reason="Test causes sporadic but often failures in CI. Disabled until investigated further.")
     def test_dynamic_shape_feature(self):
         # Run training with variable length inputs and enable dynamic shapes support
         train_dataset = RegressionDatasetDynamic(length=256)

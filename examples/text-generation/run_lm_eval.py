@@ -29,6 +29,7 @@ import psutil
 
 # Local imports
 from run_generation import setup_parser
+from transformers.utils.versions import require_version
 from utils import finalize_quantization, initialize_model, save_model
 
 
@@ -179,8 +180,19 @@ def setup_lm_eval_parser():
 def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py#L301
     args = setup_lm_eval_parser()
+
+    # lm-eval==0.4.9.1 needs datasets<4.0 (and >=2.16.0). Remove when lm-eval supports datasets>=4.
+    require_version(
+        "datasets<4.0,>=2.16.0",
+        "Use a separate environment for LM-Eval and install:\n"
+        "  pip install -r examples/text-generation/requirements_lm_eval.txt",
+    )
+
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
+    # Delayed imports: external modules are imported here to ensure that
+    # environment variables and runtime configurations are properly initialized
+    # before loading modules that depend on them.
     import torch
     from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter

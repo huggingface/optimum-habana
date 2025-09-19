@@ -51,6 +51,9 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("google/gemma-7b", 1, False, True, False),
             ("google/gemma-2-9b", 1, False, True, False),
             ("google/gemma-2-27b", 1, False, True, False),
+            ("google/gemma-3-4b-it", 1, False, True, False),
+            ("google/gemma-3-12b-it", 1, False, True, False),
+            ("google/gemma-3-27b-it", 1, False, True, False),
             pytest.param(
                 "state-spaces/mamba-130m-hf", 1536, False, False, False, marks=pytest.mark.skip("Deprecated")
             ),
@@ -71,6 +74,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("moonshotai/Moonlight-16B-A3B", 1, False, False, False),
             ("Qwen/Qwen3-8B", 1, False, False, False),
             ("Qwen/Qwen3-30B-A3B", 1, False, False, False),
+            ("unsloth/gpt-oss-20b-BF16", 1, False, False, False),
         ],
         "fp8": [
             pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, False, marks=pytest.mark.x4),
@@ -105,6 +109,10 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
         ],
         "load_quantized_model_with_autoawq": [
             ("TheBloke/Llama-2-7b-Chat-AWQ", 1, 10, False, 128, 2048),
+        ],
+        "run_model_with_bnb": [
+            ("unsloth/Meta-Llama-3.1-70B-bnb-4bit", 1, 20, False, True),
+            ("meta-llama/Llama-3.1-70B", 1, 20, True, True),
         ],
         "deepspeed": [
             pytest.param("bigscience/bloomz", 8, 1, marks=pytest.mark.x8),
@@ -158,6 +166,7 @@ else:
         "fp8": [],
         "load_quantized_model_with_autogptq": [],
         "load_quantized_model_with_autoawq": [],
+        "run_model_with_bnb": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 8, 1),
         ],
@@ -183,6 +192,7 @@ def _test_text_generation(
     fp8: bool = False,
     load_quantized_model_with_autogptq: bool = False,
     load_quantized_model_with_autoawq: bool = False,
+    quantize_with_bnb: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
     parallel_strategy: str = None,
@@ -191,6 +201,7 @@ def _test_text_generation(
     num_return_sequences: int = 1,
     check_output: bool = False,
     use_flex_attention: bool = False,
+    regional_compile: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -258,6 +269,8 @@ def _test_text_generation(
             else:
                 command += ["--use_flash_attention"]
                 command += ["--flash_attention_recompute"]
+        if regional_compile:
+            command += ["--regional_compile"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
@@ -329,6 +342,8 @@ def _test_text_generation(
         command += ["--load_quantized_model_with_autogptq"]
     if load_quantized_model_with_autoawq:
         command += ["--load_quantized_model_with_autoawq"]
+    if quantize_with_bnb:
+        command += ["--quantize_with_bnb"]
     if parallel_strategy is not None:
         command += [
             f"--parallel_strategy={parallel_strategy}",
@@ -523,6 +538,33 @@ def test_text_generation_awq(
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,
         max_output_tokens=output_len,
+    )
+
+
+@pytest.mark.skipif(condition=bool("gaudi1" == OH_DEVICE_CONTEXT), reason=f"Skipping test for {OH_DEVICE_CONTEXT}")
+@pytest.mark.parametrize(
+    "model_name, world_size, output_len, quantize_with_bnb, check_output",
+    MODELS_TO_TEST["run_model_with_bnb"],
+)
+def test_text_generation_bnb(
+    model_name: str,
+    world_size: int,
+    output_len: int,
+    quantize_with_bnb: bool,
+    check_output: bool,
+    baseline,
+    token,
+):
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        world_size=world_size,
+        torch_compile=True,
+        regional_compile=True,
+        quantize_with_bnb=quantize_with_bnb,
+        max_output_tokens=output_len,
+        check_output=check_output,
     )
 
 

@@ -118,6 +118,15 @@ from .gemma2 import (
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
 )
+from .gemma3 import (
+    GaudiGemma3Attention,
+    GaudiGemma3DecoderLayer,
+    GaudiGemma3ForCausalLM,
+    GaudiGemma3ForConditionalGeneration,
+    GaudiGemma3MLP,
+    GaudiGemma3Model,
+    GaudiGemma3TextModel,
+)
 from .glm4v import (
     ChatGLM4Tokenizer,
     GLM4VConfig,
@@ -149,6 +158,14 @@ from .gpt_neox import (
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
     gaudi_gpt_neox_model_forward,
+)
+from .gpt_oss import (
+    GaudiGptOssAttention,
+    GaudiGptOssExperts,
+    GaudiGptOssForCausalLM,
+    GaudiGptOssModel,
+    gaudi_gpt_oss_decoder_layer_forward,
+    gaudi_gpt_oss_rmsnorm_forward,
 )
 from .gptj import (
     GaudiGPTJAttention,
@@ -316,6 +333,7 @@ from .siglip import (
     GaudiSiglipVisionModel,
     GaudiSiglipVisionTransformer,
 )
+from .snowflake import ArcticConfig, ArcticForCausalLM, ArcticTokenizer
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -343,7 +361,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaProcessor
+from .video_llava import GaudiVideoLlavaForConditionalGeneration
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )

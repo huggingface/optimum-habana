@@ -1,5 +1,5 @@
 lm-eval==0.4.9.1
-datasets==3.6.0
+datasets<4.0.0,>=2.16.0 # pinned for lm-eval==0.4.9.1; unpin to datasets>=4.0.0 when supported
 langdetect<=1.0.9
 immutabledict<=4.2.1
 tiktoken

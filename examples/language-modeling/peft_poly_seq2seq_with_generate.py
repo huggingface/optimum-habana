@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
 
 @dataclass
@@ -233,7 +233,7 @@ def main():
 
     # boolq
     boolq_dataset = (
-        load_dataset("super_glue", "boolq", trust_remote_code=model_args.trust_remote_code)
+        load_dataset("super_glue", "boolq")
         .map(
             lambda x: {
                 "input": f"{x['passage']}\nQuestion: {x['question']}\nA. Yes\nB. No\nAnswer:",
@@ -248,7 +248,7 @@ def main():
 
     # multirc
     multirc_dataset = (
-        load_dataset("super_glue", "multirc", trust_remote_code=model_args.trust_remote_code)
+        load_dataset("super_glue", "multirc")
         .map(
             lambda x: {
                 "input": (
@@ -266,7 +266,7 @@ def main():
 
     # rte
     rte_dataset = (
-        load_dataset("super_glue", "rte", trust_remote_code=model_args.trust_remote_code)
+        load_dataset("super_glue", "rte")
         .map(
             lambda x: {
                 "input": (
@@ -284,7 +284,7 @@ def main():
 
     # wic
     wic_dataset = (
-        load_dataset("super_glue", "wic", trust_remote_code=model_args.trust_remote_code)
+        load_dataset("super_glue", "wic")
         .map(
             lambda x: {
                 "input": (

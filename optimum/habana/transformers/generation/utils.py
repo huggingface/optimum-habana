@@ -92,6 +92,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gptj",
     "gpt_neo",
     "gpt_neox",
+    "gpt_oss",
     "llama",
     "falcon",
     "codegen",
@@ -104,6 +105,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "gemma2",
+    "gemma3",
+    "gemma3_text",
     "blip_text_model",
     "seamless_m4t",
     "starcoder2",
@@ -131,6 +134,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2_vl",
     "qwen3",
     "qwen3_moe",
+    "arctic",
 ]
 
 # Initial generated token index is set to 1 to accomodate SOS (start of string) token.
@@ -1032,7 +1036,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if generation_config.decoder_start_token_id is None:
                     generation_config.decoder_start_token_id = self.generation_config.decoder_start_token_id
 
-        if generation_config.static_shapes is None:
+        if getattr(generation_config, "static_shapes") is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
             if self.config.model_type == "vision-encoder-decoder":
                 generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
@@ -1418,10 +1422,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 "phi",
                 "qwen2",
                 "gptj",
+                "gpt_oss",
                 "starcoder2",
                 "qwen2_moe",
                 "gemma",
                 "gemma2",
+                "gemma3",
                 "baichuan",
                 "chatglm",
                 "deepseek_v2",
@@ -1429,7 +1435,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "qwen3",
                 "qwen3_moe",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, qwen3_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, qwen3_moe, gemma, gemma2, gemma3, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1438,7 +1444,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 
-        if self.config.model_type == "gemma2":
+        if self.config.model_type == "gemma2" or self.config.model_type == "gemma3":
             generation_config.cache_implementation = None
 
         if generation_config.static_shapes:
@@ -1641,6 +1647,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "starcoder2",
                 "gemma",
                 "gemma2",
+                "gemma3",
                 "qwen2_moe",
                 "baichuan",
                 "deepseek_v2",
@@ -2573,6 +2580,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     do_padding = (
                         key_to_check is not None
                         and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and generation_config.max_new_tokens > 1
                     )
 
                 if do_padding:
@@ -2784,7 +2792,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict=True,
                 **hpu_graphs_kwargs,
             )
-
             # synced_gpus: don't waste resources running the code we don't need
             if synced_gpus and this_peer_finished:
                 continue
@@ -2937,6 +2944,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     do_padding = (
                         key_to_check is not None
                         and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and generation_config.max_new_tokens > 1
                     )
 
                 if do_padding:

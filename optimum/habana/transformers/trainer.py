@@ -100,13 +100,13 @@ from transformers.utils import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     PushInProgress,
-    check_torch_load_is_safe,
     is_accelerate_available,
     is_datasets_available,
     is_peft_available,
     is_safetensors_available,
 )
 from transformers.utils.deprecation import deprecate_kwarg
+from transformers.utils.import_utils import check_torch_load_is_safe
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper
@@ -1676,6 +1676,28 @@ class GaudiTrainer(Trainer):
             else:
                 return data.to(**kwargs)
         return data
+
+    # TODO: investigate why the accelerator's autocast wrapper is not enough to trigger autocast in some edge cases
+    # see PR:
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation.
+        Modified by Habana to enable using `autocast` on Gaudi devices.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.autocast(device_type="cpu", dtype=torch.bfloat16, cache_enabled=cache_enabled)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
+        else:
+            ctx_manager = contextlib.nullcontext()
+
+        # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
+        # Currently FP8 is enabled only for training.
+        if self.accelerator.fp8_enabled and self.model.training:
+            ctx_manager = FP8ContextWrapper(ctx_manager, fp8_recipe=self.accelerator.fp8_recipe)
+
+        return ctx_manager
 
     def training_step(
         self,
