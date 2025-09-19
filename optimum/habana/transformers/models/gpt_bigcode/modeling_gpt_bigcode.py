@@ -60,10 +60,6 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA is not None else None
         self.block_size = 4096
-        # Starting with v4.54 self.attn_dropout in GPTBigCodeAttention constructor is only assigned config.attn_pdrop value
-        # and not a Dropout operator, due to overall refactor of the class. Here we overwrite the value back with correct
-        # OP, to make use of the previous flow without changes.
-        self.attn_dropout = torch.nn.Dropout(config.attn_pdrop)
 
     def _get_mask_value(self, device, dtype):
         """
@@ -81,6 +77,8 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         Copied from GPTBigCodeAttention._attn: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
         The only differences are:
         - in self._attn, use torch.matmul instead of torch.baddbmm when the device used for query is not cpu
+        - starting with v4.54, self.attn_dropout is a scalar value, assigned from config in constructor, and not a Dropout operator;
+          use torch.nn.functional.dropout() in it's place to restore previous functionality.
         """
         dtype = query.dtype
         softmax_dtype = torch.float32 if self.attention_softmax_in_fp32 else dtype
@@ -144,7 +142,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
 
-        attn_weights = self.attn_dropout(attn_weights)
+        attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attn_dropout)
 
         # Mask heads if we want to
         if head_mask is not None:
