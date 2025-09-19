@@ -80,11 +80,11 @@ from transformers.utils import (
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
-    check_torch_load_is_safe,
     is_accelerate_available,
     is_safetensors_available,
 )
 from transformers.utils.hp_naming import TrialShortNamer
+from transformers.utils.import_utils import check_torch_load_is_safe
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.accelerate import GaudiAccelerator

@@ -100,13 +100,13 @@ from transformers.utils import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     PushInProgress,
-    check_torch_load_is_safe,
     is_accelerate_available,
     is_datasets_available,
     is_peft_available,
     is_safetensors_available,
 )
 from transformers.utils.deprecation import deprecate_kwarg
+from transformers.utils.import_utils import check_torch_load_is_safe
 
 from ..accelerate import GaudiAccelerator
 from ..accelerate.utils import FP8ContextWrapper
