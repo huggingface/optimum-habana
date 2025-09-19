@@ -105,6 +105,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "gemma2",
+    "gemma3",
+    "gemma3_text",
     "blip_text_model",
     "seamless_m4t",
     "starcoder2",
@@ -1425,6 +1427,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "qwen2_moe",
                 "gemma",
                 "gemma2",
+                "gemma3",
                 "baichuan",
                 "chatglm",
                 "deepseek_v2",
@@ -1432,7 +1435,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "qwen3",
                 "qwen3_moe",
             ], (
-                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, qwen3_moe, gemma, gemma2, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
+                "reuse_cache only supported by llama, mistral, falcon, mixtral, phi, qwen2, qwen2_moe, qwen3, qwen3_moe, gemma, gemma2, gemma3, starcoder2, baichuan, chatglm and deepseek_v2 at the moment"
             )
             if not generation_config.bucket_internal:
                 assert generation_config.bucket_size <= 0, (
@@ -1441,7 +1444,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 
-        if self.config.model_type == "gemma2":
+        if self.config.model_type == "gemma2" or self.config.model_type == "gemma3":
             generation_config.cache_implementation = None
 
         if generation_config.static_shapes:
@@ -1644,6 +1647,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "starcoder2",
                 "gemma",
                 "gemma2",
+                "gemma3",
                 "qwen2_moe",
                 "baichuan",
                 "deepseek_v2",
