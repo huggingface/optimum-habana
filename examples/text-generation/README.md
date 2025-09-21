@@ -569,6 +569,33 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json py
 --sdp_on_bf16
 ```
 
+Here is an example for running DeepSeek-R1 FP8 dynamic quantization without INC on 8-cards.
+```bash
+PT_HPU_LAZY_MODE=1 python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --sdp_on_bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer  --parallel_strategy "ep"
+```
+
+Here is an example to measure the tensor quantization statistics for static quantization 
+with INC on DeepSeek-R1 with 8 cards:
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=quantization_config/maxabs_measure_deepseek_fp8.json python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer  --parallel_strategy "ep"
+```
+
+Here is an example to quantize the model based on previous measurements for DeepSeek-R1 with 8 cards:
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=quantization_config/maxabs_quant_deepseek_fp8.json python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer --warmup 1 --n_iterations 1  --parallel_strategy "ep"
+```
 
 ### Running FP8 models on single device
 

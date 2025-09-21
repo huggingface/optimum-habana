@@ -59,8 +59,9 @@ from transformers.utils import (
 
 from ....distributed.tensorparallel import _all_reduce
 from ....utils import warn0
+from ...integrations.finegrained_fp8 import FP8Method, get_fp8_method
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
-from ..modeling_all_models import apply_customized_rope_module
+from ..modeling_all_models import Matmul, apply_customized_rope_module
 from .configuration_deepseek_v3 import DeepseekV3Config
 
 
@@ -68,8 +69,6 @@ logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "DeepseekV3Config"
 
-# Maximum number of experts supported by dynamic MoE op (mixture_of_experts)
-SLICE_MAX_EXPERT = 80
 
 # import hpu fused ops
 try:
@@ -376,7 +375,7 @@ def apply_rotary_pos_emb(q: torch.Tensor, cos, sin, position_ids, unsqueeze_dim=
         return q_embed
 
 
-class DeepseekV3MLP(nn.Module):
+class GaudiDeepseekV3MLP(nn.Module):
     def __init__(self, config, hidden_size=None, intermediate_size=None):
         super().__init__()
         self.config = config
@@ -459,7 +458,7 @@ class MoEGate(nn.Module):
         return topk_idx, topk_weight
 
 
-class DeepseekV3MoE(nn.Module):
+class GaudiDeepseekV3MoE(nn.Module):
     """
     A mixed expert module containing shared experts.
     """
@@ -468,17 +467,25 @@ class DeepseekV3MoE(nn.Module):
         super().__init__()
         self.config = config
         self.num_experts_per_tok = config.num_experts_per_tok
+        self.num_experts = config.n_routed_experts  # Added to support INC FP8 quantization
+
+        self.fp8_method = get_fp8_method(config)
+        if self.fp8_method == FP8Method.FP8_DYNAMIC:
+            self.weight_block_size = config.quantization_config.weight_block_size
 
         if hasattr(config, "ep_size") and config.ep_size > 1:
             assert config.ep_size == dist.get_world_size()
             self.ep_size = config.ep_size
             self.experts_per_rank = config.n_routed_experts // config.ep_size
             self.ep_rank = dist.get_rank()
+            self.experts_min = self.experts_per_rank * self.ep_rank
+            self.experts_max = self.experts_per_rank * (self.ep_rank + 1) - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
             self.experts = nn.ModuleList(
                 [
                     (
-                        DeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
-                        if i >= self.ep_rank * self.experts_per_rank and i < (self.ep_rank + 1) * self.experts_per_rank
+                        GaudiDeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
+                        if i in self.experts_range
                         else None
                     )
                     for i in range(config.n_routed_experts)
@@ -488,20 +495,20 @@ class DeepseekV3MoE(nn.Module):
             self.ep_size = 1
             self.experts_per_rank = config.n_routed_experts
             self.ep_rank = 0
+            self.experts_min = 0
+            self.experts_max = config.n_routed_experts - 1
+            self.experts_range = range(self.experts_min, self.experts_max + 1)
             self.experts = nn.ModuleList(
                 [
-                    DeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
+                    GaudiDeepseekV3MLP(config, intermediate_size=config.moe_intermediate_size)
                     for i in range(config.n_routed_experts)
                 ]
             )
+
         self.gate = MoEGate(config)
         if config.n_shared_experts is not None:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
-            self.shared_experts = DeepseekV3MLP(config=config, intermediate_size=intermediate_size)
-
-        # Slice experts for max experts supported by fused dynamic mixture_of_experts op
-        self.expert_slice = math.ceil(self.experts_per_rank / SLICE_MAX_EXPERT)
-        self.expert_chunk = math.ceil(self.experts_per_rank / self.expert_slice)
+            self.shared_experts = GaudiDeepseekV3MLP(config=config, intermediate_size=intermediate_size)
 
     def forward(self, hidden_states):
         identity = hidden_states
@@ -541,30 +548,11 @@ class DeepseekV3MoE(nn.Module):
             final_hidden_states = torch.zeros(
                 (batch * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
             )
-            # changes to support hpu fused dynamic MoE op -- replacement for moe_infer()
-            # loop through expert slices due to limits on max. experts supported by mixture_of_experts op
-            for idx in range(self.expert_slice):
-                experts_min = (self.ep_rank * self.experts_per_rank) + (self.expert_chunk * idx)
-                experts_max = min((experts_min + self.expert_chunk), (self.ep_rank + 1) * self.experts_per_rank)
-                experts_range = range(experts_min, experts_max)
-                gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in experts_range]
-                down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in experts_range]
-                up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in experts_range]
-
-                hidden_states_slice = torch.ops.hpu.mixture_of_experts(
-                    hidden_states=hidden_states,
-                    expert_routing_table=topk_idx,
-                    router_weights=topk_weight,
-                    w1=gate_proj_list,
-                    w2=up_proj_list,
-                    w3=down_proj_list,
-                    permuted_weights=True,
-                    activation="silu",
-                    experts_min=experts_min,
-                    experts_max=experts_max - 1,
-                )
-                final_hidden_states = final_hidden_states + hidden_states_slice
-                htcore.mark_step()
+            final_hidden_states = self.call_dynamic_moe_op(
+                hidden_states=hidden_states,
+                expert_routing_table=topk_idx,
+                router_weights=topk_weight,
+            )
 
             if self.ep_size > 1:
                 final_hidden_states = _all_reduce(final_hidden_states)
@@ -582,14 +570,51 @@ class DeepseekV3MoE(nn.Module):
 
         return final_hidden_states
 
+    def call_dynamic_moe_op(
+        self,
+        hidden_states,
+        expert_routing_table,
+        router_weights,
+    ):
+        # pre-processing for custom op inputs
+        gate_proj_list = [self.experts[i].gate_proj.weight.squeeze() for i in self.experts_range]
+        down_proj_list = [self.experts[i].down_proj.weight.squeeze() for i in self.experts_range]
+        up_proj_list = [self.experts[i].up_proj.weight.squeeze() for i in self.experts_range]
 
-# Functional apis need to be wrapped in classes for quantization on hpu
-class Matmul(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
+        if self.fp8_method == FP8Method.FP8_DYNAMIC:
+            scale_gate_proj = [self.experts[i].gate_proj.weight_scale_inv for i in self.experts_range]
+            scale_down_proj = [self.experts[i].down_proj.weight_scale_inv for i in self.experts_range]
+            scale_up_proj = [self.experts[i].up_proj.weight_scale_inv for i in self.experts_range]
 
-    def forward(self, x, y):
-        return torch.matmul(x, y)
+            return torch.ops.hpu.mixture_of_experts(
+                hidden_states=hidden_states,
+                expert_routing_table=expert_routing_table,
+                router_weights=router_weights,
+                w1=gate_proj_list,
+                w2=up_proj_list,
+                w3=down_proj_list,
+                d_scale_w1=scale_gate_proj,
+                d_scale_w2=scale_up_proj,
+                d_scale_w3=scale_down_proj,
+                permuted_weights=True,
+                activation="silu",
+                block_size=self.weight_block_size[0],
+                experts_min=self.experts_min,
+                experts_max=self.experts_max,
+            )
+        else:
+            return torch.ops.hpu.mixture_of_experts(
+                hidden_states=hidden_states,
+                expert_routing_table=expert_routing_table,
+                router_weights=router_weights,
+                w1=gate_proj_list,
+                w2=up_proj_list,
+                w3=down_proj_list,
+                permuted_weights=True,
+                activation="silu",
+                experts_min=self.experts_min,
+                experts_max=self.experts_max,
+            )
 
 
 def gaudi_deepseekv3_repeat_kv(
@@ -765,13 +790,12 @@ class DeepseekV3Attention(nn.Module):
         self._init_rope()
 
         self.num_key_value_groups = self.num_heads // config.num_key_value_heads
-        # hpu specific wrapping functional api into nn.module classes for quantization
+        # hpu-specific wrapping functional api into nn.module classes for quantization
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
-
         self.softmax_scale = self.q_head_dim ** (-0.5)
         if self.config.rope_scaling is not None:
             mscale_all_dim = self.config.rope_scaling.get("mscale_all_dim", 0)
@@ -1198,13 +1222,13 @@ class DeepseekV3DecoderLayer(nn.Module):
         self.self_attn = DeepseekV3Attention(config=config, layer_idx=layer_idx)
 
         self.mlp = (
-            DeepseekV3MoE(config)
+            GaudiDeepseekV3MoE(config)
             if (
                 config.n_routed_experts is not None
                 and layer_idx >= config.first_k_dense_replace
                 and layer_idx % config.moe_layer_freq == 0
             )
-            else DeepseekV3MLP(config)
+            else GaudiDeepseekV3MLP(config)
         )
         self.input_layernorm = DeepseekV3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = DeepseekV3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -1288,6 +1312,7 @@ class DeepseekV3DecoderLayer(nn.Module):
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
+
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
@@ -1521,7 +1546,6 @@ class DeepseekV3Model(DeepseekV3PreTrainedModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         # 4d mask is passed through the layers
-        attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         if attention_mask is not None:
             attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                 attention_mask,
