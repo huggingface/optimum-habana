@@ -33,6 +33,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
+from .integrations.finegrained_fp8 import GaudiFP8Linear
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     ArcticConfig,
@@ -317,6 +318,7 @@ from .models import (
 )
 from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
 from .pipelines import GaudiImageToTextPipeline
+from .quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 
 def adapt_transformers_to_gaudi():
@@ -809,6 +811,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.deepseek_v2.modeling_deepseek_v2.DeepseekV2ForCausalLM = GaudiDeepseekV2ForCausalLM
     transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
     transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
+    transformers.quantizers.quantizer_finegrained_fp8.FineGrainedFP8HfQuantizer = GaudiFineGrainedFP8HfQuantizer
+    transformers.quantizers.auto.AUTO_QUANTIZER_MAPPING["fp8"] = GaudiFineGrainedFP8HfQuantizer
+    transformers.integrations.FP8Linear = GaudiFP8Linear
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer
