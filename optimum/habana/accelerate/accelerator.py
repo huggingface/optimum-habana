@@ -116,7 +116,7 @@ class GaudiAccelerator(Accelerator):
 
         if device_placement and not self.verify_device_map(model):
             model = model.to(self.device)
-        if not evaluation_mode:
+        if not evaluation_mode and self.distribution_strategy != "fast_ddp":
             if self.multi_device and not (self.parallelism_config and self.parallelism_config.tp_enabled):
                 if model_has_dtensor(model):
                     raise ValueError(
@@ -319,7 +319,6 @@ class GaudiAccelerator(Accelerator):
     #         model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=True)
     #     else:
     #         model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=evaluation_mode)
-
     #     return model
 
     # INFO: this adds support for autograd compilation to the deepspeed engine
