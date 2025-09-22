@@ -2237,6 +2237,11 @@ class GaudiTrainer(Trainer):
             and all_labels is not None
             and not self.args.batch_eval_metrics
         ):
+            if isinstance(all_preds, torch.Tensor):
+                all_preds = all_preds.cpu().numpy()
+            if isinstance(all_labels, torch.Tensor):
+                all_labels = all_labels.cpu().numpy()
+
             eval_set_kwargs["losses"] = all_losses if "loss" in args.include_for_metrics else None
             eval_set_kwargs["inputs"] = all_inputs if "inputs" in args.include_for_metrics else None
             metrics = self.compute_metrics(
