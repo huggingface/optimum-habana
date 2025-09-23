@@ -1085,8 +1085,13 @@ class GaudiTrainer(Trainer):
                         # If the condition is true, we need to compute grad_norm, deepspeed does its own clipping
                         if _should_compute_grad_norm:
                             # Gradient clipping
-                            if self.FusedNorm is not None:
-                                # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
+                            if (
+                                self.FusedNorm is not None
+                                and self.accelerator.distributed_type != DistributedType.FSDP
+                            ):
+                                # when weights are sharded, fsdp.clip_grad_norm_ should be used
+                                # https://docs.pytorch.org/docs/main/fsdp.html#torch.distributed.fsdp.FullyShardedDataParallel.clip_grad_norm_
+                                # TODO: check if the fused norm is more performant than the torch.nn.utils.clip_grad_norm_
                                 grad_norm = self.FusedNorm.clip_norm(model.parameters())
                             else:
                                 grad_norm_context = contextlib.nullcontext
@@ -1096,8 +1101,7 @@ class GaudiTrainer(Trainer):
                                     grad_norm_context = implicit_replication
                                 with grad_norm_context():
                                     grad_norm = self.accelerator.clip_grad_norm_(
-                                        model.parameters(),
-                                        args.max_grad_norm,
+                                        model.parameters(), args.max_grad_norm
                                     )
 
                         self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
