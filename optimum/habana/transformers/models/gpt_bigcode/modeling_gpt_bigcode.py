@@ -142,7 +142,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
 
-        attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attn_dropout)
+        attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attn_dropout, training=self.training)
 
         # Mask heads if we want to
         if head_mask is not None:
