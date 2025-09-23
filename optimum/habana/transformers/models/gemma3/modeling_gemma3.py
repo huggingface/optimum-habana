@@ -629,12 +629,26 @@ class GaudiGemma3TextModel(Gemma3TextModel):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                inputs_embeds,
-                past_seen_tokens,
-            )
+            if not isinstance(causal_mask_mapping := attention_mask, dict):
+                """
+                Addapted from here: https://github.com/huggingface/transformers/blob/v4.55.0/src/transformers/models/gemma2/modeling_gemma2.py#L416-L430
+                with _gaudi_prepare_4d_causal_attention_mask
+                """
+                causal_mask_mapping = {
+                    "full_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                    ),
+                    "sliding_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                        self.config.sliding_window,
+                    ),
+                }
         else:
             if not isinstance(causal_mask_mapping := attention_mask, dict):
                 # Prepare mask arguments
@@ -647,7 +661,7 @@ class GaudiGemma3TextModel(Gemma3TextModel):
                     "position_ids": position_ids,
                 }
                 # Create the masks
-                causal_mask_mapping = {  # noqa
+                causal_mask_mapping = {
                     "full_attention": create_causal_mask(**mask_kwargs),
                     "sliding_attention": create_sliding_window_causal_mask(**mask_kwargs),
                 }
@@ -682,7 +696,7 @@ class GaudiGemma3TextModel(Gemma3TextModel):
                 hidden_states,
                 position_embeddings_global=position_embeddings_global,
                 position_embeddings_local=position_embeddings_local,
-                attention_mask=causal_mask,
+                attention_mask=causal_mask_mapping[decoder_layer.attention_type],
                 position_ids=position_ids,
                 past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions=output_attentions,
