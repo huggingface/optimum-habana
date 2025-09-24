@@ -74,6 +74,19 @@ class GaudiGemma2RotaryEmbedding(GaudiRotaryEmbedding):
         super().__init__(config=config)
 
 
+def gaudi_gemma2_rmsnorm_forward(self, x):
+    if x.device.type == "hpu" and FusedRMSNorm is not None:
+        output = FusedRMSNorm.apply(x.float(), torch.ones_like(self.weight), self.eps)
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(x)
+    else:
+        output = self._norm(x.float())
+        # Llama does x.to(float16) * w whilst Gemma2 is (x * w).to(float16)
+        # See https://github.com/huggingface/transformers/pull/29402
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(x)
+
+
 def gaudi_gemma2_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
