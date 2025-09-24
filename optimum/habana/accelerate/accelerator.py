@@ -22,7 +22,9 @@ import torch
 from accelerate import Accelerator
 from accelerate.data_loader import prepare_data_loader
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedType
+from accelerate.utils import (
+    DistributedType,
+)
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
@@ -71,7 +73,6 @@ class GaudiAccelerator(Accelerator):
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=True)
         else:
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=evaluation_mode)
-
         return model
 
     # INFO: this adds support for autograd compilation to the deepspeed engine

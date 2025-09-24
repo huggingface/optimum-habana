@@ -61,12 +61,24 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA is not None else None
         self.block_size = 4096
 
+    def _get_mask_value(self, device, dtype):
+        """
+        This method has been copied from GPT_BigCodeAttention._get_mask_value: https://github.com/huggingface/transformers/blob/v4.53.0/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
+        In further releases whole class has been rewritten and is no longer compatible with our working solution.
+        """
+        # torch.where expects a tensor. We use a cache to avoid recreating it every time.
+        if self.mask_value is None or self.mask_value.dtype != dtype or self.mask_value.device != device:
+            self.mask_value = torch.full([], torch.finfo(dtype).min, dtype=dtype, device=device)
+        return self.mask_value
+
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
         """
         This method should be deleted when https://github.com/huggingface/transformers/pull/34508 is merged.
         Copied from GPTBigCodeAttention._attn: https://github.com/huggingface/transformers/blob/v4.40-release/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
         The only differences are:
         - in self._attn, use torch.matmul instead of torch.baddbmm when the device used for query is not cpu
+        - starting with v4.54, self.attn_dropout is a scalar value, assigned from config in constructor, and not a Dropout operator;
+          use torch.nn.functional.dropout() in it's place to restore previous functionality.
         """
         dtype = query.dtype
         softmax_dtype = torch.float32 if self.attention_softmax_in_fp32 else dtype
@@ -130,7 +142,7 @@ class GaudiGPTBigCodeAttention(GPTBigCodeAttention):
 
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
 
-        attn_weights = self.attn_dropout(attn_weights)
+        attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attn_dropout, training=self.training)
 
         # Mask heads if we want to
         if head_mask is not None:

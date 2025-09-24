@@ -1,6 +1,5 @@
 # coding=utf-8
-# Copyright 2024 Google Inc. HuggingFace Inc. team. All rights reserved.
-#
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +12,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch Gemma2 model."""
-
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
+import copy
 import math
 from typing import Optional, Union
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from transformers.cache_utils import Cache
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.gemma2.modeling_gemma2 import (
-    Gemma2Attention,
-    Gemma2Config,
-    Gemma2DecoderLayer,
-    Gemma2ForCausalLM,
-    Gemma2MLP,
-    Gemma2Model,
+from transformers.models.gemma3.modeling_gemma3 import (
+    Gemma3Attention,
+    Gemma3CausalLMOutputWithPast,
+    Gemma3Config,
+    Gemma3DecoderLayer,
+    Gemma3ForCausalLM,
+    Gemma3ForConditionalGeneration,
+    Gemma3MLP,
+    Gemma3Model,
+    Gemma3ModelOutputWithPast,
+    Gemma3TextConfig,
+    Gemma3TextModel,
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
@@ -47,6 +54,11 @@ except ImportError:
     has_fused_rope = False
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+except ImportError:
+    print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -54,40 +66,26 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
-try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-
-    has_fused_rms_norm = True
-except ImportError:
-    has_fused_rms_norm = False
-    print("Not using HPU fused kernel for RMSNorm")
-
 import habana_frameworks.torch.core as htcore
 
 
 logger = logging.get_logger(__name__)
 
 
-class GaudiGemma2RotaryEmbedding(GaudiRotaryEmbedding):
-    def __init__(self, config: Gemma2Config):
-        config.rope_scaling = getattr(config, "rope_scaling", None)
-        super().__init__(config=config)
-
-
-def gaudi_gemma2_rmsnorm_forward(self, x):
+def gaudi_gemma3_rmsnorm_forward(self, x):
     if x.device.type == "hpu" and FusedRMSNorm is not None:
         output = FusedRMSNorm.apply(x.float(), torch.ones_like(self.weight), self.eps)
         output = output * (1.0 + self.weight.float())
         return output.type_as(x)
     else:
         output = self._norm(x.float())
-        # Llama does x.to(float16) * w whilst Gemma2 is (x * w).to(float16)
+        # Llama does x.to(float16) * w whilst Gemma3 is (x * w).to(float16)
         # See https://github.com/huggingface/transformers/pull/29402
         output = output * (1.0 + self.weight.float())
         return output.type_as(x)
 
 
-def gaudi_gemma2_repeat_kv(
+def gaudi_gemma3_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
     value_states: torch.Tensor,
@@ -129,7 +127,7 @@ def gaudi_eager_attention_forward(
     if scaling is None:
         scaling = module.head_dim**-0.5
 
-    query_states, key_states, value_states, attention_mask = gaudi_gemma2_repeat_kv(
+    query_states, key_states, value_states, attention_mask = gaudi_gemma3_repeat_kv(
         query, key, value, attention_mask, module.num_key_value_groups
     )
 
@@ -152,11 +150,14 @@ def gaudi_eager_attention_forward(
     return attn_output, attn_weights
 
 
-class GaudiGemma2Attention(Gemma2Attention):
-    def __init__(self, config: Gemma2Config, layer_idx: Optional[int] = None):
+class GaudiGemma3Attention(Gemma3Attention):
+    def __init__(self, config: Gemma3TextConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-
-        self.rotary_emb = GaudiGemma2RotaryEmbedding(config=self.config)
+        self.rotary_emb = GaudiRotaryEmbedding(config=self.config)
+        config = copy.deepcopy(config)
+        config.rope_theta = config.rope_local_base_freq
+        config.rope_scaling = {"rope_type": "default"}
+        self.rotary_emb_local = GaudiRotaryEmbedding(config=config)
 
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
@@ -203,7 +204,8 @@ class GaudiGemma2Attention(Gemma2Attention):
         q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
         q_padding = q_tiles * q_block_size - q_len
         query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
-        attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        if attention_mask is not None:
+            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
 
         row_o_list = []
         for i in range(q_tiles):
@@ -222,7 +224,7 @@ class GaudiGemma2Attention(Gemma2Attention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        position_embeddings: torch.Tensor,
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
         use_cache: bool = False,
@@ -254,6 +256,9 @@ class GaudiGemma2Attention(Gemma2Attention):
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+        query_states = self.q_norm(query_states)
+        key_states = self.k_norm(key_states)
+
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             if token_idx is None:
@@ -266,8 +271,12 @@ class GaudiGemma2Attention(Gemma2Attention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        # Using alternative approach for cos,sin computation due to HPU graph compile issues
+        # cos, sin = position_embeddings
+        if self.is_sliding:
+            cos, sin = self.rotary_emb_local(value_states, seq_len=kv_seq_len)
+        else:
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
             query_states, key_states, cos, sin, kwargs["position_ids"], self.training
         )
@@ -303,8 +312,6 @@ class GaudiGemma2Attention(Gemma2Attention):
             attn_weights = None
             import habana_frameworks.torch.hpu as ht
 
-            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
@@ -313,6 +320,7 @@ class GaudiGemma2Attention(Gemma2Attention):
                     )
             else:
                 # first token
+                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
@@ -339,7 +347,6 @@ class GaudiGemma2Attention(Gemma2Attention):
                 dropout=self.attention_dropout if self.training else 0.0,
                 scaling=self.scaling,
                 sliding_window=self.sliding_window,
-                softcap=self.attn_logit_softcapping,
                 input_shape=input_shape,
             )
 
@@ -364,7 +371,7 @@ class GaudiGemma2Attention(Gemma2Attention):
         return attn_output
 
 
-class GaudiGemma2MLP(Gemma2MLP):
+class GaudiGemma3MLP(Gemma3MLP):
     def pre_mlp_forward(self, x):
         inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
         output = self.down_proj(inputs)
@@ -380,11 +387,11 @@ class GaudiGemma2MLP(Gemma2MLP):
         return x
 
 
-class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
-    def __init__(self, config: Gemma2Config, layer_idx: int):
+class GaudiGemma3DecoderLayer(Gemma3DecoderLayer):
+    def __init__(self, config: Gemma3TextConfig, layer_idx: int):
         super().__init__(config, layer_idx)
-        self.self_attn = GaudiGemma2Attention(config, layer_idx)
-        self.mlp = GaudiGemma2MLP(config)
+        self.self_attn = GaudiGemma3Attention(config, layer_idx)
+        self.mlp = GaudiGemma3MLP(config)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -441,14 +448,14 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor] = None,
+        position_embeddings_global: torch.Tensor,
+        position_embeddings_local: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        last_cache_position: int = 0,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -460,23 +467,26 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
-        Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
-        The only differences are:
-        - add new args token_idx
+        Inherited from Gemma2: https://github.com/huggingface/optimum-habana/blob/v1.18.1/optimum/habana/transformers/models/gemma2/modeling_gemma2.py#L577 with Gemma3 changes
         """
         residual = hidden_states
+        # apply global RoPE to non-sliding layer only
+        if self.self_attn.is_sliding:
+            position_embeddings = position_embeddings_local
+        else:
+            position_embeddings = position_embeddings_global
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
-            hidden_states,
-            position_embeddings,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-            token_idx,
-            attn_softmax_bf16,
-            reuse_cache,
+            hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -531,7 +541,7 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
         return hidden_states
 
 
-class GaudiGemma2Model(Gemma2Model):
+class GaudiGemma3TextModel(Gemma3TextModel):
     # used in Trainer to avoid passing `loss_kwargs` to model forward
     accepts_loss_kwargs = False
 
@@ -570,10 +580,7 @@ class GaudiGemma2Model(Gemma2Model):
         **kwargs,
     ) -> BaseModelOutputWithPast:
         """
-        Copied from GemmaModel.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
-        The only differences are:
-        - add new args token_idx
-        - replace _update_causal_mask with _gaudi_prepare_4d_causal_attention_mask
+        Inherits from Gemma2: https://github.com/huggingface/optimum-habana/blob/v1.18.1/optimum/habana/transformers/models/gemma2/modeling_gemma2.py#L6847 with Gemma3 changes
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -602,7 +609,6 @@ class GaudiGemma2Model(Gemma2Model):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -620,7 +626,9 @@ class GaudiGemma2Model(Gemma2Model):
             if cache_position is None:
                 past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
                 cache_position = torch.arange(
-                    past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+                    past_seen_tokens,
+                    past_seen_tokens + inputs_embeds.shape[1],
+                    device=inputs_embeds.device,
                 )
             if position_ids is None and cache_position:
                 position_ids = cache_position.unsqueeze(0)
@@ -636,7 +644,7 @@ class GaudiGemma2Model(Gemma2Model):
         if ignore_cache_position:
             if not isinstance(causal_mask_mapping := attention_mask, dict):
                 """
-                taken from here: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/gemma2/modeling_gemma2.py#L416-L430
+                Addapted from here: https://github.com/huggingface/transformers/blob/v4.55.0/src/transformers/models/gemma2/modeling_gemma2.py#L416-L430
                 with _gaudi_prepare_4d_causal_attention_mask
                 """
                 causal_mask_mapping = {
@@ -670,20 +678,18 @@ class GaudiGemma2Model(Gemma2Model):
                     "full_attention": create_causal_mask(**mask_kwargs),
                     "sliding_attention": create_sliding_window_causal_mask(**mask_kwargs),
                 }
-
         # embed positions
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
-        position_embeddings = None
-
-        normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
-        hidden_states = hidden_states * normalizer
+        position_embeddings_global = self.rotary_emb(hidden_states, position_ids)
+        position_embeddings_local = self.rotary_emb_local(hidden_states, position_ids)
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if not use_new_cache else None
+        # HPU uses legacy cache path (use_new_cache = False)
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
@@ -701,14 +707,14 @@ class GaudiGemma2Model(Gemma2Model):
 
             layer_outputs = decoder_layer(
                 hidden_states,
-                position_embeddings=position_embeddings,
+                position_embeddings_global=position_embeddings_global,
+                position_embeddings_local=position_embeddings_local,
                 attention_mask=causal_mask_mapping[decoder_layer.attention_type],
                 position_ids=position_ids,
                 past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 cache_position=cache_position,
-                last_cache_position=last_cache_position,
                 token_idx=token_idx,
                 attn_softmax_bf16=attn_softmax_bf16,
                 reuse_cache=reuse_cache,
@@ -717,7 +723,6 @@ class GaudiGemma2Model(Gemma2Model):
                 flash_attention_causal_mask=flash_attention_causal_mask,
                 flash_attention_fast_softmax=flash_attention_fast_softmax,
                 cache_idx=cache_idx,
-                **kwargs,
             )
 
             hidden_states = layer_outputs[0]
@@ -727,7 +732,6 @@ class GaudiGemma2Model(Gemma2Model):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer
@@ -747,7 +751,7 @@ class GaudiGemma2Model(Gemma2Model):
         )
 
 
-class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
+class GaudiGemma3ForCausalLM(Gemma3ForCausalLM):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
@@ -783,9 +787,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         **kwargs,
     ) -> CausalLMOutputWithPast:
         """
-        Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
-        The only differences are:
-        - add new args token_idx
+        Inherits from Gemma2: https://github.com/huggingface/optimum-habana/blob/v1.18.1/optimum/habana/transformers/models/gemma2/modeling_gemma2.py#L887 with Gemma3 changes
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -843,6 +845,224 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             attentions=outputs.attentions,
         )
 
+
+class GaudiGemma3Model(Gemma3Model):
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
+        **kwargs,
+    ) -> Union[tuple, Gemma3ModelOutputWithPast]:
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        use_cache = use_cache if use_cache is not None else self.config.text_config.use_cache
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        # Replace image id woth PAD if the image token if OOV, to avoid index-errors
+        if input_ids is not None and self.config.image_token_id >= self.vocab_size:
+            special_image_mask = input_ids == self.config.image_token_id
+            llm_input_ids = input_ids.clone()
+            llm_input_ids[special_image_mask] = 0
+        else:
+            llm_input_ids = input_ids
+
+        if inputs_embeds is None:
+            inputs_embeds = self.get_input_embeddings()(llm_input_ids)
+
+        # Merge text and images
+        if pixel_values is not None:
+            image_features = self.get_image_features(pixel_values)
+            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+            special_image_mask = self.get_placeholder_mask(
+                input_ids, inputs_embeds=inputs_embeds, image_features=image_features
+            )
+            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+
+        outputs = self.language_model(
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            trim_logits=trim_logits,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            cache_idx=cache_idx,
+            lazy_mode=lazy_mode,
+            **kwargs,
+        )
+
+        return Gemma3ModelOutputWithPast(
+            last_hidden_state=outputs.last_hidden_state,
+            past_key_values=outputs.past_key_values if use_cache else None,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            image_hidden_states=image_features if pixel_values is not None else None,
+        )
+
+
+class GaudiGemma3ForConditionalGeneration(Gemma3ForConditionalGeneration):
+    def __init__(self, config: Gemma3Config):
+        super().__init__(config)
+        self.model = GaudiGemma3Model(config)
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        pixel_values: torch.FloatTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
+        cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
+        **kwargs,
+    ) -> Union[tuple, Gemma3CausalLMOutputWithPast]:
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        use_cache = use_cache if use_cache is not None else self.config.text_config.use_cache
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        outputs = self.model(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            token_type_ids=token_type_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            labels=labels,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            trim_logits=trim_logits,
+            attn_softmax_bf16=attn_softmax_bf16,
+            reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
+            cache_idx=cache_idx,
+            lazy_mode=lazy_mode,
+            **kwargs,
+        )
+
+        hidden_states = outputs[0]
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+
+        loss = None
+        if labels is not None:
+            # Upcast to float if we need to compute the loss to avoid potential precision issues
+            logits = logits.float()
+            shift_logits = logits[..., :-1, :]
+            shift_labels = labels[..., 1:]
+            if attention_mask is not None:
+                # we use the input attention mask to shift the logits and labels, because it is 2D.
+                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
+                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
+                shift_logits = shift_logits[shift_attention_mask.to(logits.device) != 0].contiguous()
+                shift_labels = shift_labels[shift_attention_mask.to(shift_labels.device) != 0].contiguous()
+            else:
+                shift_logits = shift_logits.contiguous()
+                shift_labels = shift_labels.contiguous()
+            # Flatten the tokens
+            loss_fct = nn.CrossEntropyLoss()
+
+            flat_logits = shift_logits.view(-1, self.config.text_config.vocab_size)
+            flat_labels = shift_labels.view(-1).to(shift_logits.device)
+            loss = loss_fct(flat_logits, flat_labels)
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return Gemma3CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            image_hidden_states=outputs.image_hidden_states,
+        )
+
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -852,15 +1072,12 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         cache_position=None,
         position_ids=None,
         use_cache=True,
+        pixel_values=None,
         **kwargs,
     ):
         """
-        Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
-        The only differences are:
-        - add new args token_idx
-        - add token_idx into model_inputs
-        - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
-        - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
+        Inherits from Gemma2: https://github.com/huggingface/optimum-habana/blob/v1.18.1/optimum/habana/transformers/models/gemma2/modeling_gemma2.py#L973
+        - with pixel_values: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/gemma3/modeling_gemma3.py#L1164-L1165
         """
 
         reuse_cache = kwargs.get("reuse_cache")
@@ -907,6 +1124,10 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}
+
+        # taken from upstream: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/gemma3/modeling_gemma3.py#L1164-L1165
+        if cache_position[0] == 0:
+            model_inputs["pixel_values"] = pixel_values
 
         model_inputs.update(
             {

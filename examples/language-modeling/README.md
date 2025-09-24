@@ -128,7 +128,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --deepspeed path_for_deepspeed_config
 ```
 
-This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+This example has been validated with the following DeepSpeed ZeRO-2 config: [here](/tests/configs/deepspeed_zero_2.json)
 
 
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
@@ -140,7 +140,7 @@ It reaches a perplexity of 10.469.
 > [!NOTE]
 >  For GPT-NeoX-20B model, please switch to jemalloc in case of host OOM issues using ``` export LD_PRELOAD=<path>/libjemalloc.so.2 ```
 
-> Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
+> Please refer to [this page](/examples/multi-node-training) for performing multi-node training properly.
 
 ```bash
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
@@ -162,7 +162,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --deepspeed path_for_deepspeed_config
 ```
 
-This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+This example has been validated with the following DeepSpeed ZeRO-2 config: [here](/tests/configs/deepspeed_zero_2.json)
 
 
 ## RoBERTa/BERT/DistilBERT and masked language modeling
