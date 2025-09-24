@@ -6,4 +6,5 @@ from .modeling_gemma3 import (
     GaudiGemma3MLP,
     GaudiGemma3Model,
     GaudiGemma3TextModel,
+    gaudi_gemma3_rmsnorm_forward,
 )
