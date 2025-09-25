@@ -33,6 +33,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_process_model_before_weight_loading,
     gaudi_awq_quantizer_validate_environment,
 )
+from .integrations.finegrained_fp8 import GaudiFP8Linear
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     ArcticConfig,
@@ -75,6 +76,13 @@ from .models import (
     GaudiGemma2MLP,
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
+    GaudiGemma3Attention,
+    GaudiGemma3DecoderLayer,
+    GaudiGemma3ForCausalLM,
+    GaudiGemma3ForConditionalGeneration,
+    GaudiGemma3MLP,
+    GaudiGemma3Model,
+    GaudiGemma3TextModel,
     GaudiGemmaAttention,
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
@@ -94,6 +102,10 @@ from .models import (
     GaudiGPTNeoXAttention,
     GaudiGPTNeoXForCausalLM,
     GaudiGPTNeoXLayer,
+    GaudiGptOssAttention,
+    GaudiGptOssExperts,
+    GaudiGptOssForCausalLM,
+    GaudiGptOssModel,
     GaudiIdefics2ForConditionalGeneration,
     GaudiIdefics2Model,
     GaudiIdefics2VisionEmbeddings,
@@ -248,6 +260,8 @@ from .models import (
     gaudi_falcon_linear_forward,
     gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation,
     gaudi_FalconMambaModel_forward,
+    gaudi_gemma2_rmsnorm_forward,
+    gaudi_gemma3_rmsnorm_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_forward,
@@ -258,6 +272,8 @@ from .models import (
     gaudi_gpt_neo_model_forward,
     gaudi_gpt_neo_selfattention_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_oss_decoder_layer_forward,
+    gaudi_gpt_oss_rmsnorm_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
@@ -309,6 +325,8 @@ from .models import (
     gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
 from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
+from .pipelines import GaudiImageToTextPipeline
+from .quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 
 def adapt_transformers_to_gaudi():
@@ -388,6 +406,9 @@ def adapt_transformers_to_gaudi():
     transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
     transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
     transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
+    transformers.pipelines.image_to_text.ImageToTextPipeline._default_generation_config = (
+        GaudiImageToTextPipeline._default_generation_config
+    )
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -484,6 +505,14 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer = GaudiGPTNeoXLayer
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
+
+    # Optimization for gpt-oss generation on Gaudi
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM = GaudiGptOssForCausalLM
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel = GaudiGptOssModel
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssExperts = GaudiGptOssExperts
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssDecoderLayer.forward = gaudi_gpt_oss_decoder_layer_forward
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssAttention = GaudiGptOssAttention
+    transformers.models.gpt_oss.modeling_gpt_oss.GptOssRMSNorm.forward = gaudi_gpt_oss_rmsnorm_forward
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
@@ -588,6 +617,17 @@ def adapt_transformers_to_gaudi():
     transformers.models.gemma2.modeling_gemma2.Gemma2DecoderLayer = GaudiGemma2DecoderLayer
     transformers.models.gemma2.modeling_gemma2.Gemma2Model = GaudiGemma2Model
     transformers.models.gemma2.modeling_gemma2.Gemma2RotaryEmbedding = GaudiGemma2RotaryEmbedding
+    transformers.models.gemma2.modeling_gemma2.Gemma2RMSNorm.forward = gaudi_gemma2_rmsnorm_forward
+
+    # Optimization for gemma3 on Gaudi
+    transformers.models.gemma3.modeling_gemma3.Gemma3ForCausalLM = GaudiGemma3ForCausalLM
+    transformers.models.gemma3.modeling_gemma3.Gemma3MLP = GaudiGemma3MLP
+    transformers.models.gemma3.modeling_gemma3.Gemma3Attention = GaudiGemma3Attention
+    transformers.models.gemma3.modeling_gemma3.Gemma3DecoderLayer = GaudiGemma3DecoderLayer
+    transformers.models.gemma3.modeling_gemma3.Gemma3TextModel = GaudiGemma3TextModel
+    transformers.models.gemma3.modeling_gemma3.Gemma3Model = GaudiGemma3Model
+    transformers.models.gemma3.modeling_gemma3.Gemma3ForConditionalGeneration = GaudiGemma3ForConditionalGeneration
+    transformers.models.gemma3.modeling_gemma3.Gemma3RMSNorm.forward = gaudi_gemma3_rmsnorm_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
@@ -788,6 +828,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.deepseek_v2.modeling_deepseek_v2.DeepseekV2ForCausalLM = GaudiDeepseekV2ForCausalLM
     transformers.models.deepseek_v3.configuration_deepseek_v3.DeepseekV3Config = DeepseekV3Config
     transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM = DeepseekV3ForCausalLM
+    transformers.quantizers.quantizer_finegrained_fp8.FineGrainedFP8HfQuantizer = GaudiFineGrainedFP8HfQuantizer
+    transformers.quantizers.auto.AUTO_QUANTIZER_MAPPING["fp8"] = GaudiFineGrainedFP8HfQuantizer
+    transformers.integrations.FP8Linear = GaudiFP8Linear
 
     # Optimization for cohere on Gaudi
     transformers.models.cohere.modeling_cohere.CohereDecoderLayer = GaudiCohereDecoderLayer

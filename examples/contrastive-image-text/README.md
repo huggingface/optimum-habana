@@ -145,7 +145,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
 
 ### DeepSpeed
 
-You can check the [DeepSpeed](https://github.com/huggingface/optimum-habana/tree/main/examples#deepspeed) section in Optimum Habana examples for how to run DeepSpeed.
+You can check the [DeepSpeed](/examples#deepspeed) section in Optimum Habana examples for how to run DeepSpeed.
 You can also look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 
 

@@ -50,7 +50,10 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             # ("Qwen/Qwen1.5-7B", 4, False, False, False),
             ("google/gemma-7b", 1, False, True, False),
             ("google/gemma-2-9b", 1, False, True, False),
-            ("google/gemma-2-27b", 1, False, True, False),
+            ("google/gemma-2-27b", 1, False, False, False),
+            ("google/gemma-3-4b-it", 1, False, True, False),
+            ("google/gemma-3-12b-it", 1, False, True, False),
+            ("google/gemma-3-27b-it", 1, False, False, False),
             pytest.param(
                 "state-spaces/mamba-130m-hf", 1536, False, False, False, marks=pytest.mark.skip("Deprecated")
             ),
@@ -71,6 +74,7 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             ("moonshotai/Moonlight-16B-A3B", 1, False, False, False),
             ("Qwen/Qwen3-8B", 1, False, False, False),
             ("Qwen/Qwen3-30B-A3B", 1, False, False, False),
+            ("unsloth/gpt-oss-20b-BF16", 1, False, False, False),
         ],
         "fp8": [
             pytest.param("tiiuae/falcon-180B", 4, 950, True, 128, 128, False, marks=pytest.mark.x4),
