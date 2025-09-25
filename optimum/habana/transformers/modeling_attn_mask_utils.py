@@ -132,7 +132,6 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
         return self._expand_mask(attention_mask_2d, dtype, tgt_len=input_shape[-1]).to(device)
 
-
     @staticmethod
     def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
         """
