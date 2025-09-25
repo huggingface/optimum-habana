@@ -648,7 +648,7 @@ class GaudiGemmaModel(GemmaModel):
         normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
         hidden_states = hidden_states * normalizer
 
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
