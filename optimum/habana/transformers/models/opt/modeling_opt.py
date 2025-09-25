@@ -120,7 +120,7 @@ def gaudi_opt_attention_forward(
     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
     attn_weights = torch.nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
-    attn_output = torch.matmul(attn_weights, value_states)
+    attn_output = torch.bmm(attn_weights, value_states)
     attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
     attn_output = attn_output.transpose(1, 2).contiguous()
 
