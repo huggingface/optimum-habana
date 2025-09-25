@@ -661,7 +661,7 @@ class GaudiGemmaModel(GemmaModel):
             ):
                 htcore.mark_step()
 
-            hidden_states = decoder_layer(
+            layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -678,8 +678,10 @@ class GaudiGemmaModel(GemmaModel):
                 **kwargs,
             )
 
+            hidden_states = layer_outputs[0]
+
             if use_cache:
-                next_decoder_cache += (hidden_states[1],)
+                next_decoder_cache += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
 

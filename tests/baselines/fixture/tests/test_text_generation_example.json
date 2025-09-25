@@ -275,7 +275,7 @@
       "throughput": 109.70751574382221
     },
     "gaudi3": {
-      "output": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch, and it is compatible with the existing PyTorch ecosystem. DeepSpeed is designed to be easy to use, and it provides a number of features that make it easy to train large-scale models. DeepSpeed is designed to be scalable, and it can be used to train models on a single machine or on a cluster of machines. DeepSpeed is designed to be efficient,",
+      "output": "DeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch and is compatible with existing PyTorch code. DeepSpeed is open source and available on GitHub.\n\nDeepSpeed is a machine learning framework that enables training of large-scale models on commodity hardware. It is designed to be a drop-in replacement for PyTorch and is compatible with existing PyTorch code. DeepSpeed is open source and available on GitHub.\n\n<h2>What is",
       "throughput": 135.97272017864475
     }
   },
@@ -385,7 +385,7 @@
       "throughput": 134.94827207337997
     },
     "gaudi3": {
-      "output": "DeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system.\n\nDeepSpeed is a machine learning framework that accelerates training of large models on a single machine or distributed systems. It is designed to be compatible with PyTorch and TensorFlow, and can be used to train models on a single machine or on a distributed system",
+      "output": "DeepSpeed is a machine learning framework that accelerates training and inference of deep learning models. It is designed to be flexible and easy to use, with a focus on performance and scalability. DeepSpeed is built on top of PyTorch, and it provides a set of tools and libraries that can be used to optimize the training and inference of deep learning models.\n\nDeepSpeed is designed to be used with a variety of hardware platforms, including GPUs, TPUs, and CPUs. It provides a",
       "throughput": 160.48685620965531
     }
   },
@@ -395,7 +395,7 @@
       "throughput": 71.29570003665306
     },
     "gaudi3": {
-      "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with multiple GPUs. It is designed to be easy to use and efficient, and it supports a wide range of models and tasks.\n\nDeepSpeed is a deep learning framework that enables training of large models on a single machine with multiple GPUs. It is designed to be easy to use and efficient, and it supports a wide range of models and tasks.\n\nDeepSpeed is a deep learning framework that enables training of large models on a",
+      "output": "DeepSpeed is a machine learning framework that enables training of large models on a single machine with a single GPU. It is designed to be easy to use and efficient, and it can be used to train models on a variety of tasks.\n\nThe latest DeepSpeed for PC has come up with a few updates that are better than the previous version. Want to know those? Here are they:\n\n## DeepSpeed Andorid App Summary\n\nDeepSpeed has developed the DeepSpeed for Android. You can find it under the",
       "throughput": 81.6817273229847
     }
   },
