@@ -71,11 +71,11 @@ class GaudiStableLmAttention(StableLmAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if token_idx is not None and past_key_value.get_usable_length(kv_seq_len, self.layer_idx) > 0:
+            if token_idx is not None and past_key_value.get_seq_length(self.layer_idx) > 0:
                 # When token_idx is used, static seq len = (input token len + max output token len)
-                kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                kv_seq_len = past_key_value.get_seq_length(self.layer_idx)
             else:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                kv_seq_len += past_key_value.get_seq_length(self.layer_idx)
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
         # Partial rotary embedding
@@ -96,14 +96,16 @@ class GaudiStableLmAttention(StableLmAttention):
 
         if past_key_value is not None:
             if token_idx is not None:
-                if 0 <= self.layer_idx < len(past_key_value.key_cache):
-                    past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
-                    past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
-                    key_states = past_key_value.key_cache[self.layer_idx]
-                    value_states = past_key_value.value_cache[self.layer_idx]
+                if (
+                    0 <= self.layer_idx < len(past_key_value)
+                    and past_key_value.layers[self.layer_idx].keys is not None
+                ):
+                    past_key_value.layers[self.layer_idx].keys.index_copy_(2, token_idx - 1, key_states)
+                    past_key_value.layers[self.layer_idx].values.index_copy_(2, token_idx - 1, value_states)
+                    key_states = past_key_value.layers[self.layer_idx].keys
+                    value_states = past_key_value.layers[self.layer_idx].values
                 else:
-                    past_key_value.key_cache.append(key_states)
-                    past_key_value.value_cache.append(value_states)
+                    past_key_value.update(key_states, value_states, self.layer_idx)
             else:
                 # Specific to RoPE models with partial rotation
                 cache_kwargs = {

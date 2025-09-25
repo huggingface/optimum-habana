@@ -43,6 +43,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.utils import logging
 
 from ....utils import warn0
+from ...generation.utils import GaudiGenerationMixin
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_chatglm import ChatGLMConfig
 
@@ -1347,7 +1348,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         )
 
 
-class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
+class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel, GaudiGenerationMixin):
     def __init__(self, config: ChatGLMConfig, empty_init=False, device=None):
         super().__init__(config)
 
