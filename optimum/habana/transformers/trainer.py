@@ -2241,6 +2241,22 @@ class GaudiTrainer(Trainer):
             and all_labels is not None
             and not self.args.batch_eval_metrics
         ):
+            if isinstance(all_preds, torch.Tensor):
+                all_preds = all_preds.cpu().numpy()
+            if isinstance(all_labels, torch.Tensor):
+                all_labels = all_labels.cpu().numpy()
+
+            all_preds = np.array(all_preds)
+            all_labels = np.array(all_labels)
+
+            if all_preds.ndim == 0 or all_labels.ndim == 0:
+                logger.warning(
+                    "compute_metrics received scalar predictions or labels "
+                    "(preds shape=%s, labels shape=%s). This may indicate a dataset/collator issue.",
+                    all_preds.shape,
+                    all_labels.shape,
+                )
+
             eval_set_kwargs["losses"] = all_losses if "loss" in args.include_for_metrics else None
             eval_set_kwargs["inputs"] = all_inputs if "inputs" in args.include_for_metrics else None
             metrics = self.compute_metrics(
