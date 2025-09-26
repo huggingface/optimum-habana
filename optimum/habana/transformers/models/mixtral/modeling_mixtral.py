@@ -637,7 +637,7 @@ class GaudiMixtralModel(MixtralModel):
         hidden_states = inputs_embeds
 
         # decoder layers
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             layer_outputs = decoder_layer(
