@@ -280,14 +280,12 @@ def main():
         data_args.dataset_config_name,
         split=data_args.train_split_name,
         token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
     )
     raw_datasets["eval"] = load_dataset(
         data_args.dataset_name,
         data_args.dataset_config_name,
         split=data_args.eval_split_name,
         token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
     )
 
     if data_args.audio_column_name not in raw_datasets["train"].column_names:
