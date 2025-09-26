@@ -24,7 +24,7 @@ import datasets
 import evaluate
 import numpy as np
 import transformers
-from datasets import DatasetDict, load_dataset
+from datasets import Audio, DatasetDict, load_dataset
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -316,10 +316,10 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
 
-    # `datasets` takes care of automatically loading and resampling the audio,
-    # so we just need to set the correct target sampling rate.
+    # Make sure datasets does not auto-decode audio (we'll open via soundfile in prepare_dataset).
     raw_datasets = raw_datasets.cast_column(
-        data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+        data_args.audio_column_name,
+        Audio(sampling_rate=feature_extractor.sampling_rate, decode=False),
     )
 
     # Max input length
