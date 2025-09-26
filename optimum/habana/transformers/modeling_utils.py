@@ -511,7 +511,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
-    transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
+    transformers.AutoConfig.register("llama", LlamaConfig, exist_ok=True)
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
