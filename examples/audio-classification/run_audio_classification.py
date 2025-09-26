@@ -50,6 +50,9 @@ check_optimum_habana_min_version("1.19.0.dev0")
 
 require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 
+# Disable torchcodec decoding in datasets before any dataset ops
+os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
+
 
 def random_subsample(wav: np.ndarray, max_length: float, sample_rate: int = 16000):
     """Randomly sample chunks of `max_length` seconds from the input audio"""
