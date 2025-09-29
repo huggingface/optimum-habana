@@ -2986,16 +2986,20 @@ class GaudiGenerationMixin(GenerationMixin):
             eos_positions_tmp = torch.isin(
                 input_ids[:, start_token_idx:], torch.tensor(eos_token_id).to(device=input_ids.device)
             ).int()
-            if eos_positions_tmp.numel() != 0:
-                # argmax(dim=1) is throwing this error in eager mode, if the tensor is empty
-                eos_positions = eos_positions + eos_positions_tmp.argmax(dim=1)
+            if torch.all(eos_positions_tmp == 0):
+                # Since the generation stopped for max_length, not because of eos_token_id,
+                # there is no need to mask the input_ids.
+                pass
+            else:
+                if eos_positions_tmp.numel() != 0:
+                    # argmax(dim=1) is throwing this error in eager mode, if the tensor is empty
+                    eos_positions = eos_positions + eos_positions_tmp.argmax(dim=1)
 
-            # Create a mask for positions greater than the first eos_token_id
-            mask = torch.arange(generation_config.max_length, device="hpu").expand(
-                batch_size, generation_config.max_length
-            ) > eos_positions.unsqueeze(1)
-            # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
-            input_ids[mask] = pad_token_id
+                mask_len = min(input_ids.shape[1], generation_config.max_length)
+                # Create a mask for positions greater than the first eos_token_id
+                mask = torch.arange(mask_len, device="hpu").expand(batch_size, mask_len) > eos_positions.unsqueeze(1)
+                # Apply the mask to set positions greater than the first eos_token_id to pad_token_id
+                input_ids[mask] = pad_token_id
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
