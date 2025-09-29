@@ -512,6 +512,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
     transformers.AutoConfig.register("llama", LlamaConfig, exist_ok=True)
+    transformers.AutoModelForCausalLM.register(LlamaConfig, GaudiLlamaForCausalLM, exist_ok=True)
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
