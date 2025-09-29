@@ -284,6 +284,7 @@ The following model architectures, tasks and device distributions have been vali
 | DeepSeek-V3 / Moonlight |   | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
 | ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
 | Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
+| Qwen2.5-VL |        |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
 | VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](/examples/video-comprehension)</li> |
 | GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
 | Arctic |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](/examples/text-generation)</li> |
