@@ -375,6 +375,20 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
         diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
 
+        from ..models.transformers import (
+            GaudiQwenDoubleStreamAttnProcessor2_0,
+            GaudiQwenEmbedRope,
+            GaudiQwenTimestepProjEmbeddings,
+        )
+
+        diffusers.models.transformers.transformer_qwenimage.QwenTimestepProjEmbeddings = (
+            GaudiQwenTimestepProjEmbeddings
+        )
+        diffusers.models.transformers.transformer_qwenimage.QwenEmbedRope = GaudiQwenEmbedRope
+        diffusers.models.transformers.transformer_qwenimage.QwenDoubleStreamAttnProcessor2_0 = (
+            GaudiQwenDoubleStreamAttnProcessor2_0
+        )
+
         # Define a new kwarg here to know in the __init__ whether to use full bf16 precision or not
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
