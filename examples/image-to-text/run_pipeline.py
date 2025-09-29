@@ -259,7 +259,7 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name_or_path)
     model_type = config.model_type
 
-    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl", "chatglm"]:
+    if args.image_path is None and model_type in ["llava", "idefics2", "mllama", "qwen2_vl", "qwen2_5_vl", "chatglm"]:
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
     elif args.image_path is None and model_type == "paligemma":
         args.image_path = [
@@ -279,6 +279,7 @@ def main():
         "mllama",
         "paligemma",
         "qwen2_vl",
+        "qwen2_5_vl",
         "chatglm",
         "llava_onevision",
     ]:
@@ -411,9 +412,12 @@ def main():
     if args.use_kv_cache:
         generate_kwargs["use_cache"] = args.use_kv_cache
 
-    if model_type == "qwen2_vl":
+    if model_type in ["qwen2_vl", "qwen2_5_vl"]:
         generate_kwargs["use_cache"] = True
         generate_kwargs["cache_implementation"] = "static"
+
+    if model_type == "qwen2_5_vl":
+        generate_kwargs["use_flash_attention"] = True
 
     if model_type == "chatglm":
         generate_kwargs["reuse_cache"] = True
@@ -430,6 +434,7 @@ def main():
         "mllama",
         "paligemma",
         "qwen2_vl",
+        "qwen2_5_vl",
         "llava",
         "llava_next",
         "chatglm",
