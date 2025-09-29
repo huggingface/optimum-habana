@@ -54,6 +54,7 @@ from transformers.utils import (
 from transformers.utils.import_utils import is_torch_fx_available
 
 from ....utils import warn0
+from ...generation.utils import GaudiGenerationMixin
 from .configuration_minicpm import MiniCPM3Config
 
 
@@ -505,8 +506,7 @@ class MiniCPMAttention(nn.Module):
                 value_states = past_value_states.index_add(
                     -2, token_idx - 1, value_states - torch.index_select(past_value_states, -2, token_idx - 1)
                 )
-                past_key_value.key_cache[self.layer_idx] = key_states
-                past_key_value.value_cache[self.layer_idx] = value_states
+                past_key_value.update(key_states, value_states, self.layer_idx)
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
 
@@ -644,8 +644,7 @@ class MiniCPMFlashAttention2(MiniCPMAttention):
                 value_states = past_value_states.index_add(
                     -2, token_idx - 1, value_states - torch.index_select(past_value_states, -2, token_idx - 1)
                 )
-                past_key_value.key_cache[self.layer_idx] = key_states
-                past_key_value.value_cache[self.layer_idx] = value_states
+                past_key_value.update(key_states, value_states, self.layer_idx)
 
         # TODO: These transpose are quite inefficient but Flash Attention requires the layout [batch_size, sequence_length, num_heads, head_dim]. We would need to refactor the KV cache
         # to be able to avoid many of these transpose/reshape/view.
@@ -854,7 +853,7 @@ class MiniCPMSdpaAttention(MiniCPMAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            usable_length = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            usable_length = past_key_value.get_seq_length(self.layer_idx)
             if token_idx is None:
                 kv_seq_len += usable_length
             elif usable_length > 0:
@@ -1023,7 +1022,9 @@ MINICPM_START_DOCSTRING = r"""
     "The bare MiniCPM Model outputting raw hidden-states without any specific head on top.",
     MINICPM_START_DOCSTRING,
 )
-class MiniCPM3PreTrainedModel(PreTrainedModel):
+class MiniCPM3PreTrainedModel(
+    PreTrainedModel,
+):
     config_class = MiniCPM3Config
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
@@ -1200,7 +1201,7 @@ class MiniCPM3Model(MiniCPM3PreTrainedModel):
             use_legacy_cache = not isinstance(past_key_values, Cache)
             if use_legacy_cache:
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            past_key_values_length = past_key_values.get_usable_length(seq_length)
+            past_key_values_length = past_key_values.get_seq_length()
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -1292,7 +1293,7 @@ class MiniCPM3Model(MiniCPM3PreTrainedModel):
         )
 
 
-class MiniCPM3ForCausalLM(MiniCPM3PreTrainedModel):
+class MiniCPM3ForCausalLM(MiniCPM3PreTrainedModel, GaudiGenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):

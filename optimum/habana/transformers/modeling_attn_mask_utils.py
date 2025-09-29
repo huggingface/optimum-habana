@@ -132,6 +132,23 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
         return self._expand_mask(attention_mask_2d, dtype, tgt_len=input_shape[-1]).to(device)
 
+    @staticmethod
+    def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+        """
+        Adapted from: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_attn_mask_utils.py#L187
+
+        Differences:
+        - inverted_mask tensor is placed on the same device as the input mask to avoid device mismatch errors.
+        """
+        bsz, src_len = mask.size()
+        tgt_len = tgt_len if tgt_len is not None else src_len
+
+        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+
+        inverted_mask = torch.tensor(1.0, dtype=dtype, device=mask.device) - expanded_mask
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
+
 
 def _gaudi_prepare_4d_causal_attention_mask(
     attention_mask: Optional[torch.Tensor],
