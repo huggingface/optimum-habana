@@ -76,6 +76,7 @@ class GaudiAccelerator(Accelerator):
         # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
         # we can clean this up later when the upstream accelerate is fixed
         self.fp8_recipe = None
+        self.has_fp8_handler = (self.te_recipe_handler or self.fp8_recipe_handler) is not None
         if self.has_fp8_handler:
             self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
