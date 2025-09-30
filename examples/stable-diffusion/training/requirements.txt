@@ -2,6 +2,6 @@ compel
 datasets>=4.0.0
 imagesize == 1.4.1
 opencv-python
-peft==0.16.0
+peft==0.17.0
 sentencepiece
 tensorboard==2.19.0
