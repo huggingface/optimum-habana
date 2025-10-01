@@ -2,3 +2,4 @@ datasets[audio]>=4.0.0
 evaluate == 0.4.3
 numba==0.61.0
 librosa == 0.10.2.post1
+soundfile
