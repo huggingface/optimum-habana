@@ -4,4 +4,4 @@ scipy
 scikit-learn == 1.5.2
 protobuf
 torch >= 1.3
-evaluate
+evaluate >= 0.4.5
