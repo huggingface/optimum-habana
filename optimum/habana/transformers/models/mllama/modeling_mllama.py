@@ -26,6 +26,7 @@ import torch.utils.checkpoint
 from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
+from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPast,
@@ -39,6 +40,7 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaCrossAttentionDecoderLayer,
     MllamaForCausalLM,
     MllamaForConditionalGeneration,
+    MllamaModel,
     MllamaSelfAttentionDecoderLayer,
     MllamaTextCrossAttention,
     MllamaTextModel,
@@ -53,7 +55,8 @@ from transformers.models.mllama.modeling_mllama import (
     apply_rotary_pos_emb,
     repeat_kv,
 )
-from transformers.utils import logging
+from transformers.processing_utils import Unpack
+from transformers.utils import TransformersKwargs, logging
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
@@ -874,19 +877,7 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         )
 
 
-class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
-    def __init__(self, config: MllamaConfig):
-        # sdpa is better for vision model in HPU
-        config._attn_implementation = "sdpa"
-        super().__init__(config)
-        self.multi_modal_projector = self.model.multi_modal_projector
-        self.hidden_size = config.text_config.hidden_size
-        self._language_model = GaudiMllamaForCausalLM._from_config(config.text_config)
-
-    @property
-    def language_model(self):
-        return self._language_model
-
+class GaudiMllamaModel(MllamaModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -897,24 +888,26 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         cross_attention_mask: Optional[torch.Tensor] = None,
         cross_attention_states: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[list[torch.FloatTensor]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
-        **kwargs,
-    ) -> Union[tuple, CausalLMOutputWithPast]:
-        """
-        Copied from MllamaForConditionalGeneration::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2077
-        The only differences are:
-            - add token_idx input
-            - add use_flash_attention and flash_attention_recompute
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> BaseModelOutputWithPast:
+        r"""
+        Copied from https://github.com/huggingface/transformers/blob/main/src/transformers/models/mllama/modeling_mllama.py#L1435
+        The only differences are additional arguments:
+        - token_idx
+        - trim_logits
+        - use_flash_attention
+        - flash_attention_recompute
+        - logits_bf16
+
         """
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -976,9 +969,7 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             past_key_values=past_key_values,
             use_cache=use_cache,
             inputs_embeds=inputs_embeds,
-            labels=labels,
             cache_position=cache_position,
-            logits_to_keep=logits_to_keep,
             token_idx=token_idx,
             trim_logits=trim_logits,
             use_flash_attention=use_flash_attention,
@@ -987,7 +978,101 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             **kwargs,
         )
 
-        return outputs
+        return BaseModelOutputWithPast(
+            last_hidden_state=outputs.last_hidden_state,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
+    def __init__(self, config: MllamaConfig):
+        # sdpa is better for vision model in HPU
+        config._attn_implementation = "sdpa"
+        super().__init__(config)
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        aspect_ratio_mask: Optional[torch.Tensor] = None,
+        aspect_ratio_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_states: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        logits_bf16: Optional[bool] = False,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> Union[tuple, CausalLMOutputWithPast]:
+        r"""
+        Copied from: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mllama/modeling_mllama.py#L1578
+        The only differences are additional arguments:
+        - token_idx
+        - trim_logits
+        - use_flash_attention
+        - flash_attention_recompute
+        - logits_bf16
+        """
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.model(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            aspect_ratio_mask=aspect_ratio_mask,
+            aspect_ratio_ids=aspect_ratio_ids,
+            cross_attention_mask=cross_attention_mask,
+            cross_attention_states=cross_attention_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=True,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            trim_logits=trim_logits,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            logits_bf16=logits_bf16,
+            **kwargs,
+        )
+
+        hidden_states = outputs[0]
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+
+        loss = None
+        if labels is not None:
+            loss = self.loss_function(logits, labels, self.config.text_config.vocab_size, **kwargs)
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
     def prepare_inputs_for_generation(
         self,

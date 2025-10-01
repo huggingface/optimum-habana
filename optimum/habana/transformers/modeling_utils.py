@@ -130,6 +130,7 @@ from .models import (
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
+    GaudiMllamaModel,
     GaudiMllamaSelfAttentionDecoderLayer,
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
@@ -842,6 +843,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
     transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
     transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
+    transformers.models.mllama.modeling_mllama.MllamaModel = GaudiMllamaModel
 
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
