@@ -64,8 +64,7 @@ class GaudiAccelerator(Accelerator):
         compiled_autograd_enabled: bool = False,
         **kwargs,
     ):
-        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
-        # it will be fixed in upstream accelerate
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8 (even with deepspeed)
         mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
         super().__init__(*args, mixed_precision=mixed_precision, **kwargs)
         self.compiled_autograd_enabled = compiled_autograd_enabled
