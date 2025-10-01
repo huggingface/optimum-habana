@@ -209,6 +209,7 @@ from .mllama import (
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
+    GaudiMllamaModel,
     GaudiMllamaSelfAttentionDecoderLayer,
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
