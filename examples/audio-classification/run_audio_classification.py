@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
 import logging
 import os
 import sys
@@ -20,11 +21,11 @@ from dataclasses import dataclass, field
 from random import randint
 from typing import Optional
 
-import datasets
 import evaluate
 import numpy as np
+import soundfile as sf
 import transformers
-from datasets import DatasetDict, load_dataset
+from datasets import Audio, DatasetDict, load_dataset
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -49,6 +50,9 @@ check_min_version("4.55.0")
 check_optimum_habana_min_version("1.19.0.dev0")
 
 require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
+
+# Disable torchcodec decoding in datasets before any dataset ops
+os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
 
 
 def random_subsample(wav: np.ndarray, max_length: float, sample_rate: int = 16000):
@@ -280,14 +284,12 @@ def main():
         data_args.dataset_config_name,
         split=data_args.train_split_name,
         token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
     )
     raw_datasets["eval"] = load_dataset(
         data_args.dataset_name,
         data_args.dataset_config_name,
         split=data_args.eval_split_name,
         token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
     )
 
     if data_args.audio_column_name not in raw_datasets["train"].column_names:
@@ -315,10 +317,10 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
 
-    # `datasets` takes care of automatically loading and resampling the audio,
-    # so we just need to set the correct target sampling rate.
+    # Make sure datasets does not auto-decode audio (we'll open via soundfile in prepare_dataset).
     raw_datasets = raw_datasets.cast_column(
-        data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+        data_args.audio_column_name,
+        Audio(sampling_rate=feature_extractor.sampling_rate, decode=False),
     )
 
     # Max input length
@@ -326,15 +328,44 @@ def main():
 
     model_input_name = feature_extractor.model_input_names[0]
 
+    def load_and_validate_audio(sample, feature_extractor, subsample: bool = False, max_length: float = None):
+        """
+        Open audio via soundfile, downmix to mono if needed, validate sample rate,
+        and optionally apply random subsampling.
+        """
+        path = sample.get("path")
+        wav, sr = None, None
+
+        if isinstance(path, str):
+            try:
+                wav, sr = sf.read(path, dtype="float32", always_2d=False)
+            except Exception:
+                wav, sr = None, None
+
+        if wav is None:
+            raw = sample.get("bytes")
+            if not raw:
+                raise RuntimeError(f"Cannot open audio sample: {sample}")
+            fileobj = io.BytesIO(raw)
+            wav, sr = sf.read(fileobj, dtype="float32", always_2d=False)
+
+        if wav.ndim > 1:
+            wav = wav.mean(axis=1)
+
+        if sr != feature_extractor.sampling_rate:
+            raise RuntimeError(f"Expected {feature_extractor.sampling_rate} Hz, but got {sr} Hz for {path}")
+
+        if subsample and max_length is not None:
+            wav = random_subsample(wav, max_length=max_length, sample_rate=sr)
+
+        return wav
+
     def train_transforms(batch):
         """Apply train_transforms across a batch."""
-        subsampled_wavs = []
-
-        for audio in batch[data_args.audio_column_name]:
-            wav = random_subsample(
-                audio["array"], max_length=data_args.max_length_seconds, sample_rate=feature_extractor.sampling_rate
-            )
-            subsampled_wavs.append(wav)
+        subsampled_wavs = [
+            load_and_validate_audio(sample, feature_extractor, subsample=True, max_length=data_args.max_length_seconds)
+            for sample in batch[data_args.audio_column_name]
+        ]
         inputs = feature_extractor(
             subsampled_wavs,
             max_length=max_length,
@@ -342,14 +373,17 @@ def main():
             padding="max_length",
             truncation=True,
         )
-        output_batch = {model_input_name: inputs.get(model_input_name)}
-        output_batch["labels"] = list(batch[data_args.label_column_name])
-
-        return output_batch
+        return {
+            model_input_name: inputs.get(model_input_name),
+            "labels": list(batch[data_args.label_column_name]),
+        }
 
     def val_transforms(batch):
         """Apply val_transforms across a batch."""
-        wavs = [audio["array"] for audio in batch[data_args.audio_column_name]]
+        wavs = [
+            load_and_validate_audio(sample, feature_extractor, subsample=False)
+            for sample in batch[data_args.audio_column_name]
+        ]
         inputs = feature_extractor(
             wavs,
             max_length=max_length,
@@ -357,10 +391,10 @@ def main():
             padding="max_length",
             truncation=True,
         )
-        output_batch = {model_input_name: inputs.get(model_input_name)}
-        output_batch["labels"] = list(batch[data_args.label_column_name])
-
-        return output_batch
+        return {
+            model_input_name: inputs.get(model_input_name),
+            "labels": list(batch[data_args.label_column_name]),
+        }
 
     # Prepare label mappings.
     # We'll include these in the model's config to get human readable labels in the Inference API.

@@ -1,6 +1,6 @@
 {
     "gaudi2": {
-        "common_language": {
+        "regisss/common_language": {
             "num_train_epochs": 10,
             "eval_batch_size": 64,
             "distribution": {
@@ -24,15 +24,14 @@
                         "--dataloader_num_workers 1",
                         "--ignore_mismatched_sizes=True",
                         "--use_hpu_graphs_for_training",
-                        "--use_hpu_graphs_for_inference",
-                        "--trust_remote_code True"
+                        "--use_hpu_graphs_for_inference"
                     ]
                 }
             }
         }
     },
     "gaudi3": {
-        "common_language": {
+        "regisss/common_language": {
             "num_train_epochs": 10,
             "eval_batch_size": 64,
             "distribution": {
@@ -56,8 +55,7 @@
                         "--dataloader_num_workers 1",
                         "--ignore_mismatched_sizes=True",
                         "--use_hpu_graphs_for_training",
-                        "--use_hpu_graphs_for_inference",
-                        "--trust_remote_code True"
+                        "--use_hpu_graphs_for_inference"
                     ]
                 }
             }
