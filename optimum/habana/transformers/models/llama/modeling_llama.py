@@ -1278,7 +1278,7 @@ class GaudiLlamaModel(LlamaModel):
         hidden_states = inputs_embeds
         position_embeddings = None  # self.rotary_emb(hidden_states, position_ids)
 
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()

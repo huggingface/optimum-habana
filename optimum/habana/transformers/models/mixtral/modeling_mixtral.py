@@ -585,13 +585,11 @@ class GaudiMixtralModel(MixtralModel):
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         past_key_values_length = 0
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         if past_key_values is not None and use_cache:
             if reuse_cache:
                 past_key_values_length = past_key_values[0][0][2]
             else:
-                # HPU uses legacy cache path (use_new_cache = False)
                 past_key_values_length = past_key_values[0][0].shape[2]
 
         if inputs_embeds is None:
@@ -637,7 +635,7 @@ class GaudiMixtralModel(MixtralModel):
         hidden_states = inputs_embeds
 
         # decoder layers
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             layer_outputs = decoder_layer(
