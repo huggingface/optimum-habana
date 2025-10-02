@@ -1783,7 +1783,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -1794,7 +1793,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                # HPU uses legacy cache path (use_new_cache = False)
                 if past_key_values[0] is not None:  ##added for (None, None)
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
