@@ -460,6 +460,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--dynamo_allow_unspec_int_on_nn_module",
         action="store_true",
+        default=True,
         help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
     )
 
