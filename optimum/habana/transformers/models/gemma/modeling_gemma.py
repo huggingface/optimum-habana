@@ -616,14 +616,12 @@ class GaudiGemmaModel(GemmaModel):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        use_new_cache = False  # Ignoring new Cache path for HPU
         past_seen_tokens = 0
 
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
-                # HPU uses legacy cache path (use_new_cache = False)
                 past_seen_tokens = past_key_values[0][0].shape[2]
 
         cache_position = None
@@ -648,7 +646,7 @@ class GaudiGemmaModel(GemmaModel):
         normalizer = torch.tensor(self.config.hidden_size**0.5, dtype=hidden_states.dtype, device=inputs_embeds.device)
         hidden_states = hidden_states * normalizer
 
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()

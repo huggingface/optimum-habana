@@ -24,7 +24,7 @@ from typing import Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
@@ -467,20 +467,9 @@ class GaudiMistralModel(MistralModel):
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         past_key_values_length = 0
-        use_new_cache = False
-        return_legacy_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
-        if use_cache and not isinstance(past_key_values, Cache) and use_new_cache:
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            return_legacy_cache = True
-            logger.warning_once(
-                "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
-                "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
-            )
-            past_key_values_length = past_key_values.get_seq_length() if past_key_values is not None else 0
 
         if cache_position is None:
             cache_position = torch.arange(
@@ -541,11 +530,7 @@ class GaudiMistralModel(MistralModel):
 
         next_cache = None
         if use_cache:
-            next_cache = (
-                next_decoder_cache
-                if not use_new_cache
-                else (next_decoder_cache.to_legacy_cache() if return_legacy_cache else next_decoder_cache)
-            )
+            next_cache = next_decoder_cache
 
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
