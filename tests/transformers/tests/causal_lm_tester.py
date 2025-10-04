@@ -1,4 +1,3 @@
-
 # Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +17,6 @@ from inspect import signature
 
 import pytest
 from parameterized import parameterized
-
 from transformers import set_seed
 from transformers.testing_utils import (
     is_flaky,
@@ -168,7 +166,7 @@ class CausalLMModelTester:
 
         input_mask = None
         if self.use_input_mask:
-            input_mask = torch.tril(torch.ones_like(input_ids).to(torch_device))
+            input_mask = (input_ids != self.pad_token_id).to(torch_device).long()
 
         token_type_ids = None
         if self.use_token_type_ids:
@@ -207,7 +205,6 @@ class CausalLMModelTester:
         model.to(torch_device)
         model.eval()
         result = model(input_ids, attention_mask=input_mask)
-        result = model(input_ids)
         self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
 
     def prepare_config_and_inputs_for_common(self):
@@ -451,4 +448,3 @@ class CausalLMModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterM
                 logits = outputs.hidden_states[-1]
                 logits_fa = outputs_fa.hidden_states[-1]
                 torch.testing.assert_close(logits_fa, logits, atol=3e-2, rtol=3e-2)
-

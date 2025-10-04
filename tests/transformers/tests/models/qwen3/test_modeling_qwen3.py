@@ -1,4 +1,3 @@
-
 # Copyright 2024 The Qwen team, Alibaba Group and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +17,6 @@ import unittest
 
 import pytest
 from packaging import version
-
 from transformers import AutoTokenizer, Qwen3Config, is_torch_available, set_seed
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.testing_utils import (
@@ -30,13 +28,17 @@ from transformers.testing_utils import (
     require_torch_gpu,
     slow,
 )
+
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
+from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
+
+
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         Qwen3ForCausalLM,
         Qwen3ForQuestionAnswering,
@@ -45,16 +47,14 @@ if is_torch_available():
         Qwen3Model,
     )
 
-from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
-
 
 class Qwen3ModelTester(CausalLMModelTester):
     config_class = Qwen3Config
     if is_torch_available():
         base_model_class = Qwen3Model
         causal_lm_class = Qwen3ForCausalLM
-        sequence_class = Qwen3ForSequenceClassification
-        token_class = Qwen3ForTokenClassification
+        sequence_classification_class = Qwen3ForSequenceClassification
+        token_classification_class = Qwen3ForTokenClassification
         question_answering_class = Qwen3ForQuestionAnswering
 
 
@@ -728,4 +728,3 @@ In summary:"""
         new_generated_ids = model.generate(input_ids, max_new_tokens=50)[:, input_ids.shape[1] :]
         with self.subTest("Eager matches flash attention"):
             torch.testing.assert_close(generated_ids, new_generated_ids, rtol=1e-4, atol=1e-4)
-
