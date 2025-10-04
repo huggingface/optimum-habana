@@ -1,4 +1,3 @@
-
 # Copyright 2023 The Intel Labs Team Authors, The Microsoft Research Team Authors and HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +22,10 @@ from transformers import (
     is_torch_available,
     is_vision_available,
 )
-from transformers.testing_utils import require_torch, require_vision, slow, torch_device
+from transformers.testing_utils import require_torch, require_vision, slow
 from transformers.utils import cached_property
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
@@ -34,14 +35,13 @@ from ...test_modeling_common import (
     ids_tensor,
     random_attention_mask,
 )
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import (
         BridgeTowerForContrastiveLearning,
         BridgeTowerForImageAndTextRetrieval,
@@ -51,7 +51,6 @@ if is_torch_available():
 
 if is_vision_available():
     from PIL import Image
-
     from transformers import BridgeTowerProcessor
 
 
