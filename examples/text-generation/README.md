@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
 ```
 
 
@@ -161,7 +161,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --flash_attention_causal_mask
 ```
 
-To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](https://github.com/huggingface/optimum-habana/blob/main/examples/multi-node-training/hostfile)
+To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](/examples/multi-node-training/hostfile)
 
 > NOTE: This is an experimental support currently. Due to memory constraints, BS=1 is only supported for now.
 
@@ -395,6 +395,8 @@ PT_ENABLE_INT64_SUPPORT=1 python ../gaudi_spawn.py  --world_size 8 run_generatio
 
 Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-180B and Llama3-405B in FP8 are enabled using the [Intel Neural Compressor (INC)](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html), which provides model measurement and quantization capabilities in PyTorch. From synapse 1.17 / optimum-habana 1.13 release, INC is used by default for measuring and quantization. Habana Quantization Toolkit (HQT), which was used earlier, will be removed in future releases. To use HQT, disable INC by setting the following environment variable: `USE_INC=0`.
 
+After measurement, a postprocessing script (quantization_tools/postprocess_measurements.py) should be invoked, to align the scales for matmul_av, matmul_qk with those for k_cache and v_cache, to avoid dequant-quant-scale op before matmul_qk and matmul_av. The `-m <location>` argument should point to measurement directory, specified in json file in quantization_config, usually 'hqt_output' in examples.
+
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
@@ -409,6 +411,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --max_new_tokens 128 \
 --batch_size 1 \
 --bf16
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
@@ -441,6 +445,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_recompute \
 --flash_attention_causal_mask \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -479,6 +485,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_out
 --flash_attention_recompute \
 --flash_attention_causal_mask \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
@@ -505,7 +513,7 @@ Here is an example to measure the tensor quantization statistics on Llama3-8b wi
 
 ```bash
 PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
--o acc_Llama3-8b_bs1_measure.txt  \
+-o acc_Llama3-8b_bs1_measure.json  \
 --model_name_or_path meta-llama/Meta-Llama-3-8B \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -515,6 +523,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --reuse_cache \
 --bf16 \
 --trust_remote_code
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for Llama3-8b with 1 card:
@@ -542,6 +552,8 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python
 --reuse_cache \
 --bf16 \
 --sdp_on_bf16
+
+python quantization_tools/postprocess_measurements.py -m hqt_output
 ```
 
 Here is an example to quantize the model based on previous measurements for gemma with 1 card:
@@ -557,6 +569,33 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json py
 --sdp_on_bf16
 ```
 
+Here is an example for running DeepSeek-R1 FP8 dynamic quantization without INC on 8-cards.
+```bash
+PT_HPU_LAZY_MODE=1 python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --sdp_on_bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer  --parallel_strategy "ep"
+```
+
+Here is an example to measure the tensor quantization statistics for static quantization 
+with INC on DeepSeek-R1 with 8 cards:
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=quantization_config/maxabs_measure_deepseek_fp8.json python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer  --parallel_strategy "ep"
+```
+
+Here is an example to quantize the model based on previous measurements for DeepSeek-R1 with 8 cards:
+```bash
+PT_HPU_LAZY_MODE=1 QUANT_CONFIG=quantization_config/maxabs_quant_deepseek_fp8.json python3  ../gaudi_spawn.py  --world_size 8 \
+    run_generation.py --model_name_or_path deepseek-ai/DeepSeek-R1 \
+    --bf16 --trim_logits --batch_size 1 --use_hpu_graphs --use_kv_cache  \
+    --prompt "DeepSpeed is a machine learning framework"  \
+    --trust_remote_code_tokenizer --warmup 1 --n_iterations 1  --parallel_strategy "ep"
+```
 
 ### Running FP8 models on single device
 
@@ -822,10 +861,27 @@ pip install -r requirements_lm_eval.txt
 >
 > COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
 >
-> If custom models on hub is being used, please set env variable HF_DATASETS_TRUST_REMOTE_CODE=true instead of arg --trust_remote_code with the installed lm_eval version and dependency datasets==3.6.0
+> For lm-eval tasks that still rely on dataset scripts, use a separate env with datasets 3.x or switch to Parquet/Arrow variants. This repo requires datasets>=4.0.0.
 
+The argument --system_instruction adds a system message to the beginning of the prompt.
+This instruction is treated as part of the input context and can influence how the model interprets the task or responds.
 
 ### Examples
+
+Evaluate [Moonlight-16B-A3B](https://huggingface.co/moonshotai/Moonlight-16B-A3B) (a DeepSeek-V3 like model) on Gaudi on task mmlu_abstract_algebra, with system instruction:
+```bash
+PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
+--model_name_or_path moonshotai/Moonlight-16B-A3B-Instruct \
+--tasks mmlu_abstract_algebra \
+--system_instruction "You are a helpful assistant that thinks step-by-step before answering." \
+--buckets=256 \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=1 \
+--trust_remote_code \
+-o mmlu.json
+```
 
 Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type:
 ```bash
@@ -841,4 +897,4 @@ PT_HPU_LAZY_MODE=1 python run_lm_eval.py \
 
 ## Text-Generation Pipeline
 
-A Transformers-like pipeline is defined and provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation/text-generation-pipeline). It is optimized for Gaudi and can be called to generate text in your scripts.
+A Transformers-like pipeline is defined and provided [here](/examples/text-generation/text-generation-pipeline). It is optimized for Gaudi and can be called to generate text in your scripts.

@@ -1,4 +1,5 @@
-datasets>=1.14.0
+datasets[audio]>=4.0.0
 evaluate
 numba==0.60.0
 librosa
+soundfile

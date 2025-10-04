@@ -36,7 +36,7 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers import PretrainedConfig
 from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.generation import GenerationMixin
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
@@ -1783,7 +1783,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -1794,13 +1793,8 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    if past_key_values[0] is not None:  ##added for (None, None)
-                        past_seen_tokens = past_key_values[0][0].shape[2]
+                if past_key_values[0] is not None:  ##added for (None, None)
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:
@@ -1834,7 +1828,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_router_logits = () if output_router_logits else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()

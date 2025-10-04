@@ -1,6 +1,6 @@
 {
     "gaudi1": {
-        "ydshieh/coco_dataset_script": {
+         "sentence-transformers/coco-captions":  {
             "num_train_epochs": 1,
             "eval_batch_size": 64,
             "distribution": {
@@ -12,9 +12,7 @@
                         "train_samples_per_second"
                     ],
                     "extra_arguments": [
-                        "--data_dir $PWD/",
-                        "--dataset_config_name 2017",
-                        "--image_column image_path",
+                        "--image_column image",
                         "--caption_column caption",
                         "--remove_unused_columns False",
                         "--warmup_steps 0",
@@ -22,15 +20,14 @@
                         "--save_strategy epoch",
                         "--use_hpu_graphs_for_training",
                         "--use_hpu_graphs_for_inference",
-                        "--dataloader_num_workers 16",
-                        "--trust_remote_code True"
+                        "--dataloader_num_workers 16"
                     ]
                 }
             }
         }
     },
     "gaudi2": {
-        "ydshieh/coco_dataset_script": {
+         "sentence-transformers/coco-captions":  {
             "eval_batch_size": 64,
             "num_train_epochs": 1,
             "distribution": {
@@ -42,9 +39,7 @@
                         "train_samples_per_second"
                     ],
                     "extra_arguments": [
-                        "--data_dir $PWD/",
-                        "--dataset_config_name 2017",
-                        "--image_column image_path",
+                        "--image_column image",
                         "--caption_column caption",
                         "--remove_unused_columns False",
                         "--warmup_steps 0",
@@ -54,7 +49,6 @@
                         "--dataloader_num_workers 2",
                         "--mediapipe_dataloader",
                         "--logging_nan_inf_filter",
-                        "--trust_remote_code True",
                         "--max_steps 100"
                     ]
                 }
@@ -62,7 +56,7 @@
         }
     },
     "gaudi3": {
-        "ydshieh/coco_dataset_script": {
+         "sentence-transformers/coco-captions":  {
             "eval_batch_size": 64,
             "num_train_epochs": 1,
             "distribution": {
@@ -74,9 +68,7 @@
                         "train_samples_per_second"
                     ],
                     "extra_arguments": [
-                        "--data_dir $PWD/",
-                        "--dataset_config_name 2017",
-                        "--image_column image_path",
+                        "--image_column image",
                         "--caption_column caption",
                         "--remove_unused_columns False",
                         "--warmup_steps 0",
@@ -86,7 +78,6 @@
                         "--dataloader_num_workers 2",
                         "--mediapipe_dataloader",
                         "--logging_nan_inf_filter",
-                        "--trust_remote_code True",
                         "--max_steps 100"
                     ]
                 }

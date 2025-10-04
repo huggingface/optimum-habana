@@ -14,9 +14,8 @@
 # limitations under the License.
 
 import numpy as np
-from torch.utils.data.sampler import BatchSampler
-
 from optimum.utils import logging
+from torch.utils.data.sampler import BatchSampler
 
 
 logger = logging.get_logger(__name__)

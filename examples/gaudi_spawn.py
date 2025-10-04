@@ -31,8 +31,9 @@ Multi node:
 import sys
 from argparse import REMAINDER, ArgumentParser
 
-from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
+
+from optimum.habana.distributed import DistributedRunner
 
 
 logger = logging.get_logger(__name__)
@@ -84,7 +85,7 @@ def main():
         if not is_deepspeed_available():
             raise ImportError(
                 "--use_deepspeed requires deepspeed: `pip install"
-                " git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0`."
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0`."
             )
 
     # Patch sys.argv

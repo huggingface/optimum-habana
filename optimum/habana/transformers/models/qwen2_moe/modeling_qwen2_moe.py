@@ -26,7 +26,7 @@ from typing import Optional, Union
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.qwen2_moe.configuration_qwen2_moe import Qwen2MoeConfig
@@ -858,7 +858,6 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -869,13 +868,8 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    if past_key_values[0] is not None:  ##added for (None, None)
-                        past_seen_tokens = past_key_values[0][0].shape[2]
+                if past_key_values[0] is not None:  ##added for (None, None)
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:
@@ -913,7 +907,7 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_router_logits = () if output_router_logits else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
@@ -922,48 +916,26 @@ class GaudiQwen2MoeModel(Qwen2MoeModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    output_router_logits,
-                    use_cache,
-                    cache_position,
-                    None,
-                    attn_softmax_bf16,
-                    False,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                    flash_attention_fast_softmax,
-                    valid_sequence_lengths,
-                    None,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    output_router_logits=output_router_logits,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    valid_sequence_lengths=valid_sequence_lengths,
-                    cache_idx=cache_idx,
-                    num_virtual_tokens=num_virtual_tokens,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                position_ids=position_ids,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                output_attentions=output_attentions,
+                output_router_logits=output_router_logits,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
+                reuse_cache=reuse_cache,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                flash_attention_fast_softmax=flash_attention_fast_softmax,
+                valid_sequence_lengths=valid_sequence_lengths,
+                cache_idx=cache_idx,
+                num_virtual_tokens=num_virtual_tokens,
+            )
 
             hidden_states = layer_outputs[0]
 
@@ -1042,7 +1014,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
-        **loss_kwargs,
+        **kwargs,
     ) -> MoeCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -1095,7 +1067,7 @@ class GaudiQwen2MoeForCausalLM(Qwen2MoeForCausalLM):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
         aux_loss = None
         if output_router_logits:

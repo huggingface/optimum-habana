@@ -25,6 +25,7 @@ from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
 from diffusers.pipelines.flux.pipeline_flux_img2img import FluxImg2ImgPipeline, calculate_shift, retrieve_timesteps
 from diffusers.utils import BaseOutput, replace_example_docstring
+from optimum.utils import logging
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -33,8 +34,6 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-
-from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment

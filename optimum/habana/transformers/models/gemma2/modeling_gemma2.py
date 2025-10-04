@@ -16,12 +16,12 @@
 """PyTorch Gemma2 model."""
 
 import math
-from functools import partial
 from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import Cache
+from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma2.modeling_gemma2 import (
     Gemma2Attention,
@@ -72,6 +72,19 @@ class GaudiGemma2RotaryEmbedding(GaudiRotaryEmbedding):
     def __init__(self, config: Gemma2Config):
         config.rope_scaling = getattr(config, "rope_scaling", None)
         super().__init__(config=config)
+
+
+def gaudi_gemma2_rmsnorm_forward(self, x):
+    if x.device.type == "hpu" and FusedRMSNorm is not None:
+        output = FusedRMSNorm.apply(x.float(), torch.ones_like(self.weight), self.eps)
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(x)
+    else:
+        output = self._norm(x.float())
+        # Llama does x.to(float16) * w whilst Gemma2 is (x * w).to(float16)
+        # See https://github.com/huggingface/transformers/pull/29402
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(x)
 
 
 def gaudi_gemma2_repeat_kv(
@@ -347,7 +360,7 @@ class GaudiGemma2Attention(Gemma2Attention):
 
     def post_attn_forward(self, attn_output):
         if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
+            return self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
 
@@ -501,7 +514,6 @@ class GaudiGemma2DecoderLayer(Gemma2DecoderLayer):
             residual.add_(hidden_states)
             hidden_states = residual
 
-        residual = hidden_states
         hidden_states = self.pre_feedforward_layernorm(hidden_states)
         hidden_states = self.mlp.pre_mlp_forward(hidden_states)
         return hidden_states, residual
@@ -590,7 +602,6 @@ class GaudiGemma2Model(Gemma2Model):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -601,12 +612,7 @@ class GaudiGemma2Model(Gemma2Model):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                if use_new_cache:
-                    if not isinstance(past_key_values, StaticCache):
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                past_seen_tokens = past_key_values[0][0].shape[2]
 
         if ignore_cache_position is False:
             if cache_position is None:
@@ -626,16 +632,42 @@ class GaudiGemma2Model(Gemma2Model):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                inputs_embeds,
-                past_seen_tokens,
-            )
+            if not isinstance(causal_mask_mapping := attention_mask, dict):
+                """
+                taken from here: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/gemma2/modeling_gemma2.py#L416-L430
+                with _gaudi_prepare_4d_causal_attention_mask
+                """
+                causal_mask_mapping = {
+                    "full_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                    ),
+                    "sliding_attention": _gaudi_prepare_4d_causal_attention_mask(
+                        attention_mask,
+                        input_ids.shape if input_ids is not None else (batch_size, seq_length),
+                        inputs_embeds,
+                        past_seen_tokens,
+                        self.config.sliding_window,
+                    ),
+                }
         else:
-            causal_mask = self._update_causal_mask(
-                attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-            )
+            if not isinstance(causal_mask_mapping := attention_mask, dict):
+                # Prepare mask arguments
+                mask_kwargs = {
+                    "config": self.config,
+                    "input_embeds": inputs_embeds,
+                    "attention_mask": attention_mask,
+                    "cache_position": cache_position,
+                    "past_key_values": past_key_values,
+                    "position_ids": position_ids,
+                }
+                # Create the masks
+                causal_mask_mapping = {
+                    "full_attention": create_causal_mask(**mask_kwargs),
+                    "sliding_attention": create_sliding_window_causal_mask(**mask_kwargs),
+                }
 
         # embed positions
         hidden_states = inputs_embeds
@@ -649,7 +681,7 @@ class GaudiGemma2Model(Gemma2Model):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()
@@ -665,47 +697,26 @@ class GaudiGemma2Model(Gemma2Model):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    partial(decoder_layer.__call__, **kwargs),
-                    hidden_states,
-                    position_embeddings,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    last_cache_position,
-                    None,
-                    attn_softmax_bf16,
-                    False,
-                    use_flash_attention,
-                    flash_attention_recompute,
-                    flash_attention_causal_mask,
-                    flash_attention_fast_softmax,
-                    None,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    position_embeddings=position_embeddings,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    last_cache_position=last_cache_position,
-                    token_idx=token_idx,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    reuse_cache=reuse_cache,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
-                    flash_attention_causal_mask=flash_attention_causal_mask,
-                    flash_attention_fast_softmax=flash_attention_fast_softmax,
-                    cache_idx=cache_idx,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=causal_mask_mapping[decoder_layer.attention_type],
+                position_ids=position_ids,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                last_cache_position=last_cache_position,
+                token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
+                reuse_cache=reuse_cache,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=flash_attention_recompute,
+                flash_attention_causal_mask=flash_attention_causal_mask,
+                flash_attention_fast_softmax=flash_attention_fast_softmax,
+                cache_idx=cache_idx,
+                **kwargs,
+            )
 
             hidden_states = layer_outputs[0]
 
@@ -767,7 +778,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
-        **loss_kwargs,
+        **kwargs,
     ) -> CausalLMOutputWithPast:
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -799,7 +810,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
-            **loss_kwargs,
+            **kwargs,
         )
 
         hidden_states = outputs.last_hidden_state
@@ -820,7 +831,7 @@ class GaudiGemma2ForCausalLM(Gemma2ForCausalLM):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
         return CausalLMOutputWithPast(
             loss=loss,

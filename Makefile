@@ -20,7 +20,7 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 export PT_HPU_LAZY_MODE=1
 # will be removed when lazy is disabled
 
-.PHONY:	style test
+.PHONY:	style test install_deepspeed
 
 # Run code quality checks
 style_check: clean
@@ -44,7 +44,7 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
-	python -m pip install peft==0.16.0
+	python -m pip install peft==0.17.0
 	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
@@ -96,7 +96,7 @@ slow_tests_1x: test_installs
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
 	@status1=0; status2=0; \
-	DATA_CACHE=$(DATA_CACHE) python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
+	DATASET_CONFIG='$(DATASET_CONFIG)' python -m pytest tests/test_examples.py -v -s -k "multi_card" || status1=$$?; \
 	python -m pytest tests/test_habana_profiler_integration.py -v -s -m x8 || status2=$$?; \
 	exit $$((status1 + status2))
 
@@ -141,7 +141,10 @@ slow_tests_image_to_text_example: test_installs
 	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
 
 slow_tests_image_to_text_example_1x: test_installs
-	python -m pytest tests/test_image_to_text_example.py -m "not x8" -v -s --token $(TOKEN)
+	python -m pytest tests/test_image_to_text_example.py -m "(not x2) and (not x8)" -v -s --token $(TOKEN)
+
+slow_tests_image_to_text_example_2x: test_installs
+	python -m pytest tests/test_image_to_text_example.py -m x2 -v -s --token $(TOKEN)
 
 slow_tests_image_to_text_example_8x: test_installs
 	python -m pytest tests/test_image_to_text_example.py -m x8 -v -s --token $(TOKEN)
@@ -161,7 +164,7 @@ slow_tests_fsdp: test_installs
 
 slow_tests_trl_ddpo: test_installs
 	python -m pip install trl==0.9.6
-	python -m pip install peft==0.15.0
+	python -m pip install peft==0.17.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
 slow_tests_trl_grpo: test_installs
@@ -221,7 +224,7 @@ clean:
 test_installs:
 	python -m pip install .[tests]
 
-DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.21.0
+DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
 
 install_deepspeed:
 	@set -eu

@@ -37,7 +37,7 @@ If you want to save the checkpoints for training model you need using `--saving_
 
 ## Multi-card Training
 
-For multi-card training you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training.
+For multi-card training you can use the script of [gaudi_spawn.py](/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  multi-card training.
 
 ```bash
 HABANA_VISIBLE_MODULES="2,3" PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --use_deepspeed --world_size 2 training_stsbenchmark.py bert-base-uncased
