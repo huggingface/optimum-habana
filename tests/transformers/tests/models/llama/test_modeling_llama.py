@@ -33,7 +33,7 @@ from transformers.testing_utils import (
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.transformers.models.llama.configuration_llama import LlamaConfig
+from optimum.habana.transformers.models.llama.configuration_llama import GaudiLlamaConfig
 from optimum.habana.utils import set_seed
 
 from ...generation.test_utils import GenerationTesterMixin
@@ -125,7 +125,7 @@ class LlamaModelTester:
         return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
 
     def get_config(self):
-        return LlamaConfig(
+        return GaudiLlamaConfig(
             vocab_size=self.vocab_size,
             hidden_size=self.hidden_size,
             num_hidden_layers=self.num_hidden_layers,
@@ -308,7 +308,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
 
     def setUp(self):
         self.model_tester = LlamaModelTester(self)
-        self.config_tester = ConfigTester(self, config_class=LlamaConfig, hidden_size=37)
+        self.config_tester = ConfigTester(self, config_class=GaudiLlamaConfig, hidden_size=37)
 
     def test_config(self):
         self.config_tester.run_common_tests()
@@ -418,7 +418,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             # Reinitialize the config with the new kwargs, forcing the config to go through its __init__ validation
             # steps.
             base_config_dict = base_config.to_dict()
-            new_config = LlamaConfig.from_dict(config_dict={**base_config_dict, **new_kwargs})
+            new_config = GaudiLlamaConfig.from_dict(config_dict={**base_config_dict, **new_kwargs})
             return new_config
 
         # from untouched config -> ✅

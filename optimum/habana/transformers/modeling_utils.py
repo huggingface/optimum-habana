@@ -203,7 +203,7 @@ from .models import (
     GLM4VConfig,
     GLM4VForConditionalGeneration,
     GLM4VForSequenceClassification,
-    LlamaConfig,
+    GaudiLlamaConfig,
     MiniCPM3Config,
     MiniCPM3ForCausalLM,
     MistralConfig,
@@ -265,7 +265,7 @@ from .models import (
     gaudi_gpt_oss_decoder_layer_forward,
     gaudi_gpt_oss_rmsnorm_forward,
     gaudi_invert_attention_mask,
-    gaudi_llama_rmsnorm_forward,
+    # gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
     gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
@@ -506,8 +506,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
-    transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
-    transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
+    transformers.models.llama.configuration_llama.LlamaConfig = GaudiLlamaConfig
+    transformers.AutoConfig.register("llama", GaudiLlamaConfig, exist_ok=True)
+    transformers.AutoModelForCausalLM.register(GaudiLlamaConfig, GaudiLlamaForCausalLM, exist_ok=True)
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
@@ -768,7 +769,7 @@ def adapt_transformers_to_gaudi():
         gaudi_FalconMambaForCausalLM_prepare_inputs_for_generation
     )
     transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaModel.forward = gaudi_FalconMambaModel_forward
-    transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+    # transformers.models.falcon_mamba.modeling_falcon_mamba.FalconMambaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for VideoLlava on Gaudi
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (

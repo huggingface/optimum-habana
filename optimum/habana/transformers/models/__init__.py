@@ -177,8 +177,7 @@ from .llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
-    LlamaConfig,
-    gaudi_llama_rmsnorm_forward,
+    GaudiLlamaConfig,
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration

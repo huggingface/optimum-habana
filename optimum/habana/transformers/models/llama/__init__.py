@@ -1,4 +1,4 @@
-from .configuration_llama import LlamaConfig
+from .configuration_llama import GaudiLlamaConfig
 from .modeling_llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
@@ -6,5 +6,4 @@ from .modeling_llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
-    gaudi_llama_rmsnorm_forward,
 )
