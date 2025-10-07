@@ -1,0 +1,6 @@
+openpyxl
+datasets
+pandas
+sentencepiece
+transformers
+matplotlib
