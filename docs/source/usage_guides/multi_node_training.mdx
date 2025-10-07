@@ -79,7 +79,7 @@ env_variable_2_name=value
 
 ## Recommendations
 
-- It is strongly recommended to use gradient checkpointing for multi-node runs to get the highest speedups. You can enable it with `--gradient_checkpointing` in [these examples](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples) or with `gradient_checkpointing=True` in your `GaudiTrainingArguments`.
+- It is strongly recommended to use gradient checkpointing for multi-node runs to get the highest speedups. You can enable it with `--gradient_checkpointing` in [these examples](/examples) or with `gradient_checkpointing=True` in your `GaudiTrainingArguments`.
 - Larger batch sizes should lead to higher speedups.
 - Multi-node inference is not recommended and can provide inconsistent results.
 - On Intel Tiber AI Cloud instances, run your Docker containers with the `--privileged` flag so that EFA devices are visible.
@@ -88,7 +88,7 @@ env_variable_2_name=value
 ## Example
 
 In this example, we fine-tune a pre-trained GPT2-XL model on the [WikiText dataset](https://huggingface.co/datasets/wikitext).
-We are going to use the [causal language modeling example which is given in the Github repository](https://github.com/huggingface/optimum-habana/tree/v1.20-release/examples/language-modeling#gpt-2gpt-and-causal-language-modeling).
+We are going to use the [causal language modeling example which is given in the Github repository](/examples/language-modeling#gpt-2gpt-and-causal-language-modeling).
 
 The first step consists in training the model on several nodes with this command:
 ```bash
