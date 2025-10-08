@@ -458,7 +458,17 @@ def setup_parser(parser):
         "--attn_implementation",
         type=str,
         default="eager",
-        help="Select attention implementation. Use one of 'flash_attention_3', 'flash_attention_2', 'flex_attention', 'paged_attention', 'sdpa', 'sdpa_paged', 'eager', 'eager_paged'",
+        choices=[
+            "flash_attention_3",
+            "flash_attention_2",
+            "flex_attention",
+            "paged_attention",
+            "sdpa",
+            "sdpa_paged",
+            "eager",
+            "eager_paged",
+        ],
+        help="Select attention implementation",
     )
 
     args = parser.parse_args()
