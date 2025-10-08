@@ -802,6 +802,7 @@ def initialize_model(args, logger):
         "revision": args.model_revision,
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
+        "attn_implementation": args.attn_implementation,
     }
     if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16

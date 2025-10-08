@@ -464,6 +464,23 @@ def setup_parser(parser):
         help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
     )
 
+    parser.add_argument(
+        "--attn_implementation",
+        type=str,
+        default="eager",
+        choices=[
+            "flash_attention_3",
+            "flash_attention_2",
+            "flex_attention",
+            "paged_attention",
+            "sdpa",
+            "sdpa_paged",
+            "eager",
+            "eager_paged",
+        ],
+        help="Select attention implementation",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
