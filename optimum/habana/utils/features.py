@@ -56,6 +56,15 @@ class IsFusedRMSNormAvailable(Feature):
         super().__init__(Kernel("habana_frameworks.torch.hpex.normalization", "FusedRMSNorm"))
 
 
+class IsFusedSDPAAvailable(Feature):
+    """
+    Represents the availability of the FusedSDPA kernel.
+    """
+
+    def __init__(self):
+        super().__init__(Kernel("habana_frameworks.torch.hpex.kernels", "FusedSDPA"))
+
+
 class IsLazyMode(Feature):
     """
     Represents whether lazy mode is enabled via environment variable.
