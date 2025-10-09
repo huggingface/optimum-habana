@@ -59,7 +59,7 @@ PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --sdp_on_bf16 \
     --bf16 \
     --trust_remote_code True \
-    --attn_implementation sdpa
+    --attn_implementation gaudi_fused_sdpa
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -100,7 +100,7 @@ python ../gaudi_spawn.py \
     --trust_remote_code True \
     --torch_compile \
     --torch_compile_backend hpu_backend \
-    --attn_implementation sdpa
+    --attn_implementation gaudi_fused_sdpa
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.

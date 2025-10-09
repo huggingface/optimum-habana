@@ -17,6 +17,7 @@ import os
 
 import transformers
 import transformers.utils.fx
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
 from .generation import (
     GaudiGenerationConfig,
@@ -34,6 +35,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_validate_environment,
 )
 from .integrations.finegrained_fp8 import GaudiFP8Linear
+from .integrations.gaudi_fused_sdpa_attention import gaudi_fused_sdpa_attention_forward
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     ArcticConfig,
@@ -342,6 +344,7 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+    ALL_ATTENTION_FUNCTIONS.register("gaudi_fused_sdpa", gaudi_fused_sdpa_attention_forward)
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []

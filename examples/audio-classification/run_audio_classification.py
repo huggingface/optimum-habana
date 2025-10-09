@@ -180,33 +180,6 @@ class ModelArguments:
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
-    use_flash_attention: bool = field(
-        default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning"}
-    )
-    flash_attention_recompute: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to enable recompute in Habana flash attention for fine-tuning."
-            " It is applicable only when use_flash_attention is True."
-        },
-    )
-    flash_attention_fast_softmax: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to use fast softmax for Habana flash attention."
-            " It is applicable only when use_flash_attention is True."
-        },
-    )
-
-    def __post_init__(self):
-        if self.use_flash_attention:
-            os.environ["USE_FLASH_ATTENTION"] = "1"
-        if self.flash_attention_recompute:
-            assert self.use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
-            os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
-        if self.flash_attention_fast_softmax:
-            assert self.use_flash_attention, "flash_attention_fast_softmax is set, but use_flash_attention is not"
-            os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
 
 
 def main():

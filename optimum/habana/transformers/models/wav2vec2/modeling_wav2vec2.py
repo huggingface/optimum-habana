@@ -37,12 +37,6 @@ except ImportError:
     print("Could not import Custom CTCLoss kernel. This Kernel is available only for SynapseAI >= 1.15.0")
     custom_ctc_loss_fwd = None
 
-try:
-    from habana_frameworks.torch.hpex.kernels import FusedSDPA
-except ImportError:
-    print("Not using HPU fused scaled dot-product attention kernel.")
-    FusedSDPA = None
-
 
 def _gaudi_wav2vec2_compute_mask_indices(
     shape: tuple[int, int],
