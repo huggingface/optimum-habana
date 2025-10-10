@@ -52,7 +52,7 @@ docker exec -it oh-1.22.0 bash
 export model_name=meta-llama/Llama-3.1-8B-Instruct
 export world_size=1
 export PT_HPU_LAZY_MODE=1
-export PT_HPU_ENABLE_LAZY_COLLECTIVES=true
+export HF_TOKEN=<YOUR_TOKEN_HERE>
 export HF_DATASETS_TRUST_REMOTE_CODE=true
 export TQDM_DISABLE=1
 export QUANT_CONFIG=/root/optimum-habana/examples/text-generation/quantization_config/maxabs_measure.json
