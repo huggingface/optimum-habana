@@ -1,7 +1,7 @@
 # Optimum-Habana model agnostic Container (Single Node)
 This folder contains scripts and configuration files that can be used to build an Optimum-Habana container with support for the following models:
 
-|HPU|Model|Number of GPUs (world_size)|
+|HPU|Model|Number of HPUs (world_size)|
 |--|--|--|
 |Gaudi2|meta-llama/Llama-3.1-8B-Instruct|1|
 |Gaudi2|meta-llama/Llama-3.1-70B-Instruct|2|
@@ -40,13 +40,13 @@ docker build -f Dockerfile $BUILD_ARGS -t oh-1.22.0-gaudi .
 ```bash
 DOCKER_OPTS="-e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host -d --runtime=habana --restart always"
 DOCKER_OPTS="${DOCKER_OPTS} -e HF_TOKEN=$hf_token -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy"
-docker run $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.22.0 oh-1.22.0-gaudi
+docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.22.0 oh-1.22.0-gaudi
 docker exec -it oh-1.22.0 bash
 ```
 
 2) Build Measurement files for Single Card models - this needs to be run once per model. 
 * Change the value for model_name to the one you need to use
-* Set world_size to the number of GPUs recommended as per the table above
+* Set world_size to the number of HPUs recommended as per the table above
 
 ```bash
 export model_name=meta-llama/Llama-3.1-8B-Instruct
@@ -119,7 +119,7 @@ docker exec -it oh-1.22.0 bash
 
 2) Build Measurement files for Single Card models - this needs to be run once per model. 
 * Change the value for model_name to the one you need to use
-* Set world_size to the number of GPUs recommended as per the table above
+* Set world_size to the number of HPUs recommended as per the table above
 ```bash
 export model_name=meta-llama/Llama-3.1-70B-Instruct
 export world_size=8
