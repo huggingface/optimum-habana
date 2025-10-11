@@ -30,7 +30,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile
 from ...models.attention_processor import GaudiWanAttnProcessor
-from ...models.autoencoders.autoencoder_kl_wan import WanDecoder3dForwardGaudi, WanEncoder3dForwardGaudi
+from ...models.autoencoders.autoencoder_kl_wan import WanDecoder3dForwardGaudi, WanEncoder3dForwardGaudi, WanAvgDown3DForwardGaudi, WanDupUp3DForwardGaudi
 from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 
@@ -137,7 +137,13 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 block.attn1.processor = GaudiWanAttnProcessor(is_training)
                 block.attn2.processor = GaudiWanAttnProcessor(is_training)
         self.vae.encoder.forward = types.MethodType(WanEncoder3dForwardGaudi, self.vae.encoder)
+        for block in self.vae.encoder.down_blocks:
+            if block.avg_shortcut is not None:
+                block.avg_shortcut.forward = types.MethodType(WanAvgDown3DForwardGaudi, block.avg_shortcut)
         self.vae.decoder.forward = types.MethodType(WanDecoder3dForwardGaudi, self.vae.decoder)
+        for block in self.vae.decoder.up_blocks:
+            if block.avg_shortcut is not None:
+                block.avg_shortcut.forward = types.MethodType(WanDupUp3DForwardGaudi, block.avg_shortcut)
 
         if use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph

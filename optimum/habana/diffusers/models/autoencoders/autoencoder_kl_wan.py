@@ -15,10 +15,91 @@
 
 import habana_frameworks.torch.core as htcore
 import torch
+import torch.nn.functional as F
 
 
 CACHE_T = 2
 
+def WanAvgDown3DForwardGaudi(self, x: torch.Tensor) -> torch.Tensor:
+    r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L37
+    workaround a GC issue on G3: use transpose to replace permute to bypass extractDataMovementMultiNodes
+    """
+    pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t
+    pad = (0, 0, 0, 0, pad_t, 0)
+    x = F.pad(x, pad)
+    B, C, T, H, W = x.shape
+    x = x.view(
+        B,
+        C,
+        T // self.factor_t,
+        self.factor_t,
+        H // self.factor_s,
+        self.factor_s,
+        W // self.factor_s,
+        self.factor_s,
+    )
+
+    # the original code is permute(0, 1, 3, 5, 7, 2, 4, 6)
+    # split it by transpose(6, 7) and permute(0, 1, 3, 5, 6, 2, 4, 7)
+    x = x.transpose(6, 7).contiguous()
+    htcore.mark_step()
+    x = x.permute(0, 1, 3, 5, 6, 2, 4, 7).contiguous()
+
+    x = x.view(
+        B,
+        C * self.factor,
+        T // self.factor_t,
+        H // self.factor_s,
+        W // self.factor_s,
+    )
+    x = x.view(
+        B,
+        self.out_channels,
+        self.group_size,
+        T // self.factor_t,
+        H // self.factor_s,
+        W // self.factor_s,
+    )
+    x = x.mean(dim=2)
+    return x
+
+def WanDupUp3DForwardGaudi(self, x: torch.Tensor, first_chunk=False) -> torch.Tensor:
+    r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L90
+    workaround a GC issue on G3: use transpose to replace permute to bypass extractDataMovementMultiNodes
+    """
+    x = x.repeat_interleave(self.repeats, dim=1)
+    x = x.view(
+        x.size(0),
+        self.out_channels,
+        self.factor_t,
+        self.factor_s,
+        self.factor_s,
+        x.size(2),
+        x.size(3),
+        x.size(4),
+    )
+
+    # the original code is permute(0, 1, 5, 2, 6, 3, 7, 4)
+    # split it by transpose(2, 5), permute(0, 1, 2, 5, 6, 3, 4, 7) and transpose(6, 7)
+    x = x.transpose(2, 5).contiguous()
+    htcore.mark_step()
+    x = x.permute(0, 1, 2, 5, 6, 3, 4, 7).contiguous()
+    htcore.mark_step()
+    x = x.transpose(6, 7).contiguous()
+
+    x = x.view(
+        x.size(0),
+        self.out_channels,
+        x.size(2) * self.factor_t,
+        x.size(4) * self.factor_s,
+        x.size(6) * self.factor_s,
+    )
+    if first_chunk:
+        x = x[:, :, self.factor_t - 1 :, :, :]
+        x = x.contiguous()
+    return x
 
 def WanDecoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0], first_chunk=False):
     r"""
