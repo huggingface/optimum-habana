@@ -25,9 +25,8 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
-from transformers.cache_utils import Cache, StaticCache
+from transformers.cache_utils import Cache
 from transformers.integrations.deepspeed import is_deepspeed_available
-from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     MoeCausalLMOutputWithPast,
@@ -894,9 +893,6 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        ignore_cache_position = True  # Ignoring cache position for HPU
-        # use_new_cache = False  # Ignoring new Cache path for HPU
-
         past_seen_tokens = 0
 
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
@@ -910,44 +906,20 @@ class GaudiQwen3MoeModel(Qwen3MoeModel):
                 if past_key_values[0] is not None:  ##added for (None, None)
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
-        if ignore_cache_position is False:
-            if cache_position is None:
-                if isinstance(past_key_values, StaticCache):
-                    raise ValueError("cache_position is a required argument when using StaticCache.")
-                cache_position = torch.arange(
-                    past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
-                )
-            if position_ids is None and cache_position:
-                position_ids = cache_position.unsqueeze(0)
-
-        else:
-            if position_ids is None:
-                position_ids = torch.arange(
-                    past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
-                )
-                position_ids = position_ids.unsqueeze(0)
-            cache_position = None
+        if position_ids is None:
+            position_ids = torch.arange(
+                past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
+            )
+            position_ids = position_ids.unsqueeze(0)
+        cache_position = None
 
         # HPU specific mask generation
-        if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape if input_ids is not None else (batch_size, seq_length),
-                inputs_embeds,
-                past_seen_tokens,
-            )
-        else:
-            mask_function = (
-                create_causal_mask if self.config.sliding_window is None else create_sliding_window_causal_mask
-            )
-            causal_mask = mask_function(
-                config=self.config,
-                input_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                cache_position=cache_position,
-                past_key_values=past_seen_tokens,
-                position_ids=position_ids,
-            )
+        causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask,
+            input_ids.shape if input_ids is not None else (batch_size, seq_length),
+            inputs_embeds,
+            past_seen_tokens,
+        )
 
         # embed positions
         hidden_states = inputs_embeds
