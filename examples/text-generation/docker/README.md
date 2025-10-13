@@ -11,7 +11,6 @@ This folder contains scripts and configuration files that can be used to build a
 |Gaudi3|meta-llama/Llama-3.1-70B-Instruct|2|
 |Gaudi3|meta-llama/Llama-3.1-70B-Instruct|8|
 |Gaudi3|meta-llama/Llama-3.3-70B-Instruct|8|
-|Gaudi3|meta-llama/Llama-3.1-405B-Instruct|8|
 
 
 ## Quick Start
