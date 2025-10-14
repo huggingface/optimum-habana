@@ -42,6 +42,9 @@ def gaudi_SpeechT5Attention_forward(
 
     bsz, tgt_len, _ = hidden_states.size()
 
+    def _reshape_for_scores(t: torch.Tensor, seq_len: int, bsz: int) -> torch.Tensor:
+        return t.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+
     # get query proj
     query_states = self.q_proj(hidden_states) * self.scaling
     # get key, value proj
@@ -51,12 +54,12 @@ def gaudi_SpeechT5Attention_forward(
         value_states = past_key_value[1]
     elif is_cross_attention:
         # cross_attentions
-        key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
-        value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+        key_states = _reshape_for_scores(self.k_proj(key_value_states), -1, bsz)
+        value_states = _reshape_for_scores(self.v_proj(key_value_states), -1, bsz)
     elif past_key_value is not None:
         # reuse k, v, self_attention
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        key_states = _reshape_for_scores(self.k_proj(hidden_states), -1, bsz)
+        value_states = _reshape_for_scores(self.v_proj(hidden_states), -1, bsz)
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_states)
             past_key_value[1].index_copy_(2, token_idx - 1, value_states)
@@ -67,8 +70,8 @@ def gaudi_SpeechT5Attention_forward(
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
     else:
         # self_attention
-        key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-        value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+        key_states = _reshape_for_scores(self.k_proj(hidden_states), -1, bsz)
+        value_states = _reshape_for_scores(self.v_proj(hidden_states), -1, bsz)
 
     if self.is_decoder:
         # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
@@ -81,7 +84,7 @@ def gaudi_SpeechT5Attention_forward(
         past_key_value = (key_states, value_states)
 
     proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-    query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
+    query_states = _reshape_for_scores(query_states, tgt_len, bsz).view(*proj_shape)
     key_states = key_states.view(*proj_shape)
     value_states = value_states.view(*proj_shape)
 
