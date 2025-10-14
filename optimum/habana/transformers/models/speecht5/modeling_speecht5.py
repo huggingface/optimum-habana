@@ -379,7 +379,7 @@ def gaudi_generate_speech(
         raise ValueError(
             """`speaker_embeddings` must be specified. For example, you can use a speaker embeddings by following
                     the code snippet provided in this link:
-                    https://huggingface.co/datasets/Matthijs/cmu-arctic-xvectors
+                    https://huggingface.co/datasets/regisss/cmu-arctic-xvectors
                     """
         )
     from habana_frameworks.torch.hpu import wrap_in_hpu_graph
