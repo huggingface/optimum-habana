@@ -103,7 +103,7 @@ def WanDupUp3DForwardGaudi(self, x: torch.Tensor, first_chunk=False) -> torch.Te
 
 def WanDecoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0], first_chunk=False):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L874
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L874
     only add mark_step() for memory optimization.
     """
     ## conv1
@@ -147,7 +147,7 @@ def WanDecoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0], first_chunk
 
 def WanEncoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0]):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L586
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L586
     only add mark_step() for first iters caused too many time on graph build in lazy mode.
     """
     if feat_cache is not None:
