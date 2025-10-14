@@ -79,7 +79,7 @@ class TestGaudiPipeline:
             )
             forward_params = None
             if generator.model.config.model_type == "speecht5":
-                embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+                embeddings_dataset = load_dataset("regisss/cmu-arctic-xvectors", split="validation")
                 speaker_embedding = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0).to("hpu")
                 forward_params = {"speaker_embeddings": speaker_embedding}
             if generator.model.config.model_type == "seamless_m4t":
