@@ -30,7 +30,12 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile
 from ...models.attention_processor import GaudiWanAttnProcessor
-from ...models.autoencoders.autoencoder_kl_wan import WanDecoder3dForwardGaudi, WanEncoder3dForwardGaudi, WanAvgDown3DForwardGaudi, WanDupUp3DForwardGaudi
+from ...models.autoencoders.autoencoder_kl_wan import (
+    WanAvgDown3DForwardGaudi,
+    WanDecoder3dForwardGaudi,
+    WanDupUp3DForwardGaudi,
+    WanEncoder3dForwardGaudi,
+)
 from ...models.wan_transformer_3d import WanTransformer3DModleForwardGaudi
 from ..pipeline_utils import GaudiDiffusionPipeline
 

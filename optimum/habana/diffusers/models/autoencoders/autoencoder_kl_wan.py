@@ -20,6 +20,7 @@ import torch.nn.functional as F
 
 CACHE_T = 2
 
+
 def WanAvgDown3DForwardGaudi(self, x: torch.Tensor) -> torch.Tensor:
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L37
@@ -64,6 +65,7 @@ def WanAvgDown3DForwardGaudi(self, x: torch.Tensor) -> torch.Tensor:
     x = x.mean(dim=2)
     return x
 
+
 def WanDupUp3DForwardGaudi(self, x: torch.Tensor, first_chunk=False) -> torch.Tensor:
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.35.1/src/diffusers/models/autoencoders/autoencoder_kl_wan.py#L90
@@ -100,6 +102,7 @@ def WanDupUp3DForwardGaudi(self, x: torch.Tensor, first_chunk=False) -> torch.Te
         x = x[:, :, self.factor_t - 1 :, :, :]
         x = x.contiguous()
     return x
+
 
 def WanDecoder3dForwardGaudi(self, x, feat_cache=None, feat_idx=[0], first_chunk=False):
     r"""
