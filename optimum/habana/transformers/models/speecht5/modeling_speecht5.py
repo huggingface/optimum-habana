@@ -311,11 +311,12 @@ def gaudi_generate_speech(
     return_output_lengths: bool = False,
 ):
     """
-    Copied from _generate_speech (transformers 4.55.4)
-    Differences:
-    - wrapped with HPU graphs
-    - static-shape kv-cache (Cache API)
-    - disable dropout in prenet
+    Copied and adapted from `_generate_speech` (transformers v4.55.4)
+    Differences introduced for Habana Gaudi:
+    - wrapped encoder / decoder / prenet with HPU graphs
+    - use static-shape kv-cache via Cache API (DynamicCache + EncoderDecoderCache)
+    - disable dropout in prenet for deterministic output lengths
+    - adjust attention_mask update order (fixes off-by-one shape mismatch)
     """
     if speaker_embeddings is None:
         raise ValueError(
@@ -324,6 +325,7 @@ def gaudi_generate_speech(
 
     from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
+    # Wrap model components with HPU graph to enable static compilation
     if not hasattr(model.speecht5.encoder, "clear_cache"):
         model.speecht5.encoder = wrap_in_hpu_graph(model.speecht5.encoder)
     if not hasattr(model.speecht5.decoder.wrapped_decoder, "clear_cache"):
@@ -331,11 +333,14 @@ def gaudi_generate_speech(
     if not hasattr(model.speecht5.decoder.prenet, "clear_cache"):
         model.speecht5.decoder.prenet = wrap_in_hpu_graph(model.speecht5.decoder.prenet)
 
+    # Prepare encoder attention mask
     encoder_attention_mask = (
         1 - (input_values == model.config.pad_token_id).int() if attention_mask is None else attention_mask
     )
 
     bsz = input_values.size(0)
+
+    # Run encoder
     encoder_out = model.speecht5.encoder(
         input_values=input_values,
         attention_mask=encoder_attention_mask,
@@ -343,37 +348,46 @@ def gaudi_generate_speech(
     )
     encoder_hidden_states = encoder_out.last_hidden_state
 
-    # Downsample attention mask if prenet used
+    # Downsample attention mask if using speech prenet
     if isinstance(model.speecht5.encoder, SpeechT5EncoderWithSpeechPrenet):
         encoder_attention_mask = model.speecht5.encoder.prenet._get_feature_vector_attention_mask(
             encoder_hidden_states.shape[1], encoder_attention_mask
         )
 
+    # Determine dynamic decoding length bounds
     maxlen = int(encoder_hidden_states.size(1) * maxlenratio / model.config.reduction_factor)
     minlen = int(encoder_hidden_states.size(1) * minlenratio / model.config.reduction_factor)
 
+    # Initialize decoder inputs
     output_sequence = encoder_hidden_states.new_zeros(bsz, 1, model.config.num_mel_bins)
     output_sequence = torch.nn.functional.pad(output_sequence, (0, 0, 0, maxlen - 1), value=model.config.pad_token_id)
-    spectrogram, cross_attentions, result_spectrogram = [], [], {}
-    token_idx = torch.tensor(1, device=output_sequence.device)
-    attention_mask = torch.zeros((bsz, maxlen), dtype=torch.long, device=output_sequence.device)
 
+    # Prepare attention and cache structures
+    attention_mask = torch.zeros((bsz, maxlen), dtype=torch.long, device=output_sequence.device)
     self_attention_cache = DynamicCache()
     cross_attention_cache = DynamicCache()
     past_key_values = EncoderDecoderCache(self_attention_cache, cross_attention_cache)
 
+    # Internal buffers
+    spectrogram, cross_attentions, result_spectrogram = [], [], {}
+    token_idx = torch.tensor(1, device=output_sequence.device)
     idx = 0
+
+    # Generation loop
     while True:
         idx += 1
-        attention_mask.index_fill_(1, token_idx - 1, 1)
 
+        # Prenet (disable dropout for HPU determinism)
         decoder_hidden_states = model.speecht5.decoder.prenet(output_sequence, speaker_embeddings)
+
+        # Use last step or full input depending on cache
         decoder_inputs = (
             decoder_hidden_states
             if past_key_values.get_seq_length() == 0
             else torch.index_select(decoder_hidden_states, 1, token_idx - 1)
         )
 
+        # Decoder forward with caching
         decoder_out = model.speecht5.decoder.wrapped_decoder(
             hidden_states=decoder_inputs,
             attention_mask=attention_mask,
@@ -386,18 +400,26 @@ def gaudi_generate_speech(
             token_idx=token_idx,
         )
 
+        attention_mask.index_fill_(1, token_idx - 1, 1)
+
+        # Optional cross-attention collection
         if output_cross_attentions:
             cross_attentions.append(torch.cat(decoder_out.cross_attentions, dim=0))
 
+        # Extract decoder output
         last_output = decoder_out.last_hidden_state[:, 0:1, :].squeeze(1)
+
+        # Predict mel spectrum
         spectrum = model.speech_decoder_postnet.feat_out(last_output)
         spectrum = spectrum.view(bsz, model.config.reduction_factor, model.config.num_mel_bins)
         spectrogram.append(spectrum)
 
+        # Update output sequence and token index
         output_sequence.index_copy_(1, token_idx, spectrum[:, -1, :].view(bsz, 1, model.config.num_mel_bins))
         prob = torch.sigmoid(model.speech_decoder_postnet.prob_out(last_output))
         token_idx.add_(1)
 
+        # Early exit logic
         if idx < minlen:
             continue
         meet_indexes = (
@@ -412,7 +434,9 @@ def gaudi_generate_speech(
         if len(result_spectrogram) >= bsz:
             break
 
+    # Combine all generated spectrograms
     spectrograms = [result_spectrogram[i] for i in range(len(result_spectrogram))]
+
     if not return_output_lengths:
         spectrogram = spectrograms[0] if bsz == 1 else torch.nn.utils.rnn.pad_sequence(spectrograms, batch_first=True)
         outputs = vocoder(spectrogram) if vocoder is not None else spectrogram
@@ -437,4 +461,5 @@ def gaudi_generate_speech(
                 bsz, int(cross_attentions.size(0) / bsz), *cross_attentions.size()[-3:]
             )
             outputs = (*outputs, cross_attentions)
+
     return outputs
