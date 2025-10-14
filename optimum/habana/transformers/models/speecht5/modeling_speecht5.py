@@ -30,55 +30,34 @@ def gaudi_SpeechT5Attention_forward(
     output_attentions: bool = False,
     cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
-    layer_idx: Optional[int] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     """
-    Copied from SpeechT5Attention.forward (transformers 4.55.4)
     The only differences are:
-    - add new arg `token_idx`
+    - add new args token_idx
+    - update to HF 4.55.4 Cache API (no explicit past_key_value tuple in/out)
     """
 
-    # if key_value_states are provided this layer is used as a cross-attention layer
-    # for the decoder
     is_cross_attention = key_value_states is not None
-
     bsz, tgt_len, _ = hidden_states.size()
 
-    # get query projection
+    # get query proj
     query_states = self.q_proj(hidden_states) * self.scaling
 
-    # retrieve cache entry for this layer
-    if past_key_value is not None:
-        if is_cross_attention:
-            curr_past = past_key_value.cross_attention_cache
-        else:
-            curr_past = past_key_value.self_attention_cache
-    else:
-        curr_past = None
-
-    # compute key/value
     current_states = key_value_states if is_cross_attention else hidden_states
-    if curr_past is not None and curr_past.is_updated.get(layer_idx, False) and is_cross_attention:
-        key_states = curr_past.layers[layer_idx].keys
-        value_states = curr_past.layers[layer_idx].values
-    else:
-        key_states = self.k_proj(current_states)
-        value_states = self.v_proj(current_states)
-        key_states = key_states.view(bsz, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
-        if past_key_value is not None:
-            # update Cache (new HF 4.55+ mechanism)
-            cache_position = cache_position if not is_cross_attention else None
-            key_states, value_states = curr_past.update(
-                key_states, value_states, layer_idx, {"cache_position": cache_position}
-            )
-            if is_cross_attention:
-                past_key_value.is_updated[layer_idx] = True
+    key_states = self.k_proj(current_states)
+    value_states = self.v_proj(current_states)
+    key_states = key_states.view(bsz, -1, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+    value_states = value_states.view(bsz, -1, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+
+    if past_key_value is not None:
+        _cache_pos = None if is_cross_attention else cache_position
+        key_states, value_states = past_key_value.update(
+            key_states, value_states, getattr(self, "layer_idx", None), {"cache_position": _cache_pos}
+        )
 
     proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-    query_states = query_states.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
-    query_states = query_states.reshape(*proj_shape)
+    query_states = query_states.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2).reshape(*proj_shape)
     key_states = key_states.reshape(*proj_shape)
     value_states = value_states.reshape(*proj_shape)
 
@@ -87,8 +66,7 @@ def gaudi_SpeechT5Attention_forward(
 
     if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
         raise ValueError(
-            f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, "
-            f"but is {attn_weights.size()}"
+            f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is {attn_weights.size()}"
         )
 
     # relative attention bias
@@ -129,8 +107,7 @@ def gaudi_SpeechT5Attention_forward(
 
     if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
         raise ValueError(
-            f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, "
-            f"but is {attn_output.size()}"
+            f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is {attn_output.size()}"
         )
 
     attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim).transpose(1, 2)
@@ -148,56 +125,61 @@ def gaudi_SpeechT5DecoderLayer_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
-    past_key_value: Optional["Cache"] = None,
+    past_key_value: Optional["Cache"] = None,  # 4.55.4
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = True,
     cache_position: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
-    Copied from SpeechT5DecoderLayer.forward (transformers 4.55.4)
+    Copied from SpeechT5DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/speecht5/modeling_speecht5.py
     The only differences are:
-    - add token_idx argument in self-attention
+    - add token_idx in self-attention
+    - align with HF 4.55.4: no present_key_value returned (cache is updated in-place)
     """
     residual = hidden_states
 
-    # Self-Attention (HF 4.55.4 style)
-    hidden_states, self_attn_weights = self.self_attn(
+    # Self Attention
+    self_attn_outputs = self.self_attn(
         hidden_states=hidden_states,
-        past_key_value=past_key_value,
+        past_key_value=past_key_value.self_attention_cache if past_key_value is not None else None,
         attention_mask=attention_mask,
         layer_head_mask=layer_head_mask,
         output_attentions=output_attentions,
         cache_position=cache_position,
-        token_idx=token_idx,  # Gaudi extension
+        token_idx=token_idx,
     )
-
-    hidden_states = self.dropout(hidden_states)
+    hidden_states = self.dropout(self_attn_outputs[0])
     hidden_states = residual + hidden_states
     hidden_states = self.self_attn_layer_norm(hidden_states)
 
+    # Cross-Attention Block
     cross_attn_weights = None
     if encoder_hidden_states is not None:
         residual = hidden_states
-        hidden_states, cross_attn_weights = self.encoder_attn(
+        cross_outputs = self.encoder_attn(
             hidden_states=hidden_states,
             key_value_states=encoder_hidden_states,
             attention_mask=encoder_attention_mask,
             layer_head_mask=cross_attn_layer_head_mask,
-            past_key_value=past_key_value,
+            past_key_value=past_key_value.cross_attention_cache if past_key_value is not None else None,
             output_attentions=output_attentions,
             cache_position=cache_position,
         )
-        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.dropout(cross_outputs[0])
         hidden_states = residual + hidden_states
         hidden_states = self.encoder_attn_layer_norm(hidden_states)
+        if output_attentions:
+            cross_attn_weights = cross_outputs[1]
 
+    # Fully Connected
     hidden_states = hidden_states + self.feed_forward(hidden_states)
     hidden_states = self.final_layer_norm(hidden_states)
 
     outputs = (hidden_states,)
     if output_attentions:
-        outputs += (self_attn_weights, cross_attn_weights)
+        # self-attn weights
+        outputs += (self_attn_outputs[1], cross_attn_weights)
 
     return outputs
 
@@ -219,10 +201,11 @@ def gaudi_SpeechT5Decoder_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
-    Copied from SpeechT5Decoder.forward (transformers 4.55.4)
+    Copied from SpeechT5Decoder.forward: https://github.com/huggingface/transformers/blob/v4.55.4/src/transformers/models/speecht5/modeling_speecht5.py
     The only differences are:
-    - add token_idx args for Gaudi
+    - add token_idx args
     - use _gaudi_prepare_4d_causal_attention_mask
+    - align with HF 4.55.4 Cache API (no next_decoder_cache)
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
@@ -232,12 +215,14 @@ def gaudi_SpeechT5Decoder_forward(
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     input_shape = hidden_states.size()[:-1]
-    past_seen_tokens = past_key_values.get_usable_length(cache_position) if past_key_values is not None else 0
+
+    past_key_values_length = past_key_values.get_seq_length() if past_key_values is not None else 0
 
     attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-        attention_mask, input_shape, hidden_states, past_seen_tokens
+        attention_mask, input_shape, hidden_states, past_key_values_length
     )
 
+    # expand encoder attention mask
     if encoder_hidden_states is not None and encoder_attention_mask is not None:
         encoder_attention_mask = _prepare_4d_attention_mask(
             encoder_attention_mask, hidden_states.dtype, tgt_len=input_shape[-1]
@@ -256,6 +241,13 @@ def gaudi_SpeechT5Decoder_forward(
     all_self_attentions = () if output_attentions else None
     all_cross_attentions = () if (output_attentions and encoder_hidden_states is not None) else None
 
+    for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]):
+        if attn_mask is not None:
+            if attn_mask.size()[0] != (len(self.layers)):
+                raise ValueError(
+                    f"The `{mask_name}` should be specified for {len(self.layers)} layers, but it is for {head_mask.size()[0]}."
+                )
+
     for idx, decoder_layer in enumerate(self.layers):
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -267,7 +259,7 @@ def gaudi_SpeechT5Decoder_forward(
         if skip_the_layer and not synced_gpus:
             continue
 
-        hidden_states, self_attn_weights, cross_attn_weights = decoder_layer(
+        layer_outputs = decoder_layer(
             hidden_states,
             attention_mask=attention_mask,
             encoder_hidden_states=encoder_hidden_states,
@@ -278,25 +270,28 @@ def gaudi_SpeechT5Decoder_forward(
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
-            token_idx=token_idx,  # Gaudi extension
+            token_idx=token_idx,
         )
+        hidden_states = layer_outputs[0]
 
         if output_attentions:
-            all_self_attentions = all_self_attentions + (self_attn_weights,)
+            all_self_attentions = all_self_attentions + (layer_outputs[1],)
             if encoder_hidden_states is not None:
-                all_cross_attentions = all_cross_attentions + (cross_attn_weights,)
+                all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
 
     if output_hidden_states:
         all_hidden_states = all_hidden_states + (hidden_states,)
 
     if not return_dict:
         return tuple(
-            v for v in [hidden_states, all_hidden_states, all_self_attentions, all_cross_attentions] if v is not None
+            v
+            for v in [hidden_states, None, all_hidden_states, all_self_attentions, all_cross_attentions]
+            if v is not None
         )
 
     return BaseModelOutputWithPastAndCrossAttentions(
         last_hidden_state=hidden_states,
-        past_key_values=past_key_values,
+        past_key_values=None,
         hidden_states=all_hidden_states,
         attentions=all_self_attentions,
         cross_attentions=all_cross_attentions,
