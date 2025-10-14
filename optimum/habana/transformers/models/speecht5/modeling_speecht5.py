@@ -3,7 +3,7 @@ from typing import Optional, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers.cache_utils import Cache, EncoderDecoderCache
+from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
@@ -363,7 +363,9 @@ def gaudi_generate_speech(
     token_idx = torch.tensor(1, device=output_sequence.device)
     attention_mask = torch.zeros((bsz, maxlen), dtype=torch.long, device=output_sequence.device)
 
-    past_key_values = EncoderDecoderCache(model.speecht5.decoder.config)
+    self_attention_cache = DynamicCache()
+    cross_attention_cache = DynamicCache()
+    past_key_values = EncoderDecoderCache(self_attention_cache, cross_attention_cache)
 
     idx = 0
     while True:
