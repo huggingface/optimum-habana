@@ -363,7 +363,7 @@ def gaudi_generate_speech(
     token_idx = torch.tensor(1, device=output_sequence.device)
     attention_mask = torch.zeros((bsz, maxlen), dtype=torch.long, device=output_sequence.device)
 
-    past_key_values = EncoderDecoderCache(model.speecht5.decoder.config, batch_size=bsz)
+    past_key_values = EncoderDecoderCache(model.speecht5.decoder.config)
 
     idx = 0
     while True:
