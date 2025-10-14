@@ -2,3 +2,4 @@ opencv-python
 compel
 sentencepiece
 peft == 0.17.0
+ftfy
