@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
-from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan, WanResidualDownBlock, WanResidualUpBlock
 from diffusers.models.transformers import WanTransformer3DModel
 from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
 from diffusers.pipelines.wan.pipeline_wan_i2v import WanImageToVideoPipeline, retrieve_latents
@@ -143,11 +143,11 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 block.attn2.processor = GaudiWanAttnProcessor(is_training)
         self.vae.encoder.forward = types.MethodType(WanEncoder3dForwardGaudi, self.vae.encoder)
         for block in self.vae.encoder.down_blocks:
-            if block.avg_shortcut is not None:
+            if type(block) is WanResidualDownBlock and block.avg_shortcut is not None:
                 block.avg_shortcut.forward = types.MethodType(WanAvgDown3DForwardGaudi, block.avg_shortcut)
         self.vae.decoder.forward = types.MethodType(WanDecoder3dForwardGaudi, self.vae.decoder)
         for block in self.vae.decoder.up_blocks:
-            if block.avg_shortcut is not None:
+            if type(block) is WanResidualUpBlock and block.avg_shortcut is not None:
                 block.avg_shortcut.forward = types.MethodType(WanDupUp3DForwardGaudi, block.avg_shortcut)
 
         if use_hpu_graphs:

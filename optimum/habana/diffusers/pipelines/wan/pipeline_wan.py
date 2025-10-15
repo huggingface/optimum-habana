@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from diffusers.models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan, WanResidualUpBlock
 from diffusers.models.transformers import WanTransformer3DModel
 from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
 from diffusers.pipelines.wan.pipeline_wan import WanPipeline
@@ -128,7 +128,7 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                 block.attn2.processor = GaudiWanAttnProcessor(is_training)
         self.vae.decoder.forward = types.MethodType(WanDecoder3dForwardGaudi, self.vae.decoder)
         for block in self.vae.decoder.up_blocks:
-            if block.avg_shortcut is not None:
+            if type(block) is WanResidualUpBlock and block.avg_shortcut is not None:
                 block.avg_shortcut.forward = types.MethodType(WanDupUp3DForwardGaudi, block.avg_shortcut)
 
         if use_hpu_graphs:
