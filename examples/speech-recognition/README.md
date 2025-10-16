@@ -89,7 +89,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
@@ -133,7 +133,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --sdp_on_bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
@@ -184,7 +184,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json \
     --sdp_on_bf16 \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
