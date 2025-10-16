@@ -766,7 +766,7 @@ def main():
         metrics = trainer.evaluate()
 
         if data_args.streaming:
-            metrics["eval_samples"] = max_eval_samples
+            metrics["eval_samples"] = training_args.max_steps * training_args.per_device_eval_batch_size
         else:
             max_eval_samples = (
                 data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
