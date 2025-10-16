@@ -1681,8 +1681,6 @@ class GaudiTrainer(Trainer):
                 return data.to(**kwargs)
         return data
 
-    # TODO: investigate why the accelerator's autocast wrapper is not enough to trigger autocast in some edge cases
-    # see PR:
     def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
         """
         A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
@@ -1727,8 +1725,9 @@ class GaudiTrainer(Trainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
-        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
-            self.optimizer.train()
+        # TODO
+        # if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
+        #     self.optimizer.train()
 
         inputs = self._prepare_inputs(inputs)
 
@@ -1771,7 +1770,6 @@ class GaudiTrainer(Trainer):
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
             if self.accelerator.fp8_enabled and self.args.gradient_checkpointing:
-                # TODO: check if this is needed with accelerate's fp8 forward wrapper
                 # The precision used in backward pass should be same as the one used in forward pass.
                 # However when training with gradient_checkpointing and FP8 precision, recompute forward
                 # in backward does not automatically run with FP8 precision. In order to handle this,
@@ -1780,7 +1778,6 @@ class GaudiTrainer(Trainer):
                     self.accelerator.backward(loss, **kwargs)
             else:
                 self.accelerator.backward(loss, **kwargs)
-
         return loss.detach()
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
@@ -2674,7 +2671,8 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "compiled_autograd_enabled": self.args.use_compiled_autograd,
+            "use_regional_compilation": self.args.use_regional_compilation,
+            "compiled_autograd_enable": self.args.use_compiled_autograd,
         }
         # tp is initialized at Accelerator init phase so
         # args should be prepared here
