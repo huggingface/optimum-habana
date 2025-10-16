@@ -172,7 +172,7 @@ class DataTrainingArguments:
     """
 
     dataset_name: Optional[str] = field(
-        default="ought/raft", metadata={"help": "The name of the dataset to use (via the datasets library)."}
+        default="regisss/raft", metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
     dataset_config_name: Optional[str] = field(
         default="twitter_complaints",
@@ -250,11 +250,11 @@ def main():
         streaming=data_args.streaming,
         trust_remote_code=model_args.trust_remote_code,
     )
-    if data_args.dataset_name == "ought/raft" and data_args.dataset_config_name == "twitter_complaints":
+    if data_args.dataset_name == "regisss/raft" and data_args.dataset_config_name == "twitter_complaints":
         text_column = "Tweet text"
         label_column = "text_label"
     else:
-        raise ValueError("preprocess is only for ought/raft twitter_complaints now")
+        raise ValueError("preprocess is only for regisss/raftt twitter_complaints now")
     classes = [k.replace("_", " ") for k in dataset["train"].features["Label"].names]
     dataset = dataset.map(
         lambda x: {"text_label": [classes[label] for label in x["Label"]]},
