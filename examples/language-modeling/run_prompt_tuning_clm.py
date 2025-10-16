@@ -254,7 +254,7 @@ def main():
         text_column = "Abstract Note"
         label_column = "text_label"
     else:
-        raise ValueError("preprocess is only for regisss/raftt default now")
+        raise ValueError("preprocess is only for regisss/raft default now")
     classes = [k.replace("_", " ") for k in dataset["train"].features["Label"].names]
     dataset = dataset.map(
         lambda x: {"text_label": [classes[label] for label in x["Label"]]},
