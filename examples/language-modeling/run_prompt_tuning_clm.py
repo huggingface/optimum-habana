@@ -251,7 +251,7 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
     if data_args.dataset_name == "regisss/raft" and data_args.dataset_config_name == "default":
-        text_column = "Tweet text"
+        text_column = "Abstract Note"
         label_column = "text_label"
     else:
         raise ValueError("preprocess is only for regisss/raftt default now")
