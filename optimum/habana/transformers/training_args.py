@@ -374,8 +374,28 @@ class GaudiTrainingArguments(TrainingArguments):
     attn_implementation: Optional[str] = field(
         default="eager",
         metadata={
-            "help": "choose whether to use scale dot product attention (SDPA) or not.",
-            "choices": ["eager", "sdpa"],
+            "help": "Select attention implementation.",
+            "choices": [
+                "eager",
+                "sdpa",
+                "gaudi_fused_sdpa",
+            ],
+        },
+    )
+
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to enable recompute in Habana flash attention for fine-tuning."
+            " It is applicable only when using --attn_implementation gaudi_fused_sdpa."
+        },
+    )
+
+    flash_attention_fast_softmax: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use fast softmax for Habana flash attention."
+            " It is applicable only when  --attn_implementation gaudi_fused_sdpa."
         },
     )
 
@@ -911,6 +931,17 @@ class GaudiTrainingArguments(TrainingArguments):
                 "Using `include_inputs_for_metrics` is deprecated and will be removed in version 5 of 🤗 Transformers. Please use `include_for_metrics` list argument instead."
             )
             self.include_for_metrics.append("inputs")
+
+        if self.flash_attention_recompute:
+            assert self.attn_implementation == "gaudi_fused_sdpa", (
+                "flash_attention_recompute works only with --attn_implementation gaudi_fused_sdpa"
+            )
+            os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
+        if self.flash_attention_fast_softmax:
+            assert self.attn_implementation == "gaudi_fused_sdpa", (
+                "flash_attention_fast_softmax works only with --attn_implementation gaudi_fused_sdpa"
+            )
+            os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
 
     def __str__(self):
         self_as_dict = asdict(self)
