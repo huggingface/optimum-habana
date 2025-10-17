@@ -530,7 +530,7 @@ The format of the text files (with extensions .text or .txt) is expected to be
 
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
 Here are single-card command examples for Llama2-7B:
-- single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
+- single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "regisss/raft" and config "default":
 ```bash
 PT_HPU_LAZY_MODE=1 python3 run_prompt_tuning_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
