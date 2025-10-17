@@ -395,8 +395,23 @@ class GaudiTrainingArguments(TrainingArguments):
         default=False,
         metadata={
             "help": "Whether to use fast softmax for Habana flash attention."
-            " It is applicable only when  --attn_implementation gaudi_fused_sdpa."
+            " It is applicable only when --attn_implementation gaudi_fused_sdpa."
         },
+    )
+
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when --attn_implementation gaudi_fused_sdpa."
+            )
+        },
+    )
+
+    flash_attention_fp8: bool = field(
+        default=False,
+        metadata={"help": ("Whether to enable flash attention in FP8.")},
     )
 
     sdp_on_bf16: bool = field(
@@ -942,6 +957,14 @@ class GaudiTrainingArguments(TrainingArguments):
                 "flash_attention_fast_softmax works only with --attn_implementation gaudi_fused_sdpa"
             )
             os.environ["FLASH_ATTENTION_FAST_SOFTMAX"] = "1"
+        if self.flash_attention_causal_mask:
+            assert self.attn_implementation == "gaudi_fused_sdpa", (
+                "flash_attention_causal_mask works only with --attn_implementation gaudi_fused_sdpa"
+            )
+        if self.flash_attention_fp8:
+            assert self.attn_implementation == "gaudi_fused_sdpa", (
+                "flash_attention_causal_mask works only with --attn_implementation gaudi_fused_sdpa"
+            )
 
     def __str__(self):
         self_as_dict = asdict(self)

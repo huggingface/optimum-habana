@@ -391,7 +391,7 @@ PT_TE_CUSTOM_OP=1 PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --torch_compile_backend hpu_backend \
     --torch_compile \
     --fp8 \
-    --use_flash_attention True \
+    --attn_implementation gaudi_fused_sdpa \
     --flash_attention_causal_mask True  \
     --per_device_eval_batch_size 4  \
     --cache_size_limit 64 \
@@ -435,7 +435,7 @@ python3 ../gaudi_spawn.py --use_deepspeed --world_size 8 run_lora_clm.py \
   --lora_rank 4 \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4 \
-  --use_flash_attention True \
+  --attn_implementation gaudi_fused_sdpa \
   --flash_attention_causal_mask True \
   --fp8 True
 ```
@@ -478,7 +478,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --torch_compile_backend hpu_backend \
   --torch_compile \
   --gradient_accumulation_steps 2 \
-  --use_flash_attention True \
+  --attn_implementation gaudi_fused_sdpa \
   --flash_attention_causal_mask True
 ```
 
@@ -647,7 +647,7 @@ PT_HPU_LAZY_MODE=1 python3 ../gaudi_spawn.py  \
         --eval_strategy epoch \
         --pipelining_fwd_bwd \
         --use_lazy_mode \
-        --use_flash_attention True \
+        --attn_implementation gaudi_fused_sdpa \
         --deepspeed llama3_ds_zero1_config.json \
         --num_train_epochs 3 \
         --eval_delay 3 \
