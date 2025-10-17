@@ -146,36 +146,6 @@ class ModelArguments:
             )
         },
     )
-    use_flash_attention: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
-            )
-        },
-    )
-    flash_attention_recompute: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to enable recompute in Habana flash attention for fine-tuning."
-                " It is applicable only when use_flash_attention is True."
-            )
-        },
-    )
-    flash_attention_causal_mask: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to enable causal mask in Habana flash attention for fine-tuning."
-                " It is applicable only when use_flash_attention is True."
-            )
-        },
-    )
-    flash_attention_fp8: bool = field(
-        default=False,
-        metadata={"help": ("Whether to enable flash attention in FP8.")},
-    )
     use_fused_rope: bool = field(
         default=True,
         metadata={
@@ -513,7 +483,7 @@ def main():
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
         "token": model_args.token,
-        "flash_attention_fp8": model_args.flash_attention_fp8,
+        "flash_attention_fp8": training_args.flash_attention_fp8,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -707,12 +677,12 @@ def main():
                 model.generation_config.pad_token_id = model.generation_config.eos_token_id[0]
         if model_args.attn_softmax_bf16:
             model.generation_config.attn_softmax_bf16 = True
-        if model_args.use_flash_attention:
+        if training_args.attn_implementation == "gaudi_fused_sdpa":
             model.generation_config.use_flash_attention = True
-            model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
-            model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+            model.generation_config.flash_attention_recompute = training_args.flash_attention_recompute
+            model.generation_config.flash_attention_causal_mask = training_args.flash_attention_causal_mask
 
-            if model_args.flash_attention_fp8:
+            if training_args.flash_attention_fp8:
                 import habana_frameworks.torch.hpu as hthpu
 
                 assert hthpu.get_device_name() == "GAUDI3", "Flash attention in FP8 is supported only on Gaudi3"
