@@ -1085,21 +1085,21 @@ class MultiCardCausalLanguageModelingPromptTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
     TASK_NAME = "prompt-tuning"
-    DATASET_NAME = "ought/raft"
+    DATASET_NAME = "regisss/raft"
 
 
 class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
     TASK_NAME = "prefix-tuning"
-    DATASET_NAME = "ought/raft"
+    DATASET_NAME = "regisss/raft"
 
 
 class MultiCardCausalLanguageModelingPTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
     TASK_NAME = "p-tuning"
-    DATASET_NAME = "ought/raft"
+    DATASET_NAME = "regisss/raft"
 
 
 class MultiCardMultiTastPromptPeftExampleTester(
