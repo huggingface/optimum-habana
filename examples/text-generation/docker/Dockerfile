@@ -32,7 +32,3 @@ RUN git clone https://github.com/huggingface/optimum-habana && \
 WORKDIR /root/optimum-habana/examples/text-generation
 RUN python3 -m pip install -r requirements.txt && \
     python3 -m pip install -r requirements_lm_eval.txt 
-
-COPY . .
-
-RUN python3 -m pip install -r requirements_bm.txt

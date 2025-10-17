@@ -11,7 +11,6 @@ This folder contains scripts and configuration files that can be used to build a
 |Gaudi3|meta-llama/Llama-3.1-70B-Instruct|2|
 |Gaudi3|meta-llama/Llama-3.1-70B-Instruct|8|
 |Gaudi3|meta-llama/Llama-3.3-70B-Instruct|8|
-|Gaudi3|meta-llama/Llama-3.1-405B-Instruct|8|
 
 
 ## Quick Start
@@ -36,11 +35,12 @@ docker build -f Dockerfile $BUILD_ARGS -t oh-1.22.0-gaudi .
 ```
 
 ## Single Card Models
-1) Run the container and load a shell into it. For HABANA_VISIBLE_DEVICES, chose a single, available card from 0 through 7
+1) Run the container and load a shell into it. For HABANA_VISIBLE_DEVICES, chose a single, available card from 0 through 7. Point hf_cache to the local copy of your HuggingFace Cache folder.
 ```bash
 DOCKER_OPTS="-e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host -d --runtime=habana --restart always"
 DOCKER_OPTS="${DOCKER_OPTS} -e HF_TOKEN=$hf_token -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy"
-docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.22.0 oh-1.22.0-gaudi
+DOCKER_OPTS="${DOCKER_OPS} -v /mnt/hf_cache:/mnt/hf_cache"
+docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.22.0 oh-1.22.0-gaudi -c "sleep infinity"
 docker exec -it oh-1.22.0 bash
 ```
 
@@ -113,7 +113,8 @@ python3 run_generation.py \
 ```bash
 DOCKER_OPTS="-e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host -d --runtime=habana --restart always"
 DOCKER_OPTS="${DOCKER_OPTS} -e HF_TOKEN=$hf_token -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy"
-docker run $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=0,1 --name oh-1.22.0 oh-1.22.0-gaudi
+DOCKER_OPTS="${DOCKER_OPS} -v /mnt/hf_cache:/mnt/hf_cache"
+docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=0,1 --name oh-1.22.-multicard0 oh-1.22.0-gaudi -c "sleep infinity"
 docker exec -it oh-1.22.0 bash
 ```
 
