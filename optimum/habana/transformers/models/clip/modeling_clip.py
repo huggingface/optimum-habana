@@ -95,9 +95,15 @@ class GaudiCLIPAttention(CLIPAttention):
         keys = self.k_proj(hidden_states)
         values = self.v_proj(hidden_states)
 
-        queries = queries.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
-        keys = keys.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
-        values = values.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
+        queries = queries.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+        keys = keys.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+        values = values.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+
+        proj_shape = (batch_size * self.num_heads, -1, self.head_dim)
+        queries = queries.view(*proj_shape)
+        keys = keys.view(*proj_shape)
+        values = values.view(*proj_shape)
+
         # CLIP text model uses both `causal_attention_mask` and `attention_mask`
         # in case FA2 kernel is called, `is_causal` should be inferred from `causal_attention_mask`
         if self.config._attn_implementation == "flash_attention_2":
