@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import get_dtype, stop_sequences_criteria
+from lm_eval.models.utils import get_dtype
 
 # Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -238,9 +238,6 @@ class HabanaModelAdapter(HFLM):
 
         if do_sample is False and generation_kwargs.get("temperature") == 0.0:
             generation_kwargs.pop("temperature")
-        # build stopping criteria
-        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
-        # to avoid graph recompilation
         if self.options.static_shapes:
             self.options.bucket_internal = True
             bucket_length = self.find_bucket(context.shape[1])
@@ -264,7 +261,6 @@ class HabanaModelAdapter(HFLM):
             return self.model.generate(
                 input_ids=context,
                 max_new_tokens=max_gen_toks,
-                stopping_criteria=stopping_criteria,
                 pad_token_id=self.tokenizer.pad_token_id,
                 use_cache=True,
                 hpu_graphs=self.hpu_graphs,
