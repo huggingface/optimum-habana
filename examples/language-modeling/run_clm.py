@@ -161,28 +161,6 @@ class ModelArguments:
         default=False,
         metadata={"help": ("Whether to run attention softmax layer in bf16 precision for fine-tuning.")},
     )
-    use_flash_attention: bool = field(
-        default=False,
-        metadata={"help": ("Whether to use Habana flash attention for fine-tuning.")},
-    )
-    flash_attention_recompute: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to enable recompute in Habana flash attention for fine-tuning."
-                " It is applicable only when use_flash_attention is True."
-            )
-        },
-    )
-    flash_attention_causal_mask: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether to enable causal mask in Habana flash attention for fine-tuning."
-                " It is applicable only when use_flash_attention is True."
-            )
-        },
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -569,10 +547,10 @@ def main():
     # We need to add these fused kernels config
     if model_args.attn_softmax_bf16:
         model.generation_config.attn_softmax_bf16 = True
-    if model_args.use_flash_attention:
+    if training_args.attn_implementation == "gaudi_fused_sdpa":
         model.generation_config.use_flash_attention = True
-        model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
-        model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+        model.generation_config.flash_attention_recompute = training_args.flash_attention_recompute
+        model.generation_config.flash_attention_causal_mask = training_args.flash_attention_causal_mask
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
