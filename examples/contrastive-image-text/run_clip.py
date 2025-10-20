@@ -30,7 +30,7 @@ from typing import Optional
 import torch
 import transformers
 from datasets import Image, load_dataset
-from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
+from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize, ToTensor
 from torchvision.transforms.functional import InterpolationMode
 from transformers import (
     AutoImageProcessor,
@@ -200,6 +200,7 @@ class Transform(torch.nn.Module):
     def __init__(self, image_size, mean, std):
         super().__init__()
         self.transforms = torch.nn.Sequential(
+            ToTensor(),
             Resize([image_size], interpolation=InterpolationMode.BICUBIC),
             CenterCrop(image_size),
             ConvertImageDtype(torch.float),
