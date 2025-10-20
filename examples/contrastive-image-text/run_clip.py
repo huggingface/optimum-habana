@@ -308,6 +308,7 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
         )
+    dataset = dataset.with_format("pil")
 
     # Load model, tokenizer, processor
     tokenizer = AutoTokenizer.from_pretrained(
