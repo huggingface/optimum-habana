@@ -164,7 +164,7 @@ slow_tests_fsdp: test_installs
 
 slow_tests_trl_ddpo: test_installs
 	python -m pip install trl==0.9.6
-	python -m pip install peft==0.15.0
+	python -m pip install peft==0.17.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
 slow_tests_trl_grpo: test_installs

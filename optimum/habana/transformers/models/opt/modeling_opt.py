@@ -107,9 +107,15 @@ def gaudi_opt_attention_forward(
     key_states = key_states.view(*proj_shape)
     value_states = value_states.view(*proj_shape)
 
-    attn_weights = torch.bmm(query_states, key_states.transpose(1, 2)) * self.scaling
+    src_len = key_states.size(1)
+    attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+
     if attention_mask is not None:
-        attn_weights = attn_weights + attention_mask
+        attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
+        attn_weights = torch.max(
+            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min, device=attn_weights.device)
+        )
+        attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
     attn_weights = torch.nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)

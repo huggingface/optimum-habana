@@ -1783,7 +1783,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ignore_cache_position = True  # Ignoring cache position for HPU
-        use_new_cache = False  # Ignoring new Cache path for HPU
 
         past_seen_tokens = 0
 
@@ -1794,7 +1793,6 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                 else:
                     past_seen_tokens = past_key_values[0][0][2]
             else:
-                # HPU uses legacy cache path (use_new_cache = False)
                 if past_key_values[0] is not None:  ##added for (None, None)
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
@@ -1830,7 +1828,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_router_logits = () if output_router_logits else None
-        next_decoder_cache = () if not use_new_cache else None
+        next_decoder_cache = ()
 
         if lazy_mode:
             htcore.mark_step()

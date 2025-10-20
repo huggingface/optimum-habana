@@ -69,7 +69,7 @@ def get_model(token: str, model_id: str):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, quantization_config=nf4_config, device_map={"": "hpu"}, torch_dtype=torch.bfloat16, token=token.value
+        model_id, quantization_config=nf4_config, torch_dtype=torch.bfloat16, token=token.value
     )
 
     return model

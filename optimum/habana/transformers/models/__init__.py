@@ -117,6 +117,17 @@ from .gemma2 import (
     GaudiGemma2MLP,
     GaudiGemma2Model,
     GaudiGemma2RotaryEmbedding,
+    gaudi_gemma2_rmsnorm_forward,
+)
+from .gemma3 import (
+    GaudiGemma3Attention,
+    GaudiGemma3DecoderLayer,
+    GaudiGemma3ForCausalLM,
+    GaudiGemma3ForConditionalGeneration,
+    GaudiGemma3MLP,
+    GaudiGemma3Model,
+    GaudiGemma3TextModel,
+    gaudi_gemma3_rmsnorm_forward,
 )
 from .glm4v import (
     ChatGLM4Tokenizer,
@@ -209,6 +220,7 @@ from .mllama import (
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
+    GaudiMllamaModel,
     GaudiMllamaSelfAttentionDecoderLayer,
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
@@ -264,6 +276,15 @@ from .qwen2 import (
     GaudiQwen2MLP,
     GaudiQwen2Model,
     gaudi_qwen2_rmsnorm_forward,
+)
+from .qwen2_5_vl import (
+    GaudiQwen2_5_VisionTransformerPretrainedModel,
+    GaudiQwen2_5_VLAttention,
+    GaudiQwen2_5_VLDecoderLayer,
+    GaudiQwen2_5_VLForConditionalGeneration,
+    GaudiQwen2_5_VLModel,
+    GaudiQwen2_5_VLTextModel,
+    GaudiQwen2_5_VLVisionBlock,
 )
 from .qwen2_moe import (
     GaudiQwen2MoeAttention,

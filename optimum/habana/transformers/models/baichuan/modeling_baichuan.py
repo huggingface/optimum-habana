@@ -43,6 +43,7 @@ from transformers.generation.utils import GenerationConfig
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
+from ...generation.utils import GaudiGenerationMixin
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 from .configuration_baichuan import BaichuanConfig
 from .generation_utils import TextIterStreamer, build_chat_input
@@ -1163,7 +1164,7 @@ def no_init_weights(_enable=True):
         _init_weights = old_init_weights
 
 
-class BaichuanForCausalLM(BaichuanPreTrainedModel):
+class BaichuanForCausalLM(BaichuanPreTrainedModel, GaudiGenerationMixin):
     def __init__(self, config, *model_args, **model_kwargs):
         super().__init__(config, *model_args, **model_kwargs)
         self.model = BaichuanModel(config)

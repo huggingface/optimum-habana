@@ -50,7 +50,10 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             # ("Qwen/Qwen1.5-7B", 4, False, False, False),
             ("google/gemma-7b", 1, False, True, False),
             ("google/gemma-2-9b", 1, False, True, False),
-            ("google/gemma-2-27b", 1, False, True, False),
+            ("google/gemma-2-27b", 1, False, False, False),
+            ("google/gemma-3-4b-it", 1, False, True, False),
+            ("google/gemma-3-12b-it", 1, False, True, False),
+            ("google/gemma-3-27b-it", 1, False, False, False),
             pytest.param(
                 "state-spaces/mamba-130m-hf", 1536, False, False, False, marks=pytest.mark.skip("Deprecated")
             ),
@@ -61,7 +64,16 @@ if OH_DEVICE_CONTEXT not in ["gaudi1"]:
             # ("facebook/xglm-1.7B", 1, False, False, False),
             # ("CohereForAI/c4ai-command-r-v01", 1, False, False, False),
             ("tiiuae/falcon-mamba-7b", 1, False, False, False),
-            ("openbmb/MiniCPM3-4B", 1, False, False, False),
+            pytest.param(
+                "openbmb/MiniCPM3-4B",
+                1,
+                False,
+                False,
+                False,
+                marks=pytest.mark.skip(
+                    "Original Huggingface model is incompatible with newer Transformers version. https://huggingface.co/openbmb/MiniCPM3-4B/tree/d6b14ddaefdb11c624dd75c3c779549bc90b08cb"
+                ),
+            ),
             ("baichuan-inc/Baichuan2-7B-Chat", 1, True, False, False),
             ("baichuan-inc/Baichuan2-13B-Chat", 1, False, False, False),
             ("deepseek-ai/DeepSeek-V2-Lite", 1, False, False, False),
