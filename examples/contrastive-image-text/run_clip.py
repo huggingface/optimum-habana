@@ -29,7 +29,7 @@ from typing import Optional
 
 import torch
 import transformers
-from datasets import load_dataset
+from datasets import Image, load_dataset
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode
 from transformers import (
@@ -308,7 +308,7 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
         )
-    dataset = dataset.with_format("pil")
+    dataset = dataset.cast_column("image", Image(decode=True))
 
     # Load model, tokenizer, processor
     tokenizer = AutoTokenizer.from_pretrained(
