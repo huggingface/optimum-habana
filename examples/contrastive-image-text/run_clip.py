@@ -201,6 +201,7 @@ class Transform(torch.nn.Module):
         super().__init__()
         self.transforms = transforms.Compose(
             [
+                transforms.Lambda(lambda img: img.convert("RGB")),
                 transforms.ToTensor(),
                 transforms.Resize([image_size], interpolation=InterpolationMode.BICUBIC),
                 transforms.CenterCrop(image_size),
