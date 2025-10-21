@@ -368,13 +368,7 @@ def main():
         return examples
 
     def transform_images(examples):
-        pixel_values = [image_transformations(image) for image in examples[image_column]]
-
-        # Debug info: log only for the first batch to avoid spam
-        if len(pixel_values) > 0:
-            logger.info(f"DEBUG pixel_values[0].shape: {pixel_values[0].shape}")
-
-        examples["pixel_values"] = pixel_values
+        examples["pixel_values"] = [image_transformations(image) for image in examples[image_column]]
         return examples
 
 
