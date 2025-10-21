@@ -179,12 +179,18 @@ class HabanaModelAdapter(HFLM):
         self._max_length = value
 
     def find_bucket(self, length: int, key=lambda b, length: b >= length) -> int:
+        """
+        Find the smallest bucket >= length, or add a new one.
+        """
         for b in self.buckets:
             if key(b, length):
                 return b
         new_bucket = length
         self.buckets.append(new_bucket)
         self.buckets.sort()
+        eval_logger.info(
+            f"Added new bucket: {new_bucket}. Buckets are now: {self.buckets}"
+        )
         return new_bucket
 
     def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
@@ -195,7 +201,11 @@ class HabanaModelAdapter(HFLM):
             if self.options.use_cache and self.options.reuse_cache:
                 self._model.allocate_kv_cache(bs, bucket_length + 1, bucket_length)
             padding_length = bucket_length - seq_length
-            inps = F.pad(inps, (0, padding_length), value=self._model.config.pad_token_id)
+            pad_token_id = getattr(self._model.config, "pad_token_id", 0)
+            inps = F.pad(inps, (0, padding_length), value=pad_token_id)
+            eval_logger.debug(
+            f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})"
+            )
         logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"].cpu()
 
         if self.options.static_shapes and padding_length > 0:
@@ -217,7 +227,7 @@ class HabanaModelAdapter(HFLM):
 
     def _model_generate(
         self,
-        context,
+        context: torch.Tensor,
         max_length: int,
         stop: list[str],
         **generation_kwargs: dict[str, Any],
