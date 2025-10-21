@@ -371,7 +371,6 @@ def main():
         examples["pixel_values"] = [image_transformations(image) for image in examples[image_column]]
         return examples
 
-
     # Apply preprocessing
     if training_args.do_train:
         train_dataset = dataset["train"]
