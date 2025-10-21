@@ -852,6 +852,7 @@ def adapt_transformers_to_gaudi():
         transformers.AutoModelForSeq2SeqLM.register(GLM4VConfig, GLM4VForConditionalGeneration)
         transformers.AutoModelForVision2Seq.register(GLM4VConfig, GLM4VForConditionalGeneration)
         transformers.AutoModelForSequenceClassification.register(GLM4VConfig, GLM4VForSequenceClassification)
+        transformers.pipelines.image_to_text.ImageToTextPipeline._load_image_processor = False
     else:
         # Register chatglm with optimization on Gaudi
         transformers.AutoConfig.register("chatglm", ChatGLMConfig)
