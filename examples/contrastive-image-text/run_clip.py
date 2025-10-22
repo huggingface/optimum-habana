@@ -29,11 +29,8 @@ from typing import Optional
 
 import torch
 import transformers
-from datasets import load_dataset
-from habana_dataloader_trainer import HabanaDataloaderTrainer
-from PIL import Image
-from torchvision.io import ImageReadMode, read_image
-from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
+from datasets import Image, load_dataset
+from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from transformers import (
     AutoImageProcessor,
@@ -134,8 +131,8 @@ class DataTrainingArguments:
     )
     data_dir: Optional[str] = field(default=None, metadata={"help": "The data directory containing input files."})
     image_column: Optional[str] = field(
-        default="image_path",
-        metadata={"help": "The name of the column in the datasets containing the full image file paths."},
+        default="image",
+        metadata={"help": "The name of the column in the datasets containing the image file."},
     )
     caption_column: Optional[str] = field(
         default="caption",
@@ -198,28 +195,24 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json"], "`validation_file` should be a csv or a json file."
 
 
-dataset_name_mapping = {
-    "image_caption_dataset.py": ("image_path", "caption"),
-}
-
-
-# We use torchvision for faster image pre-processing. The transforms are implemented as nn.Module,
-# so we jit it to be faster.
+# Torchvision preprocessing for images
 class Transform(torch.nn.Module):
     def __init__(self, image_size, mean, std):
         super().__init__()
-        self.transforms = torch.nn.Sequential(
-            Resize([image_size], interpolation=InterpolationMode.BICUBIC),
-            CenterCrop(image_size),
-            ConvertImageDtype(torch.float),
-            Normalize(mean, std),
+        self.transforms = transforms.Compose(
+            [
+                transforms.Lambda(lambda img: img.convert("RGB")),
+                transforms.Resize((image_size, image_size), interpolation=InterpolationMode.BICUBIC),
+                transforms.ToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(mean, std),
+            ]
         )
 
     def forward(self, x) -> torch.Tensor:
-        """`x` should be an instance of `PIL.Image.Image`"""
+        """`x` is a PIL.Image.Image provided by datasets.Image"""
         with torch.no_grad():
-            x = self.transforms(x)
-        return x
+            return self.transforms(x)
 
 
 def collate_fn(examples):
@@ -295,71 +288,39 @@ def main():
                 "Use --overwrite_output_dir to overcome."
             )
         elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+            logger.info(f"Resuming training from {last_checkpoint}")
 
-    # 4. Load dataset
-    # Get the datasets: you can either provide your own CSV/JSON training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files this script will use the first column for the full image path and the second column for the
-    # captions (unless you specify column names for this with the `image_column` and `caption_column` arguments).
-    #
+    # Load dataset
     if data_args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            keep_in_memory=False,
-            data_dir=data_args.data_dir,
             token=model_args.token,
-            trust_remote_code=model_args.trust_remote_code,
+            trust_remote_code=False,
         )
     else:
         data_files = {}
         if data_args.train_file is not None:
             data_files["train"] = data_args.train_file
-            extension = data_args.train_file.split(".")[-1]
         if data_args.validation_file is not None:
             data_files["validation"] = data_args.validation_file
-            extension = data_args.validation_file.split(".")[-1]
         dataset = load_dataset(
-            extension,
+            "json" if data_args.train_file and data_args.train_file.endswith("json") else "csv",
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
         )
-    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.
+    dataset = dataset.cast_column("image", Image(decode=True))
 
-    # 5. Load pretrained model, tokenizer, and image processor
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name,
-            cache_dir=model_args.cache_dir,
-            use_fast=model_args.use_fast_tokenizer,
-            token=model_args.token,
-            trust_remote_code=model_args.trust_remote_code,
-        )
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir,
-            use_fast=model_args.use_fast_tokenizer,
-            token=model_args.token,
-            trust_remote_code=model_args.trust_remote_code,
-        )
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
-
-    # Load image_processor, in this script we only use this to get the mean and std for normalization.
+    # Load model, tokenizer, processor
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name or model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=model_args.use_fast_tokenizer,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
+    )
     image_processor = AutoImageProcessor.from_pretrained(
         model_args.image_processor_name or model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -367,7 +328,6 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
-
     model = AutoModel.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -375,58 +335,31 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
-    config = model.config
-
-    def _freeze_params(module):
-        for param in module.parameters():
-            param.requires_grad = False
 
     if model_args.freeze_vision_model:
-        _freeze_params(model.vision_model)
-
+        for p in model.vision_model.parameters():
+            p.requires_grad = False
     if model_args.freeze_text_model:
-        _freeze_params(model.text_model)
+        for p in model.text_model.parameters():
+            p.requires_grad = False
 
-    # set seed for torch dataloaders
     set_seed(training_args.seed)
 
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    if training_args.do_train:
-        column_names = dataset["train"].column_names
-    elif training_args.do_eval:
-        column_names = dataset["validation"].column_names
-    else:
-        logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
+    # Ensure there is at least one task to do
+    if not (training_args.do_train or training_args.do_eval):
+        logger.info("Nothing to do.")
         return
 
-    # 6. Get the column names for input/target.
-    dataset_columns = dataset_name_mapping.get(data_args.dataset_name, None)
-    if data_args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-    else:
-        image_column = data_args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{data_args.image_column}' needs to be one of: {', '.join(column_names)}"
-            )
-    if data_args.caption_column is None:
-        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    else:
-        caption_column = data_args.caption_column
-        if caption_column not in column_names:
-            raise ValueError(
-                f"--caption_column' value '{data_args.caption_column}' needs to be one of: {', '.join(column_names)}"
-            )
+    image_column = data_args.image_column or "image"
+    caption_column = data_args.caption_column or "caption"
 
-    # 7. Preprocessing the datasets.
-    # Initialize torchvision transforms and jit it for faster processing.
     image_transformations = Transform(
-        config.vision_config.image_size, image_processor.image_mean, image_processor.image_std
+        model.config.vision_config.image_size,
+        image_processor.image_mean,
+        image_processor.image_std,
     )
 
-    # Preprocessing the datasets.
-    # We need to tokenize input captions and transform the images.
+    # Tokenization + transform
     def tokenize_captions(examples):
         captions = list(examples[caption_column])
         text_inputs = tokenizer(captions, max_length=data_args.max_seq_length, padding="max_length", truncation=True)
@@ -435,84 +368,38 @@ def main():
         return examples
 
     def transform_images(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
-        examples["pixel_values"] = [image_transformations(image) for image in images]
+        examples["pixel_values"] = [image_transformations(image) for image in examples[image_column]]
         return examples
 
-    def filter_corrupt_images(examples):
-        """remove problematic images"""
-        valid_images = []
-        for image_file in examples[image_column]:
-            try:
-                Image.open(image_file)
-                valid_images.append(True)
-            except Exception:
-                valid_images.append(False)
-        return valid_images
-
+    # Apply preprocessing
     if training_args.do_train:
-        if "train" not in dataset:
-            raise ValueError("--do_train requires a train dataset")
         train_dataset = dataset["train"]
-        if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-            train_dataset = train_dataset.select(range(max_train_samples))
-
-        train_dataset = train_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        if data_args.max_train_samples:
+            train_dataset = train_dataset.select(range(min(len(train_dataset), data_args.max_train_samples)))
         train_dataset = train_dataset.map(
-            function=tokenize_captions,
+            tokenize_captions,
             batched=True,
-            remove_columns=[col for col in column_names if col != image_column],
             num_proc=data_args.preprocessing_num_workers,
-            load_from_cache_file=not data_args.overwrite_cache,
-            desc="Running tokenizer on train dataset",
+            remove_columns=[],
+            desc="Tokenizing train captions",
         )
-
-        if data_args.mediapipe_dataloader:
-            train_dataset.image_mean = image_processor.image_mean
-            train_dataset.image_std = image_processor.image_std
-            train_dataset.text_max_length = data_args.max_seq_length
-            train_dataset.image_resize = config.vision_config.image_size
-            train_dataset.transform_func = transform_images
-        else:
-            # Transform images on the fly as doing it on the whole dataset takes too much time.
-            train_dataset.set_transform(transform_images)
+        train_dataset.set_transform(transform_images)
 
     if training_args.do_eval:
-        if "validation" not in dataset:
-            raise ValueError("--do_eval requires a train validation")
         eval_dataset = dataset["validation"]
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
-
-        eval_dataset = eval_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        if data_args.max_eval_samples:
+            eval_dataset = eval_dataset.select(range(min(len(eval_dataset), data_args.max_eval_samples)))
         eval_dataset = eval_dataset.map(
-            function=tokenize_captions,
+            tokenize_captions,
             batched=True,
             num_proc=data_args.preprocessing_num_workers,
-            remove_columns=[col for col in column_names if col != image_column],
-            load_from_cache_file=not data_args.overwrite_cache,
-            desc="Running tokenizer on validation dataset",
+            remove_columns=[],
+            desc="Tokenizing eval captions",
         )
+        eval_dataset.set_transform(transform_images)
 
-        if data_args.mediapipe_dataloader:
-            eval_dataset.image_mean = image_processor.image_mean
-            eval_dataset.image_std = image_processor.image_std
-            eval_dataset.text_max_length = data_args.max_seq_length
-            eval_dataset.image_resize = config.vision_config.image_size
-            eval_dataset.transform_func = transform_images
-        else:
-            # Transform images on the fly as doing it on the whole dataset takes too much time.
-            eval_dataset.set_transform(transform_images)
-
-    # 8. Initialize our trainer
-    trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
-    trainer = trainer_cls(
+    # Trainer
+    trainer = GaudiTrainer(
         model=model,
         gaudi_config=gaudi_config,
         args=training_args,
@@ -521,13 +408,9 @@ def main():
         data_collator=collate_fn,
     )
 
-    # 9. Training
+    # Train
     if training_args.do_train:
-        checkpoint = None
-        if training_args.resume_from_checkpoint is not None:
-            checkpoint = training_args.resume_from_checkpoint
-        elif last_checkpoint is not None:
-            checkpoint = last_checkpoint
+        checkpoint = training_args.resume_from_checkpoint or last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
         tokenizer.save_pretrained(training_args.output_dir)
@@ -536,25 +419,18 @@ def main():
         trainer.save_metrics("train", train_result.metrics)
         trainer.save_state()
 
-    # 10. Evaluation
+    # Eval
     if training_args.do_eval:
         metrics = trainer.evaluate()
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    # 11. Write Training Stats and push to hub.
-    finetuned_from = model_args.model_name_or_path
-    # If from a local directory, don't set `finetuned_from` as this is required to be a valid repo. id on the Hub.
-    if os.path.isdir(finetuned_from):
-        finetuned_from = None
+    # Model card
+    finetuned_from = None if os.path.isdir(model_args.model_name_or_path) else model_args.model_name_or_path
     kwargs = {"finetuned_from": finetuned_from, "tasks": "contrastive-image-text-modeling"}
-    if data_args.dataset_name is not None:
+    if data_args.dataset_name:
         kwargs["dataset_tags"] = data_args.dataset_name
-        if data_args.dataset_config_name is not None:
-            kwargs["dataset_args"] = data_args.dataset_config_name
-            kwargs["dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
-        else:
-            kwargs["dataset"] = data_args.dataset_name
+        kwargs["dataset"] = data_args.dataset_name
 
     if training_args.push_to_hub:
         trainer.push_to_hub(**kwargs)

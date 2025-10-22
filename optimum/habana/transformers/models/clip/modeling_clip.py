@@ -124,7 +124,7 @@ class GaudiCLIPAttention(CLIPAttention):
                     softmax_mode,
                 )
         else:
-            attn_weights = self.bmm1(queries, keys.transpose(1, 2)) * self.scale
+            attn_weights = self.bmm1(queries, keys.transpose(-1, -2)) * self.scale
             if attention_mask is not None:
                 attn_weights = attn_weights + attention_mask
             attn_weights = self.softmax(attn_weights, dim=-1).to(queries.dtype)
