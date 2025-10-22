@@ -32,7 +32,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
 
-logger = logging.getLogger(__name__)
+eval_logger = logging.getLogger(__name__)
 
 
 class HabanaModelAdapter(HFLM):
@@ -100,7 +100,7 @@ class HabanaModelAdapter(HFLM):
         )
         if "gemma" in getattr(self._config, "model_type", ""):
             self.add_bos_token = True
-            logger.info(
+            eval_logger.info(
                 f"Model type is '{self._config.model_type}', part of the Gemma family--a BOS token will be used as Gemma underperforms without it."
             )
         self.batch_size_per_gpu = int(args.batch_size)
@@ -188,9 +188,7 @@ class HabanaModelAdapter(HFLM):
         new_bucket = length
         self.buckets.append(new_bucket)
         self.buckets.sort()
-        eval_logger.info(
-            f"Added new bucket: {new_bucket}. Buckets are now: {self.buckets}"
-        )
+        eval_logger.info(f"Added new bucket: {new_bucket}. Buckets are now: {self.buckets}")
         return new_bucket
 
     def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
@@ -203,9 +201,7 @@ class HabanaModelAdapter(HFLM):
             padding_length = bucket_length - seq_length
             pad_token_id = getattr(self._model.config, "pad_token_id", 0)
             inps = F.pad(inps, (0, padding_length), value=pad_token_id)
-            eval_logger.debug(
-            f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})"
-            )
+            eval_logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
         logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"].cpu()
 
         if self.options.static_shapes and padding_length > 0:
