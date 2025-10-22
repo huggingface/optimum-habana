@@ -829,12 +829,20 @@
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and flexible. DeepSpeed can train BERT-Large on",
       "throughput": 0.7572952
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and effective. It is a deep learning optimization library that makes",
+      "throughput": 0.2239626836276946
     }
   },
   "tests/test_text_generation_example.py::test_text_generation_bnb[meta-llama/Llama-3.1-70B-1-20-True-True]": {
     "gaudi2": {
       "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and effective. It is a deep learning optimization library that makes",
       "throughput": 0.7583387
+    },
+    "gaudi3": {
+      "output": "DeepSpeed is a machine learning framework that makes distributed training easy, efficient, and flexible. DeepSpeed can train BERT-Large on",
+      "throughput": 0.22355754926812374
     }
   }
 }
