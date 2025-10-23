@@ -18,13 +18,13 @@ def gaudi_fused_sdpa_attention_forward(
 ) -> tuple[torch.Tensor, None]:
     bsz, num_heads, tgt_len, head_dim = query.shape
 
+    softmax_mode = "fast" if os.getenv("FLASH_ATTENTION_FAST_SOFTMAX") == "1" else "None"
+
     if tgt_len == 1:
         # next token
-        softmax_mode = True if os.getenv("QUANT_CONFIG", "") else False
-        recompute_mode = False
+        recompute_mode = True if os.getenv("QUANT_CONFIG", "") else False
     else:
         # first token
-        softmax_mode = "fast" if os.getenv("FLASH_ATTENTION_FAST_SOFTMAX") == "1" else "None"
         recompute_mode = True if os.getenv("FLASH_ATTENTION_RECOMPUTE") == "1" else False
 
     attn_output = FusedSDPA.apply(

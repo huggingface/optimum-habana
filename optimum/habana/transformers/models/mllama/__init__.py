@@ -8,7 +8,5 @@ from .modeling_mllama import (
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
     GaudiMllamaVisionEncoder,
-    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
-    GaudiMllamaVisionSdpaAttention,
 )

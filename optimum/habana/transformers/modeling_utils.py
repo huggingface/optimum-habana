@@ -138,9 +138,7 @@ from .models import (
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
     GaudiMllamaVisionEncoder,
-    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
-    GaudiMllamaVisionSdpaAttention,
     GaudiMptAttention,
     GaudiMptBlock,
     GaudiMptForCausalLM,
@@ -835,19 +833,18 @@ def adapt_transformers_to_gaudi():
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
 
     # Optimization for mllama on Gaudi
-    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
     transformers.models.mllama.modeling_mllama.MllamaCrossAttentionDecoderLayer = GaudiMllamaCrossAttentionDecoderLayer
     transformers.models.mllama.modeling_mllama.MllamaForCausalLM = GaudiMllamaForCausalLM
-    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
-    transformers.models.mllama.modeling_mllama.MllamaTextCrossAttention = GaudiMllamaTextCrossAttention
     transformers.models.mllama.modeling_mllama.MllamaForConditionalGeneration = GaudiMllamaForConditionalGeneration
-    transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
-    transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
-    transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
-    transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
-    transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
     transformers.models.mllama.modeling_mllama.MllamaModel = GaudiMllamaModel
+    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaTextCrossAttention = GaudiMllamaTextCrossAttention
+    transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
+    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
+    transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
+    transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
 
+    # Optimization for deciLM on Gaudi
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
