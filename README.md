@@ -229,13 +229,13 @@ The following model architectures, tasks and device distributions have been vali
 ### Transformers:
 
 | Architecture | Training | Inference | Tasks |
-|:-------------|:--------:|:---------:|:------|
+|:-------------|:------------------:|:------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | BERT         | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text classification](/examples/text-classification)</li><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li><li>[text feature extraction](/examples/text-feature-extraction)</li></ul> |
-| RoBERTa | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
-| ALBERT | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
-| DistilBERT |:heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
-| GPT2             | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| BLOOM(Z) |   | <li>DeepSpeed</li> | <li>[text generation](/examples/text-generation)</li> |
+| RoBERTa      | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| ALBERT       | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| DistilBERT   | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| GPT2         | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul>                                                                                                                                         |
+| BLOOM(Z) |   | <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
 | StarCoder / StarCoder2 | :heavy_check_mark:  | <li>Single-card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
 | GPT-J | <li>DeepSpeed</li> | <li>Single card</li><li>DeepSpeed</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
 | GPT-Neo |      | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
