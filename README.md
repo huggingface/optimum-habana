@@ -230,7 +230,7 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture | Training | Inference | Tasks |
 |:-------------|:--------:|:---------:|:------|
-| BERT         | :heavy_check_mark: | :heavy_check_mark: | <li>[text classification](/examples/text-classification)</li><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li><li>[text feature extraction](/examples/text-feature-extraction)</li> |
+| BERT         | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text classification](/examples/text-classification)</li><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li><li>[text feature extraction](/examples/text-feature-extraction)</li></ul> |
 | RoBERTa | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
 | ALBERT | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
 | DistilBERT |:heavy_check_mark: | :heavy_check_mark: | <li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li> |
