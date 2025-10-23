@@ -306,6 +306,7 @@ The following model architectures, tasks and device distributions have been vali
 | Text to Video    |               | <li>Single card</li> | <li>[text-to-video generation](/examples/stable-diffusion#text-to-video-generation)</li> |
 | Image to Video   |               | <li>Single card</li> | <li>[image-to-video generation](/examples/stable-diffusion#image-to-video-generation)</li> |
 | i2vgen-xl   |               | <li>Single card</li> | <li>[image-to-video generation](/examples/stable-diffusion#I2vgen-xl)</li> |
+| Wan         |               | <li>Single card</li> |  <li>[text-to-video generation](/examples/stable-diffusion#text-to-video-with-wan-22)</li><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-with-wan-22)</li> |
 
 ### PyTorch Image Models/TIMM:
 
