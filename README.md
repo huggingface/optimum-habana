@@ -230,65 +230,65 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture | Training | Inference | Tasks |
 |:-------------|:------------------:|:------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| BERT         | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text classification](/examples/text-classification)</li><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li><li>[text feature extraction](/examples/text-feature-extraction)</li></ul> |
-| RoBERTa      | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
-| ALBERT       | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
-| DistilBERT   | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
-| GPT2         | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul>                                                                                                                                         |
-| BLOOM(Z) |   | <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
-| StarCoder / StarCoder2 | :heavy_check_mark:  | <li>Single-card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| GPT-J | <li>DeepSpeed</li> | <li>Single card</li><li>DeepSpeed</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| GPT-Neo |      | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| GPT-NeoX | <li>DeepSpeed</li> | <li>DeepSpeed</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| OPT |   | <li>DeepSpeed</li> | <li>[text generation](/examples/text-generation)</li> |
-| Llama 2 / CodeLlama / Llama 3 / Llama Guard / Granite | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li><li>[question answering](/examples/question-answering)</li><li>[text classification](/examples/text-classification) (Llama Guard)</li> |
-| StableLM |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Falcon | <li>LoRA</li> | :heavy_check_mark: | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| CodeGen |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| MPT |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Mistral |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Phi | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| Mixtral |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Persimmon |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Qwen2 / Qwen3 | <li>Single card</li> | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| Qwen2-MoE |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Gemma | :heavy_check_mark:  | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| Gemma2 |  | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
-| Gemma3 |  | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
-| XGLM | | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Cohere       |          | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](/examples/summarization)</li><li>[translation](/examples/translation)</li><li>[question answering](/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
-| BART |   | <li>Single card</li> | <li>[summarization](/examples/summarization)</li><li>[translation](/examples/translation)</li><li>[question answering](/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
-| ViT | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](/examples/image-classification)</li> |
-| Swin | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](/examples/image-classification)</li> |
-| Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](/examples/audio-classification)</li><li>[speech recognition](/examples/speech-recognition)</li> |
-| Whisper | :heavy_check_mark: | :heavy_check_mark: | <li>[speech recognition](/examples/speech-recognition)</li> |
-| SpeechT5 |   | <li>Single card</li> | <li>[text to speech](/examples/text-to-speech)</li> |
-| CLIP | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](/examples/contrastive-image-text)</li> |
-| BridgeTower | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](/examples/contrastive-image-text)</li> |
-| ESMFold |   | <li>Single card</li> | <li>[protein folding](/examples/protein-folding)</li> |
-| Blip |   | <li>Single card</li> | <li>[visual question answering](/examples/visual-question-answering)</li><li>[image to text](/examples/image-to-text)</li> |
-| OWLViT |   | <li>Single card</li> | <li>[zero shot object detection](/examples/zero-shot-object-detection)</li> |
-| ClipSeg |   | <li>Single card</li> | <li>[object segmentation](/examples/object-segementation)</li> |
-| Llava / Llava-next / Llava-onevision |    | <li>Single card</li> | <li>[image to text](/examples/image-to-text)</li> |
-| idefics2 | <li>LoRA</li> | <li>Single card</li> | <li>[image to text](/examples/image-to-text)</li> |
-| Paligemma | | <li>Single card</li> | <li>[image to text](/examples/image-to-text)</li> |
-| Segment Anything Model |   | <li>Single card</li> | <li>[object segmentation](/examples/object-segementation)</li> |
-| VideoMAE | | <li>Single card</li> | <li>[Video classification](/examples/video-classification)</li> |
-| TableTransformer |   | <li>Single card</li> | <li>[table object detection](/examples/table-detection) </li> |
-| DETR |   | <li>Single card</li> | <li>[object detection](/examples/object-detection)</li> |
-| Mllama     | <li>LoRA</li> | :heavy_check_mark: | <li>[image to text](/examples/image-to-text)</li> |
-| MiniCPM3 |   | <li>Single card</li> | <li>[text generation](/examples/text-generation)</li> |
-| Baichuan2 | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
-| DeepSeek-V3 / Moonlight |   | :heavy_check_mark: | <li>[text generation](/examples/text-generation)</li> |
-| ChatGLM | <li>DeepSpeed</li> | <li>Single card</li> | <li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li> |
-| Qwen2-VL |          |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
-| Qwen2.5-VL |        |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
-| VideoLLaVA | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video comprehension](/examples/video-comprehension)</li> |
-| GLM-4V | |  <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](/examples/image-to-text)</li> |
-| Arctic |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](/examples/text-generation)</li> |
-| GPT-OSS |          |  <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](/examples/text-generation)</li> |
+| BERT         | :heavy_check_mark:           | :heavy_check_mark: | <ul><li>[text classification](/examples/text-classification)</li><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li><li>[text feature extraction](/examples/text-feature-extraction)</li></ul> |
+| RoBERTa      | :heavy_check_mark:          | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| ALBERT       | :heavy_check_mark:          | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| DistilBERT   | :heavy_check_mark:          | :heavy_check_mark: | <ul><li>[question answering](/examples/question-answering)</li><li>[language modeling](/examples/language-modeling)</li></ul>                                                                                                                                   |
+| GPT2         | :heavy_check_mark:          | :heavy_check_mark: | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul>                                                                                                                                         |
+| BLOOM(Z)     |                       | <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| StarCoder / StarCoder2 | :heavy_check_mark:  | <ul><li>Single-card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| GPT-J | <ul><li>DeepSpeed</li></ul> | <ul><li>Single card</li><li>DeepSpeed</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| GPT-Neo |      | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| GPT-NeoX | <ul><li>DeepSpeed</li></ul> | <ul><li>DeepSpeed</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| OPT |   | <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Llama 2 / CodeLlama / Llama 3 / Llama Guard / Granite | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li><li>[question answering](/examples/question-answering)</li><li>[text classification](/examples/text-classification) (Llama Guard)</li></ul> |
+| StableLM |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Falcon | <ul><li>LoRA</li></ul> | :heavy_check_mark: | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| CodeGen |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| MPT |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Mistral |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Phi | :heavy_check_mark:  | <ul><li>Single card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| Mixtral |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Persimmon |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Qwen2 / Qwen3 | <ul><li>Single card</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| Qwen2-MoE |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Gemma | :heavy_check_mark:  | <ul><li>Single card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| Gemma2 |  | :heavy_check_mark: | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Gemma3 |  | :heavy_check_mark: | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| XGLM | | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Cohere       |          | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[summarization](/examples/summarization)</li><li>[translation](/examples/translation)</li><li>[question answering](/examples/question-answering#fine-tuning-t5-on-squad20)</li></ul> |
+| BART |   | <ul><li>Single card</li></ul> | <ul><li>[summarization](/examples/summarization)</li><li>[translation](/examples/translation)</li><li>[question answering](/examples/question-answering#fine-tuning-t5-on-squad20)</li></ul> |
+| ViT | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[image classification](/examples/image-classification)</li></ul> |
+| Swin | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[image classification](/examples/image-classification)</li></ul> |
+| Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[audio classification](/examples/audio-classification)</li><li>[speech recognition](/examples/speech-recognition)</li></ul> |
+| Whisper | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[speech recognition](/examples/speech-recognition)</li></ul> |
+| SpeechT5 |   | <ul><li>Single card</li></ul> | <ul><li>[text to speech](/examples/text-to-speech)</li></ul> |
+| CLIP | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[contrastive image-text training](/examples/contrastive-image-text)</li></ul> |
+| BridgeTower | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[contrastive image-text training](/examples/contrastive-image-text)</li></ul> |
+| ESMFold |   | <ul><li>Single card</li></ul> | <ul><li>[protein folding](/examples/protein-folding)</li></ul> |
+| Blip |   | <ul><li>Single card</li></ul> | <ul><li>[visual question answering](/examples/visual-question-answering)</li><li>[image to text](/examples/image-to-text)</li></ul> |
+| OWLViT |   | <ul><li>Single card</li></ul> | <ul><li>[zero shot object detection](/examples/zero-shot-object-detection)</li></ul> |
+| ClipSeg |   | <ul><li>Single card</li></ul> | <ul><li>[object segmentation](/examples/object-segementation)</li></ul> |
+| Llava / Llava-next / Llava-onevision |    | <ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| idefics2 | <ul><li>LoRA</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| Paligemma | | <ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| Segment Anything Model |   | <ul><li>Single card</li></ul> | <ul><li>[object segmentation](/examples/object-segementation)</li></ul> |
+| VideoMAE | | <ul><li>Single card</li></ul> | <ul><li>[Video classification](/examples/video-classification)</li></ul> |
+| TableTransformer |   | <ul><li>Single card</li></ul> | <ul><li>[table object detection](/examples/table-detection) </li></ul> |
+| DETR |   | <ul><li>Single card</li></ul> | <ul><li>[object detection](/examples/object-detection)</li></ul> |
+| Mllama     | <ul><li>LoRA</li></ul> | :heavy_check_mark: | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| MiniCPM3 |   | <ul><li>Single card</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| Baichuan2 | <ul><li>DeepSpeed</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| DeepSeek-V2 | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| DeepSeek-V3 / Moonlight |   | :heavy_check_mark: | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| ChatGLM | <ul><li>DeepSpeed</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[language modeling](/examples/language-modeling)</li><li>[text generation](/examples/text-generation)</li></ul> |
+| Qwen2-VL |          |  <ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| Qwen2.5-VL |        |  <div style="text-align:left"><ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| VideoLLaVA | | <ul><li>Single card</li></ul> | <ul><li>[Video comprehension](/examples/video-comprehension)</li></ul> |
+| GLM-4V | |  <ul><li>Single card</li></ul> | <ul><li>[image to text](/examples/image-to-text)</li></ul> |
+| Arctic |          |  <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
+| GPT-OSS |          |  <ul><li>DeepSpeed</li></ul> | <ul><li>[text generation](/examples/text-generation)</li></ul> |
 
 </div>
 
@@ -297,30 +297,30 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture        | Training | Inference | Tasks |
 |:--------------------|:--------:|:---------:|:------|
-| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](/examples/stable-diffusion#image-to-image-generation)</li> |
-| Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <li>[text-to-image generation](/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](/examples/stable-diffusion#stable-diffusion-xl-refiner)</li> |
-| Stable Diffusion Depth2img |         | <li>Single card</li> | <li>[depth-to-image generation](/examples/stable-diffusion)</li> |
-| Stable Diffusion 3  | :heavy_check_mark: | <li>Single card</li> | <li>[text-to-image generation](/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li> |
-| LDM3D            |               | <li>Single card</li> | <li>[text-to-image generation](/examples/stable-diffusion#text-to-image-generation)</li> |
-| FLUX.1           | <li>LoRA</li> | <li>Single card</li> | <li>[text-to-image generation](/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](/examples/stable-diffusion#flux1-image-to-image)</li> |
-| Text to Video    |               | <li>Single card</li> | <li>[text-to-video generation](/examples/stable-diffusion#text-to-video-generation)</li> |
-| Image to Video   |               | <li>Single card</li> | <li>[image-to-video generation](/examples/stable-diffusion#image-to-video-generation)</li> |
-| i2vgen-xl   |               | <li>Single card</li> | <li>[image-to-video generation](/examples/stable-diffusion#I2vgen-xl)</li> |
-| Wan         |               | <li>Single card</li> |  <li>[text-to-video generation](/examples/stable-diffusion#text-to-video-with-wan-22)</li><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-with-wan-22)</li> |
+| Stable Diffusion    | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text-to-image generation](/examples/stable-diffusion#text-to-image-generation)</li><li>[image-to-image generation](/examples/stable-diffusion#image-to-image-generation)</li></ul> |
+| Stable Diffusion XL | :heavy_check_mark: | :heavy_check_mark: | <ul><li>[text-to-image generation](/examples/stable-diffusion#stable-diffusion-xl-sdxl)</li><li>[image-to-image generation](/examples/stable-diffusion#stable-diffusion-xl-refiner)</li></ul> |
+| Stable Diffusion Depth2img |         | <ul><li>Single card</li></ul> | <ul><li>[depth-to-image generation](/examples/stable-diffusion)</li></ul> |
+| Stable Diffusion 3  | :heavy_check_mark: | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li></ul> |
+| LDM3D            |               | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#text-to-image-generation)</li></ul> |
+| FLUX.1           | <ul><li>LoRA</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](/examples/stable-diffusion#flux1-image-to-image)</li></ul> |
+| Text to Video    |               | <ul><li>Single card</li></ul> | <ul><li>[text-to-video generation](/examples/stable-diffusion#text-to-video-generation)</li></ul> |
+| Image to Video   |               | <ul><li>Single card</li></ul> | <ul><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-generation)</li></ul> |
+| i2vgen-xl   |               | <ul><li>Single card</li></ul> | <ul><li>[image-to-video generation](/examples/stable-diffusion#I2vgen-xl)</li></ul> |
+| Wan         |               | <ul><li>Single card</li></ul> |  <ul><li>[text-to-video generation](/examples/stable-diffusion#text-to-video-with-wan-22)</li><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-with-wan-22)</li></ul> |
 
 ### PyTorch Image Models/TIMM:
 
 | Architecture        | Training | Inference | Tasks |
 |:--------------------|:--------:|:---------:|:------|
-| FastViT       |          | <li>Single card</li> | <li>[image classification](/examples/image-classification)</li> |
+| FastViT       |          | <ul><li>Single card</li></ul> | <ul><li>[image classification](/examples/image-classification)</li></ul> |
 
 ### TRL:
 
 | Architecture     | Training | Inference            | Tasks                                                                                          |
 |:-----------------|:--------:|:--------------------:|:-----------------------------------------------------------------------------------------------|
-| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](/examples/trl#dpo-pipeline)</li>  |
-| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](/examples/trl#ppo-pipeline)</li>  |
-| Stable Diffusion | :heavy_check_mark: |           | <li>[DDPO Pipeline](/examples/trl#ddpo-pipeline)</li> |
+| Llama 2          | :heavy_check_mark: |           | <ul><li>[DPO Pipeline](/examples/trl#dpo-pipeline)</li></ul>  |
+| Llama 2          | :heavy_check_mark: |           | <ul><li>[PPO Pipeline](/examples/trl#ppo-pipeline)</li></ul>  |
+| Stable Diffusion | :heavy_check_mark: |           | <ul><li>[DDPO Pipeline](/examples/trl#ddpo-pipeline)</li></ul> |
 
 Other models and tasks supported by the Transformers and Diffusers libraries may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it)
 for using them with Optimum for Intel Gaudi. In addition, [this page](/examples) explains how to modify any
