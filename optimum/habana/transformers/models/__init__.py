@@ -389,11 +389,11 @@ from .wav2vec2 import (
     gaudi_wav2vec2forctc_forward,
 )
 from .whisper import (
+    GaudiWhisperAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
-    GaudiWhisperSdpaAttention,
 )
 from .xglm import (
     GaudiXGLMForCausalLM,
