@@ -146,6 +146,14 @@ class ModelArguments:
             )
         },
     )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
     use_fused_rope: bool = field(
         default=True,
         metadata={
