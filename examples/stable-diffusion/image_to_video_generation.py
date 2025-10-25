@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -207,6 +208,11 @@ def main():
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
     parser.add_argument(
+        "--use_distributed_cfg",
+        action="store_true",
+        help="Use distributed CFG (classifier-free guidance) across 2 devices for Wan pipeline. Requires even world size.",
+    )
+    parser.add_argument(
         "--profiling_warmup_steps",
         default=0,
         type=int,
@@ -291,7 +297,13 @@ def main():
         "sdp_on_bf16": args.sdp_on_bf16,
     }
 
-    set_seed(args.seed)
+    # Set RNG seed
+    seed_dist_offset = int(os.getenv("RANK", "0"))
+    if args.use_distributed_cfg:
+        # Same seed needed for a pair of workers with distributed CFG for SD3
+        seed_dist_offset = seed_dist_offset // 2
+    set_seed(args.seed + seed_dist_offset)
+
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
@@ -377,6 +389,7 @@ def main():
             num_frames=args.num_frames,
             num_inference_steps=args.num_inference_steps,
             guidance_scale=5.0,  # WAN I2V recommended guidance scale
+            use_distributed_cfg=args.use_distributed_cfg,
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
@@ -419,25 +432,30 @@ def main():
         if args.output_type == "pil":
             video_save_dir = Path(args.video_save_dir)
             video_save_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
-            for i, frames in enumerate(outputs.frames):
-                if args.gif:
-                    export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
-                else:
-                    export_to_video(
-                        frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=args.fps
-                    )
 
-                if args.save_frames_as_images:
-                    for j, frame in enumerate(frames):
-                        frame.save(
-                            args.video_save_dir
-                            + "/gen_video_"
-                            + str(i).zfill(2)
-                            + "_frame_"
-                            + str(j).zfill(2)
-                            + ".png"
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "1"))
+            rank_ext = f"_rank{rank}" if world_size > 1 else ""
+            skip_rank = False
+            if args.use_distributed_cfg and world_size > 1:
+                rank_ext += f"and{rank + 1}"
+                skip_rank = rank % 2 == 1
+
+            if not skip_rank:
+                logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
+                for i, frames in enumerate(outputs.frames):
+                    if args.gif:
+                        export_to_gif(frames, f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}{rank_ext}.gif")
+                    else:
+                        export_to_video(
+                            frames, f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}{rank_ext}.mp4", fps=args.fps
                         )
+
+                    if args.save_frames_as_images:
+                        for j, frame in enumerate(frames):
+                            frame.save(
+                                f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}_frame_{str(j).zfill(2)}{rank_ext}.png"
+                            )
         else:
             logger.warning("--output_type should be equal to 'pil' to save frames in --video_save_dir.")
 

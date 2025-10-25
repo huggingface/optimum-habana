@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import types
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -200,6 +201,7 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        use_distributed_cfg: bool = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -264,6 +266,10 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
+            use_distributed_cfg (`bool`, *optional*, defaults to `False`):
+                Enables distributed CFG (classifier-free guidance) across 2 devices. Requires even number of devices.
+                Conditional and unconditional parts are processed separately (one on each device) if set to True.
+                Boosts performance close to 2x.
             profiling_warmup_steps (`int`, *optional*):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*):
@@ -278,6 +284,24 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
         import habana_frameworks.torch.core as htcore
+
+        if use_distributed_cfg:
+            # Set distributed CFG (classifier-free guidance) across a pair of devices (requires even number of devices)
+            import torch.distributed as dist
+
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "0"))
+            if world_size < 2:
+                raise ValueError("Error: Distributed CFG requires running with at least 2 devices")
+            if not dist.is_initialized():
+                dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            if dist.get_world_size() % 2 != 0:
+                raise ValueError(f"Error: Distributed CFG requires even world size, but got world_size={world_size}")
+            if guidance_scale <= 1:
+                raise ValueError(
+                    "Error: Distributed CFG requires use of classifier-free guidance (guidance scale > 1)"
+                )
+            htcore.hpu.set_device(rank)
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -404,43 +428,93 @@ class GaudiWanPipeline(GaudiDiffusionPipeline, WanPipeline):
                 else:
                     timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
-                    if not self.use_hpu_graphs:
-                        noise_pred = current_model(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
+                if use_distributed_cfg and self.do_classifier_free_guidance:
+                    idx = rank % 2
+                    if idx:
+                        with current_model.cache_context("uncond"):
+                            if not self.use_hpu_graphs:
+                                noise_uncond = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds,
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+                            else:
+                                noise_uncond = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds.clone(),
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0].clone()
+                        noise_pred = torch.zeros_like(noise_uncond)
+                        send_req = dist.isend(tensor=noise_uncond, dst=rank ^ 1)
+                        recv_req = dist.irecv(tensor=noise_pred, src=rank ^ 1)
+                        send_req.wait()
+                        recv_req.wait()
                     else:
-                        noise_pred = current_model(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds.clone(),
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0].clone()
-
-                if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
+                        with current_model.cache_context("cond"):
+                            if not self.use_hpu_graphs:
+                                noise_pred = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=prompt_embeds,
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+                            else:
+                                noise_pred = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=prompt_embeds.clone(),
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0].clone()
+                        noise_uncond = torch.zeros_like(noise_pred)
+                        send_req = dist.isend(tensor=noise_pred, dst=rank ^ 1)
+                        recv_req = dist.irecv(tensor=noise_uncond, src=rank ^ 1)
+                        send_req.wait()
+                        recv_req.wait()
+                    noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
+                else:
+                    with current_model.cache_context("cond"):
                         if not self.use_hpu_graphs:
-                            noise_uncond = current_model(
+                            noise_pred = current_model(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
-                                encoder_hidden_states=negative_prompt_embeds,
+                                encoder_hidden_states=prompt_embeds,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
                         else:
-                            noise_uncond = current_model(
+                            noise_pred = current_model(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
-                                encoder_hidden_states=negative_prompt_embeds.clone(),
+                                encoder_hidden_states=prompt_embeds.clone(),
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0].clone()
-                    noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
+
+                    if self.do_classifier_free_guidance:
+                        with current_model.cache_context("uncond"):
+                            if not self.use_hpu_graphs:
+                                noise_uncond = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds,
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+                            else:
+                                noise_uncond = current_model(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds.clone(),
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0].clone()
+                        noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
