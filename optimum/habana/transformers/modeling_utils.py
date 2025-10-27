@@ -212,11 +212,11 @@ from .models import (
     GaudiT5ForConditionalGeneration,
     GaudiVideoLlavaForConditionalGeneration,
     GaudiVisionSdpaAttention,
+    GaudiWhisperAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
-    GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
     GLM4VConfig,
     GLM4VForConditionalGeneration,
@@ -832,7 +832,7 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for Whisper on Gaudi
-    transformers.models.whisper.modeling_whisper.WhisperAttention = GaudiWhisperSdpaAttention
+    transformers.models.whisper.modeling_whisper.WhisperAttention = GaudiWhisperAttention
     transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
     transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
