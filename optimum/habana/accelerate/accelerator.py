@@ -223,11 +223,15 @@ class GaudiAccelerator(Accelerator):
                 )
             elif len(model_devices) == 1:
                 current_device = list(model_devices)[0]
-                current_device_index = (
-                    current_device.index if isinstance(current_device, torch.device) else current_device
-                )
 
-                if torch.device(current_device_index) != self.device:
+                if isinstance(current_device, torch.device):
+                    current_device_index = current_device.index
+                elif isinstance(current_device, str) and ":" in current_device:
+                    current_device_index = int(current_device.split(":")[1])
+                else:
+                    current_device_index = current_device
+
+                if torch.device(current_device) != self.device:
                     # if on the first device (GPU 0) we don't care
                     if (self.device.index is not None) or (current_device_index != 0):
                         raise ValueError(
