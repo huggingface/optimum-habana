@@ -58,7 +58,6 @@ PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --throughput_warmup_steps 3 \
     --sdp_on_bf16 \
     --bf16 \
-    --trust_remote_code True \
     --attn_implementation gaudi_fused_sdpa
 ```
 
@@ -133,7 +132,6 @@ PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
     --gaudi_config_name Habana/wav2vec2 \
-    --trust_remote_code
 ```
 
 
