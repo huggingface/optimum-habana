@@ -98,24 +98,6 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
-### Run Speculative Sampling on Gaudi
-
-If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
-
-```bash
-PT_HPU_LAZY_MODE=1 python run_generation.py \
---model_name_or_path gpt2 \
---assistant_model distilgpt2 \
---batch_size 1 \
---max_new_tokens 100 \
---use_hpu_graphs \
---use_kv_cache \
---num_return_sequences 1 \
---temperature 0 \
---prompt "Alice and Bob" \
---sdp_on_bf16
-```
-
 ### Benchmark
 
 The default behaviour of this script (i.e. if no dataset is specified with `--dataset_name`) is to benchmark the given model with a few pre-defined prompts or with the prompt you gave with `--prompt`.
@@ -144,21 +126,6 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_g
 --use_kv_cache \
 --max_new_tokens 100 \
 --sdp_on_bf16
-```
-
-To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
-```bash
-PT_HPU_LAZY_MODE=1 ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---max_new_tokens 2048 \
---bf16 \
---use_hpu_graphs \
---use_kv_cache \
---batch_size 1 \
---do_sample \
---use_flash_attention \
---flash_attention_causal_mask
 ```
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](/examples/multi-node-training/hostfile)
