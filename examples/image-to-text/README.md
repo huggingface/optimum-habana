@@ -63,50 +63,6 @@ Inference with FP8 precision is enabled using [Intel Neural Compressor (INC)](ht
 More information on enabling FP8 in SynapseAI is available here:
 [Run Inference Using FP8](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Quantization/Inference_Using_FP8.html?highlight=fp8)
 
-### Single card inference with FP8
-Here is an example to measure the tensor quantization statistics on Llava-v1.6-vicuna-13b with SDPA:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --sdp_on_bf16
-```
-
-Here is an example to quantize the model based on previous measurements for Llava-v1.6-vicuna-13b with SDPA:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --sdp_on_bf16
-```
-
-### Multi-cards inference with FP8
-Here is an example of measuring the tensor quantization statistics on Llava-v1.6-mistral-7b with FusedSDPA on 8 HPUs:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
-
-Here is an example of quantizing the model based on previous measurements for Llava-v1.6-mistral-7b with FusedSDPA on 8 HPUs:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_scale_format_const.json python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
-    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
-    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
-    --use_hpu_graphs \
-    --bf16 \
-    --use_flash_attention \
-    --flash_attention_recompute
-```
-
 ## LORA Finetune
 
 Here are single-/multi-device command examples for meta-llama/Llama-3.2-11B-Vision-Instruct.
