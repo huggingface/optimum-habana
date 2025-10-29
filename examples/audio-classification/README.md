@@ -29,13 +29,13 @@ pip install -r requirements.txt
 
 ## Single-HPU
 
-The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
+The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/regisss/superb_ks) of the SUPERB dataset on a single HPU.
 
 ```bash
 PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb \
-    --dataset_config_name ks \
+    --dataset_name regisss/superb_ks \
+    --dataset_config_name default \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
@@ -69,13 +69,13 @@ On a single HPU, this script should run in ~13 minutes and yield an accuracy of 
 
 ## Multi-HPU
 
-The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
+The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/regisss/common_language) on 8 HPUs.
 
 ```bash
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name common_language \
+    --dataset_name regisss/common_language \
     --audio_column_name audio \
     --label_column_name language \
     --output_dir /tmp/wav2vec2-base-lang-id \
@@ -117,8 +117,8 @@ For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset
 ```bash
 PT_HPU_LAZY_MODE=1 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
-    --dataset_name superb \
-    --dataset_config_name ks \
+    --dataset_name regisss/superb_ks \
+    --dataset_config_name default \
     --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
