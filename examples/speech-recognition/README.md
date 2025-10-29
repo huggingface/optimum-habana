@@ -276,45 +276,6 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_seq2seq.py \
 If training on a different language, you should be sure to change the `language` argument. The `language` and `task` arguments should be omitted for English speech recognition.
 
 
-### Multi HPU Whisper Training with Seq2Seq
-The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
-```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
-    --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
-    --model_name_or_path="openai/whisper-large" \
-    --dataset_name="mozilla-foundation/common_voice_11_0" \
-    --trust_remote_code \
-    --dataset_config_name="hi" \
-    --language="hindi" \
-    --task="transcribe" \
-    --train_split_name="train+validation" \
-    --eval_split_name="test" \
-    --gaudi_config_name="Habana/whisper" \
-    --max_steps="625" \
-    --output_dir="/tmp/whisper-large-hi" \
-    --per_device_train_batch_size="16" \
-    --per_device_eval_batch_size="2" \
-    --logging_steps="25" \
-    --learning_rate="1e-5" \
-    --generation_max_length="225" \
-    --preprocessing_num_workers="1" \
-    --max_duration_in_seconds="30" \
-    --text_column_name="sentence" \
-    --freeze_feature_encoder="False" \
-    --sdp_on_bf16 \
-    --bf16 \
-    --overwrite_output_dir \
-    --do_train \
-    --do_eval \
-    --predict_with_generate \
-    --use_habana \
-    --use_hpu_graphs_for_inference \
-    --label_features_max_length 128 \
-    --dataloader_num_workers 8 \
-    --gradient_checkpointing \
-    --throughput_warmup_steps 3
-```
-
 #### Single HPU Seq2Seq Inference
 
 The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 1 HPU devices in half-precision:
