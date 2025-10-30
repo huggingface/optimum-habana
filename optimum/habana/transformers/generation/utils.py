@@ -573,6 +573,17 @@ class GaudiGenerationMixin(GenerationMixin):
                     # Mark step if lazy mode is enabled
                     if lazy_mode:
                         self.htcore_generation.mark_step()
+        # For Non-MQA models with decode_attn_batch_split > 1, past_key_values is a list of list of list (k and v)
+        elif not is_mqa_model and model_kwargs.get("decode_attn_batch_split", 1) > 1:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                for j, split_kv_caches in enumerate(layer):  # Iterate over splitted kv_cahe
+                    for k, k_or_v in enumerate(split_kv_caches):  # Iterate over k and v
+                        if torch.is_tensor(k_or_v) and k_or_v.shape[-2] == kv_cache_len_pad_amount:
+                            # tensor(batch_size/num_splits, n_heads, kv_cache_len, head_dim)
+                            past_key_values[i][j][k] = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                            # Mark step if lazy mode is enabled
+                            if lazy_mode:
+                                self.htcore_generation.mark_step()
         # For Non-MQA models, the past_key_values is a list of lists (k and v)
         else:
             for i, layer in enumerate(past_key_values):  # Iterate over layers
@@ -1606,8 +1617,11 @@ class GaudiGenerationMixin(GenerationMixin):
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
 
-        # prepare for attention batch splitting
+        # prepare for attention batch splitting for prompt
         model_kwargs["attn_batch_split"] = generation_config.attn_batch_split
+
+        # prepare for attention batch splitting for decode
+        model_kwargs["decode_attn_batch_split"] = generation_config.decode_attn_batch_split
 
         # Keep logits in bf16
         model_kwargs["logits_bf16"] = kwargs.get("logits_bf16")
@@ -2941,9 +2955,13 @@ class GaudiGenerationMixin(GenerationMixin):
                         if "inputs_embeds" in model_inputs
                         else None
                     )
+                    if model_kwargs["decode_attn_batch_split"] > 1 :
+                        output_past_key_values_shape = outputs.past_key_values[0][0][0].shape
+                    else:
+                        output_past_key_values_shape = outputs.past_key_values[0][0].shape
                     do_padding = (
                         key_to_check is not None
-                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and output_past_key_values_shape[2] == model_inputs[key_to_check].shape[1]
                         and generation_config.max_new_tokens > 1
                     )
 

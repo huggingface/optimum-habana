@@ -945,6 +945,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         cache_idx: int = None,
         num_virtual_tokens: int = None,
         attn_batch_split: int = 1,
+        decode_attn_batch_split: int = 1,
         prev_layer_residual: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -960,8 +961,11 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_causal_mask
         - add new arg flash_attention_fast_softmax
         """
-        if attn_batch_split > 1 and past_key_value is None:
+        if (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None):
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
+            if past_key_value is not None:
+                attn_batch_split = decode_attn_batch_split
+
             batch_size = attention_mask.size(0)
             base_split_size = batch_size // attn_batch_split
             remainder = batch_size % attn_batch_split
@@ -984,11 +988,11 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                     split_hidden_states[i] = self.post_mlp(hidden_states[i], prev_layer_residual[i])
 
                 residual[i] = split_hidden_states[i]
-                split_hidden_states[i], self_attn_weights, present_key_value = self.pre_attn(
+                split_hidden_states[i], self_attn_weights, inter_present_key_value = self.pre_attn(
                     hidden_states=split_hidden_states[i],
                     attention_mask=sub_attention_mask[i],
                     position_ids=sub_position_ids[i],
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_value[i] if past_key_value is not None else past_key_value,
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=position_embeddings,
@@ -1006,10 +1010,17 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
                 )
                 self.self_attn.attention_all_reduce(split_hidden_states[i])
                 if use_cache:
-                    split_present_key_values.append(present_key_value)
+                    split_present_key_values.append(inter_present_key_value)
 
             self_attn_weights = torch.cat(split_attn_weights, dim=0) if split_attn_weights else None
-            present_key_value = [torch.cat(tensors, dim=0) for tensors in zip(*split_present_key_values)]
+            if decode_attn_batch_split > 1:
+                # Instead of concatenating, keep them as a list of lists
+                # [[k1, v1], [k2, v2]]
+                present_key_value = split_present_key_values
+            else:
+                # Concatenate along the batch dimension to form the final present_key_value
+                # [k, v] where k and v have batch dimension = sum of all splits
+                present_key_value = [torch.cat(tensors, dim=0) for tensors in zip(*split_present_key_values)]
 
             int_residual_splits = []
             for i in range(attn_batch_split):
@@ -1054,7 +1065,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         if use_cache:
             outputs += (present_key_value,)
         # Store the residual splits to add them in the beginning of the next layer
-        if attn_batch_split > 1 and past_key_value is None:
+        if (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None):
             outputs += (int_residual_splits,)
 
         return outputs
@@ -1133,8 +1144,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         return hidden_states
 
 
-class GaudiLlamaModel(LlamaModel):
     """
+class GaudiLlamaModel(LlamaModel):
     Copied from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L909
     """
 
@@ -1197,6 +1208,7 @@ class GaudiLlamaModel(LlamaModel):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         attn_batch_split: int = 1,
+        decode_attn_batch_split: int = 1,
         **kwargs,
     ) -> BaseModelOutputWithPast:
         """
@@ -1246,8 +1258,10 @@ class GaudiLlamaModel(LlamaModel):
                     past_seen_tokens = past_key_values[0][0][2]
             else:
                 # HPU uses legacy cache path (use_new_cache = False)
-                past_seen_tokens = past_key_values[0][0].shape[2]
-
+                if decode_attn_batch_split > 1:
+                    past_seen_tokens = past_key_values[0][0][0].shape[2]
+                else:
+                    past_seen_tokens = past_key_values[0][0].shape[2]
         if ignore_cache_position is False:
             if cache_position is None:
                 past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -1284,8 +1298,9 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         split_prompt = False
-        prev_layer_residual = None
-        if attn_batch_split > 1 and past_key_values is None:
+        if (attn_batch_split > 1 and past_key_values is None) or (decode_attn_batch_split > 1 and past_key_values is not None):
+            if past_key_values is not None:
+                attn_batch_split = decode_attn_batch_split
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             batch_size = hidden_states.size(0)
             base_split_size = batch_size // attn_batch_split
@@ -1294,6 +1309,8 @@ class GaudiLlamaModel(LlamaModel):
             # Split tensors using the calculated sizes
             hidden_states_split = torch.split(hidden_states, split_sizes, dim=0)
             split_prompt = True
+
+        prev_layer_residual = None
 
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             if (
@@ -1306,10 +1323,10 @@ class GaudiLlamaModel(LlamaModel):
             # Calling the layer with positional arguments
             # This is a workaround for an issue with DeepSpeed where
             # it cannot handle keyword arguments and throws a RuntimError
-            use_prev_layer_residual = attn_batch_split > 1 and past_key_values is None
+            past_key_value = None if past_key_values is None else past_key_values[layer_idx]
+            use_prev_layer_residual = (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None)
             layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
             layer_hidden_states = hidden_states_split if split_prompt else hidden_states
-            past_key_value = None if past_key_values is None else past_key_values[layer_idx]
             layer_outputs = decoder_layer(
                 layer_hidden_states,
                 causal_mask,
@@ -1330,6 +1347,7 @@ class GaudiLlamaModel(LlamaModel):
                 cache_idx,
                 num_virtual_tokens,
                 attn_batch_split,
+                decode_attn_batch_split,
                 layer_prev_layer_residual,
             )
             if use_prev_layer_residual:
@@ -1345,6 +1363,11 @@ class GaudiLlamaModel(LlamaModel):
 
         hidden_states = self.norm(hidden_states)
 
+        if lazy_mode and decode_attn_batch_split > 1 and torch.distributed.get_world_size() > 1 :
+            # In order to reduce NIC bombardment, put a barrier here so that all processes
+            # finish computation before moving to the next step.
+            # Recommended to use for llama 405B model during decoding with batch split
+            torch.distributed.barrier()
         next_cache = next_decoder_cache if use_cache else None
         if not use_new_cache and isinstance(next_cache, Cache):
             next_cache = next_cache.to_legacy_cache()
@@ -1409,6 +1432,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
         attn_batch_split: int = 1,
+        decode_attn_batch_split: int = 1,
         **kwargs: Unpack[TransformersKwargs],
     ) -> CausalLMOutputWithPast:
         if self.generation_config.use_fused_rope is False:
@@ -1436,6 +1460,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             lazy_mode=lazy_mode,
             num_virtual_tokens=num_virtual_tokens,
             attn_batch_split=attn_batch_split,
+            decode_attn_batch_split=decode_attn_batch_split,
             **kwargs,
         )
 
@@ -1563,6 +1588,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "lazy_mode": kwargs.get("lazy_mode"),
                 "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
                 "attn_batch_split": kwargs.get("attn_batch_split"),
+                "decode_attn_batch_split": kwargs.get("decode_attn_batch_split"),
             }
         )
         return model_inputs
