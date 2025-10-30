@@ -416,6 +416,15 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
 
+    # Disable caching when gradient checkpointing is active to prevent conflicts with HPU graphs
+    if training_args.gradient_checkpointing:
+        if hasattr(config, "use_cache") and config.use_cache:
+            logger.warning(
+                "Disabling `use_cache=True` in model config because gradient checkpointing is enabled. "
+                "Caching is incompatible with checkpointing on HPU."
+            )
+        config.use_cache = False
+
     # SpecAugment for whisper models
     if getattr(config, "model_type", None) == "whisper":
         config.update({"apply_spec_augment": model_args.apply_spec_augment})
