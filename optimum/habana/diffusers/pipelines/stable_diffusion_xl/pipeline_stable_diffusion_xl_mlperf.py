@@ -933,6 +933,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
                 t_vae_e = time.time()
                 t1 = t1 + t_vae_e - t_vae_b
 
+        end_time = time.time()
         hb_profiler.stop()
 
         speed_metrics_prefix = "generation"
@@ -946,6 +947,7 @@ class StableDiffusionXLPipeline_HPU(StableDiffusionXLPipeline):
         speed_measures = speed_metrics(
             split=speed_metrics_prefix,
             start_time=t0,
+            end_time=end_time,
             num_samples=num_samples,
             num_steps=num_steps,
             start_time_after_warmup=t1,

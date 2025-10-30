@@ -708,6 +708,8 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
+            end_time = time.time()
+
             # Remove dummy generations if needed
             if num_dummy_samples > 0:
                 outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
@@ -716,6 +718,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
+                end_time=end_time,
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
