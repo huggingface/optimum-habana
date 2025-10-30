@@ -103,7 +103,7 @@ The task of translation supports only custom JSONLINES files, with each line bei
 ```
 Here the languages are Romanian (`ro`) and English (`en`).
 
-If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as follows:
+If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name regisss/wmt14-en-de-pre-processed`, as follows:
 
 ```bash
 PT_HPU_LAZY_MODE=1 python run_translation.py \
@@ -113,7 +113,7 @@ PT_HPU_LAZY_MODE=1 python run_translation.py \
     --source_lang en \
     --target_lang de \
     --source_prefix "translate English to German: " \
-    --dataset_name stas/wmt14-en-de-pre-processed \
+    --dataset_name regisss/wmt14-en-de-pre-processed \
     --output_dir /tmp/tst-translation \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
