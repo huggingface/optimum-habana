@@ -127,6 +127,13 @@ class GaudiWhisperDecoderLayer(WhisperDecoderLayer):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
 
+        if self.training and getattr(self, "gradient_checkpointing", False):
+            use_cache = False
+            past_key_value = None
+
+        if not use_cache:
+            past_key_value = None
+
         cross_attn_weights = None
         if encoder_hidden_states is not None:
             residual = hidden_states
