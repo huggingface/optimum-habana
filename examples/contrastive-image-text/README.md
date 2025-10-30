@@ -35,7 +35,7 @@ pip install -r requirements.txt
 **Recommended (datasets>=4.0.0):** use the COCO captions dataset hosted on the Hub. It provides image–caption pairs and does **not** require `trust_remote_code`:
 ```python
 import datasets
-ds = datasets.load_dataset("regisss/coco_test", split="train")
+ds = datasets.load_dataset("regisss/coco_2017", split="train")
 ```
 This dataset exposes at least the columns `image` (PIL image) and `caption` (string).
 If you prefer local files, you can also use the built-in Datasets `imagefolder` builder (not a placeholder) to load images/captions from a directory (it typically expects a small CSV/JSON with columns such as `image_path` and `caption`).
@@ -84,7 +84,7 @@ Run the following command for single-device training:
 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --dataset_name regisss/coco_test \
+    --dataset_name regisss/coco_2017 \
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
@@ -114,7 +114,7 @@ PT_ENABLE_INT64_SUPPORT=1 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir=/tmp/clip_roberta \
     --model_name_or_path=./clip-roberta \
-    --dataset_name regisss/coco_test \ 
+    --dataset_name regisss/coco_2017 \ 
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
@@ -185,7 +185,7 @@ For instance, you can run inference with CLIP on COCO on 1 Gaudi card with the f
 PT_HPU_LAZY_MODE=1 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --dataset_name regisss/coco_test \
+    --dataset_name regisss/coco_2017 \
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
