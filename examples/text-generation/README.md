@@ -215,7 +215,7 @@ You can also provide the name of a dataset from the Hugging Face Hub to perform 
 
 By default, the first column in the dataset of type `string` will be used as prompts. You can also select the column you want with the argument `--column_name`.
 
-Here is an example with [JulesBelveze/tldr_news](https://huggingface.co/datasets/JulesBelveze/tldr_news):
+Here is an example with [dim/tldr_news](https://huggingface.co/datasets/dim/tldr_news):
 ```bash
 PT_HPU_LAZY_MODE=1 python run_generation.py \
 --model_name_or_path gpt2 \
@@ -223,11 +223,10 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 --max_new_tokens 100 \
 --use_hpu_graphs \
 --use_kv_cache \
---dataset_name JulesBelveze/tldr_news \
+--dataset_name dim/tldr_news \
 --column_name content \
 --bf16 \
 --sdp_on_bf16 \
---trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
