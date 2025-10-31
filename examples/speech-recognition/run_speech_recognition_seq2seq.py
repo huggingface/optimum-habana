@@ -67,6 +67,9 @@ logger = logging.getLogger(__name__)
 # Disable torchcodec decoding in datasets before any dataset ops
 os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
 
+# Disable reentrant checkpoints to avoid double backward hooks in DDP
+os.environ["PT_HPU_DISABLE_REENTRANT_CHECKPOINTS"] = "1"
+
 
 @dataclass
 class ModelArguments:
@@ -338,7 +341,7 @@ def main():
         cache_dir=model_args.cache_dir,
         token=model_args.token,
     )
-    
+
     if training_args.gradient_checkpointing and getattr(gaudi_config, "use_hpu_graphs_for_inference", False):
         logger.warning("Disabling HPU graphs for inference during training because gradient checkpointing is enabled.")
         gaudi_config.use_hpu_graphs_for_inference = False
