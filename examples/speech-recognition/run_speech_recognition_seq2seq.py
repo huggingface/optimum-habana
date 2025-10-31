@@ -25,6 +25,16 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
+# Disable reentrant checkpoints to avoid double backward hooks in DDP
+os.environ["PT_HPU_DISABLE_REENTRANT_CHECKPOINTS"] = "1"
+# Ensure Habana backend respects PT_HPU_DISABLE_REENTRANT_CHECKPOINTS
+import habana_frameworks.torch.core as htcore
+try:
+    htcore.hpu_set_env("PT_HPU_DISABLE_REENTRANT_CHECKPOINTS", "1")
+    print("[INFO] Habana checkpointing: reentrancy disabled at runtime")
+except Exception as e:
+    print("[WARN] Could not set Habana reentrant flag:", e)
+
 import datasets
 import evaluate
 import librosa
@@ -66,9 +76,6 @@ logger = logging.getLogger(__name__)
 
 # Disable torchcodec decoding in datasets before any dataset ops
 os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
-
-# Disable reentrant checkpoints to avoid double backward hooks in DDP
-os.environ["PT_HPU_DISABLE_REENTRANT_CHECKPOINTS"] = "1"
 
 
 @dataclass
