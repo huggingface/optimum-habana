@@ -309,6 +309,10 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    
+    # Ensure DDP doesn't break with gradient checkpointing
+    if training_args.gradient_checkpointing:
+        training_args.ddp_find_unused_parameters = True
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -334,6 +338,10 @@ def main():
         cache_dir=model_args.cache_dir,
         token=model_args.token,
     )
+    
+    if training_args.gradient_checkpointing and getattr(gaudi_config, "use_hpu_graphs_for_inference", False):
+        logger.warning("Disabling HPU graphs for inference during training because gradient checkpointing is enabled.")
+        gaudi_config.use_hpu_graphs_for_inference = False
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
