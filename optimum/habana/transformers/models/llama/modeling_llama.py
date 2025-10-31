@@ -1144,8 +1144,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         return hidden_states
 
 
-    """
+
 class GaudiLlamaModel(LlamaModel):
+    """
     Copied from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L909
     """
 
