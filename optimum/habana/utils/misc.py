@@ -66,6 +66,7 @@ def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dt
 def speed_metrics(
     split: str,
     start_time: float,
+    end_time: float,
     num_samples: int = None,
     num_steps: int = None,
     num_tokens: int = None,
@@ -91,7 +92,7 @@ def speed_metrics(
         Dict[str, float]: dictionary with performance metrics.
     """
 
-    runtime = time.time() - start_time
+    runtime = end_time - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
     if runtime == 0:
         return result

@@ -615,12 +615,15 @@ class GaudiFluxImg2ImgPipeline(GaudiDiffusionPipeline, FluxImg2ImgPipeline):
             finalize_calibration(self.transformer)
 
         ht.hpu.synchronize()
+        end_time = time.time()
+
         speed_metrics_prefix = "generation"
         if use_warmup_inference_steps:
             t1 = warmup_inference_steps_time_adjustment(t1, t1, num_inference_steps, throughput_warmup_steps)
         speed_measures = speed_metrics(
             split=speed_metrics_prefix,
             start_time=t0,
+            end_time=end_time,
             num_samples=batch_size
             if t1 == t0 or use_warmup_inference_steps
             else (num_batches - throughput_warmup_steps) * batch_size,
