@@ -25,16 +25,6 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-# Disable reentrant checkpoints to avoid double backward hooks in DDP
-os.environ["PT_HPU_DISABLE_REENTRANT_CHECKPOINTS"] = "1"
-# Ensure Habana backend respects PT_HPU_DISABLE_REENTRANT_CHECKPOINTS
-import habana_frameworks.torch.core as htcore
-try:
-    htcore.hpu_set_env("PT_HPU_DISABLE_REENTRANT_CHECKPOINTS", "1")
-    print("[INFO] Habana checkpointing: reentrancy disabled at runtime")
-except Exception as e:
-    print("[WARN] Could not set Habana reentrant flag:", e)
-
 import datasets
 import evaluate
 import librosa
@@ -319,7 +309,7 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    
+
     # Ensure DDP doesn't break with gradient checkpointing
     if training_args.gradient_checkpointing:
         training_args.ddp_find_unused_parameters = True
