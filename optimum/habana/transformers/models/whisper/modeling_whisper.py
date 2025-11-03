@@ -62,7 +62,7 @@ class GaudiWhisperAttention(WhisperAttention):
             else:
                 past_key_value = past_key_value.self_attention_cache
 
-        current_states = key_value_states or hidden_states
+        current_states = key_value_states if key_value_states is not None else hidden_states
 
         if is_cross_attention and past_key_value and is_updated:
             key_states = past_key_value.layers[self.layer_idx].keys
