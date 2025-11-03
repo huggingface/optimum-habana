@@ -103,6 +103,7 @@ def _test_fsdp(
         command += [
             f"--fsdp_config {path_to_example_dir / task / 'granite_fsdp_config.json'}",
             "--max_steps 100",
+            "--attn_implementation gaudi_fused_sdpa",
             "--dataset_name tatsu-lab/alpaca ",
             "--bf16 True ",
             "--gradient_accumulation_steps 2",
@@ -126,13 +127,13 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
-            "--use_flash_attention True",
             "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
     else:
         command += [
             f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
+            "--attn_implementation gaudi_fused_sdpa",
             "--dataset_name tatsu-lab/alpaca ",
             "--bf16 True ",
             "--gradient_accumulation_steps 2",
@@ -156,7 +157,6 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
-            "--use_flash_attention True",
             "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
