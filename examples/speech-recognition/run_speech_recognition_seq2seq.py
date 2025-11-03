@@ -278,11 +278,13 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         if self.forward_attention_mask:
             batch["attention_mask"] = torch.LongTensor([feature["attention_mask"] for feature in features])
 
+        texts = [feature["labels"] for feature in features]
         labels_batch = self.processor.tokenizer(
-            label_features,
+            texts,
             padding="max_length" if self.label_features_max_length else True,
             max_length=self.label_features_max_length,
             return_tensors="pt",
+            truncation=True,
         )
 
         # replace padding with -100 to ignore loss correctly
@@ -576,7 +578,7 @@ def main():
             text = batch[text_column_name]
             if do_lower_case and isinstance(text, str):
                 text = text.lower()
-            batch["labels"] = tokenizer(text).input_ids
+            batch["labels"] = text
 
         return batch
 
