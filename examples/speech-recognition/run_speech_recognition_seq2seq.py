@@ -28,6 +28,7 @@ from typing import Any, Optional, Union
 import datasets
 import evaluate
 import librosa
+import numpy as np
 import soundfile as sf
 import torch
 import transformers
@@ -277,11 +278,12 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         if self.forward_attention_mask:
             batch["attention_mask"] = torch.LongTensor([feature["attention_mask"] for feature in features])
 
-        kwargs = {}
-        if self.label_features_max_length is not None:
-            kwargs["padding"] = "max_length"
-            kwargs["max_length"] = self.label_features_max_length
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt", **kwargs)
+        labels_batch = self.processor.tokenizer(
+            label_features,
+            padding="max_length" if self.label_features_max_length else True,
+            max_length=self.label_features_max_length,
+            return_tensors="pt",
+        )
 
         # replace padding with -100 to ignore loss correctly
         labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
@@ -547,19 +549,23 @@ def main():
                 wav, sr = sf.read(path, dtype="float32", always_2d=False)
             except Exception:
                 try:
-                    wav, sr = librosa.load(path, sr=None, mono=False)
-                except Exception:
+                    import torchaudio
+
+                    wav_t, sr = torchaudio.load(path)
+                    wav = wav_t.mean(dim=0).numpy() if wav_t.ndim > 1 else wav_t.squeeze().numpy()
+                except Exception as e:
+                    logger.warning(f"[WARN] Failed to read {path}: {e}")
                     wav, sr = None, None
 
         # Fallback: load from bytes if available
         if wav is None:
-            raw = sample.get("bytes", None)
+            raw = sample.get("bytes")
             if raw is None:
                 raise RuntimeError(f"Cannot open audio sample {sample}")
             wav, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=False)
 
         # Convert to mono
-        if getattr(wav, "ndim", 1) > 1:
+        if isinstance(wav, np.ndarray) and wav.ndim > 1:
             wav = wav.mean(axis=1)
 
         # Resample if necessary
