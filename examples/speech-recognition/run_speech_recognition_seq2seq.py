@@ -547,15 +547,9 @@ def main():
         if isinstance(path, str):
             try:
                 wav, sr = sf.read(path, dtype="float32", always_2d=False)
-            except Exception:
-                try:
-                    import torchaudio
-
-                    wav_t, sr = torchaudio.load(path)
-                    wav = wav_t.mean(dim=0).numpy() if wav_t.ndim > 1 else wav_t.squeeze().numpy()
-                except Exception as e:
-                    logger.warning(f"[WARN] Failed to read {path}: {e}")
-                    wav, sr = None, None
+            except Exception as e:
+                logger.warning(f"SoundFile failed to read {path} ({type(e).__name__}: {e}). Falling back to torchaudio.")
+                wav, sr = None, None
 
         # Fallback: load from bytes if available
         if wav is None:
