@@ -271,8 +271,6 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         # different padding methods
         model_input_name = self.processor.model_input_names[0]
         input_features = [{model_input_name: feature[model_input_name]} for feature in features]
-        label_features = [{"input_ids": feature["labels"]} for feature in features]
-
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
 
         if self.forward_attention_mask:
@@ -428,15 +426,6 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
 
-    # Disable caching when gradient checkpointing is active to prevent conflicts with HPU graphs
-    if training_args.gradient_checkpointing:
-        if hasattr(config, "use_cache") and config.use_cache:
-            logger.warning(
-                "Disabling `use_cache=True` in model config because gradient checkpointing is enabled. "
-                "Caching is incompatible with checkpointing on HPU."
-            )
-        config.use_cache = False
-
     # SpecAugment for whisper models
     if getattr(config, "model_type", None) == "whisper":
         config.update({"apply_spec_augment": model_args.apply_spec_augment})
@@ -550,7 +539,9 @@ def main():
             try:
                 wav, sr = sf.read(path, dtype="float32", always_2d=False)
             except Exception as e:
-                logger.warning(f"SoundFile failed to read {path} ({type(e).__name__}: {e}). Falling back to torchaudio.")
+                logger.warning(
+                    f"SoundFile failed to read {path} ({type(e).__name__}: {e}). Falling back to torchaudio."
+                )
                 wav, sr = None, None
 
         # Fallback: load from bytes if available
