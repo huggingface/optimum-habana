@@ -343,11 +343,12 @@ def checkpoint(
         # Transformers>=4.55 + PyTorch>=2.2 require non-reentrant checkpointing on HPU
         # Reentrant mode conflicts with DDP on HPU (duplicate backward hooks)
         use_reentrant = False
-        warn0(
-            "Reentrant gradient checkpointing has been disabled (use_reentrant=False) "
-            "because it conflicts with DDP and HPU graphs on Gaudi. "
-            "This avoids duplicated backward hooks and ensures stable training on HPU."
-        )
+        if torch.distributed.get_rank() == 0:
+            print(
+                "[WARN] Reentrant gradient checkpointing has been disabled (use_reentrant=False) "
+                "because it conflicts with DDP and HPU graphs on Gaudi. "
+                "This avoids duplicated backward hooks and ensures stable training on HPU."
+            )
 
     # Hack to mix *args with **kwargs in a python 2.7-compliant way
     preserve = kwargs.pop("preserve_rng_state", True)
