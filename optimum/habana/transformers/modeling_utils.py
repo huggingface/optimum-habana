@@ -425,6 +425,12 @@ def adapt_transformers_to_gaudi():
             max_new_tokens=256,
         )
     )
+    transformers.pipelines.text_generation.TextGenerationPipeline._default_generation_config = GaudiGenerationConfig(
+        max_new_tokens=256,
+    )
+    transformers.pipelines.text_to_audio.TextToAudioPipeline._default_generation_config = GaudiGenerationConfig(
+        max_new_tokens=256,
+    )
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
