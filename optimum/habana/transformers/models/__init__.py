@@ -226,9 +226,7 @@ from .mllama import (
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
     GaudiMllamaVisionEncoder,
-    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
-    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
     KVCache,

@@ -18,6 +18,7 @@ import glob
 import json
 import logging
 import os
+from contextlib import nullcontext
 from pathlib import Path
 
 import PIL.Image
@@ -353,51 +354,53 @@ def main():
 
         htcore.hpu_set_env()
 
+    if model_type == "mllama" and args.use_flash_attention:
+        config._attn_implementation = "gaudi_fused_sdpa"
+        if args.flash_attention_recompute:
+            os.environ["FLASH_ATTENTION_RECOMPUTE"] = "1"
+
     if args.world_size > 1:
         import deepspeed
 
-        with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-            model = AutoModelForVision2Seq.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        context = deepspeed.OnDevice(dtype=model_dtype, device="cpu")
+    else:
+        context = nullcontext()
+
+    with context:
+        model = AutoModelForVision2Seq.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, config=config)
+
+    if args.world_size > 1:
         if model_type == "mllama":
             model.language_model = initialize_distributed_model(args, model.language_model, logger, model_dtype)
             model.to("hpu")
         else:
             model = initialize_distributed_model(args, model, logger, model_dtype)
-        generator = pipeline(
-            "image-to-text",
-            model=model,
-            config=args.model_name_or_path,
-            tokenizer=args.model_name_or_path,
-            image_processor=args.model_name_or_path,
-            torch_dtype=model_dtype,
-            device="hpu",
-        )
-    else:
-        generator = pipeline(
-            "image-to-text",
-            model=args.model_name_or_path,
-            config=args.model_name_or_path,
-            tokenizer=args.model_name_or_path,
-            image_processor=None if model_type == "chatglm" else args.model_name_or_path,
-            torch_dtype=model_dtype,
-            device="hpu",
-        )
-        if args.use_hpu_graphs:
-            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            generator.model = wrap_in_hpu_graph(generator.model)
+    generator = pipeline(
+        "image-to-text",
+        model=model,
+        config=config,
+        tokenizer=args.model_name_or_path,
+        image_processor=None if model_type == "chatglm" else args.model_name_or_path,
+        torch_dtype=model_dtype,
+        device="hpu",
+    )
+
+    if args.world_size < 2 and args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+        generator.model = wrap_in_hpu_graph(generator.model)
 
     if "falcon-11B-vlm" in args.model_name_or_path:
         # WA falcon vlm issue that image_token_id == embed size.
         generator.model.resize_token_embeddings(generator.tokenizer.vocab_size + 1)
         processor.patch_size = config.vision_config.patch_size
+
     generate_kwargs = {
         "lazy_mode": use_lazy_mode,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
-        "use_flash_attention": args.use_flash_attention,
-        "flash_attention_recompute": args.flash_attention_recompute,
         "bucket_internal": args.bucket_internal,
         "bucket_size": args.bucket_size,
         "limit_hpu_graphs": args.limit_hpu_graphs,
@@ -405,6 +408,14 @@ def main():
         "trim_logits": args.trim_logits,
         "logits_bf16": args.logits_bf16,
     }
+
+    if model_type != "mllama":
+        generate_kwargs.update(
+            {
+                "use_flash_attention": args.use_flash_attention,
+                "flash_attention_recompute": args.flash_attention_recompute,
+            }
+        )
 
     if args.sdp_on_bf16:
         torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)

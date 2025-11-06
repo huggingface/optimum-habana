@@ -16,14 +16,12 @@
 """PyTorch Mllama model."""
 
 import math
-import os
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
@@ -32,6 +30,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
 )
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.models.mllama.configuration_mllama import (
     MllamaConfig,
     MllamaTextConfig,
@@ -46,19 +45,20 @@ from transformers.models.mllama.modeling_mllama import (
     MllamaTextModel,
     MllamaTextRMSNorm,
     MllamaTextSelfAttention,
-    MllamaVisionAttention,
-    MllamaVisionConfig,
     MllamaVisionEncoder,
-    MllamaVisionEncoderLayer,
     MllamaVisionModel,
     _prepare_aspect_ratio_attention_mask,
     apply_rotary_pos_emb,
-    repeat_kv,
+    eager_attention_forward,
 )
 from transformers.processing_utils import Unpack
-from transformers.utils import TransformersKwargs, logging
+from transformers.utils import TransformersKwargs, is_torch_flex_attn_available, logging
 
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+
+
+if is_torch_flex_attn_available():
+    from transformers.integrations.flex_attention import make_flex_block_causal_mask
 
 
 try:
@@ -78,38 +78,19 @@ except ImportError:
 
 
 class GaudiMllamaTextRMSNorm(MllamaTextRMSNorm):
-    def __init__(self, hidden_size, eps=1e-6):
-        """
-        MllamaTextRMSNorm is equivalent to T5LayerNorm
-        """
-        super().__init__(hidden_size, eps)
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
     def forward(self, hidden_states):
-        """Copied from MllamaTextRMSNorm::forward https://github.com/huggingface/transformers/blob/53fad641cfdb5105e2470bcf3ef17ea8e25cc300/src/transformers/models/mllama/modeling_mllama.py#L475. The only differences are:
+        """Copied from MllamaTextRMSNorm::forward https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L372
+        The only differences are:
         - Using FusedRMSNorm"""
-        orig_dtype = hidden_states.dtype
+        input_dtype = hidden_states.dtype
         if FusedRMSNorm is not None:
             hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
-            return hidden_states.to(orig_dtype)
+            return hidden_states.to(input_dtype)
         else:
             hidden_states = hidden_states.to(torch.float32)
             variance = hidden_states.pow(2).mean(-1, keepdim=True)
             hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-            return self.weight * hidden_states.to(orig_dtype)
-
-    def extra_repr(self):
-        return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
-
-
-class ModuleFusedSDPA(torch.nn.Module):
-    def __init__(self, fusedSDPA):
-        super().__init__()
-        self._hpu_kernel_fsdpa = fusedSDPA
-
-    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
-        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+            return self.weight * hidden_states.to(input_dtype)
 
 
 def _prepare_cross_attention_mask(
@@ -159,129 +140,32 @@ def _prepare_cross_attention_mask(
     return cross_attention_mask, full_text_row_masked_out_mask
 
 
-class GaudiMllamaVisionSdpaAttention(MllamaVisionAttention):
-    def __init__(self, config: MllamaVisionConfig):
-        super().__init__(config)
-        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-
-    # Adapted from MllamaVisionAttention
-    def forward(
-        self,
-        hidden_state: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        use_flash_attention: Optional[bool] = False,
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-        # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
-        """
-        Copied from MllamaVisionSdpaAttention::forward:https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L283
-        The only differences are:
-            - add use_flash_attention
-        """
-        if output_attentions:
-            logger.warning_once(
-                "MllamaModel is using MllamaVisionSdpaAttention, but `torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to the manual attention implementation, "
-                'but specifying the manual implementation will be required from Transformers version v5.0.0 onwards. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
-            )
-            return super().forward(
-                hidden_state=hidden_state,
-                attention_mask=attention_mask,
-                output_attentions=output_attentions,
-            )
-
-        query = self.q_proj(hidden_state)
-        key = self.k_proj(hidden_state)
-        value = self.v_proj(hidden_state)
-
-        batch_size, q_seq_len, _ = query.shape
-        _, kv_seq_len, _ = key.shape
-
-        query = query.view(batch_size, q_seq_len, self.num_heads, self.head_dim)
-        key = key.view(batch_size, kv_seq_len, self.num_heads, self.head_dim)
-        value = value.view(batch_size, kv_seq_len, self.num_heads, self.head_dim)
-
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
-        if use_flash_attention and FusedSDPA:
-            attn_output = self.fused_scaled_dot_product_attention(query, key, value, attention_mask, 0.0, False, None)
-        else:
-            attn_output = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
-
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(batch_size, q_seq_len, -1)
-
-        output = self.o_proj(attn_output)
-
-        return output, None
-
-
-class GaudiMllamaVisionEncoderLayer(MllamaVisionEncoderLayer):
-    def __init__(self, config: MllamaVisionConfig, is_gated: bool = False):
-        super(GaudiMllamaVisionEncoderLayer, self).__init__(config=config, is_gated=is_gated)
-        self.self_attn = GaudiMllamaVisionSdpaAttention(config)
-
-    def forward(
-        self,
-        hidden_state: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-    ):
-        """
-        Copied from MllamaVisionEncoderLayer::forward:https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L348
-        The only differences are:
-            - add use_flash_attention
-        """
-        # Self Attention
-        residual = hidden_state
-        hidden_state = self.input_layernorm(hidden_state)
-        hidden_state, attn_weights = self.self_attn(
-            hidden_state, attention_mask=attention_mask, use_flash_attention=use_flash_attention
-        )
-        if self.is_gated:
-            hidden_state = self.gate_attn.tanh() * hidden_state
-        hidden_state = residual + hidden_state
-
-        # Feed forward
-        residual = hidden_state
-        hidden_state = self.post_attention_layernorm(hidden_state)
-        hidden_state = self.mlp(hidden_state)
-        if self.is_gated:
-            hidden_state = self.gate_ffn.tanh() * hidden_state
-        hidden_state = residual + hidden_state
-
-        return hidden_state
-
-
 class GaudiMllamaVisionEncoder(MllamaVisionEncoder):
     def forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
     ) -> Union[tuple, BaseModelOutput]:
         """
-        Copied from MllamaVisionEncoder::forward:https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L394
+        Copied from MllamaVisionEncoder::forward:https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L333
         The only differences are:
-            - add use_flash_attention
+            - add mark_step()
+            - added patch from PR: https://github.com/huggingface/transformers/pull/40083
         """
+        encoder_states = (hidden_states,)
         for encoder_layer in self.layers:
             hidden_states = encoder_layer(
                 hidden_state=hidden_states,
                 attention_mask=attention_mask,
-                use_flash_attention=use_flash_attention,
             )
+            encoder_states = encoder_states + (hidden_states,)
 
             htcore.mark_step()
 
-        return BaseModelOutput(last_hidden_state=hidden_states)
+        return BaseModelOutput(last_hidden_state=hidden_states, hidden_states=encoder_states)
 
 
 class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
-    def __init__(self, config: Optional[MllamaTextConfig] = None, layer_idx: Optional[int] = None):
-        super().__init__(config, layer_idx)
-        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -291,17 +175,14 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
-        Copied from MllamaTextCrossAttention::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L512
+        Copied from MllamaTextCrossAttention::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L410
         The only differences are:
             - add token_idx support
             - add support if past_key_value is not Cache
             - cache position is None
-            - add use_flash_attention and flash_attention_recompute
         """
         """Input shape: Batch x Time x Channel"""
         bsz, q_len, _ = hidden_states.size()
@@ -346,44 +227,29 @@ class GaudiMllamaTextCrossAttention(MllamaTextCrossAttention):
                 "Cross attention layer can't find neither `cross_attn_states` nor cached values for key/values!"
             )
 
-        if FusedSDPA and use_flash_attention:
-            attn_weights = None
-            import habana_frameworks.torch.hpu as ht
+        attention_interface: Callable = eager_attention_forward
 
-            if q_len == 1:
-                # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            else:
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-        else:
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        if self.config._attn_implementation != "eager":
+            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
 
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-            attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-            attn_output = torch.matmul(attn_weights, value_states)
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, -1)
+        attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
 
         return attn_output, attn_weights, past_key_value
 
 
 class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
-    def __init__(self, config: Optional[MllamaTextConfig] = None, layer_idx: Optional[int] = None):
-        super().__init__(config, layer_idx)
-        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -393,16 +259,13 @@ class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
         past_key_value=None,
         cache_position=None,
         token_idx: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ):
         """
-        Copied from MllamaTextSelfAttention::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L733
+        Copied from MllamaTextSelfAttention::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L526
         The only differences are:
             - add token_idx support
             - add support if past_key_value is not Cache
-            - add use_flash_attention and flash_attention_recompute
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -436,40 +299,23 @@ class GaudiMllamaTextSelfAttention(MllamaTextSelfAttention):
         if use_cache and not isinstance(past_key_value, Cache):
             past_key_value = [key_states, value_states]
 
-        if FusedSDPA and use_flash_attention:
-            attn_weights = None
-            import habana_frameworks.torch.hpu as ht
+        attention_interface: Callable = eager_attention_forward
 
-            if q_len == 1:
-                # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            else:
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-        else:
-            key_states = repeat_kv(key_states, self.num_key_value_groups)
-            value_states = repeat_kv(value_states, self.num_key_value_groups)
+        if self.config._attn_implementation != "eager":
+            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
 
-            if attention_mask is not None:  # no matter the length, we just slice it
-                causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
-
-            # upcast attention to fp32
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-            attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-            attn_output = torch.matmul(attn_weights, value_states)
-
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(bsz, q_len, -1)
-
+        attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
 
         return attn_output, attn_weights, past_key_value
@@ -495,15 +341,12 @@ class GaudiMllamaSelfAttentionDecoderLayer(MllamaSelfAttentionDecoderLayer):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
         token_idx: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
-        Copied from MllamaSelfAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L904
+        Copied from MllamaSelfAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L608
         The only differences are:
             - add token_idx input
-            - add use_flash_attention and flash_attention_recompute
         """
         residual = hidden_states
 
@@ -519,8 +362,6 @@ class GaudiMllamaSelfAttentionDecoderLayer(MllamaSelfAttentionDecoderLayer):
             cache_position=cache_position,
             position_embeddings=position_embeddings,
             token_idx=token_idx,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
             **kwargs,
         )
         hidden_states = residual + hidden_states
@@ -557,16 +398,13 @@ class GaudiMllamaCrossAttentionDecoderLayer(MllamaCrossAttentionDecoderLayer):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> tuple[torch.Tensor]:
         """
-        Copied from MllamaCrossAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L989
+        Copied from MllamaCrossAttentionDecoderLayer::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L683
         The only differences are:
             - add token_idx support
             - pass use_cache to cross_attn
-            - add use_flash_attention and flash_attention_recompute
         """
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
@@ -579,8 +417,6 @@ class GaudiMllamaCrossAttentionDecoderLayer(MllamaCrossAttentionDecoderLayer):
             cache_position=cache_position,
             use_cache=use_cache,
             token_idx=token_idx,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
             **kwargs,
         )
         hidden_states = residual + self.cross_attn_attn_gate.tanh() * hidden_states
@@ -614,16 +450,13 @@ class GaudiMllamaTextModel(MllamaTextModel):
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> Union[tuple, BaseModelOutputWithPast]:
         """
-        Copied from MllamaTextModel::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1617
+        Copied from MllamaTextModel::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L1159
         The only differences are:
             - add token_idx support
             - add support if past_key_value is not Cache
-            - add use_flash_attention and flash_attention_recompute
         """
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
@@ -634,35 +467,27 @@ class GaudiMllamaTextModel(MllamaTextModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         hidden_states = inputs_embeds
+
         if isinstance(past_key_values, Cache):
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         else:
             past_seen_tokens = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-        ignore_cache_position = True  # Ignoring cache position for HPU, or else hpu graph may has issue
-        if ignore_cache_position is False:
-            if cache_position is None:
-                cache_position = torch.arange(
-                    past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
-                )
-            if position_ids is None:
-                position_ids = cache_position.unsqueeze(0)
-            causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_key_values)
-        else:
-            if position_ids is None:
-                position_ids = torch.arange(
-                    past_seen_tokens,
-                    inputs_embeds.shape[1] + past_seen_tokens,
-                    dtype=torch.long,
-                    device=inputs_embeds.device,
-                )
-                position_ids = position_ids.unsqueeze(0)
-            cache_position = None
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask,
-                input_ids.shape,
-                inputs_embeds,
+
+        if position_ids is None:
+            position_ids = torch.arange(
                 past_seen_tokens,
+                inputs_embeds.shape[1] + past_seen_tokens,
+                dtype=torch.long,
+                device=inputs_embeds.device,
             )
+            position_ids = position_ids.unsqueeze(0)
+        cache_position = None
+        causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask,
+            input_ids.shape,
+            inputs_embeds,
+            past_seen_tokens,
+        )
 
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
@@ -693,6 +518,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
                 past_key_value = past_key_values
             else:
                 past_key_value = None if past_key_values is None else past_key_values[idx]
+
             layer_outputs = decoder_layer(
                 hidden_states,
                 cross_attention_states=cross_attention_states,
@@ -705,8 +531,6 @@ class GaudiMllamaTextModel(MllamaTextModel):
                 cache_position=cache_position,
                 position_embeddings=position_embeddings,
                 token_idx=token_idx,
-                use_flash_attention=use_flash_attention,
-                flash_attention_recompute=flash_attention_recompute,
                 **kwargs,
             )
 
@@ -736,7 +560,7 @@ class GaudiMllamaTextModel(MllamaTextModel):
         output_attentions: bool = False,
     ):
         """
-        Copied from MllamaTextModel::_update_causal_mask: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1768
+        Copied from MllamaTextModel::_update_causal_mask: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L805
         The only differences are:
             - add support if past_key_value is not Cache
         """
@@ -744,19 +568,23 @@ class GaudiMllamaTextModel(MllamaTextModel):
             if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
+        if self.config._attn_implementation == "flex_attention":
+            if isinstance(attention_mask, torch.Tensor):
+                attention_mask = make_flex_block_causal_mask(attention_mask)
+            return attention_mask
 
         # For SDPA, when possible, we will rely on its `is_causal` argument instead of its `attn_mask` argument, in
         # order to dispatch on Flash Attention 2. This feature is not compatible with static cache, as SDPA will fail
         # to infer the attention mask.
         if isinstance(past_key_values, Cache):
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            using_compilable_cache = past_key_values.is_compileable if past_key_values is not None else False
         else:
             past_seen_tokens = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+            using_compilable_cache = False
 
         # When output attentions is True, sdpa implementation's forward method calls the eager implementation's forward
-        # TODO: we have only SDPA currently and there's a bug when attn-bias is passed. Need to add eager attn and return the line
-        # self.config._attn_implementation == "sdpa" and
-        if self.config._attn_implementation == "sdpa" and not output_attentions:
+        if self.config._attn_implementation == "sdpa" and not using_compilable_cache and not output_attentions:
             if AttentionMaskConverter._ignore_causal_mask_sdpa(
                 attention_mask,
                 inputs_embeds=input_tensor,
@@ -765,14 +593,16 @@ class GaudiMllamaTextModel(MllamaTextModel):
             ):
                 return None
 
-        dtype, device = input_tensor.dtype, input_tensor.device
-        min_dtype = torch.finfo(dtype).min
+        dtype = input_tensor.dtype
         sequence_length = input_tensor.shape[1]
-        target_length = (
-            attention_mask.shape[-1]
-            if isinstance(attention_mask, torch.Tensor)
-            else past_seen_tokens + sequence_length + 1
-        )
+        if using_compilable_cache:
+            target_length = past_key_values.get_max_cache_shape()
+        else:
+            target_length = (
+                attention_mask.shape[-1]
+                if isinstance(attention_mask, torch.Tensor)
+                else past_seen_tokens + sequence_length + 1
+            )
 
         # In case the provided `attention` mask is 2D, we generate a causal mask here (4D).
         causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position(
@@ -780,8 +610,6 @@ class GaudiMllamaTextModel(MllamaTextModel):
             sequence_length=sequence_length,
             target_length=target_length,
             dtype=dtype,
-            device=device,
-            min_dtype=min_dtype,
             cache_position=cache_position,
             batch_size=input_tensor.shape[0],
         )
@@ -789,12 +617,13 @@ class GaudiMllamaTextModel(MllamaTextModel):
         if (
             self.config._attn_implementation == "sdpa"
             and attention_mask is not None
-            and attention_mask.device.type == "cuda"
+            and attention_mask.device.type in ["cuda", "xpu", "npu"]
             and not output_attentions
         ):
             # Attend to all tokens in fully masked rows in the causal_mask, for example the relevant first rows when
             # using left padding. This is required by F.scaled_dot_product_attention memory-efficient attention path.
             # Details: https://github.com/pytorch/pytorch/issues/110213
+            min_dtype = torch.finfo(dtype).min
             causal_mask = AttentionMaskConverter._unmask_unattended(causal_mask, min_dtype)
 
         return causal_mask
@@ -817,17 +646,16 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
         **kwargs,
     ) -> Union[tuple, CausalLMOutputWithPast]:
         """
-        Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1871
+        Copied from MllamaForCausalLM::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L1301
         The only differences are:
             - add token_idx input
             - add logits handle if token_idx is not None
-            - add use_flash_attention and flash_attention_recompute
+            - add trim_logits
+            - add logits_bf16
         """
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
@@ -842,8 +670,6 @@ class GaudiMllamaForCausalLM(MllamaForCausalLM):
             use_cache=use_cache,
             cache_position=cache_position,
             token_idx=token_idx,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
             **kwargs,
         )
 
@@ -894,28 +720,19 @@ class GaudiMllamaModel(MllamaModel):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> BaseModelOutputWithPast:
         r"""
-        Copied from https://github.com/huggingface/transformers/blob/main/src/transformers/models/mllama/modeling_mllama.py#L1435
+        Copied from https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L1433
         The only differences are additional arguments:
         - token_idx
         - trim_logits
-        - use_flash_attention
-        - flash_attention_recompute
         - logits_bf16
 
         """
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
-
-        if pixel_values is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
-            )
 
         if pixel_values is not None and cross_attention_states is not None:
             raise ValueError("`pixel_values` and `cross_attention_states` cannot be provided simultaneously")
@@ -928,9 +745,8 @@ class GaudiMllamaModel(MllamaModel):
                 pixel_values=pixel_values,
                 aspect_ratio_ids=aspect_ratio_ids,
                 aspect_ratio_mask=aspect_ratio_mask,
-                use_flash_attention=use_flash_attention,
             )
-            cross_attention_states = vision_outputs[0]
+            cross_attention_states = vision_outputs.last_hidden_state
             cross_attention_states = self.multi_modal_projector(cross_attention_states).reshape(
                 -1, cross_attention_states.shape[-2], self.hidden_size
             )
@@ -972,8 +788,6 @@ class GaudiMllamaModel(MllamaModel):
             cache_position=cache_position,
             token_idx=token_idx,
             trim_logits=trim_logits,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
             **kwargs,
         )
@@ -988,8 +802,12 @@ class GaudiMllamaModel(MllamaModel):
 
 class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
-        # sdpa is better for vision model in HPU
-        config._attn_implementation = "sdpa"
+        # Use the user option as the attention for the text model
+        config.text_config._attn_implementation = config._attn_implementation or "eager"
+
+        # Use always `sdpa` as it is better for the vision model on HPU
+        config.vision_config._attn_implementation = "sdpa"
+
         super().__init__(config)
 
     def forward(
@@ -1006,33 +824,20 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
         logits_bf16: Optional[bool] = False,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, CausalLMOutputWithPast]:
         r"""
-        Copied from: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mllama/modeling_mllama.py#L1578
+        Copied from: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L1576
         The only differences are additional arguments:
         - token_idx
         - trim_logits
-        - use_flash_attention
-        - flash_attention_recompute
         - logits_bf16
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         outputs = self.model(
             input_ids=input_ids,
             pixel_values=pixel_values,
@@ -1045,19 +850,14 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=True,
             cache_position=cache_position,
             token_idx=token_idx,
             trim_logits=trim_logits,
-            use_flash_attention=use_flash_attention,
-            flash_attention_recompute=flash_attention_recompute,
             logits_bf16=logits_bf16,
             **kwargs,
         )
 
-        hidden_states = outputs[0]
+        hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :])
@@ -1091,11 +891,10 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
         **kwargs,
     ):
         """
-        Copied from MllamaForConditionalGeneration::prepare_inputs_for_generation: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L2208
+        Copied from MllamaForConditionalGeneration::prepare_inputs_for_generation: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L1687
         The only differences are:
             - add token_idx handling
             - add bucket_internal handling
-            - add use_flash_attention and flash_attention_recompute
         """
         token_idx = kwargs.get("token_idx", None)
         bucket_internal = kwargs.get("bucket_internal", None)
@@ -1150,8 +949,6 @@ class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
                 "cross_attention_mask": cross_attention_mask,
                 "token_idx": token_idx,
                 "trim_logits": kwargs.get("trim_logits"),
-                "use_flash_attention": kwargs.get("use_flash_attention"),
-                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "logits_bf16": kwargs.get("logits_bf16"),
             }
         )
@@ -1202,13 +999,12 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         pixel_values: torch.Tensor,
         aspect_ratio_ids: torch.Tensor,
         aspect_ratio_mask: torch.Tensor,
-        use_flash_attention: Optional[bool] = False,
         **kwargs,
     ) -> Union[BaseModelOutput, tuple[torch.Tensor, ...]]:
         """
-        Copied from MllamaVisionModel::forward: https://github.com/huggingface/transformers/blob/v4.45.2/src/transformers/models/mllama/modeling_mllama.py#L1425
+        Copied from MllamaVisionModel::forward: https://github.com/huggingface/transformers/blob/v4.55-release/src/transformers/models/mllama/modeling_mllama.py#L990
         The only differences are:
-            - optimize perf of stage "Collect intermediate layer outputs from encoder output"
+            - Apply patch from PR: https://github.com/huggingface/transformers/pull/40083
         """
         batch_size, num_concurrent_media, num_tiles, num_channels, height, width = pixel_values.shape
 
@@ -1259,7 +1055,6 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         output = self.transformer(
             hidden_state,
             attention_mask=attention_mask,
-            use_flash_attention=use_flash_attention,
         )
         hidden_state = output.last_hidden_state
 
@@ -1276,7 +1071,6 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         global_output = self.global_transformer(
             hidden_state,
             attention_mask=attention_mask,
-            use_flash_attention=use_flash_attention,
         )
         hidden_state = global_output.last_hidden_state
 
@@ -1288,13 +1082,8 @@ class GaudiMllamaVisionModel(MllamaVisionModel):
         hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
 
         # Collect intermediate layer outputs from encoder output
-        all_intermediate_hidden_states = [output.last_hidden_state for _ in self.intermediate_layers_indices]
+        all_intermediate_hidden_states = [output.hidden_states[i] for i in self.intermediate_layers_indices]
         intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
-
-        """
-        intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
-        intermediate_hidden_states = intermediate_hidden_states[..., self.intermediate_layers_indices]
-        """
 
         # Remove padding from intermediate hidden states
         intermediate_hidden_states = intermediate_hidden_states.reshape(
