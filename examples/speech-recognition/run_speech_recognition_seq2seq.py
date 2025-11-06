@@ -28,6 +28,7 @@ from typing import Any, Optional, Union
 import datasets
 import evaluate
 import librosa
+import numpy as np
 import soundfile as sf
 import torch
 import transformers
@@ -270,18 +271,19 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         # different padding methods
         model_input_name = self.processor.model_input_names[0]
         input_features = [{model_input_name: feature[model_input_name]} for feature in features]
-        label_features = [{"input_ids": feature["labels"]} for feature in features]
-
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
 
         if self.forward_attention_mask:
             batch["attention_mask"] = torch.LongTensor([feature["attention_mask"] for feature in features])
 
-        kwargs = {}
-        if self.label_features_max_length is not None:
-            kwargs["padding"] = "max_length"
-            kwargs["max_length"] = self.label_features_max_length
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt", **kwargs)
+        texts = [feature["labels"] for feature in features]
+        labels_batch = self.processor.tokenizer(
+            texts,
+            padding="max_length" if self.label_features_max_length else True,
+            max_length=self.label_features_max_length,
+            return_tensors="pt",
+            truncation=True,
+        )
 
         # replace padding with -100 to ignore loss correctly
         labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
@@ -310,6 +312,10 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # Ensure DDP doesn't break with gradient checkpointing
+    if training_args.gradient_checkpointing:
+        training_args.ddp_find_unused_parameters = True
+
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_speech_recognition_seq2seq", model_args, data_args)
@@ -334,6 +340,10 @@ def main():
         cache_dir=model_args.cache_dir,
         token=model_args.token,
     )
+
+    if training_args.gradient_checkpointing and getattr(gaudi_config, "use_hpu_graphs_for_inference", False):
+        logger.warning("Disabling HPU graphs for inference during training because gradient checkpointing is enabled.")
+        gaudi_config.use_hpu_graphs_for_inference = False
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
@@ -528,21 +538,21 @@ def main():
         if isinstance(path, str):
             try:
                 wav, sr = sf.read(path, dtype="float32", always_2d=False)
-            except Exception:
-                try:
-                    wav, sr = librosa.load(path, sr=None, mono=False)
-                except Exception:
-                    wav, sr = None, None
+            except Exception as e:
+                logger.warning(
+                    f"SoundFile failed to read {path} ({type(e).__name__}: {e}). Falling back to torchaudio."
+                )
+                wav, sr = None, None
 
         # Fallback: load from bytes if available
         if wav is None:
-            raw = sample.get("bytes", None)
+            raw = sample.get("bytes")
             if raw is None:
                 raise RuntimeError(f"Cannot open audio sample {sample}")
             wav, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=False)
 
         # Convert to mono
-        if getattr(wav, "ndim", 1) > 1:
+        if isinstance(wav, np.ndarray) and wav.ndim > 1:
             wav = wav.mean(axis=1)
 
         # Resample if necessary
@@ -559,7 +569,7 @@ def main():
             text = batch[text_column_name]
             if do_lower_case and isinstance(text, str):
                 text = text.lower()
-            batch["labels"] = tokenizer(text).input_ids
+            batch["labels"] = text
 
         return batch
 
