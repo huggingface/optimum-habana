@@ -95,12 +95,6 @@ class ScriptArguments:
     use_flash_attention: Optional[bool] = field(
         default=True, metadata={"help": "Whether to use Habana flash attention for fine-tuning."}
     )
-    flash_attention_recompute: Optional[bool] = field(
-        default=False, metadata={"help": "Whether to enable recompute in Habana flash attention for fine-tuning."}
-    )
-    flash_attention_causal_mask: Optional[bool] = field(
-        default=False, metadata={"help": "Whether to enable causal mask in Habana flash attention for fine-tuning."}
-    )
 
     # LoraConfig
     lora_alpha: Optional[float] = field(default=32, metadata={"help": "the lora alpha parameter"})
@@ -172,13 +166,11 @@ if __name__ == "__main__":
     )
 
     model.config.use_cache = False
-    if not script_args.use_flash_attention and (
-        script_args.flash_attention_recompute or script_args.flash_attention_recompute
-    ):
+    if not script_args.use_flash_attention and training_args.flash_attention_recompute:
         assert "Need to enable use_flash_attention"
     model.generation_config.use_flash_attention = script_args.use_flash_attention
-    model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
-    model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
+    model.generation_config.flash_attention_recompute = training_args.flash_attention_recompute
+    model.generation_config.flash_attention_causal_mask = training_args.flash_attention_causal_mask
 
     reward_funcs = [format_reward, accuracy_reward]
     if script_args.reward_model_name_or_path:
