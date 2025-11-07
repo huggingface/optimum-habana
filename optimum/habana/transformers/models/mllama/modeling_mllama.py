@@ -802,11 +802,12 @@ class GaudiMllamaModel(MllamaModel):
 
 class GaudiMllamaForConditionalGeneration(MllamaForConditionalGeneration):
     def __init__(self, config: MllamaConfig):
-        # Use the user option as the attention for the text model
+        # Use the user option as the attention choice
+        # If not provided, use default values:
+        # - text model -> "eager"
+        # - vision model -> "sdpa" (better choice than "eager" on HPU)
         config.text_config._attn_implementation = config._attn_implementation or "eager"
-
-        # Use always `sdpa` as it is better for the vision model on HPU
-        config.vision_config._attn_implementation = "sdpa"
+        config.vision_config._attn_implementation = config._attn_implementation or "sdpa"
 
         super().__init__(config)
 

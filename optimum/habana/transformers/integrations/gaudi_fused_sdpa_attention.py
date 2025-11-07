@@ -34,7 +34,7 @@ def gaudi_fused_sdpa_attention_forward(
         attention_mask,
         dropout,
         is_causal,
-        None,
+        scaling,
         softmax_mode,
         recompute_mode,
     )
