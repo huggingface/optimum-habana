@@ -2,6 +2,7 @@ from typing import Optional, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt2.modeling_gpt2 import (
     GPT2MLP,
@@ -525,6 +526,10 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
             token_idx=token_idx,
         )
         hidden_states = transformer_outputs[0]
+
+        # Transformers 4.55 may still return a tuple when `use_cache=True`.
+        if isinstance(transformer_outputs.past_key_values, tuple):
+            transformer_outputs.past_key_values = DynamicCache.from_legacy_cache(transformer_outputs.past_key_values)
 
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :])
