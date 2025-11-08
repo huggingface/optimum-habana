@@ -52,7 +52,7 @@ pip install -r requirements.txt
 ### LLaVA-1.6 (7B) - Single Card, Eager Mode
 
 ```bash
-python run_lora_vlm.py \
+PT_HPU_LAZY_MODE=0 python run_lora_vlm.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --dataset_name HuggingFaceM4/ChartQA \
     --output_dir ./output_llava \
@@ -70,7 +70,7 @@ python run_lora_vlm.py \
 ### Gemma-3 (12B) - Single Card, Eager Mode
 
 ```bash
-python run_lora_vlm.py \
+PT_HPU_LAZY_MODE=0 python run_lora_vlm.py \
     --model_name_or_path google/gemma-3-12b-it \
     --dataset_name HuggingFaceM4/ChartQA \
     --output_dir ./output_gemma3 \
@@ -87,12 +87,11 @@ python run_lora_vlm.py \
 
 ## Execution Modes
 
-The script supports Eager and Lazy execution modes on Gaudi HPUs. **Eager mode is recommended** for production use as it provides universal compatibility and reliable performance.
-Eager mode is currently default and doesnt need any specific settings. 
+The script supports Eager and Lazy execution modes on Gaudi HPUs. **Eager mode is recommended** for common use as it provides universal compatibility and reliable performance.
 
-> **Important**: The environment variable `PT_HPU_LAZY_MODE` and the `--use_lazy_mode` flag must be consistent:
-> - Eager mode: `PT_HPU_LAZY_MODE=0` (without `--use_lazy_mode` flag)
-> - Lazy mode: `PT_HPU_LAZY_MODE=1` (with `--use_lazy_mode` flag)
+> **Note**: If you need Lazy mode instead, you must:
+> - Set `PT_HPU_LAZY_MODE=1` in your command line (before the python command)
+> - Add the `--use_lazy_mode` flag to the script arguments
 
 ### 1. Eager Mode (RECOMMENDED)
 
@@ -107,7 +106,7 @@ Eager mode provides immediate execution without graph compilation, making it the
 
 **Usage:**
 ```bash
-python run_lora_vlm.py \
+PT_HPU_LAZY_MODE=0 python run_lora_vlm.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --dataset_name HuggingFaceM4/ChartQA \
     --output_dir ./output_eager \
