@@ -1365,7 +1365,7 @@ class GaudiLlamaModel(LlamaModel):
         hidden_states = self.norm(hidden_states)
 
         if lazy_mode and decode_attn_batch_split > 1 and torch.distributed.get_world_size() > 1 :
-            # In order to reduce NIC bombardment, put a barrier here so that all processes
+            # For synchronization, put a barrier here so that all processes
             # finish computation before moving to the next step.
             # Recommended to use for llama 405B model during decoding with batch split
             torch.distributed.barrier()
