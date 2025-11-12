@@ -41,6 +41,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Whether to use fast softmax with reduced precision if use Habana flash attention.
     attn_batch_split (`int`, *optional*):
         Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.
+    decode_attn_batch_split (`int`, *optional*):
+        Specify the batch size split for attention and mlp layers for decode. 1 for no split.
     logits_bf16 (`bool`, *optional*):
         Keep logits in bf16.
     """
@@ -65,4 +67,5 @@ class GaudiGenerationConfig(GenerationConfig):
         self.use_fused_rope = kwargs.get("use_fused_rope", None)
         self.valid_sequence_lengths = kwargs.get("valid_sequence_lengths", None)
         self.attn_batch_split = kwargs.get("attn_batch_split", 1)
+        self.decode_attn_batch_split = kwargs.get("decode_attn_batch_split", 1)
         self.logits_bf16 = kwargs.get("logits_bf16", None)
