@@ -771,10 +771,10 @@ def exclude_hpu_graph_configs(args):
 
 def initialize_model(args, logger):
     setup_distributed(args)
-     if args.world_size <=1 and args.attn_batch_split > 1:
+    if args.world_size <= 1 and args.attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting for prompt as it's unnecessary for single-card execution")
         args.attn_batch_split = 1
-     if args.world_size <=1 and args.decode_attn_batch_split > 1:
+    if args.world_size <= 1 and args.decode_attn_batch_split > 1:
         logger.warning("Disabling attention batch splitting for decode as it's unnecessary for single-card execution")
         args.decode_attn_batch_split = 1
     if exclude_hpu_graph_configs(args):

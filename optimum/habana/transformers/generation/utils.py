@@ -576,7 +576,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # For Non-MQA models with decode_attn_batch_split > 1, past_key_values is a list of list of list (k and v)
         elif not is_mqa_model and model_kwargs.get("decode_attn_batch_split", 1) > 1:
             for i, layer in enumerate(past_key_values):  # Iterate over layers
-                for j, split_kv_caches in enumerate(layer):  # Iterate over splitted kv_cahe
+                for j, split_kv_caches in enumerate(layer):  # Iterate over splitted kv_cache
                     for k, k_or_v in enumerate(split_kv_caches):  # Iterate over k and v
                         if torch.is_tensor(k_or_v) and k_or_v.shape[-2] == kv_cache_len_pad_amount:
                             # tensor(batch_size/num_splits, n_heads, kv_cache_len, head_dim)
@@ -2955,7 +2955,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         if "inputs_embeds" in model_inputs
                         else None
                     )
-                    if model_kwargs["decode_attn_batch_split"] > 1 :
+                    if model_kwargs["decode_attn_batch_split"] > 1:
                         output_past_key_values_shape = outputs.past_key_values[0][0][0].shape
                     else:
                         output_past_key_values_shape = outputs.past_key_values[0][0].shape

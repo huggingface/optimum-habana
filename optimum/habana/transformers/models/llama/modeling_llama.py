@@ -961,7 +961,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new arg flash_attention_causal_mask
         - add new arg flash_attention_fast_softmax
         """
-        if (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None):
+        if (attn_batch_split > 1 and past_key_value is None) or (
+            decode_attn_batch_split > 1 and past_key_value is not None
+        ):
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
             if past_key_value is not None:
                 attn_batch_split = decode_attn_batch_split
@@ -1065,7 +1067,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         if use_cache:
             outputs += (present_key_value,)
         # Store the residual splits to add them in the beginning of the next layer
-        if (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None):
+        if (attn_batch_split > 1 and past_key_value is None) or (
+            decode_attn_batch_split > 1 and past_key_value is not None
+        ):
             outputs += (int_residual_splits,)
 
         return outputs
@@ -1142,7 +1146,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             hidden_states = residual
 
         return hidden_states
-
 
 
 class GaudiLlamaModel(LlamaModel):
@@ -1299,7 +1302,9 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         split_prompt = False
-        if (attn_batch_split > 1 and past_key_values is None) or (decode_attn_batch_split > 1 and past_key_values is not None):
+        if (attn_batch_split > 1 and past_key_values is None) or (
+            decode_attn_batch_split > 1 and past_key_values is not None
+        ):
             if past_key_values is not None:
                 attn_batch_split = decode_attn_batch_split
             # Calculate split sizes to handle cases where batch size is not divisible by attn_batch_split
@@ -1325,7 +1330,9 @@ class GaudiLlamaModel(LlamaModel):
             # This is a workaround for an issue with DeepSpeed where
             # it cannot handle keyword arguments and throws a RuntimError
             past_key_value = None if past_key_values is None else past_key_values[layer_idx]
-            use_prev_layer_residual = (attn_batch_split > 1 and past_key_value is None) or (decode_attn_batch_split > 1 and past_key_value is not None)
+            use_prev_layer_residual = (attn_batch_split > 1 and past_key_value is None) or (
+                decode_attn_batch_split > 1 and past_key_value is not None
+            )
             layer_prev_layer_residual = prev_layer_residual if use_prev_layer_residual else None
             layer_hidden_states = hidden_states_split if split_prompt else hidden_states
             layer_outputs = decoder_layer(
@@ -1364,7 +1371,7 @@ class GaudiLlamaModel(LlamaModel):
 
         hidden_states = self.norm(hidden_states)
 
-        if lazy_mode and decode_attn_batch_split > 1 and torch.distributed.get_world_size() > 1 :
+        if lazy_mode and decode_attn_batch_split > 1 and torch.distributed.get_world_size() > 1:
             # For synchronization, put a barrier here so that all processes
             # finish computation before moving to the next step.
             # Recommended to use for llama 405B model during decoding with batch split
