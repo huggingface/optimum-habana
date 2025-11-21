@@ -23,7 +23,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers.cache_utils import Cache
-from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma3.modeling_gemma3 import (
     Gemma3Attention,
@@ -627,7 +626,7 @@ class GaudiGemma3TextModel(Gemma3TextModel):
             )
             position_ids = position_ids.unsqueeze(0)
         cache_position = None
-            
+
         # HPU specific mask generation
         if not isinstance(causal_mask_mapping := attention_mask, dict):
             """
@@ -649,7 +648,7 @@ class GaudiGemma3TextModel(Gemma3TextModel):
                     self.config.sliding_window,
                 ),
             }
-            
+
         # embed positions
         hidden_states = inputs_embeds
 
