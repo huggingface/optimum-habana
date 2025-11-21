@@ -435,6 +435,12 @@ def setup_parser(parser):
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
     parser.add_argument(
+        "--decode_attn_batch_split",
+        default=1,
+        type=int,
+        help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for decode.",
+    )
+    parser.add_argument(
         "--regional_compile",
         action="store_true",
         help="Whether to enable regional compilation.",
