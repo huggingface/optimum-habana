@@ -210,7 +210,7 @@ class GaudiGemma3Attention(Gemma3Attention):
         for i in range(q_tiles):
             s, e = i * q_block_size, (i + 1) * q_block_size
             row_q = query_layer[:, :, s:e, :]
-            row_mask = attention_mask[:, :, s:e, :]
+            row_mask = attention_mask[:, :, s:e, :] if attention_mask is not None else None
             attn_output_partial = FusedSDPA.apply(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None)
             row_o_list.append(attn_output_partial)
         attn_output = torch.cat(row_o_list, dim=-2)
