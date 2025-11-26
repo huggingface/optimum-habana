@@ -178,8 +178,8 @@ PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
 For distributed data parallel training using DeepSpeed:
 
 ```bash
-PT_HPU_LAZY_MODE=0 deepspeed --num_nodes 1 --num_gpus 8 \
-    run_lora_vlm.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_vlm.py \
     --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
     --dataset_name HuggingFaceM4/ChartQA \
     --output_dir ./output_deepspeed \
