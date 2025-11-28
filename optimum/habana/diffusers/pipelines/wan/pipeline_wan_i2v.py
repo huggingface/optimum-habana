@@ -392,6 +392,9 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 )
             htcore.hpu.set_device(rank)
 
+        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+            raise ValueError("negative_prompt_embeds must not be None when classifier-free guidance is enabled.")
+
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
