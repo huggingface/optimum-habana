@@ -527,8 +527,9 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         )
         hidden_states = transformer_outputs[0]
 
-        # Transformers 4.55 may still return a tuple when `use_cache=True`.
-        if isinstance(transformer_outputs.past_key_values, tuple):
+        # Transformers 4.55 may still return a tuple when `use_cache=True'. Convert to DynamicCache only during generation (not during Trainer predict/eval/train)
+        is_generation = kwargs.pop("is_generation", False)
+        if is_generation and isinstance(transformer_outputs.past_key_values, tuple):
             transformer_outputs.past_key_values = DynamicCache.from_legacy_cache(transformer_outputs.past_key_values)
 
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
