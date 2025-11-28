@@ -192,8 +192,12 @@ class GaudiWhisperDecoder(WhisperDecoder):
             use_cache = False
             past_key_values = None
 
-        if (input_ids is None) == (inputs_embeds is None):
-            raise ValueError("You must specify exactly one of decoder_input_ids or decoder_inputs_embeds.")
+        if input_ids is None and inputs_embeds is None:
+            raise ValueError("You must specify exactly one of decoder_input_ids or decoder_inputs_embeds (both None).")
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError(
+                "You must specify exactly one of decoder_input_ids or decoder_inputs_embeds (both provided)."
+            )
 
         if input_ids is not None:
             input_shape = input_ids.size()
