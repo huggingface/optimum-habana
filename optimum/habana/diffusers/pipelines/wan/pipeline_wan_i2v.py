@@ -392,9 +392,6 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
                 )
             htcore.hpu.set_device(rank)
 
-        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
-            raise ValueError("negative_prompt_embeds must not be None when classifier-free guidance is enabled.")
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -455,6 +452,9 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+
+        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+            raise ValueError("negative_prompt_embeds must not be None when classifier-free guidance is enabled.")
 
         # only wan 2.1 i2v transformer accepts image_embeds
         if self.transformer is not None and self.transformer.config.image_dim is not None:
