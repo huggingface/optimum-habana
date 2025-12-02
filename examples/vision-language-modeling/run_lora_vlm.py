@@ -17,6 +17,13 @@
 # Copyright (C) 2020-2025 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
+###############################################################################
+# This script extends the LoRA fine-tuning approach from run_lora_clm.py
+# (optimum-habana/examples/language-modeling) for vision-language models,
+# adding multimodal dataset handling, vision tower management, and support
+# for LLaVA, Qwen2.5-VL, and Gemma-3 model families.
+###############################################################################
+
 import os
 import sys
 
