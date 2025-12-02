@@ -5,6 +5,7 @@ from .pipelines.controlnet.pipeline_controlnet import GaudiStableDiffusionContro
 from .pipelines.controlnet.pipeline_stable_video_diffusion_controlnet import (
     GaudiStableVideoDiffusionControlNetPipeline,
 )
+from .pipelines.qwenimage.pipeline_qwenimage import GaudiQwenImagePipeline
 from .pipelines.ddpm.pipeline_ddpm import GaudiDDPMPipeline
 from .pipelines.flux.pipeline_flux import GaudiFluxPipeline
 from .pipelines.flux.pipeline_flux_img2img import GaudiFluxImg2ImgPipeline
