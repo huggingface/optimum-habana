@@ -453,6 +453,9 @@ class GaudiWanImageToVideoPipeline(GaudiDiffusionPipeline, WanImageToVideoPipeli
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
+        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+            raise ValueError("negative_prompt_embeds must not be None when classifier-free guidance is enabled.")
+
         # only wan 2.1 i2v transformer accepts image_embeds
         if self.transformer is not None and self.transformer.config.image_dim is not None:
             if image_embeds is None:
