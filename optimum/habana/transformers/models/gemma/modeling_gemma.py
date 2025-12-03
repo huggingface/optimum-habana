@@ -272,10 +272,11 @@ class GaudiGemmaAttention(GemmaAttention):
     def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor],
+        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
-        use_cache: bool = False,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
@@ -284,6 +285,7 @@ class GaudiGemmaAttention(GemmaAttention):
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         """
@@ -295,31 +297,38 @@ class GaudiGemmaAttention(GemmaAttention):
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         """
-        input_shape = hidden_states.shape[:-1]
-        q_len = input_shape[1]
+        bsz, q_len = hidden_states.shape[:2]
+        input_shape = (bsz, q_len)
         hidden_shape = (*input_shape, -1, self.head_dim)
 
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+        if position_ids is None:
+            position_ids = kwargs.get("position_ids")
+
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            if token_idx is None:
-                if hasattr(past_key_value, "get_usable_length"):
-                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-                else:
-                    kv_seq_len += past_key_value[0].shape[-2]
+            if hasattr(past_key_value, "get_usable_length"):
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             else:
-                if reuse_cache:
-                    kv_seq_len = past_key_value[0][-2]
-                else:
-                    kv_seq_len = past_key_value[0].shape[-2]
+                kv_seq_len += past_key_value[0].shape[-2]
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(
-            query_states, key_states, cos[kwargs["position_ids"]], sin[kwargs["position_ids"]]
-        )
+        if position_embeddings is not None:
+            cos_emb, sin_emb = position_embeddings
+        else:
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
+            if position_ids is None:
+                start = kv_seq_len - q_len
+                position_ids = torch.arange(
+                    start, start + q_len, dtype=torch.long, device=query_states.device
+                ).unsqueeze(0)
+            cos_emb = cos[position_ids]
+            sin_emb = sin[position_ids]
+
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos_emb, sin_emb)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -334,8 +343,10 @@ class GaudiGemmaAttention(GemmaAttention):
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
+
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
 
@@ -386,7 +397,6 @@ class GaudiGemmaAttention(GemmaAttention):
                             None,
                             flash_attention_recompute,
                         )
-
         else:
             attn_output, attn_weights = gaudi_eager_attention_forward(
                 self,
@@ -450,19 +460,21 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
     def pre_attn(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: Optional[int] = None,
+        cache_idx: int = None,
+        **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -470,9 +482,9 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
+            output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
-            position_embeddings=position_embeddings,
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
@@ -480,24 +492,21 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
+            position_embeddings=position_embeddings,
         )
         return hidden_states, attn_weights, present_key_value
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        hidden_states: torch.Tensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
+        output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        token_idx: Optional[torch.Tensor] = None,
-        attn_softmax_bf16: Optional[bool] = False,
-        reuse_cache: Optional[bool] = False,
-        use_flash_attention: Optional[bool] = False,
-        flash_attention_recompute: Optional[bool] = False,
-        flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: Optional[int] = None,
+        *args,
+        **kwargs,
     ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -505,13 +514,30 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         - add new args token_idx
         - add new args attn_softmax_bf16
         """
+        token_idx = kwargs.get("token_idx", None)
+        attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", False)
+        reuse_cache = kwargs.get("reuse_cache", False)
+        use_flash_attention = kwargs.get("use_flash_attention", False)
+        flash_attention_recompute = kwargs.get("flash_attention_recompute", False)
+        flash_attention_causal_mask = kwargs.get("flash_attention_causal_mask", False)
+        cache_idx = kwargs.get("cache_idx", None)
+        position_embeddings = kwargs.get("position_embeddings", None)
+
+        if hidden_states is None:
+            hidden_states = kwargs.get("hidden_states", None)
+
+        if hidden_states is None:
+            raise ValueError("hidden_states is required but missing.")
+
         residual = hidden_states
 
         hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
+            output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
             token_idx=token_idx,
@@ -532,6 +558,10 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
+
+        if output_attentions:
+            outputs += (self_attn_weights,)
+
         if use_cache:
             outputs += (present_key_value,)
 
@@ -539,6 +569,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
 
     def post_attn_pre_mlp(self, hidden_states, residual):
         hidden_states = self.self_attn.post_attn_forward(hidden_states)
+        hidden_states = self.post_attention_layernorm(hidden_states)
 
         if self.training:
             hidden_states = hidden_states + residual
@@ -546,8 +577,6 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         else:
             residual.add_(hidden_states)
             hidden_states = residual
-
-        hidden_states = self.post_attention_layernorm(hidden_states)
 
         hidden_states = self.mlp.pre_mlp_forward(hidden_states)
         return hidden_states, residual
@@ -660,7 +689,7 @@ class GaudiGemmaModel(GemmaModel):
                 htcore.mark_step()
 
             layer_outputs = decoder_layer(
-                hidden_states,
+                hidden_states=hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_value=None if past_key_values is None else past_key_values[layer_idx],
