@@ -98,6 +98,18 @@ def apply_customized_rope(query, key, cos, sin, vision=False, mrope_section=None
         return apply_multimodal_rotary_pos_emb(query, key, cos, sin, mrope_section)
 
 
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
         super().__init__()
@@ -542,6 +554,10 @@ class GaudiQwen2_5_VLAttention(Qwen2_5_VLAttention):
                 "None",  #'fast'
             )
         else:
+            num_kv_head_group = query_states.shape[1] // key_states.shape[1]
+            key_states = repeat_kv(key_states, num_kv_head_group)
+            value_states = repeat_kv(value_states, num_kv_head_group)
+
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
                 key_states,
