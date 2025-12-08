@@ -1166,6 +1166,7 @@ class GaudiTrainer(Trainer):
             if self.control.should_training_stop:
                 break
 
+        end_time = time.time()
         hb_profiler.stop()
 
         if args.past_index and hasattr(self, "_past"):
@@ -1191,6 +1192,7 @@ class GaudiTrainer(Trainer):
         metrics = speed_metrics(
             "train",
             start_time,
+            end_time,
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
             num_tokens=num_train_tokens,
@@ -1624,7 +1626,9 @@ class GaudiTrainer(Trainer):
             if self.args.use_habana:
                 to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
 
-    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
+    def log(
+        self, logs: dict[str, float], start_time: Optional[float] = None, end_time: Optional[float] = None
+    ) -> None:
         """
         Log `logs` on the various objects watching training.
 
@@ -1640,8 +1644,8 @@ class GaudiTrainer(Trainer):
             logs["epoch"] = self.state.epoch
         if self.args.include_num_input_tokens_seen:
             logs["num_input_tokens_seen"] = self.state.num_input_tokens_seen
-            if start_time is not None:
-                logs.update(speed_metrics("train", start_time, num_tokens=self.state.num_input_tokens_seen))
+            if start_time is not None and end_time is not None:
+                logs.update(speed_metrics("train", start_time, end_time, num_tokens=self.state.num_input_tokens_seen))
 
         mem_stats = get_hpu_memory_stats(self.args.device)
         logs.update(mem_stats)
@@ -1930,6 +1934,8 @@ class GaudiTrainer(Trainer):
             start_time += output.metrics[f"{metric_key_prefix}_model_preparation_time"]
         num_samples = output.num_samples - self.args.throughput_warmup_steps * total_batch_size
         num_steps = math.ceil(output.num_samples / total_batch_size) - self.args.throughput_warmup_steps
+        if f"{metric_key_prefix}_end_time" in output.metrics:
+            end_time = output.metrics[f"{metric_key_prefix}_end_time"]
 
         eval_steps = math.ceil(output.num_samples / total_batch_size)
         if eval_steps <= self.args.throughput_warmup_steps:
@@ -1943,6 +1949,7 @@ class GaudiTrainer(Trainer):
             speed_metrics(
                 metric_key_prefix,
                 start_time,
+                end_time,
                 num_samples=num_samples,
                 num_steps=num_steps,
                 start_time_after_warmup=self.start_time_after_warmup,
@@ -1975,6 +1982,7 @@ class GaudiTrainer(Trainer):
         output = eval_loop(
             test_dataloader, description="Prediction", ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix
         )
+        end_time = time.time()
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
             start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
@@ -1990,6 +1998,7 @@ class GaudiTrainer(Trainer):
             speed_metrics(
                 metric_key_prefix,
                 start_time,
+                end_time,
                 num_samples=num_samples,
                 num_steps=num_steps,
                 start_time_after_warmup=self.start_time_after_warmup,
@@ -2201,6 +2210,7 @@ class GaudiTrainer(Trainer):
 
             hb_profiler.step()
 
+        end_time = time.time()
         hb_profiler.stop()
 
         # After all calls to `.gather_function`, reset to `gather_for_metrics`:
@@ -2260,6 +2270,7 @@ class GaudiTrainer(Trainer):
             metrics[f"{metric_key_prefix}_model_preparation_time"] = self.model_preparation_time
         if hasattr(self, "compilation_time"):
             metrics[f"{metric_key_prefix}_graph_compliation_duration"] = self.compilation_time
+        metrics[f"{metric_key_prefix}_end_time"] = end_time
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):

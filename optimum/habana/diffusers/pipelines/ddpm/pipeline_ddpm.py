@@ -192,6 +192,8 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             if not self.use_hpu_graphs:  # For checking output resutls
                 self.htcore.mark_step()
 
+        end_time = time.time()
+
         if self.gaudi_config.use_torch_autocast:
             image = image.float()
 
@@ -204,6 +206,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         speed_measures = speed_metrics(
             split=speed_metrics_prefix,
             start_time=start_time,
+            end_time=end_time,
             num_samples=batch_size,
             num_steps=batch_size * len(num_inference_steps),
             start_time_after_warmup=time_after_warmup,

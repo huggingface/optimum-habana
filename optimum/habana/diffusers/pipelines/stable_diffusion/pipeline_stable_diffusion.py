@@ -596,6 +596,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                     self.htcore.mark_step()
 
             hb_profiler.stop()
+            end_time = time.time()
 
             speed_metrics_prefix = "generation"
             if t1 == t0 or use_warmup_inference_steps:
@@ -608,6 +609,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
+                end_time=end_time,
                 num_samples=num_samples,
                 num_steps=num_steps,
                 start_time_after_warmup=t1,

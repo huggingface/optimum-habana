@@ -457,6 +457,112 @@ python image_to_video_generation.py \
     --bf16
 ```
 
+### Image-to-Video with Wan 2.2
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+
+Here is how to generate a video with one image and text prompt:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python image_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --image_path "https://raw.githubusercontent.com/Wan-Video/Wan2.2/main/examples/i2v_input.JPG" \
+    --video_save_dir ./wan2.2-output \
+    --prompts "The cat removes the glasses from its eyes." \
+    --use_habana \
+    --use_hpu_graphs \
+    --height 1088 \
+    --width 800 \
+    --fps 24 \
+    --num_frames 121 \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+#### Distributed Image-to-Video Wan 2.2 Inference
+
+Wan models use classifier-free guidance (CFG), which processes both conditional and unconditional latents during denoising.
+With the `--use_distributed_cfg` option, we parallelize these 2 steps across a pair of HPU devices and then synchronize to apply guidance.
+While this mode uses 2 HPUs per unique generated video, it achieves almost 2x faster inference.
+
+Here is an example of running Wan2.2 image-to-video model with 2 HPU devices in disributed CFG mode:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --world_size 2 image_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --image_path "https://raw.githubusercontent.com/Wan-Video/Wan2.2/main/examples/i2v_input.JPG" \
+    --video_save_dir ./wan2.2-output \
+    --prompts "The cat removes the glasses from its eyes." \
+    --use_habana \
+    --use_hpu_graphs \
+    --use_distributed_cfg \
+    --height 1088 \
+    --width 800 \
+    --fps 24 \
+    --num_frames 121 \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+> [!NOTE]
+> Distributed CFG mode requires even number of devices in the `world_size`.
+
+
+### Text-to-Video with Wan 2.2
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+
+Here is how to generate a video with text prompt:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python text_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --prompts "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+    --pipeline_type wan \
+    --num_videos_per_prompt 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --height 704 \
+    --width 1280 \
+    --num_frames 121 \
+    --num_inference_steps 50 \
+    --guidance_scale 5.0 \
+    --output_type mp4 \
+    --dtype bf16
+```
+
+#### Distributed Text-to-Video Wan 2.2 Inference
+
+Wan models use classifier-free guidance (CFG), which processes both conditional and unconditional latents during denoising.
+With the `--use_distributed_cfg` option, we parallelize these 2 steps across a pair of HPU devices and then synchronize to apply guidance.
+While this mode uses 2 HPUs per unique generated video, it achieves almost 2x faster inference.
+
+Here is an example of running Wan2.2 text-to-video model with 2 HPU devices in disributed CFG mode:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --world_size 2 text_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --prompts "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+    --pipeline_type wan \
+    --num_videos_per_prompt 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --use_distributed_cfg \
+    --height 704 \
+    --width 1280 \
+    --num_frames 121 \
+    --num_inference_steps 50 \
+    --guidance_scale 5.0 \
+    --output_type mp4 \
+    --dtype bf16
+```
+
+> [!NOTE]
+> Distributed CFG mode requires even number of devices in the `world_size`.
+
+
 ### Text-to-Video with CogvideoX
 
 CogVideoX is an open-source version of the video generation model originating from QingYing, unveiled in https://huggingface.co/THUDM/CogVideoX-5b.

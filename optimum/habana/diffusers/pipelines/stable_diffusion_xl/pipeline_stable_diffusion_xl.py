@@ -817,6 +817,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
+            end_time = time.time()
             hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
@@ -829,6 +830,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
+                end_time=end_time,
                 num_samples=num_samples,
                 num_steps=num_steps,
                 start_time_after_warmup=t1,

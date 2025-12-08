@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import accelerate
@@ -22,9 +23,7 @@ import torch
 from accelerate import Accelerator
 from accelerate.data_loader import prepare_data_loader
 from accelerate.logging import get_logger
-from accelerate.utils import (
-    DistributedType,
-)
+from accelerate.utils import DistributedType, PrecisionType
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
@@ -39,6 +38,18 @@ accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
 accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
+@contextlib.contextmanager
+def patch_apply_fp8_autowrap():
+    original_apply_fp8_autowrap = accelerate.utils.transformer_engine.apply_fp8_autowrap
+    accelerate.utils.transformer_engine.apply_fp8_autowrap = lambda x, *args, **kwargs: x
+    accelerate.accelerator.apply_fp8_autowrap = lambda x, *args, **kwargs: x
+    accelerate.utils.apply_fp8_autowrap = lambda x, *args, **kwargs: x
+    yield
+    accelerate.utils.transformer_engine.apply_fp8_autowrap = original_apply_fp8_autowrap
+    accelerate.accelerator.apply_fp8_autowrap = original_apply_fp8_autowrap
+    accelerate.utils.apply_fp8_autowrap = original_apply_fp8_autowrap
+
+
 logger = get_logger(__name__)
 
 
@@ -46,39 +57,45 @@ class GaudiAccelerator(Accelerator):
     def __init__(
         self,
         *args,
+        mixed_precision: PrecisionType | None = None,
         # TODO: remove these when the features are upstream or removed
         force_autocast: bool = False,
         distribution_strategy: str = None,
         compiled_autograd_enabled: bool = False,
-        ##############################################################
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
-
-        self.mpu = parallel_state
-        self.distribution_strategy = distribution_strategy
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8 (even with deepspeed)
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
+        super().__init__(*args, mixed_precision=mixed_precision, **kwargs)
         self.compiled_autograd_enabled = compiled_autograd_enabled
-        self.native_amp = self.native_amp and force_autocast
+        self.distribution_strategy = distribution_strategy
+        self.force_autocast = force_autocast
+        self.mpu = parallel_state
 
         # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
         # we can clean this up later when the upstream accelerate is fixed
         self.fp8_recipe = None
+        self.has_fp8_handler = (self.te_recipe_handler or self.fp8_recipe_handler) is not None
         if self.has_fp8_handler:
             self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
     # INFO: this adds support for fast_ddp by not applying DDP wrapper
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
+        # native amp is handled by the trainer's autocast context manager, so we disable it here if force_autocast is not set to True
+        original_native_amp, self.native_amp = self.native_amp, self.native_amp and self.force_autocast
         if self.distribution_strategy == "fast_ddp":
             # with fast_ddp, we just skip ddp and fsdp model preparation
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=True)
         else:
             model = super().prepare_model(model, device_placement=device_placement, evaluation_mode=evaluation_mode)
+        self.native_amp = original_native_amp
         return model
 
     # INFO: this adds support for autograd compilation to the deepspeed engine
     def _prepare_deepspeed(self, *args):
         orig_num_models = len(self._models)
-        prepared_deepspeed = super()._prepare_deepspeed(*args)
+        with patch_apply_fp8_autowrap():
+            prepared_deepspeed = super()._prepare_deepspeed(*args)
 
         if len(self._models) > orig_num_models and self._models[-1]._is_compiled:
             # an engine was added and is compiled

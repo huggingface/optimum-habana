@@ -426,6 +426,12 @@ def setup_parser(parser):
         help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for prompt.",
     )
     parser.add_argument(
+        "--decode_attn_batch_split",
+        default=1,
+        type=int,
+        help="Specify the batch size split for attention and mlp layers. 1 for no split. This is enabled only for decode.",
+    )
+    parser.add_argument(
         "--regional_compile",
         action="store_true",
         help="Whether to enable regional compilation.",
@@ -451,7 +457,25 @@ def setup_parser(parser):
     parser.add_argument(
         "--dynamo_allow_unspec_int_on_nn_module",
         action="store_true",
+        default=True,
         help="Set torch._dynamo.config.allow_unspec_int_on_nn_module flag to True",
+    )
+
+    parser.add_argument(
+        "--attn_implementation",
+        type=str,
+        default="eager",
+        choices=[
+            "flash_attention_3",
+            "flash_attention_2",
+            "flex_attention",
+            "paged_attention",
+            "sdpa",
+            "sdpa_paged",
+            "eager",
+            "eager_paged",
+        ],
+        help="Select attention implementation",
     )
 
     args = parser.parse_args()

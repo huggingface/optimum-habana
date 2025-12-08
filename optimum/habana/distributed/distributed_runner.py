@@ -161,7 +161,7 @@ class DistributedRunner:
 
         mpi_cmd = self.setup_config_env_mpirun()
         self._interpreter = (
-            f"mpirun -n {self._world_size} --bind-to core {mpi_cmd} --rank-by core --report-bindings"
+            f"mpirun -n {self._world_size} --bind-to core {mpi_cmd} --rank-by slot --report-bindings"
             f" --allow-run-as-root {sys.executable} "
         )
 

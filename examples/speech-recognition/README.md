@@ -89,7 +89,7 @@ PT_HPU_LAZY_MODE=1 python run_speech_recognition_ctc.py \
     --bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
@@ -133,7 +133,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --sdp_on_bf16 \
     --use_hpu_graphs_for_training \
     --use_hpu_graphs_for_inference \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
@@ -184,7 +184,7 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json \
     --sdp_on_bf16 \
-    --attn_implementation sdpa \
+    --attn_implementation gaudi_fused_sdpa \
     --trust_remote_code True
 ```
 
@@ -231,13 +231,11 @@ recognition on one of the well known speech recognition datasets similar to show
 We can load all components of the Whisper model directly from the pretrained checkpoint, including the pretrained model weights, feature extractor and tokenizer. We simply have to specify our fine-tuning dataset and training hyperparameters.
 
 ### Single HPU Whisper Fine tuning with Seq2Seq
-The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
+The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/regisss/common_voice_11_0_hi) using a single HPU device in bf16 precision:
 ```bash
 PT_HPU_LAZY_MODE=1 python run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-small" \
-    --dataset_name="mozilla-foundation/common_voice_11_0" \
-    --trust_remote_code \
-    --dataset_config_name="hi" \
+    --dataset_name="regisss/common_voice_11_0_hi" \
     --language="hindi" \
     --task="transcribe" \
     --train_split_name="train+validation" \
@@ -277,14 +275,12 @@ If training on a different language, you should be sure to change the `language`
 
 
 ### Multi HPU Whisper Training with Seq2Seq
-The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
+The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/regisss/common_voice_11_0_hi) using 8 HPU devices in half-precision:
 ```bash
 PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-large" \
-    --dataset_name="mozilla-foundation/common_voice_11_0" \
-    --trust_remote_code \
-    --dataset_config_name="hi" \
+    --dataset_name="regisss/common_voice_11_0_hi" \
     --language="hindi" \
     --task="transcribe" \
     --train_split_name="train+validation" \
@@ -317,14 +313,12 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
 
 #### Single HPU Seq2Seq Inference
 
-The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 1 HPU devices in half-precision:
+The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/regisss/common_voice_11_0_hi) using 1 HPU devices in half-precision:
 
 ```bash
 PT_HPU_LAZY_MODE=1 python run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-small" \
-    --dataset_name="mozilla-foundation/common_voice_11_0" \
-    --trust_remote_code \
-    --dataset_config_name="hi" \
+    --dataset_name="regisss/common_voice_11_0_hi" \
     --language="hindi" \
     --task="transcribe" \
     --eval_split_name="test" \

@@ -372,11 +372,14 @@ class GaudiStableDiffusionImageVariationPipeline(GaudiDiffusionPipeline, StableD
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
+            end_time = time.time()
             hb_profiler.stop()
+
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
+                end_time=end_time,
                 num_samples=num_batches * batch_size
                 if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,

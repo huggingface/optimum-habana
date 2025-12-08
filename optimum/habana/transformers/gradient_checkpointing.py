@@ -339,16 +339,19 @@ def checkpoint(
     Returns:
         Output of running :attr:`function` on :attr:`*args`
     """
-    if use_reentrant is None:
-        warn0(
-            "torch.utils.checkpoint: the use_reentrant parameter should be "
-            "passed explicitly. In version 2.5 we will raise an exception "
-            "if use_reentrant is not passed. use_reentrant=False is "
-            "recommended, but if you need to preserve the current default "
-            "behavior, you can pass use_reentrant=True. Refer to docs for more "
-            "details on the differences between the two variants."
-        )
-        use_reentrant = True
+    if use_reentrant is None or use_reentrant:
+        # Transformers>=4.55 + PyTorch>=2.2 require non-reentrant checkpointing on HPU
+        # Reentrant mode conflicts with DDP on HPU (duplicate backward hooks)
+        use_reentrant = False
+        if not hasattr(checkpoint, "_warned_once"):
+            checkpoint._warned_once = True
+            if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
+                warnings.warn(
+                    "Reentrant gradient checkpointing has been disabled (use_reentrant=False) "
+                    "because it conflicts with DDP and HPU graphs on Gaudi. "
+                    "This avoids duplicated backward hooks and ensures stable training on HPU.",
+                    UserWarning,
+                )
 
     # Hack to mix *args with **kwargs in a python 2.7-compliant way
     preserve = kwargs.pop("preserve_rng_state", True)

@@ -17,6 +17,7 @@ import os
 
 import transformers
 import transformers.utils.fx
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
 from .generation import (
     GaudiGenerationConfig,
@@ -34,6 +35,7 @@ from .integrations.awq import (
     gaudi_awq_quantizer_validate_environment,
 )
 from .integrations.finegrained_fp8 import GaudiFP8Linear
+from .integrations.gaudi_fused_sdpa_attention import gaudi_fused_sdpa_attention_forward
 from .loss import gaudi_RTDetrHungarianMatcher_forward
 from .models import (
     ArcticConfig,
@@ -130,14 +132,13 @@ from .models import (
     GaudiMllamaCrossAttentionDecoderLayer,
     GaudiMllamaForCausalLM,
     GaudiMllamaForConditionalGeneration,
+    GaudiMllamaModel,
     GaudiMllamaSelfAttentionDecoderLayer,
     GaudiMllamaTextCrossAttention,
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
     GaudiMllamaVisionEncoder,
-    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
-    GaudiMllamaVisionSdpaAttention,
     GaudiMptAttention,
     GaudiMptBlock,
     GaudiMptForCausalLM,
@@ -153,6 +154,13 @@ from .models import (
     GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
     GaudiPhiModel,
+    GaudiQwen2_5_VisionTransformerPretrainedModel,
+    GaudiQwen2_5_VLAttention,
+    GaudiQwen2_5_VLDecoderLayer,
+    GaudiQwen2_5_VLForConditionalGeneration,
+    GaudiQwen2_5_VLModel,
+    GaudiQwen2_5_VLTextModel,
+    GaudiQwen2_5_VLVisionBlock,
     GaudiQwen2Attention,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
@@ -201,12 +209,13 @@ from .models import (
     GaudiStarcoder2Model,
     GaudiT5ForConditionalGeneration,
     GaudiVideoLlavaForConditionalGeneration,
+    GaudiVideoLlavaModel,
     GaudiVisionSdpaAttention,
+    GaudiWhisperAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
-    GaudiWhisperSdpaAttention,
     GaudiXGLMForCausalLM,
     GLM4VConfig,
     GLM4VForConditionalGeneration,
@@ -325,7 +334,6 @@ from .models import (
     gaudi_XLMRoberta_Sdpa_SelfAttention_forward,
 )
 from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
-from .pipelines import GaudiImageToTextPipeline
 from .quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
 
 
@@ -334,6 +342,7 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+    ALL_ATTENTION_FUNCTIONS.register("gaudi_fused_sdpa", gaudi_fused_sdpa_attention_forward)
 
     # models that support symbolic tracing should be added to this list
     models_with_tracing_support = []
@@ -406,8 +415,19 @@ def adapt_transformers_to_gaudi():
     transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
     transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
     transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
-    transformers.pipelines.image_to_text.ImageToTextPipeline._default_generation_config = (
-        GaudiImageToTextPipeline._default_generation_config
+    transformers.pipelines.image_to_text.ImageToTextPipeline._default_generation_config = GaudiGenerationConfig(
+        max_new_tokens=256,
+    )
+    transformers.pipelines.visual_question_answering.VisualQuestionAnsweringPipeline._default_generation_config = (
+        GaudiGenerationConfig(
+            max_new_tokens=256,
+        )
+    )
+    transformers.pipelines.text_generation.TextGenerationPipeline._default_generation_config = GaudiGenerationConfig(
+        max_new_tokens=256,
+    )
+    transformers.pipelines.text_to_audio.TextToAudioPipeline._default_generation_config = GaudiGenerationConfig(
+        max_new_tokens=256,
     )
 
     # Optimization for BLOOM generation on Gaudi
@@ -522,7 +542,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
     transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
-    transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
+    transformers.AutoConfig.register("llama", LlamaConfig, exist_ok=True)
+    transformers.AutoModelForCausalLM.register(LlamaConfig, GaudiLlamaForCausalLM, exist_ok=True)
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
@@ -742,6 +763,20 @@ def adapt_transformers_to_gaudi():
         GaudiQwen2VLForConditionalGeneration
     )
 
+    # Optimization for qwen2.5-vl on Gaudi
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLVisionBlock = GaudiQwen2_5_VLVisionBlock
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VisionTransformerPretrainedModel = (
+        GaudiQwen2_5_VisionTransformerPretrainedModel
+    )
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLAttention = GaudiQwen2_5_VLAttention
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLDecoderLayer = GaudiQwen2_5_VLDecoderLayer
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLModel = GaudiQwen2_5_VLModel
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration = (
+        GaudiQwen2_5_VLForConditionalGeneration
+    )
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2RMSNorm.forward = gaudi_qwen2_rmsnorm_forward
+    transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLTextModel = GaudiQwen2_5_VLTextModel
+
     # Optimization for qwen3 on Gaudi
     transformers.models.qwen3.modeling_qwen3.Qwen3ForCausalLM = GaudiQwen3ForCausalLM
     transformers.models.qwen3.modeling_qwen3.Qwen3Model = GaudiQwen3Model
@@ -800,27 +835,28 @@ def adapt_transformers_to_gaudi():
     transformers.models.video_llava.modeling_video_llava.VideoLlavaForConditionalGeneration = (
         GaudiVideoLlavaForConditionalGeneration
     )
+    transformers.models.video_llava.modeling_video_llava.VideoLlavaModel = GaudiVideoLlavaModel
 
     # Optimization for Whisper on Gaudi
-    transformers.models.whisper.modeling_whisper.WhisperAttention = GaudiWhisperSdpaAttention
+    transformers.models.whisper.modeling_whisper.WhisperAttention = GaudiWhisperAttention
     transformers.models.whisper.modeling_whisper.WhisperDecoderLayer = GaudiWhisperDecoderLayer
     transformers.models.whisper.modeling_whisper.WhisperDecoder = GaudiWhisperDecoder
     transformers.models.whisper.modeling_whisper.WhisperModel = GaudiWhisperModel
     transformers.models.whisper.modeling_whisper.WhisperForConditionalGeneration = GaudiWhisperForConditionalGeneration
 
     # Optimization for mllama on Gaudi
-    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
     transformers.models.mllama.modeling_mllama.MllamaCrossAttentionDecoderLayer = GaudiMllamaCrossAttentionDecoderLayer
     transformers.models.mllama.modeling_mllama.MllamaForCausalLM = GaudiMllamaForCausalLM
-    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
-    transformers.models.mllama.modeling_mllama.MllamaTextCrossAttention = GaudiMllamaTextCrossAttention
     transformers.models.mllama.modeling_mllama.MllamaForConditionalGeneration = GaudiMllamaForConditionalGeneration
+    transformers.models.mllama.modeling_mllama.MllamaModel = GaudiMllamaModel
+    transformers.models.mllama.modeling_mllama.MllamaSelfAttentionDecoderLayer = GaudiMllamaSelfAttentionDecoderLayer
+    transformers.models.mllama.modeling_mllama.MllamaTextCrossAttention = GaudiMllamaTextCrossAttention
     transformers.models.mllama.modeling_mllama.MllamaTextModel = GaudiMllamaTextModel
-    transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
+    transformers.models.mllama.modeling_mllama.MllamaTextSelfAttention = GaudiMllamaTextSelfAttention
     transformers.models.mllama.modeling_mllama.MllamaVisionEncoder = GaudiMllamaVisionEncoder
-    transformers.models.mllama.modeling_mllama.MllamaVisionEncoderLayer = GaudiMllamaVisionEncoderLayer
-    transformers.models.mllama.modeling_mllama.MllamaVisionSdpaAttention = GaudiMllamaVisionSdpaAttention
+    transformers.models.mllama.modeling_mllama.MllamaVisionModel = GaudiMllamaVisionModel
 
+    # Optimization for deciLM on Gaudi
     transformers.AutoConfig.register("deci", DeciLMConfig)
     transformers.AutoModelForCausalLM.register(DeciLMConfig, DeciLMForCausalLM)
 
@@ -866,6 +902,7 @@ def adapt_transformers_to_gaudi():
         transformers.AutoModelForSeq2SeqLM.register(GLM4VConfig, GLM4VForConditionalGeneration)
         transformers.AutoModelForVision2Seq.register(GLM4VConfig, GLM4VForConditionalGeneration)
         transformers.AutoModelForSequenceClassification.register(GLM4VConfig, GLM4VForSequenceClassification)
+        transformers.pipelines.image_to_text.ImageToTextPipeline._load_image_processor = False
     else:
         # Register chatglm with optimization on Gaudi
         transformers.AutoConfig.register("chatglm", ChatGLMConfig)

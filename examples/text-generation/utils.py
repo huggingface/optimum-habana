@@ -747,6 +747,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.trust_remote_code = args.trust_remote_code
     generation_config.valid_sequence_lengths = None
     generation_config.attn_batch_split = args.attn_batch_split
+    generation_config.decode_attn_batch_split = args.decode_attn_batch_split
 
     return generation_config
 
@@ -770,9 +771,12 @@ def exclude_hpu_graph_configs(args):
 
 def initialize_model(args, logger):
     setup_distributed(args)
-    if not args.world_size > 0 and args.attn_batch_split > 1:
-        logger.warning("Disabling attention batch splitting as it's unnecessary for single-card execution")
+    if args.world_size <= 1 and args.attn_batch_split > 1:
+        logger.warning("Disabling attention batch splitting for prompt as it's unnecessary for single-card execution")
         args.attn_batch_split = 1
+    if args.world_size <= 1 and args.decode_attn_batch_split > 1:
+        logger.warning("Disabling attention batch splitting for decode as it's unnecessary for single-card execution")
+        args.decode_attn_batch_split = 1
     if exclude_hpu_graph_configs(args):
         args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
@@ -802,6 +806,7 @@ def initialize_model(args, logger):
         "revision": args.model_revision,
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
+        "attn_implementation": args.attn_implementation,
     }
     if args.load_quantized_model_with_inc or args.local_quantized_inc_model_path:
         model_kwargs["torch_dtype"] = torch.bfloat16
