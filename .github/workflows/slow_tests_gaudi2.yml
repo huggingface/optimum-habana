@@ -11,27 +11,22 @@ concurrency:
 jobs:
   example-diff:
     name: Test examples differences
-    runs-on: [self-hosted, linux, x64, gaudi2, nightly]
+    runs-on:
+      group: denvr-intel-gaudi2-1gaudi
+    container:
+      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      env:
+        OMPI_MCA_btl_vader_single_copy_mechanism: none
     steps:
+      - name: HL-SMI
+        run: |
+          hl-smi
+          echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
+          echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v2
-      - name: Pull image
-        run: |
-            docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+        uses: actions/checkout@v4
       - name: Run tests
-        run: |
-            docker run \
-            --rm \
-            -v $PWD:/root/workspace \
-            --workdir=/root/workspace \
-            --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=all \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            /bin/bash tests/ci/example_diff_tests.sh
+        run: /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
     name: Test Stable Diffusion
     if: ${{ !cancelled() && (success() || failure()) }}
