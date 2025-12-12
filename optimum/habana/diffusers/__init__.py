@@ -10,6 +10,7 @@ from .pipelines.flux.pipeline_flux import GaudiFluxPipeline
 from .pipelines.flux.pipeline_flux_img2img import GaudiFluxImg2ImgPipeline
 from .pipelines.i2vgen_xl.pipeline_i2vgen_xl import GaudiI2VGenXLPipeline
 from .pipelines.pipeline_utils import GaudiDiffusionPipeline
+from .pipelines.qwenimage.pipeline_qwenimage import GaudiQwenImagePipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_depth2img import GaudiStableDiffusionDepth2ImgPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_image_variation import (

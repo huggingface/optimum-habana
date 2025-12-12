@@ -108,6 +108,7 @@ from optimum.habana.diffusers import (
     GaudiFluxImg2ImgPipeline,
     GaudiFluxPipeline,
     GaudiI2VGenXLPipeline,
+    GaudiQwenImagePipeline,
     GaudiStableDiffusion3Pipeline,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionDepth2ImgPipeline,
@@ -7625,3 +7626,72 @@ class GaudiWanImageToVideoPipelineTester(PipelineTesterMixin, TestCase):
 
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
+
+
+class GaudiQwenImagePipelineTester(TestCase):
+    """
+    Tests the GaudiQwenImagePipeline for Gaudi.
+    """
+
+    from optimum.habana.diffusers.models.transformers import (
+        GaudiQwenDoubleStreamAttnProcessor2_0,
+        GaudiQwenEmbedRope,
+        GaudiQwenTimestepProjEmbeddings,
+    )
+
+    diffusers.models.transformers.transformer_qwenimage.QwenTimestepProjEmbeddings = GaudiQwenTimestepProjEmbeddings
+    diffusers.models.transformers.transformer_qwenimage.QwenEmbedRope = GaudiQwenEmbedRope
+    diffusers.models.transformers.transformer_qwenimage.QwenDoubleStreamAttnProcessor2_0 = (
+        GaudiQwenDoubleStreamAttnProcessor2_0
+    )
+
+    @pytest.fixture(autouse=True)
+    def _use_(self, baseline):
+        """
+        https://docs.pytest.org/en/stable/how-to/unittest.html#using-autouse-fixtures-and-accessing-other-fixtures
+        """
+        self.baseline = baseline
+
+    @slow
+    @pytest.mark.skipif(IS_GAUDI1, reason="does not fit into Gaudi1 memory")
+    def test_qwenimage_inference(self):
+        prompts = [
+            "A cat holding a sign that says hello world",
+        ]
+        negative_prompts = [
+            " ",
+        ]
+        model_name = "Qwen/Qwen-Image"
+        num_images_per_prompt = 10
+        num_inference_steps = 4
+        batch_size = 1
+        width = 512
+        height = 512
+
+        pipeline = GaudiQwenImagePipeline.from_pretrained(
+            model_name,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config="Habana/stable-diffusion",
+            torch_dtype=torch.bfloat16,
+            sdp_on_bf16=True,
+        )
+
+        set_seed(42)
+        outputs = pipeline(
+            prompt=prompts,
+            negative_prompt=negative_prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+            num_inference_steps=num_inference_steps,
+            width=width,
+            height=height,
+        )
+
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+
+        self.baseline.assertRef(
+            compare=lambda actual, ref: actual >= (0.95 * ref),
+            context=[OH_DEVICE_CONTEXT],
+            throughput=outputs.throughput,
+        )

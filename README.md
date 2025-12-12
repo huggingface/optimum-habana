@@ -303,10 +303,12 @@ The following model architectures, tasks and device distributions have been vali
 | Stable Diffusion 3         | :heavy_check_mark:     | :heavy_check_mark:            | <ul><li>[text-to-image generation](/examples/stable-diffusion#stable-diffusion-3-and-35-sd3)</li></ul>                                                                                         |
 | LDM3D                      |                        | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#text-to-image-generation)</li></ul>                                                                                              |
 | FLUX.1                     | <ul><li>LoRA</li></ul> | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#flux1)</li><li>[image-to-image generation](/examples/stable-diffusion#flux1-image-to-image)</li></ul>                            |
+| Qwen Image                 |                        | <ul><li>Single card</li></ul> | <ul><li>[text-to-image generation](/examples/stable-diffusion#qwen-image)</li></ul>                                                                                                            |
 | Text to Video              |                        | <ul><li>Single card</li></ul> | <ul><li>[text-to-video generation](/examples/stable-diffusion#text-to-video-generation)</li></ul>                                                                                              |
 | Image to Video             |                        | <ul><li>Single card</li></ul> | <ul><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-generation)</li></ul>                                                                                            |
 | i2vgen-xl                  |                        | <ul><li>Single card</li></ul> | <ul><li>[image-to-video generation](/examples/stable-diffusion#I2vgen-xl)</li></ul>                                                                                                            |
 | Wan                        |                        | :heavy_check_mark:            | <ul><li>[text-to-video generation](/examples/stable-diffusion#text-to-video-with-wan-22)</li><li>[image-to-video generation](/examples/stable-diffusion#image-to-video-with-wan-22)</li></ul>  |
+
 
 ### PyTorch Image Models/TIMM:
 

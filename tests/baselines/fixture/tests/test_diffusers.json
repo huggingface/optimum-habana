@@ -163,5 +163,13 @@
       "train_runtime": 1.8647471838630736,
       "train_samples_per_second": 120.123522340414
     }
+  },
+  "tests/test_diffusers.py::GaudiQwenImagePipelineTester::test_qwenimage_inference": {
+    "gaudi2": {
+        "throughput": 0.680
+    },
+    "gaudi3": {
+        "throughput": 0.680
+    }
   }
 }
