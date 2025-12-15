@@ -178,6 +178,31 @@ FLUX in quantization mode by setting runtime variable `QUANT_CONFIG=quantization
 
 To run with FLUX.1-schnell model, a distilled version of FLUX.1 (which is not gated), use `--model_name_or_path black-forest-labs/FLUX.1-schnell`.
 
+### Qwen-Image
+
+Qwen-Image was introduced Alibaba Cloud [here](https://www.alibabacloud.com/blog/introducing-qwen-image-novel-model-in-image-generation-and-editing_602447)
+
+Here is how to run Qwen-Image model:
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path Qwen/Qwen-Image \
+    --prompts "A cat holding a sign that says hello world" \
+    --negative_prompts " " \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/qwen-image \
+    --scheduler flow_match_euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+> [!NOTE]
+> If you don't add `--negative_prompts` then empty string will be added to it as default value.
 ## ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543)
