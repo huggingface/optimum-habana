@@ -254,7 +254,7 @@ def main():
 
         gaudi_config = GaudiConfig(**gaudi_config_kwargs)
         args.gaudi_config_name = gaudi_config
-    logger.info(f"Gaudi Config: {gaudi_config}")
+        logger.info(f"Gaudi Config: {gaudi_config}")
 
     # Load input image(s)
     input = []
