@@ -31,7 +31,7 @@ jobs:
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run tests
         run: |
@@ -56,7 +56,7 @@ jobs:
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run tests
         run: |
