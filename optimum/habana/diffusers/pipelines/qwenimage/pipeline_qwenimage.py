@@ -146,6 +146,8 @@ class GaudiQwenImagePipeline(GaudiDiffusionPipeline, QwenImagePipeline):
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
         if prompt_embeds_mask is not None:
             prompt_embeds_mask_batches = list(torch.split(prompt_embeds_mask, batch_size))
+        else:
+            prompt_embeds_mask_batches = None
         if negative_prompt_embeds is not None:
             negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
         else:
@@ -182,10 +184,11 @@ class GaudiQwenImagePipeline(GaudiDiffusionPipeline, QwenImagePipeline):
                 prompt_embeds_mask_batches[-1] = torch.vstack(sequence_to_stack)
 
             # Pad negative_prompt_embeds_batches
-            sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
-                torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-            )
-            negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            if negative_prompt_embeds_batches is not None:
+                sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
 
             # Pad negative_prompt_embeds_mask if necessary
             if negative_prompt_embeds_mask is not None:
@@ -206,7 +209,9 @@ class GaudiQwenImagePipeline(GaudiDiffusionPipeline, QwenImagePipeline):
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)
         prompt_embeds_batches = torch.stack(prompt_embeds_batches)
-        prompt_embeds_mask_batches = torch.stack(prompt_embeds_mask_batches)
+        prompt_embeds_mask_batches = (
+            torch.stack(prompt_embeds_mask_batches) if prompt_embeds_mask_batches is not None else None
+        )
         if negative_prompt_embeds_batches is not None:
             negative_prompt_embeds_batches = torch.stack(negative_prompt_embeds_batches)
         if negative_prompt_embeds_mask_batches is not None:
