@@ -14,7 +14,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -40,7 +40,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -69,7 +69,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -98,7 +98,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -127,7 +127,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -157,7 +157,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -189,7 +189,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -218,7 +218,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
@@ -247,12 +247,12 @@ jobs:
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
       - name: Checkout Optimum Habana
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
         with:
           repository: 'huggingface/optimum-habana'
           path: optimum-habana
       - name: Checkout Sentence Transformers
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
         with:
           repository: 'UKPLab/sentence-transformers'
           path: sentence-transformers

@@ -16,9 +16,9 @@ jobs:
     name: Check code quality
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
     - name: Setup Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
     - name: Create and start a virtual environment
@@ -40,7 +40,7 @@ jobs:
       env:
         PR_NUMBER: ${{ github.event.number }}
       run: echo $PR_NUMBER > ./pr_number
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: failure() && github.event_name == 'pull_request'
       with:
         name: pr-number
